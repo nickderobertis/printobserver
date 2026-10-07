@@ -40,8 +40,7 @@ class Supervisor:
     """Where the supervisor is, and what a journey acts on."""
 
     server: str
-    #: The credential it serves under, as the client configuration it wrote
-    #: carries it.
+    #: The operator credential it admits, whose verifier it is configured with.
     credential: Credential
     print_id: str
     image_id: str
@@ -69,9 +68,14 @@ def _pythonpath() -> str:
 class Standing:
     """A supervisor held up for as long as this is entered."""
 
-    def __init__(self, into: Path) -> None:
-        """Bring one up under `into`, over the scripted `OctoPrint`."""
+    def __init__(self, into: Path, *, refusing: bool = False) -> None:
+        """Bring one up under `into`, over the scripted `OctoPrint`.
+
+        `refusing` is a world whose envelope grants the operator nothing, which
+        is what refuses every action by the policy's own grant.
+        """
         self.into = into
+        self.refusing = refusing
         self._holding: subprocess.Popen[str] | None = None
 
     def __enter__(self) -> Supervisor:
@@ -97,6 +101,7 @@ class Standing:
                 "--octoprint",
                 "--into",
                 str(self.into),
+                *(["--refusing"] if self.refusing else []),
             ],
             cwd=REPO_ROOT,
             env={**os.environ, "PYTHONPATH": _pythonpath()},

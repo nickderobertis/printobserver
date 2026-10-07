@@ -21,32 +21,58 @@ operation.
 
 ## How a request is authenticated
 
-Every request to a versioned operation carries the credential the server is
-configured with, as `Authorization: Bearer <credential>`. A request with no such
-header, a malformed one or another credential is answered `401` before anything
-reads it — with the error body, under the operations' own media type, and a
+Every request to a versioned operation carries a credential, as
+`Authorization: Bearer <credential>`. A request with no such header, a malformed
+one or a credential nobody holds is answered `401` before anything reads it —
+with the error body, under the operations' own media type, and a
 `WWW-Authenticate: Bearer` header — so it reaches no store, no printer and no
-record. Nothing turns this off.
+record. Nothing turns this off. Two kinds of credential are admitted, and each
+is one identity.
 
-The credential in force is `api.credential` when the server's configuration sets
-one. Otherwise the server generates one before it first listens — at least 32
-bytes from the operating system's secure random source, written as unpadded
-URL-safe base64 — into `api-credential` in its state directory, readable by the
-service's user alone, and reuses it unchanged on every later start. A file a
-person writes there may end in one line terminator, `\n` or `\r\n`, which is not
-part of the credential; any other control character refuses the start. Either way it
-writes the address it bound and that credential into `client.toml` beside it, as
-a `[client]` table with `server` and `credential`, also readable by that user
-alone.
+**The operator's.** The server keeps only its verifier — `sha256:` and the
+SHA-256 of the credential's UTF-8 bytes, in lowercase hexadecimal — from
+`api.credential_verifier`, or else `api-credential.verifier` in its state
+directory, and compares a presented credential's digest to it in constant time.
+`printobserver credential issue` draws the operator a credential from 32 bytes of
+the operating system's secure random source, writes it into their own client
+configuration and prints the verifier line; `printobserver credential verifier`
+prints the verifier of one handed to it on standard input. With no verifier
+anywhere, every operator request is refused `401` naming `printobserver
+credential issue`. A plaintext `api.credential`, which earlier versions read, is
+still admitted until it is replaced, and the server warns on every start that it
+is there; with both keys, the verifier wins. The server writes no operator
+credential anywhere: a legacy `api-credential` it generated is converted into
+the verifier file and deleted on the first start, and a legacy `client.toml` is
+deleted at every start.
+
+**A supervision turn's.** Each turn is minted a credential of its own when it
+starts — 32 bytes of the same random source — bound to the agent, that turn's
+session and that turn's print, held in the server's memory alone, and revoked
+when the turn ends, however it ends, and when the server restarts. It reaches
+the turn through the harness's environment alone, as `PRINTOBSERVER_SERVER` and
+`PRINTOBSERVER_CREDENTIAL`; no file holds it.
+
+**Who is asking is who authenticated.** Every mutating operation carries an
+actor in its body, and the body's actor is held to the credential before the
+policy is asked anything: the operator's credential acts as `operator` only, a
+turn's acts as `{"agent": {"session_name": …}}` for its own session only, and no
+credential acts as `system`, whose actions are the server's own. A turn's
+credential reaches the operations about its own print — and an image of it —
+and `prints`, and is refused `start_print` and `manifest_set`. Every refusal
+here is `403`, naming the identity that authenticated and what the request
+claimed or named, and nothing is decided or recorded. So the agent's minimum
+interval holds every machine-changing action a turn asks for, whatever actor it
+claims.
 
 A client reads the credential and the server's address from a configuration file
 or from `PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`; neither is ever a
-request parameter. Refused, the command-line program exits `unconfigured` and
-says where the credential is read from, and each client raises the error it
-raises for any other unsuccessful answer, carrying status `401`. Who is *asking*
-is a different thing from who is *authenticated*: every mutating operation
-carries an actor in its body, and the safety envelope grants actions per actor
-class.
+request parameter. The command-line program reads the operator's own
+`printobserver/client.toml` under their configuration home first, then the
+server's own file, unless `--config` names one, and the two variables win; with
+both set and no `--config` it reads no file. Refused `401`, it exits
+`unconfigured` and says where the credential is read from; refused `403`, it
+exits `refused` with the server's words. Each client raises the error it raises
+for any other unsuccessful answer, carrying the status.
 
 A mutating operation answers `200` when it was carried out and `409` when the
 policy refused it. A rejection is not a transport failure — the body is the same

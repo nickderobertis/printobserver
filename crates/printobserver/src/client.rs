@@ -21,7 +21,7 @@
 
 use std::path::Path;
 
-use printobserver_server::API_CREDENTIAL_FILE;
+use printobserver_server::CREDENTIAL_ISSUE;
 use printobserver_types::serde_json::{self, Value};
 
 use crate::config::{CREDENTIAL_ENV, ClientConfig, DEFAULT_CONFIG_PATH, load};
@@ -180,7 +180,12 @@ fn rejection_note(document: &Value) -> String {
 /// variable that wins over it.
 fn unauthenticated_note(call: &Call, config: &ClientConfig) -> String {
     let file = call.config.as_deref().map_or_else(
-        || DEFAULT_CONFIG_PATH.to_owned(),
+        || {
+            crate::locations::operator_client_config().map_or_else(
+                || DEFAULT_CONFIG_PATH.to_owned(),
+                |path| path.display().to_string(),
+            )
+        },
         |path| path.display().to_string(),
     );
     let presented = if config.credential.is_some() {
@@ -189,10 +194,11 @@ fn unauthenticated_note(call: &Call, config: &ClientConfig) -> String {
         "requires a credential, and this program was configured with none"
     };
     format!(
-        "the supervisor at {} {presented}. Set `credential` in the `[client]` table of {file}, \
-         or set {CREDENTIAL_ENV}, to the credential the supervisor is configured with: its \
-         `api.credential`, or what it generated into `{API_CREDENTIAL_FILE}` in its state \
-         directory",
+        "the supervisor at {} {presented}. Run `{CREDENTIAL_ISSUE}`, which writes a credential \
+         into your own client configuration and prints the `api.credential_verifier` line to \
+         put into the supervisor's configuration before restarting it; or set `credential` in \
+         the `[client]` table of {file}, or {CREDENTIAL_ENV}, to a credential whose verifier the \
+         supervisor is configured with",
         config.address()
     )
 }

@@ -103,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
         help="drive the OctoPrint `just octoprint-up` started, rather than a stand-in",
     )
     parser.add_argument(
+        "--refusing",
+        action="store_true",
+        help="grant the operator nothing, so the policy refuses every action it is asked",
+    )
+    parser.add_argument(
         "--commit",
         default="",
         metavar="SHA",
@@ -501,7 +506,9 @@ def _world(repo: Repo, arguments: argparse.Namespace) -> int:
     from release_artifacts.build import program
 
     printer = scripted_printer(repo.root) if arguments.octoprint else None
-    world = World(program(repo, arguments.binary), arguments.into, printer)
+    world = World(
+        program(repo, arguments.binary), arguments.into, printer, refusing=arguments.refusing
+    )
     try:
         running = world.start()
         print(

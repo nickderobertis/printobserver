@@ -345,13 +345,16 @@ shared_secret = ""
 # would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
 # answer bound".
 
-# The API credential every client presents is not written in this file. Left
-# out, the service generates one the first time it starts, into the file
-# api-credential in its state directory, readable by the service's user alone,
-# and writes it with the address into client.toml beside it for the clients on
-# this host. To choose the credential yourself, add an [api] table whose
-# credential key holds a long random value; the generated file is then neither
-# read nor written.
+# The operator's credential is never written in this file: the service keeps
+# only its verifier, so nothing a supervision turn can read authenticates as the
+# operator. As yourself, unprivileged, run
+#   printobserver credential issue
+# which writes the credential into your own client configuration, readable by
+# you alone, and prints one line to put here, above the first [table] header:
+#   api.credential_verifier = "sha256:..."
+# then restart the service. Until that line is here the service supervises and
+# refuses every operator request. Each supervision turn is handed a credential
+# of its own in its environment, so nothing else is needed for the agent.
 
 # Optional: a fresh look at the print. A URL answering one still image, such as
 # go2rtc's frame.jpeg for the printer's camera. Left out, a supervising agent's
@@ -472,4 +475,6 @@ chmod 0644 "$INSTALLED_DEFINITION" ||
 echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE_DIR \
 and $INSTALLED_DEFINITION and started nothing; install the agent's skill with \
 gh skill install nickderobertis/printobserver printobserver --dir $RUNTIME_STATE/skills, \
-edit $INSTALLED_CONFIG, then run: $START_COMMAND" >&2
+run printobserver credential issue as yourself and put the api.credential_verifier \
+line it prints into $INSTALLED_CONFIG, edit the rest of $INSTALLED_CONFIG, then run: \
+$START_COMMAND" >&2

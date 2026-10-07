@@ -131,6 +131,13 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             );
             set(&mut document, "api", toml::Value::Table(api));
         }
+        // Optional, and a digest in any other spelling is not one: here an
+        // uppercase one, which `printobserver credential issue` never prints.
+        ConfigField::ApiCredentialVerifier => set(
+            &mut document,
+            "api.credential_verifier",
+            toml::Value::String(crate::world::operator_verifier().to_uppercase()),
+        ),
         // Optional too: an address that is not a web address at all.
         ConfigField::CameraSnapshotUrl => set(
             &mut document,

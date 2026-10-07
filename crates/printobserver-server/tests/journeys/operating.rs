@@ -47,6 +47,35 @@ struct Asked {
     call: Option<Call>,
     /// The adjustable this operation changes, when it changes one.
     adjustable: Option<(Adjustable, f64)>,
+    /// The action the world the rejected body is sent to withholds from the
+    /// operator, when that is what the rejection is: the operator's credential
+    /// is the operator, so a rejection of the actor's class is one the
+    /// envelope makes of the operator.
+    withheld: Option<ActionKind>,
+}
+
+/// The base configuration's operator grants, less one action.
+fn operator_without(document: &mut toml::Value, withheld: ActionKind) {
+    let granted: Vec<toml::Value> = OPERATIONS
+        .iter()
+        .filter_map(|operation| match operation.effect {
+            Effect::Mutating(kind) if kind != withheld => Some(kind),
+            _ => None,
+        })
+        .map(|kind| {
+            toml::Value::String(
+                printobserver_types::serde_json::to_value(kind)
+                    .ok()
+                    .and_then(|named| named.as_str().map(str::to_owned))
+                    .expect("an action kind is named"),
+            )
+        })
+        .collect();
+    crate::world::set(
+        document,
+        "safety.actions.operator",
+        toml::Value::Array(granted),
+    );
 }
 
 /// One body carrying a reason and an actor, plus whatever else is given.
@@ -85,15 +114,14 @@ fn asked(kind: ActionKind) -> Asked {
 
 /// What one operation that moves or stops the machine is asked.
 ///
-/// The rejected body is an actor class the envelope does not grant the action
-/// to, or — for pausing, which every class may ask for — a state it is not
-/// valid from.
+/// The rejected body is the operator asking, in a world whose envelope does not
+/// grant the operator the action, or — for pausing — a state it is not valid
+/// from.
 fn movement(kind: ActionKind) -> Asked {
     let operator = json!("operator");
-    // The safety envelope these journeys run under grants the agent `pause`,
-    // `set_feedrate_factor` and `set_fan_percent` and nothing else, so an agent
-    // asking for anything else is a rejection of that request's own kind.
-    let agent = json!({ "agent": { "session_name": "watch-1" } });
+    // What the operator's credential asks for is asked as the operator, so the
+    // rejection of the actor's class is the envelope withholding the action
+    // from the operator — which `rejects` configures from `withheld`.
     match kind {
         ActionKind::Pause => Asked {
             accepted: body(&operator, &[]),
@@ -102,20 +130,23 @@ fn movement(kind: ActionKind) -> Asked {
             from: PrinterState::Printing,
             call: Some(Call::Pause),
             adjustable: None,
+            withheld: None,
         },
         ActionKind::Resume => Asked {
             accepted: body(&operator, &[]),
-            rejected: body(&agent, &[]),
+            rejected: body(&operator, &[]),
             from: PrinterState::Paused,
             call: Some(Call::Resume),
             adjustable: None,
+            withheld: Some(ActionKind::Resume),
         },
         ActionKind::Cancel => Asked {
             accepted: body(&operator, &[]),
-            rejected: body(&agent, &[]),
+            rejected: body(&operator, &[]),
             from: PrinterState::Printing,
             call: Some(Call::Cancel),
             adjustable: None,
+            withheld: Some(ActionKind::Cancel),
         },
         ActionKind::StartPrint => Asked {
             accepted: body(
@@ -126,7 +157,7 @@ fn movement(kind: ActionKind) -> Asked {
                 ],
             ),
             rejected: body(
-                &agent,
+                &operator,
                 &[
                     ("file_name", json!("benchy.gcode")),
                     ("manifest", manifest()),
@@ -137,6 +168,7 @@ fn movement(kind: ActionKind) -> Asked {
                 printobserver_types::FileName::new("benchy.gcode").expect("a file name"),
             )),
             adjustable: None,
+            withheld: Some(ActionKind::StartPrint),
         },
         ActionKind::AcknowledgeFailure => Asked {
             accepted: body(
@@ -147,7 +179,7 @@ fn movement(kind: ActionKind) -> Asked {
                 ],
             ),
             rejected: body(
-                &agent,
+                &operator,
                 &[
                     ("event_id", json!(printobserver_types::EventId::new())),
                     ("disposition", json!("continue")),
@@ -159,6 +191,7 @@ fn movement(kind: ActionKind) -> Asked {
             // it, which the policy grants on its own.
             call: None,
             adjustable: None,
+            withheld: Some(ActionKind::AcknowledgeFailure),
         },
         _ => unreachable!("this is an adjustment rather than a movement"),
     }
@@ -177,6 +210,7 @@ fn adjustment(kind: ActionKind) -> Asked {
             from: PrinterState::Printing,
             call: Some(Call::Feedrate(1.2)),
             adjustable: Some((Adjustable::Feedrate, 1.2)),
+            withheld: None,
         },
         ActionKind::SetFlowrateFactor => Asked {
             accepted: body(&operator, &[("factor", json!(1.05))]),
@@ -184,6 +218,7 @@ fn adjustment(kind: ActionKind) -> Asked {
             from: PrinterState::Printing,
             call: Some(Call::Flowrate(1.05)),
             adjustable: Some((Adjustable::Flowrate, 1.05)),
+            withheld: None,
         },
         ActionKind::SetToolTargetC => Asked {
             accepted: body(&operator, &[("tool", json!(0)), ("target_c", json!(220.0))]),
@@ -194,6 +229,7 @@ fn adjustment(kind: ActionKind) -> Asked {
             from: PrinterState::Printing,
             call: Some(Call::ToolTarget(0, 220.0)),
             adjustable: Some((Adjustable::ToolTarget { tool: 0 }, 220.0)),
+            withheld: None,
         },
         ActionKind::SetBedTargetC => Asked {
             accepted: body(&operator, &[("target_c", json!(65.0))]),
@@ -201,6 +237,7 @@ fn adjustment(kind: ActionKind) -> Asked {
             from: PrinterState::Printing,
             call: Some(Call::BedTarget(65.0)),
             adjustable: Some((Adjustable::BedTarget, 65.0)),
+            withheld: None,
         },
         ActionKind::SetFanPercent => Asked {
             accepted: body(&operator, &[("percent", json!(80.0))]),
@@ -208,6 +245,7 @@ fn adjustment(kind: ActionKind) -> Asked {
             from: PrinterState::Printing,
             call: Some(Call::Fan(80.0)),
             adjustable: Some((Adjustable::Fan, 80.0)),
+            withheld: None,
         },
         _ => unreachable!("this is a movement rather than an adjustment"),
     }
@@ -382,7 +420,17 @@ async fn accepts(operation: &Operation, plan: &Asked) {
 
 /// The rejected body answers the policy's own rejection and moves nothing.
 async fn rejects(operation: &Operation, plan: &Asked) {
-    let world = World::open().await;
+    let withheld = plan.withheld;
+    let world = World::configured(
+        crate::printer::RecordingPrinter::printing(),
+        crate::agent::StandInAgent::new(),
+        |document| {
+            if let Some(kind) = withheld {
+                operator_without(document, kind);
+            }
+        },
+    )
+    .await;
     world.printer.in_state(plan.from.clone());
     let print_id = world.open_print().await;
     // Pausing is rejected from a state it is not valid from, which is a
@@ -871,12 +919,17 @@ async fn a_start_opens_its_own_print_and_writes_everything_against_it() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refused_start_is_recorded_against_its_own_print_which_the_next_read_closes() {
     const STARTED: &str = "hold.gcode";
-    let world = World::open().await;
+    let world = World::configured(
+        crate::printer::RecordingPrinter::printing(),
+        crate::agent::StandInAgent::new(),
+        |document| operator_without(document, ActionKind::StartPrint),
+    )
+    .await;
     let asked_against = world.open_print().await;
     world.printer.in_state(PrinterState::Operational);
-    // The envelope these journeys run under grants the agent no start.
+    // This world's envelope grants the operator no start.
     let start = body(
-        &json!({ "agent": { "session_name": "watch-1" } }),
+        &json!("operator"),
         &[("file_name", json!(STARTED)), ("manifest", manifest())],
     );
 

@@ -82,8 +82,8 @@ fn body(extra: &[(&str, Value)]) -> Value {
     body
 }
 
-/// The same body, as the actor class the envelope grants one adjustment to and
-/// nothing else.
+/// The same body, claiming the agent — which this tier's credential, the
+/// operator's, is not.
 fn as_the_agent(extra: &[(&str, Value)]) -> Value {
     let mut body = body(extra);
     body.as_object_mut().expect("the body is an object").insert(
@@ -138,8 +138,9 @@ struct Live {
 /// What every mutating operation is asked, by the name it is declared under.
 ///
 /// The rejected body is of that operation's own kind: a value outside the
-/// bounds the manifest narrowed for an adjustment, and an actor class the
-/// envelope does not grant the action to for the rest.
+/// bounds the manifest narrowed for an adjustment, which the policy rejects;
+/// and for the rest, a claim to be the agent, which the operator's credential
+/// this tier presents is not — refused before the policy is asked anything.
 fn live(name: &str) -> Live {
     match name {
         "pause" => Live {
@@ -816,8 +817,10 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
     body
 }
 
-/// Every mutating operation answers the policy's own rejection, and moves
-/// nothing.
+/// Every mutating operation is refused in its own kind, and moves nothing: an
+/// adjustment out of bounds answers the policy's own rejection, recorded; a
+/// request claiming an actor the credential is not is refused `403` before the
+/// policy is asked, and recorded nowhere.
 async fn every_mutating_operation_is_rejected_in_its_own_kind(
     world: &Composed,
     proxy: &Proxy,
@@ -835,6 +838,35 @@ async fn every_mutating_operation_is_rejected_in_its_own_kind(
 
         let (code, answer) = ask(world, print_id, operation.name, &plan.rejected).await;
 
+        if plan.adjustable.is_none() {
+            assert_eq!(
+                code, 403,
+                "`{}` claiming the agent under the operator's credential was not refused: \
+                 {answer}",
+                operation.name
+            );
+            assert!(
+                answer["error"]
+                    .as_str()
+                    .is_some_and(|said| said.contains("the operator") && said.contains("agent")),
+                "`{}` was refused without naming who asked and who it claimed: {answer}",
+                operation.name
+            );
+            assert!(
+                proxy.bodies().is_empty(),
+                "`{}` was refused and the machine was asked {:?}",
+                operation.name,
+                proxy.bodies()
+            );
+            assert_eq!(
+                stored(world, print_id).await,
+                before,
+                "`{}` was refused before the policy and still moved the record",
+                operation.name
+            );
+            walked.push(operation.name);
+            continue;
+        }
         assert_eq!(code, 409, "`{}` was not rejected: {answer}", operation.name);
         let rejection = &answer["record"]["decision"]["rejected"];
         assert!(
@@ -842,7 +874,10 @@ async fn every_mutating_operation_is_rejected_in_its_own_kind(
             "`{}` answered no rejection the caller can act on: {answer}",
             operation.name
         );
-        if let Some(adjustable) = plan.adjustable {
+        {
+            let adjustable = plan
+                .adjustable
+                .expect("only an adjustment reaches the policy here");
             let bounds = &rejection["out_of_bounds"];
             assert_eq!(
                 bounds["adjustable"],
@@ -854,12 +889,6 @@ async fn every_mutating_operation_is_rejected_in_its_own_kind(
                 !bounds["requested"].is_null() && !bounds["allowed"].is_null(),
                 "`{}` was rejected without the value asked for and the range \
                  allowed: {answer}",
-                operation.name
-            );
-        } else {
-            assert!(
-                !rejection["actor_may_not_request"].is_null(),
-                "`{}` was rejected for something other than the actor asking: {answer}",
                 operation.name
             );
         }

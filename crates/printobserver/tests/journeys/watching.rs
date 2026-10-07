@@ -6,22 +6,27 @@
 //! paid provider process and only that: the real supervisor runs it as it runs
 //! the real program, and what the stand-in does during its turn it does the way
 //! an agent does — reading the prompt it was handed and running this program's
-//! own commands with the `--config` and `--actor` that prompt names. What each
+//! own commands with the `--actor` that prompt names and no `--config`, the
+//! server and the credential its turn was minted reaching those commands
+//! through the turn's own environment. The agent acts inside a turn or not at
+//! all, so every journey about what an agent's action does is here. What each
 //! journey here asserts is read back through those same commands.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use printobserver::failure::Exit;
 use printobserver_server::{HarnessSignIn, SIGN_INS};
-use printobserver_types::serde_json::Value;
+use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
 use crate::harness::{PROMPT, SIGN_IN_STATE, SIGNED_IN, assessment_answer, stand_in_acting};
+use crate::host::Host;
 use crate::machine::{RUNNING_FILE, Reports};
 use crate::world::{STOOD_IN, World, committed_skill};
 
 use super::looking::{
-    PATIENCE, acknowledged, actions_asked, alert, detector_configuration, events_of, obico, post,
+    OBICO_TOKEN, PATIENCE, actions_asked, alert, detector_configuration, events_of, obico, post,
     reports, wait_for,
 };
 
@@ -34,6 +39,21 @@ const GO: &str = "go";
 /// A turn that says it started, and waits for the journey to let it carry on.
 const WAITING: &str = r#"touch "$dir/started-$print-$n"
 until [ -e "$dir/go" ]; do sleep 0.1; done"#;
+
+/// `Obico`'s own identifier for the printer the committed alert is about.
+pub const OBICO_PRINTER: i64 = 17;
+
+/// Whether `Obico` was asked to acknowledge the alert on the committed
+/// printer, with the overwrite `FAILED` and the configured token.
+pub fn acknowledged(obico: &Host) -> bool {
+    obico.received().iter().any(|head| {
+        head.starts_with(&format!(
+            "POST /api/v1/printers/{OBICO_PRINTER}/acknowledge_alert/?alert_overwrite=FAILED "
+        )) && head
+            .to_ascii_lowercase()
+            .contains(&format!("authorization: bearer {OBICO_TOKEN}"))
+    })
+}
 
 /// The configured harness, as the adapter's table declares it.
 fn entry() -> &'static HarnessSignIn {
@@ -605,4 +625,462 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
         api.received().is_empty(),
         "Obico was told about a person's pause"
     );
+}
+
+/// What the machine reports it is doing, read off the stood-in machine's own
+/// socket: while a turn is running the supervisor answers the context it
+/// collected for that turn, so a read through this program would answer the
+/// state the turn began in. A request target carrying a query is answered the
+/// machine's connection document, whose state names what it is doing.
+fn machine_reports(world: &World) -> Reports {
+    use std::io::{Read as _, Write as _};
+
+    let crate::world::Printer::StoodIn(machine) = &world.printer else {
+        panic!("the journeys holding a turn open run over a stood-in machine")
+    };
+    let mut stream =
+        std::net::TcpStream::connect(machine.address).expect("the stood-in machine answers");
+    write!(
+        stream,
+        "GET /state?now HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        machine.address
+    )
+    .expect("the read is written");
+    let mut answer = String::new();
+    stream
+        .read_to_string(&mut answer)
+        .expect("the machine's answer is read");
+    let body = answer.split_once("\r\n\r\n").map_or("", |(_, body)| body);
+    let document: Value =
+        printobserver_types::serde_json::from_str(body).expect("the machine answers a document");
+    match document["state"]["text"].as_str() {
+        Some("Printing") => Reports::Printing,
+        Some("Paused") => Reports::Paused,
+        Some("Operational") => Reports::Operational,
+        other => panic!("the machine reports {other:?}"),
+    }
+}
+
+/// The exit status one command a turn ran exited with, once the turn has
+/// written it whole: the file is there a moment before the status is in it.
+fn exited(watching: &Watching, name: &str) -> i32 {
+    let path = watching.written(&format!("{name}.code"));
+    let mut status = None;
+    wait_for(
+        &format!("the status of {name} to be written"),
+        PATIENCE,
+        || {
+            status = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|held| held.trim().parse().ok());
+            status.is_some()
+        },
+    );
+    status.expect("a status")
+}
+
+/// What one command a turn ran printed, as the turn wrote it.
+fn printed(watching: &Watching, name: &str) -> String {
+    std::fs::read_to_string(watching.written(name)).expect("the output reads")
+}
+
+/// An agent's adjustment in its turn, while the detector's pause holds the
+/// print, is applied at once; twenty seconds after its last such adjustment —
+/// a second one moves the resume on — the system resumes the print through the
+/// policy while the turn is still running, and acknowledges the alert to
+/// `Obico`, and nothing the supervisor wrote or printed carries `Obico`'s
+/// token.
+#[test]
+fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-1-$print" 2>&1; echo $? > "$dir/fan-1-$print.code"
+eval "printobserver look --json $about" > "$dir/look-$print" 2>&1
+sleep 2
+eval "printobserver set-fan-percent --percent 90 --reason 'still more cooling for the overhang' $actor $about" > "$dir/fan-2-$print" 2>&1; echo $? > "$dir/fan-2-$print.code"
+until [ -e "$dir/go" ]; do sleep 0.1; done"#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+
+    assert_eq!(exited(&watching, &format!("fan-1-{print}")), 0);
+    assert_eq!(
+        exited(&watching, &format!("fan-2-{print}")),
+        0,
+        "{}",
+        printed(&watching, &format!("fan-2-{print}"))
+    );
+    // The look ran before the second adjustment, so it is whole once that
+    // adjustment's status is written.
+    let look: Value =
+        printobserver_types::serde_json::from_str(&printed(&watching, &format!("look-{print}")))
+            .expect("the look is a document");
+    assert_eq!(look["detector_paused"], true, "{look}");
+    let again = Instant::now();
+    assert_eq!(
+        machine_reports(world),
+        Reports::Paused,
+        "resumed inside the grace"
+    );
+
+    wait_for("the print to be resumed", PATIENCE, || {
+        machine_reports(world) == Reports::Printing
+    });
+    // Within a second of the second adjustment's own status being written, so
+    // a resume at least nineteen seconds later is one the second adjustment
+    // moved on rather than the first adjustment's grace.
+    assert!(
+        again.elapsed() >= Duration::from_secs(19),
+        "the print was resumed {:?} after the second adjustment, before its grace",
+        again.elapsed()
+    );
+    let resumes: Vec<Value> = actions_asked(world, &print)
+        .into_iter()
+        .filter(|action| action["action"] == "resume")
+        .collect();
+    assert_eq!(resumes.len(), 1, "{resumes:?}");
+    assert_eq!(resumes[0]["actor"], "system");
+    wait_for("Obico to be told", PATIENCE, || acknowledged(&api));
+    watching.go();
+
+    let history = Value::Array(super::looking::history(world, &print)).to_string();
+    assert!(
+        !history.contains(OBICO_TOKEN),
+        "the history carries the token"
+    );
+    assert!(
+        !world.said_so_far().contains(OBICO_TOKEN),
+        "the supervisor printed the token"
+    );
+}
+
+/// An acknowledgement `Obico` refuses, once the turn that adjusted the print
+/// ends and resumes it, is recorded as a port failure against the detection's
+/// own event, saying what `Obico` answered and never the token.
+#[test]
+fn an_acknowledgement_obico_refuses_is_recorded_against_the_detection() {
+    let api = obico("403 Forbidden");
+    let watching = Watching::start(
+        r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print" 2>&1; echo $? > "$dir/fan-$print.code""#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    assert_eq!(
+        exited(&watching, &format!("fan-{print}")),
+        0,
+        "{}",
+        printed(&watching, &format!("fan-{print}"))
+    );
+
+    let refused = || {
+        events_of(world, &print, "port_failure")
+            .into_iter()
+            .find(|failure| failure["payload"]["site"] == "detector_acknowledgement")
+    };
+    wait_for(
+        "the refused acknowledgement to be recorded",
+        PATIENCE,
+        || refused().is_some(),
+    );
+    let detection = events_of(world, &print, "obico_failure_alert")
+        .pop()
+        .expect("the alert")["id"]
+        .clone();
+    let failure = refused().expect("recorded");
+    assert_eq!(failure["payload"]["event_id"], detection);
+    let detail = failure["payload"]["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("403"), "{detail}");
+    assert!(!detail.contains(OBICO_TOKEN), "{detail}");
+    assert_eq!(reports(world), Some(Reports::Printing));
+    assert!(
+        !world.said_so_far().contains(OBICO_TOKEN),
+        "the supervisor printed the token"
+    );
+}
+
+/// While the print is paused the agent's minimum interval does not hold its
+/// adjustments back; cancelling still waits on it, and once the print is
+/// moving an adjustment does too — all of it asked for by the turn itself,
+/// with the credential it was minted.
+#[test]
+fn adjustments_to_a_paused_print_skip_the_interval_and_nothing_else_does() {
+    let watching = Watching::start(
+        r#"ask() { eval "printobserver $2 --reason 'a journey about the interval' $actor $about" > "$dir/$1-$print" 2>&1; echo $? > "$dir/$1-$print.code"; }
+ask fan-paused "set-fan-percent --percent 70"
+ask feedrate-paused "set-feedrate-factor --factor 0.9"
+ask cancel-paused "cancel"
+touch "$dir/paused-done-$print"
+until [ -e "$dir/go" ]; do sleep 0.1; done
+ask fan-moving "set-fan-percent --percent 60"
+ask pause-moving "pause""#,
+        |document| {
+            document["safety"]["agent_min_interval_s"] = json!(300);
+            document["safety"]["actions"]["agent"] =
+                json!(["set_fan_percent", "set_feedrate_factor", "pause", "cancel"]);
+        },
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+
+    watching.written(&format!("paused-done-{print}"));
+    for name in ["fan-paused", "feedrate-paused"] {
+        assert_eq!(
+            exited(&watching, &format!("{name}-{print}")),
+            0,
+            "`{name}` on a paused print: {}",
+            printed(&watching, &format!("{name}-{print}"))
+        );
+    }
+    let rejected = i32::from(Exit::Rejected.status());
+    assert_eq!(
+        exited(&watching, &format!("cancel-paused-{print}")),
+        rejected
+    );
+    assert!(
+        printed(&watching, &format!("cancel-paused-{print}")).contains("min_interval_not_elapsed")
+    );
+
+    world.wants(Reports::Printing);
+    watching.go();
+    for name in ["fan-moving", "pause-moving"] {
+        assert_eq!(
+            exited(&watching, &format!("{name}-{print}")),
+            rejected,
+            "`{name}` on a moving print did not wait on the interval: {}",
+            printed(&watching, &format!("{name}-{print}"))
+        );
+        assert!(
+            printed(&watching, &format!("{name}-{print}")).contains("min_interval_not_elapsed"),
+            "{}",
+            printed(&watching, &format!("{name}-{print}"))
+        );
+    }
+}
+
+/// A detector that reports the pause again while the turn that adjusted the
+/// print is still running does not undo the adjustment: the resume it earned
+/// still comes when the turn ends, and the newer detection is the one
+/// acknowledged — to its own printer, and with a refusal recorded against its
+/// own event.
+#[test]
+fn a_repeated_detection_keeps_the_resume_and_is_the_one_acknowledged() {
+    let api = obico("403 Forbidden");
+    let watching = Watching::start(
+        &format!(
+            r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print-$n" 2>&1
+{WAITING}"#
+        ),
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    watching.written(&format!("started-{print}-1"));
+    let mut again = alert(world, 4211, RUNNING_FILE, false, true);
+    again["printer"]["id"] = json!(OBICO_PRINTER + 1);
+    post(world, &again);
+    // The newer detection is written down before the turn is let go.
+    wait_for("the newer detection to be written down", PATIENCE, || {
+        events_of(world, &print, "obico_failure_alert").len() >= 2
+    });
+    watching.go();
+
+    let refused = || {
+        events_of(world, &print, "port_failure")
+            .into_iter()
+            .find(|failure| failure["payload"]["site"] == "detector_acknowledgement")
+    };
+    wait_for(
+        "the refused acknowledgement to be recorded",
+        PATIENCE,
+        || refused().is_some(),
+    );
+    assert_eq!(reports(world), Some(Reports::Printing));
+    let resumes = actions_asked(world, &print)
+        .into_iter()
+        .filter(|action| action["action"] == "resume")
+        .count();
+    assert_eq!(resumes, 1);
+    let newer = events_of(world, &print, "obico_failure_alert")
+        .pop()
+        .expect("the newer detection")["id"]
+        .clone();
+    assert_eq!(refused().expect("recorded")["payload"]["event_id"], newer);
+    let heads = api.received();
+    assert_eq!(heads.len(), 1, "{heads:?}");
+    assert!(
+        heads[0].starts_with(&format!(
+            "POST /api/v1/printers/{}/acknowledge_alert/",
+            OBICO_PRINTER + 1
+        )),
+        "{}",
+        heads[0]
+    );
+}
+
+/// A turn reaches the supervisor with the credential minted for it alone,
+/// handed to it in its environment and in no file: the commands it runs name
+/// no `--config`, act on its own print, and are refused claiming the operator,
+/// reaching another print or replacing a manifest. Once the turn has returned
+/// the credential is refused, two turns are minted two credentials, and none
+/// of them is in any file the supervisor wrote or anything it printed.
+#[test]
+fn a_turn_acts_with_its_own_credential_and_no_other() {
+    let captured = TempDir::new().expect("a directory outside the state directory");
+    let capture = captured.path().display().to_string();
+    let watching = Watching::start(
+        &format!(
+            r#"printf '%s' "${{PRINTOBSERVER_CREDENTIAL:-}}" > "{capture}/credential-$n"
+printf '%s' "${{PRINTOBSERVER_SERVER:-}}" > "{capture}/server-$n"
+ls "$dir/../.." > "{capture}/state-$n" 2>&1
+ask() {{ eval "printobserver $2 $about" > "{capture}/$1-$n" 2>&1; echo $? > "{capture}/$1-$n.code"; }}
+ask context "context"
+ask fan "set-fan-percent --percent 70 --reason 'more cooling for the overhang' $actor"
+ask as-operator "cancel --reason 'stopping this as the operator' --actor operator"
+ask manifest "manifest-set --reason 'widening my own bounds' --manifest '{{}}'"
+other=$(cat "{capture}/other")
+eval "printobserver status --print-id $other" > "{capture}/other-print-$n" 2>&1; echo $? > "{capture}/other-print-$n.code"
+touch "{capture}/done-$n""#
+        ),
+        |document| {
+            document["safety"]["actions"]["agent"] = json!(["set_fan_percent", "pause"]);
+        },
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Printing);
+    let wait_for_turn = |n: usize| {
+        let done = captured.path().join(format!("done-{n}"));
+        wait_for(&format!("turn {n} to finish"), PATIENCE, || done.exists());
+        watching.settled_after(&print, n);
+    };
+    let read = |name: &str| std::fs::read_to_string(captured.path().join(name)).unwrap_or_default();
+
+    std::fs::write(captured.path().join("other"), world.ended_print_id())
+        .expect("the other print is written down for the turn");
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    wait_for_turn(1);
+
+    let first = read("credential-1");
+    assert!(!first.is_empty(), "the turn was handed no credential");
+    assert_ne!(
+        first,
+        crate::world::CREDENTIAL,
+        "the turn was handed the operator's credential"
+    );
+    assert!(
+        read("server-1").starts_with("http://127.0.0.1:"),
+        "the turn was not told where the supervisor is: {}",
+        read("server-1")
+    );
+    assert!(
+        !read("state-1").contains("client.toml"),
+        "a client configuration is in the state directory: {}",
+        read("state-1")
+    );
+    the_first_turn_acted_as_itself(world, &print, captured.path());
+
+    // The turn has returned: its credential is refused, as a caller with that
+    // environment and no file would find.
+    let after = super::running::with(
+        world,
+        &["status".to_owned(), "--print-id".to_owned(), print.clone()],
+        &[
+            ("PRINTOBSERVER_SERVER".to_owned(), read("server-1")),
+            ("PRINTOBSERVER_CREDENTIAL".to_owned(), first.clone()),
+        ],
+    );
+    assert_eq!(
+        after.code,
+        Some(i32::from(Exit::Unconfigured.status())),
+        "a returned turn's credential was admitted: {}",
+        after.said()
+    );
+
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    wait_for_turn(2);
+    let second = read("credential-2");
+    assert!(!second.is_empty());
+    assert_ne!(first, second, "two turns were handed one credential");
+
+    let state = world.root.path().join("state");
+    for credential in [&first, &second] {
+        for written in walk_state(&state) {
+            assert!(
+                !std::fs::read(&written)
+                    .unwrap_or_default()
+                    .windows(credential.len())
+                    .any(|window| window == credential.as_bytes()),
+                "{} carries a turn's credential",
+                written.display()
+            );
+        }
+        assert!(
+            !world.said_so_far().contains(credential.as_str()),
+            "the supervisor printed a turn's credential"
+        );
+    }
+}
+
+/// What the first turn's commands answered, as it wrote them down under
+/// `captured`: its context read and its adjustment served; claiming the
+/// operator, replacing a manifest and reaching another print refused, naming
+/// who asked; and nothing but the adjustment recorded.
+fn the_first_turn_acted_as_itself(world: &World, print: &str, captured: &std::path::Path) {
+    let read = |name: &str| std::fs::read_to_string(captured.join(name)).unwrap_or_default();
+    let status = |name: &str| -> i32 { read(&format!("{name}.code")).trim().parse().unwrap_or(-1) };
+    assert_eq!(status("context-1"), 0, "{}", read("context-1"));
+    assert!(read("context-1").contains(print), "{}", read("context-1"));
+    assert_eq!(status("fan-1"), 0, "{}", read("fan-1"));
+    let refused = i32::from(Exit::Refused.status());
+    for (name, naming) in [
+        ("as-operator-1", "the operator"),
+        ("manifest-1", "manifest-set"),
+        ("other-print-1", "its own print alone"),
+    ] {
+        assert_eq!(
+            status(name),
+            refused,
+            "`{name}` was not refused: {}",
+            read(name)
+        );
+        assert!(
+            read(name).contains("403") && read(name).contains(naming),
+            "`{name}` was refused without naming who asked: {}",
+            read(name)
+        );
+    }
+    let asked = actions_asked(world, print);
+    assert_eq!(
+        asked
+            .iter()
+            .map(|action| action["action"].clone())
+            .collect::<Vec<_>>(),
+        [json!("set_fan_percent")],
+        "a refused request was recorded: {asked:?}"
+    );
+    assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
+}
+
+/// Every file under a directory.
+fn walk_state(root: &std::path::Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(walk_state(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
 }

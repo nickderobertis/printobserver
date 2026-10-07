@@ -53,6 +53,7 @@ use crate::clock::Clock;
 use crate::config::CoreConfig;
 use crate::detector::DetectorPauses;
 use crate::inbox::Inboxes;
+use crate::turn_access::{NoAccess, OpenedTurn, TurnAuthority};
 use crate::turn_lock::TurnLocks;
 
 /// What became of one request that reached [`Supervisor::issue_decided_action`].
@@ -126,6 +127,9 @@ pub struct Supervisor {
     inboxes: Inboxes,
     /// The prints the detector paused and nobody has resumed yet.
     detector_pauses: Mutex<DetectorPauses>,
+    /// Where each supervision turn's runs take their credentials from, once
+    /// the composition root has installed it.
+    turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
 }
 
 impl core::fmt::Debug for Supervisor {
@@ -176,6 +180,7 @@ impl Supervisor {
             pending_context: Mutex::new(BTreeMap::new()),
             inboxes: Inboxes::default(),
             detector_pauses: Mutex::new(BTreeMap::new()),
+            turn_authority: std::sync::OnceLock::new(),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
@@ -190,6 +195,19 @@ impl Supervisor {
             })
             .expect("the expiry driver thread starts");
         supervisor
+    }
+
+    /// Install where every supervision turn's runs take their credentials
+    /// from. The first installation stands; answers whether this one did.
+    pub fn install_turn_authority(&self, authority: Arc<dyn TurnAuthority>) -> bool {
+        self.turn_authority.set(authority).is_ok()
+    }
+
+    /// The issuer for one turn about one print, opened now.
+    pub(crate) fn open_turn(&self, print_id: PrintId) -> OpenedTurn {
+        self.turn_authority
+            .get()
+            .map_or_else(NoAccess::opened, |authority| authority.open(print_id))
     }
 
     /// Durable state, one handle per aggregate.

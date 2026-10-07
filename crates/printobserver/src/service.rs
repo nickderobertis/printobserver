@@ -203,6 +203,9 @@ pub async fn run<R: StatusReporter>(
             return Exit::Unconfigured;
         }
     };
+    for warning in running.warnings() {
+        eprintln!("printobserver: warning: {warning}");
+    }
     eprintln!("printobserver is serving on {}", running.address());
     deliver(reporter, StatusReport::Running);
 

@@ -121,12 +121,13 @@ pub fn about_now(driven: &Driven, world: &World) -> Driven {
 }
 
 /// These arguments, naming the print the world is about now wherever they
-/// name a print; the same reason as [`about_now`].
+/// name a print; the same reason as [`about_now`]. A request asked against the
+/// print that ended before the walk keeps naming that one.
 #[must_use]
 pub fn naming_the_print_now(arguments: &[String], world: &World) -> Vec<String> {
     let mut now = arguments.to_vec();
     for index in 1..now.len() {
-        if now[index - 1] == "--print-id" {
+        if now[index - 1] == "--print-id" && !world.is_the_ended_print(&now[index]) {
             now[index] = world.print_id();
         }
     }

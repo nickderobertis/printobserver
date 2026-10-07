@@ -39,8 +39,8 @@ use printobserver::config::{CREDENTIAL_ENV, DEFAULT_CONFIG_PATH, SERVER_ENV};
 use printobserver::failure::Exit;
 use printobserver_core::store::PrintStore as _;
 use printobserver_server::{
-    API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE, HARNESS_DIRECTORY, HarnessSignIn, INGRESS_PATH,
-    SIGN_INS, TOKEN_PARAM,
+    API_CREDENTIAL_FILE, API_CREDENTIAL_VERIFIER_FILE, CLIENT_CONFIG_FILE, HARNESS_DIRECTORY,
+    HarnessSignIn, INGRESS_PATH, SIGN_INS, TOKEN_PARAM,
 };
 use tempfile::TempDir;
 
@@ -1053,36 +1053,52 @@ fn fill_in(configuration: &Path) {
     std::fs::write(configuration, filled).expect("the configuration is writable");
 }
 
-/// The configuration the running server wrote for the clients beside it.
-///
-/// It names the address that was actually bound rather than the one that was
-/// configured, which is what lets a supervision turn reach a server started on
-/// a port the operating system chose — and the credential in force, which is
-/// what lets it authenticate without anybody copying a secret. Carrying that,
-/// it is private to the service's own user.
-fn client_configuration(state: &Path, address: &str, credential: &str) -> PathBuf {
-    let path = state.join(CLIENT_CONFIG_FILE);
-    let written: toml::Value = toml::from_str(
-        &std::fs::read_to_string(&path)
-            .expect("the server wrote the configuration its clients read"),
-    )
-    .expect("the configuration the server wrote is a document");
-    assert_eq!(
-        written["client"]["server"].as_str(),
-        Some(format!("http://{address}").as_str()),
-        "the configuration the server wrote does not name the address it bound"
-    );
-    assert_eq!(
-        written["client"]["credential"].as_str(),
-        Some(credential),
-        "the configuration the server wrote does not carry the credential in force"
-    );
-    let mode = mode_of(&path);
-    assert_eq!(
-        mode, 0o600,
-        "the configuration carrying the credential is mode {mode:o}"
-    );
-    path
+/// The variables an operator's configuration home is read from, every one of
+/// which a run below points at a directory of its own.
+const CONFIG_HOME_VARIABLES: [&str; 3] = ["XDG_CONFIG_HOME", "HOME", "APPDATA"];
+
+/// The operator's own client configuration under one configuration home: where
+/// `printobserver credential issue` writes it on this platform.
+fn issued_configuration(home: &Path) -> PathBuf {
+    if cfg!(windows) {
+        home.join("printobserver").join("client.toml")
+    } else if cfg!(target_os = "macos") {
+        home.join("Library")
+            .join("Application Support")
+            .join("printobserver")
+            .join("client.toml")
+    } else {
+        home.join("printobserver").join("client.toml")
+    }
+}
+
+/// Run this program as the operator, with their configuration home at `home`
+/// and nothing else of this journey's environment.
+fn as_the_operator_at_home(
+    home: &Path,
+    arguments: &[&str],
+    server: Option<&str>,
+) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+    command
+        .args(arguments)
+        .env_remove(SERVER_ENV)
+        .env_remove(CREDENTIAL_ENV);
+    for name in CONFIG_HOME_VARIABLES {
+        command.env(name, home);
+    }
+    if let Some(server) = server {
+        command.env(SERVER_ENV, server);
+    }
+    command.output().expect("the program runs")
+}
+
+/// The configuration with one line put first, above every table: where the
+/// `api.credential_verifier` line `printobserver credential issue` prints goes.
+fn with_first_line(configuration: &Path, line: &str) {
+    let held = std::fs::read_to_string(configuration).expect("the configuration reads");
+    std::fs::write(configuration, format!("{line}\n{held}"))
+        .expect("the configuration is writable");
 }
 
 /// A supervisor the installed unit's own start command started, over the state
@@ -1098,6 +1114,9 @@ struct Started {
     address: String,
     /// A print in its store, as an alert would have opened it.
     print_id: String,
+    /// The operator's own configuration home, once a credential was issued
+    /// into it.
+    operator_home: PathBuf,
 }
 
 impl Drop for Started {
@@ -1108,10 +1127,69 @@ impl Drop for Started {
 }
 
 impl Started {
-    /// The credential the service generated, read the way root reads it.
+    /// The credential the operator was issued, read the way they read it: out
+    /// of their own client configuration.
     fn credential(&self) -> String {
-        std::fs::read_to_string(self.installed.state().join(API_CREDENTIAL_FILE))
-            .expect("the service generated its credential into its state directory")
+        let issued: toml::Value = toml::from_str(
+            &std::fs::read_to_string(issued_configuration(&self.operator_home))
+                .expect("a credential was issued"),
+        )
+        .expect("the issued configuration is a document");
+        issued["client"]["credential"]
+            .as_str()
+            .expect("the issued configuration carries a credential")
+            .to_owned()
+    }
+
+    /// Issue the operator a credential, configure the service with the
+    /// verifier that printed, and restart it — the install's own step, taken
+    /// as the documentation says: as the operator, unprivileged, and then the
+    /// line into the server's configuration and a restart. The port it was
+    /// serving on is written into its configuration first, so the address the
+    /// operator's configuration names is the one it serves on again.
+    ///
+    /// Answers what `credential issue` printed.
+    fn issue_and_restart(&mut self) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let configuration = self.installed.configuration();
+        let held = std::fs::read_to_string(&configuration).expect("the configuration reads");
+        std::fs::write(
+            &configuration,
+            held.replace(
+                "listen = \"127.0.0.1:0\"",
+                &format!("listen = \"{}\"", self.address),
+            ),
+        )
+        .expect("the configuration is writable");
+
+        let issued = as_the_operator_at_home(
+            &self.operator_home,
+            &["credential", "issue"],
+            Some(&format!("http://{}", self.address)),
+        );
+        assert!(
+            issued.status.success(),
+            "`credential issue` failed: {}",
+            String::from_utf8_lossy(&issued.stderr)
+        );
+        let printed = String::from_utf8_lossy(&issued.stdout).into_owned();
+        let line = printed
+            .lines()
+            .find(|line| line.starts_with("api.credential_verifier = "))
+            .unwrap_or_else(|| panic!("`credential issue` printed no verifier line: {printed}"))
+            .to_owned();
+        with_first_line(&configuration, &line);
+
+        let start = self.installed.definition().start;
+        let mut child = Command::new(&start[0])
+            .args(&start[1..])
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("the unit's own start command runs again");
+        self.address = serving_on(&mut child);
+        self.child = child;
+        printed
     }
 }
 
@@ -1150,43 +1228,42 @@ fn started_by_the_unit() -> Started {
         .spawn()
         .expect("the unit's own start command runs");
     let address = serving_on(&mut child);
+    let operator_home = root.path().join("operator-home");
+    std::fs::create_dir_all(&operator_home).expect("the operator's own home");
     Started {
         root,
         installed,
         child,
         address,
         print_id,
+        operator_home,
     }
 }
 
-/// The unit's own start command starts a server that answers the API.
+/// The unit's own start command starts a server that answers the API: a fresh
+/// install supervises and admits no operator, naming the command that issues
+/// one; the operator issues a credential, configures the verifier it printed
+/// and restarts the service; and this program, given no `--config` and no
+/// variable, then acts as the operator out of their own configuration.
 #[test]
 fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
     let mut started = started_by_the_unit();
+
+    a_fresh_install_admits_no_operator(&started);
+
+    let printed = started.issue_and_restart();
+    let credential = started.credential();
+    assert!(
+        !printed.contains(&credential),
+        "`credential issue` printed the credential: {printed}"
+    );
+    let issued = issued_configuration(&started.operator_home);
+    let mode = mode_of(&issued);
+    assert_eq!(mode, 0o600, "the operator's configuration is mode {mode:o}");
     let (installed, address, print_id) = (
         &started.installed,
         started.address.clone(),
         started.print_id.clone(),
-    );
-
-    // The template names no credential, so the service generated one before it
-    // listened, private to its own user.
-    let credential = started.credential();
-    let mode = mode_of(&installed.state().join(API_CREDENTIAL_FILE));
-    assert_eq!(mode, 0o600, "the generated credential is mode {mode:o}");
-
-    let refused = ask(
-        &address,
-        &format!("/v1/prints/{}/status", absent_print()),
-        None,
-    );
-    assert!(
-        refused.contains("HTTP/1.1 401")
-            && refused
-                .to_ascii_lowercase()
-                .contains("www-authenticate: bearer"),
-        "the server the unit's own command started answered a caller that presented no \
-         credential:\n{refused}"
     );
 
     let answer = ask(
@@ -1194,7 +1271,6 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         &format!("/v1/prints/{}/status", absent_print()),
         Some(&credential),
     );
-
     assert!(
         answer.contains("HTTP/1.1 404"),
         "the server the unit's own command started did not answer the API:\n{answer}"
@@ -1205,27 +1281,16 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
          JSON:\n{answer}"
     );
 
-    // The command a supervision turn runs to read its print's context is this
-    // program's own, and it reads from the server this program started. It is
-    // given nothing but the configuration file: the server wrote the address it
-    // bound and the credential in force into its own state directory, which is
-    // where every client beside it reads both from.
-    let client_config = client_configuration(&installed.state(), &address, &credential);
-    let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-        .args([
-            "context",
-            "--config",
-            &client_config.display().to_string(),
-            "--print-id",
-            &print_id,
-        ])
-        .env_remove(SERVER_ENV)
-        .env_remove(CREDENTIAL_ENV)
-        .output()
-        .expect("the context read runs");
+    // The operator's own read: no `--config`, no variable — their own client
+    // configuration, under their own configuration home.
+    let read = as_the_operator_at_home(
+        &started.operator_home,
+        &["context", "--print-id", &print_id],
+        None,
+    );
     assert!(
         read.status.success(),
-        "the context read failed: {}",
+        "the operator's context read failed: {}",
         String::from_utf8_lossy(&read.stderr)
     );
     let printed = String::from_utf8_lossy(&read.stdout);
@@ -1234,18 +1299,11 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         "the context read answered a context about another print: {printed}"
     );
 
-    let refused = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-        .args([
-            "context",
-            "--config",
-            &client_config.display().to_string(),
-            "--print-id",
-            absent_print(),
-        ])
-        .env_remove(SERVER_ENV)
-        .env_remove(CREDENTIAL_ENV)
-        .output()
-        .expect("the context read runs");
+    let refused = as_the_operator_at_home(
+        &started.operator_home,
+        &["context", "--print-id", absent_print()],
+        None,
+    );
     assert!(
         !refused.status.success(),
         "a context read of a print nothing holds succeeded"
@@ -1256,6 +1314,17 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         String::from_utf8_lossy(&refused.stderr)
     );
 
+    let state = installed.state();
+    for entry in walk_files(&state) {
+        let held = std::fs::read(&entry).unwrap_or_default();
+        assert!(
+            !held
+                .windows(credential.len())
+                .any(|window| window == credential.as_bytes()),
+            "{} carries the operator's credential",
+            entry.display()
+        );
+    }
     carries_no_credential(installed, &credential);
 
     // Stopping it is the signal a service manager stops a unit with, and the
@@ -1272,6 +1341,49 @@ fn the_units_own_start_command_starts_a_server_that_answers_the_api() {
         finished.success(),
         "the program did not exit cleanly when it was stopped: {finished:?}"
     );
+}
+
+/// A fresh install keeps no credential of its own making anywhere, and refuses
+/// a caller that presents none, saying how an operator gets one.
+fn a_fresh_install_admits_no_operator(started: &Started) {
+    for absent in [
+        API_CREDENTIAL_FILE,
+        CLIENT_CONFIG_FILE,
+        API_CREDENTIAL_VERIFIER_FILE,
+    ] {
+        assert!(
+            !started.installed.state().join(absent).exists(),
+            "a fresh install wrote {absent} into its state directory"
+        );
+    }
+    let refused = ask(
+        &started.address,
+        &format!("/v1/prints/{}/status", absent_print()),
+        None,
+    );
+    assert!(
+        refused.contains("HTTP/1.1 401")
+            && refused
+                .to_ascii_lowercase()
+                .contains("www-authenticate: bearer")
+            && refused.contains("printobserver credential issue"),
+        "the fresh server answered a caller that presented no credential, or did not say \
+         how an operator gets one:\n{refused}"
+    );
+}
+
+/// Every file under a directory.
+fn walk_files(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(walk_files(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
 }
 
 /// Neither file the installer wrote carries the credential in force.
@@ -1328,6 +1440,17 @@ fn as_the_operator(
         started.installed.configuration(),
         started.installed.state(),
     ];
+    // Where this run's own configuration home would keep the operator's file,
+    // when the run is not given a home of its own to read: watched too, so the
+    // order the two files are looked for in is on the record.
+    if !environment
+        .iter()
+        .any(|(name, _)| CONFIG_HOME_VARIABLES.contains(name))
+    {
+        watched.push(issued_configuration(
+            &started.root.path().join(format!("{run}-home")),
+        ));
+    }
     watched.extend(
         std::fs::read_dir(started.installed.state())
             .expect("the state directory lists")
@@ -1341,6 +1464,31 @@ fn as_the_operator(
             + &String::from_utf8_lossy(&output.stderr),
         touched,
     }
+}
+
+/// The environment one operator's run is given: what the journey names, and —
+/// unless it names one — a configuration home of the run's own holding
+/// nothing, so no run is configured by a home this journey did not choose.
+fn elsewhere_at_home(
+    started: &Started,
+    run: &str,
+    environment: &[(&str, &str)],
+) -> Vec<(String, String)> {
+    let mut given: Vec<(String, String)> = environment
+        .iter()
+        .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+        .collect();
+    if !environment
+        .iter()
+        .any(|(name, _)| CONFIG_HOME_VARIABLES.contains(name))
+    {
+        let home = started.root.path().join(format!("{run}-home"));
+        std::fs::create_dir_all(&home).expect("an empty configuration home");
+        for name in CONFIG_HOME_VARIABLES {
+            given.push((name.to_owned(), home.display().to_string()));
+        }
+    }
+    given
 }
 
 /// The program run as the operator under `strace`, and every watched access it
@@ -1375,7 +1523,7 @@ fn watching(
         .args(arguments)
         .env_remove(SERVER_ENV)
         .env_remove(CREDENTIAL_ENV);
-    for (name, value) in environment {
+    for (name, value) in elsewhere_at_home(started, run, environment) {
         command.env(name, value);
     }
     let output = command.output().unwrap_or_else(|error| {
@@ -1405,7 +1553,7 @@ fn watching(
         .args(arguments)
         .env_remove(SERVER_ENV)
         .env_remove(CREDENTIAL_ENV);
-    for (name, value) in environment {
+    for (name, value) in elsewhere_at_home(started, run, environment) {
         command.env(name, value);
     }
     let observed = interposer::interposed(command, &scratch, watched);
@@ -1416,17 +1564,21 @@ fn watching(
 /// An operator on their own account authenticates by the documented route.
 ///
 /// They can read neither the service's configuration nor its state directory,
-/// so they read the credential once as root and supply it with the address:
-/// through the two variables, or through a `[client]` table in a file only they
-/// can read, named with `--config`. Either reads the print, and neither touches
-/// a file of the service's — each of which is, to this run, a file it is not
-/// permitted to read.
+/// and need neither: the credential `printobserver credential issue` drew for
+/// them is in their own client configuration, which every command reads first,
+/// and they can supply it with the address through the two variables, or
+/// through a `[client]` table in a file only they can read, named with
+/// `--config`. Each reads the print, and none touches a file of the service's —
+/// each of which is, to this run, a file it is not permitted to read.
 #[test]
 fn an_operator_on_their_own_account_authenticates_by_the_documented_route() {
-    let started = started_by_the_unit();
+    let mut started = started_by_the_unit();
+    started.issue_and_restart();
     let credential = started.credential();
     let server = format!("http://{}", started.address);
     let reading = ["context", "--print-id", started.print_id.as_str()];
+
+    by_their_own_configuration(&started, &reading);
 
     let by_the_environment = as_the_operator(
         &started,
@@ -1493,6 +1645,16 @@ fn an_operator_on_their_own_account_authenticates_by_the_documented_route() {
         "the run never met the default file unreadable, so it proves nothing about one:\n{}",
         address_alone.touched
     );
+    let operator_file = issued_configuration(&started.root.path().join("address-alone-home"))
+        .display()
+        .to_string();
+    let first_operator = address_alone.touched.find(&operator_file);
+    let first_default = address_alone.touched.find(DEFAULT_CONFIG_PATH);
+    assert!(
+        matches!((first_operator, first_default), (Some(operator), Some(default)) if operator < default),
+        "the run did not look for the operator's own file before the default one:\n{}",
+        address_alone.touched
+    );
     assert_eq!(
         address_alone.code,
         Some(i32::from(Exit::Unconfigured.status())),
@@ -1508,12 +1670,48 @@ fn an_operator_on_their_own_account_authenticates_by_the_documented_route() {
         address_alone.said
     );
 
+    a_wrong_credential_is_refused_quoting_nothing(&started, &reading, &server, &credential);
+}
+
+/// The operator's read through their own configuration, under their own
+/// configuration home: it reads the print and touches no file of the
+/// service's.
+fn by_their_own_configuration(started: &Started, reading: &[&str]) {
+    let operator_home = started.operator_home.display().to_string();
+    let at_home: Vec<(&str, &str)> = CONFIG_HOME_VARIABLES
+        .iter()
+        .map(|name| (*name, operator_home.as_str()))
+        .collect();
+    let by_their_own_configuration = as_the_operator(started, "own-home", reading, &at_home);
+    assert_eq!(
+        by_their_own_configuration.code,
+        Some(0),
+        "the operator's read through their own configuration failed: {}",
+        by_their_own_configuration.said
+    );
+    assert!(by_their_own_configuration.said.contains(&started.print_id));
+    assert!(
+        by_their_own_configuration.touched.trim().is_empty(),
+        "the operator's read through their own configuration touched the service's own \
+         files:\n{}",
+        by_their_own_configuration.touched
+    );
+}
+
+/// A read under a wrong credential is refused as unconfigured, saying where
+/// the credential is read from and quoting neither credential.
+fn a_wrong_credential_is_refused_quoting_nothing(
+    started: &Started,
+    reading: &[&str],
+    server: &str,
+    credential: &str,
+) {
     let wrong = as_the_operator(
-        &started,
+        started,
         "wrong",
-        &reading,
+        reading,
         &[
-            (SERVER_ENV, &server),
+            (SERVER_ENV, server),
             (CREDENTIAL_ENV, "not-the-credential-in-force"),
         ],
     );
@@ -1525,7 +1723,7 @@ fn an_operator_on_their_own_account_authenticates_by_the_documented_route() {
     );
     assert!(
         wrong.said.contains(CREDENTIAL_ENV)
-            && !wrong.said.contains(&credential)
+            && !wrong.said.contains(credential)
             && !wrong.said.contains("not-the-credential-in-force"),
         "a read under a wrong credential said the wrong thing: {}",
         wrong.said
@@ -1548,9 +1746,13 @@ fn the_installed_files_document_the_credential_and_carry_none() {
         .filter(|line| line.trim_start().starts_with('#'))
         .collect();
     assert!(
-        commented.iter().any(|line| line.contains("[api]"))
-            && commented.iter().any(|line| line.contains("api-credential")),
-        "the configuration template does not document the API credential"
+        commented
+            .iter()
+            .any(|line| line.contains("credential_verifier"))
+            && commented
+                .iter()
+                .any(|line| line.contains("printobserver credential issue")),
+        "the configuration template does not document the operator's credential verifier"
     );
     let parsed: toml::Value = toml::from_str(&configuration).expect("the template is a document");
     assert!(

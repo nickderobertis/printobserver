@@ -57,6 +57,23 @@ named set gains nothing until somebody adds to it here.
 The rules are written for Claude Code alone. Another harness keeps the
 read-only mode until its own narrowing is written and proven.
 
+## Each run is handed a credential of its own, in its environment alone
+
+What the agent's commands authenticate with is not the operator's credential and
+not a file: `run_turn` is handed a `TurnAccess`, and immediately before each run
+the port asks it for the pass of the session that run is in — the session the
+ledger names, or the next one when the harness refused to continue it, which is
+why the session is named here rather than by the core. The pass is
+`PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, appended to the run's
+`RunRequest.env` after the configured assignments; the credential is minted by
+the server, bound to the agent, that session and the turn's print, and revoked
+when the turn returns, so issuing again for a moved session revokes the first.
+A run nothing could be issued a credential for is not started. The context
+command and the prompt name no `--config`, so the program the agent runs reads
+no file at all, and this crate writes the credential nowhere: not the ledger,
+not the harness's session store. The harness's permissions are unchanged by
+this — the boundary is the server's, so it holds on every harness.
+
 ## The answer is constrained by the generated schema
 
 What reaches OneHarness is the *path* of the contracts' own checked-in

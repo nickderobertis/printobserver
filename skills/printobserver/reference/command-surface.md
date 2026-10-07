@@ -21,13 +21,18 @@ or, under the same name with `-file` after it, as the path of a file carrying it
 **Where the server is and what authenticates to it are configuration, never
 arguments.** They are read from a configuration file's `[client]` table, as
 `server` and `credential`, and from the environment variables
-`PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, which win over the file.
-The server writes one such file, `client.toml`, into its state directory, carrying
-the address it bound and the credential it serves under. When both variables are
-set and no `--config` names a file, the default file is not read at all, so an
-operator who cannot read the service's own files supplies both there. No command
-takes either as an option, because the closure that matters is the closure of the
-action surface: a path to a file reaches no printer.
+`PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, which win over any file.
+With no `--config`, the operator's own client configuration is read first — the
+file `credential issue` writes, `printobserver/client.toml` under their
+configuration home — and the server's own configuration file after it for
+whatever the first left unnamed. `--config` names the one file read instead.
+When both variables are set and no `--config` names a file, no file is read at
+all. A supervision turn is configured exactly so: its environment names the
+server and carries a credential minted for that turn alone, its commands take no
+`--config`, and that credential acts as the agent, in that turn's session, on
+that turn's print, and no other. No command takes either as an option, because
+the closure that matters is the closure of the action surface: a path to a file
+reaches no printer.
 
 **Images are a path, never bytes.** Every answer that carries an image carries an
 absolute path on the *server's* own filesystem. This program transports no image
@@ -51,16 +56,16 @@ class has a status of its own.
 - `success` (0) — the command did what it was asked.
 - `usage` (2) — the arguments name nothing this program does.
 - `unreachable` (3) — nothing answered at the configured address.
-- `unconfigured` (4) — nothing configured this program with a server to talk to, or the server refused the credential it was configured with; the message says where the credential is read from.
+- `unconfigured` (4) — nothing configured this program with a server to talk to, or the server refused the credential it was configured with; the message says where the credential is read from and that `credential issue` issues one.
 - `rejected` (5) — the policy refused the action, and the rejection is the answer.
 - `image-elsewhere` (6) — the answer named an image path, and no file is there on this host.
-- `refused` (7) — the supervisor answered something this program will not act on.
+- `refused` (7) — the supervisor answered something this program will not act on, a `403` among them: a request whose `--actor` is not the identity its credential authenticated, which names another print than a turn's own, or which asks a turn's credential for `start-print` or `manifest-set`.
 
 ## The commands
 
 ### server
 
-Runs the supervisor. This and `sign-in` are the two commands that are not requests to an already-running one.
+Runs the supervisor. This, `sign-in` and the two `credential` commands are the four commands that are not requests to an already-running one.
 
 **Arguments.** None of its own; the four global options are the whole of it.
 
@@ -77,6 +82,30 @@ Signs the supervisor's harness in, as the user it is run as — which is meant t
 **Output.** One line on standard error naming the harness, its sign-in and the directory it is kept in, and then whatever the harness itself prints and asks. It exits with the harness's own status.
 
 **Failures.** `unconfigured`, before anything is run, when the configuration file cannot be read for its state directory and its harness, when that harness is not one this program can sign in — naming it and the ones it can — when the directory cannot be created, and when the harness's program is not on the caller's path.
+
+### credential issue
+
+Issues the operator a credential: 32 bytes of the operating system's secure random source, written with the server's address into the operator's own client configuration — `printobserver/client.toml` under their configuration home (`$XDG_CONFIG_HOME`, else `$HOME/.config`, on Linux; `$HOME/Library/Application Support` on macOS; `%APPDATA%` on Windows), private to them — which every command reads first. Run it as yourself, unprivileged. It reaches no server.
+
+**Arguments.**
+
+- `--replace` — replace an operator configuration already there; without it, one that is there is left alone and the command is refused. The old credential stops working once the server is given the new verifier and restarted.
+
+It writes that file and no other, so it takes no `--config`: a path somebody named could be one other users can read. The address written is `PRINTOBSERVER_SERVER` when that is set, and `http://127.0.0.1:8420` otherwise.
+
+**Output.** One line for the server's configuration, `api.credential_verifier = "sha256:…"`, the SHA-256 of the credential, followed by comment lines saying where to put it — above the configuration's first table — and to restart the service. The credential itself is never printed. With `--json`, a document carrying `credential_verifier` and `client_config`.
+
+**Failures.** `unconfigured` when a configuration is already there and `--replace` was not given, when `PRINTOBSERVER_SERVER` names no address, when there is no configuration home to write into, or when the file cannot be written — a configuration already there is then left as it was; `refused` when the random source refuses; `usage` when given `--config`.
+
+### credential verifier
+
+Prints the verifier of the one credential standard input carries — for a credential an operator chose themselves, or the plaintext an older `api.credential` holds. A credential chosen by hand should be long and random: a verifier of a short or guessable one can be searched offline. It reaches no server and writes nothing.
+
+**Arguments.** None of its own; the credential is read from standard input, never from an argument, and one line terminator after it is set aside.
+
+**Output.** The same `api.credential_verifier = "sha256:…"` line `credential issue` prints, and never the credential. With `--json`, a document carrying `credential_verifier`.
+
+**Failures.** `usage` when standard input carries nothing a credential can be — empty, more than one line, a control character, not text — quoting none of it, and when given `--config`, since it reads no configuration.
 
 ### prints
 

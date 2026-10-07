@@ -30,14 +30,19 @@
 //! records that number, where it was read and why the default is where it is,
 //! and `just check-repo` refuses a tree in which the two disagree.
 //!
-//! # The API credential
+//! # The operator's credential, by its verifier
 //!
-//! Every request beneath the versioned prefix carries one credential, and
-//! [`ApiCredential`] is it. `api.credential` names it outright; left out, the
-//! composition root generates one into the state directory the first time it
-//! starts and reuses it after. Either way it is held in a type neither
-//! rendering of which shows it, and the one comparison a presented credential
-//! is admitted by is [`ApiCredential::admits`].
+//! Every request beneath the versioned prefix carries one credential. The
+//! operator's is checked against a [`CredentialVerifier`] — the SHA-256 of the
+//! credential, written `sha256:<64 lowercase hex>` — which `api.credential_verifier`
+//! names, so the server holds nothing a supervision turn reading its files
+//! could authenticate with. The plaintext lives with the operator, in the
+//! client configuration `printobserver credential issue` writes.
+//!
+//! `api.credential`, a plaintext credential, is still read for an installation
+//! that wrote one, and admitted until it is replaced; the composition root warns
+//! on every start that it is there. Either way a credential is held in a type
+//! neither rendering of which shows it, and is compared in constant time.
 //!
 //! # The camera and `Obico`'s own API
 //!
@@ -126,9 +131,11 @@ pub enum ConfigField {
     IngressAnswerBoundMs,
     /// The shared secret the ingress requires of every post.
     IngressSharedSecret,
-    /// The credential every request to a versioned operation must carry, when
-    /// the operator chose one rather than letting the server generate it.
+    /// A plaintext operator credential, read for an installation that wrote
+    /// one until it is replaced by its verifier.
     ApiCredential,
+    /// The verifier the operator's credential is checked against.
+    ApiCredentialVerifier,
     /// Where a fresh frame of the print is fetched from, when a camera is
     /// configured.
     CameraSnapshotUrl,
@@ -140,7 +147,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -154,6 +161,7 @@ impl ConfigField {
         Self::IngressAnswerBoundMs,
         Self::IngressSharedSecret,
         Self::ApiCredential,
+        Self::ApiCredentialVerifier,
         Self::CameraSnapshotUrl,
         Self::ObicoUrl,
         Self::ObicoAccessToken,
@@ -176,6 +184,7 @@ impl ConfigField {
             Self::IngressAnswerBoundMs => "ingress.answer_bound_ms",
             Self::IngressSharedSecret => "ingress.shared_secret",
             Self::ApiCredential => "api.credential",
+            Self::ApiCredentialVerifier => "api.credential_verifier",
             Self::CameraSnapshotUrl => "camera.snapshot_url",
             Self::ObicoUrl => "obico.url",
             Self::ObicoAccessToken => "obico.access_token",
@@ -370,10 +379,18 @@ impl Default for IngressSection {
 )]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct ApiSection {
-    /// The credential every request must carry. Left out, the server generates
-    /// one into its state directory and reuses it on every later start.
+    /// A plaintext operator credential. Superseded by `credential_verifier`:
+    /// still admitted until it is replaced, with a warning on every start,
+    /// because a supervision turn can read the file it is written in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential: Option<String>,
+    /// The verifier the operator's credential is checked against:
+    /// `sha256:` and the 64 lowercase hexadecimal digits of the SHA-256 of the
+    /// credential's UTF-8 bytes, as `printobserver credential issue` prints it.
+    /// Left out, the server reads `api-credential.verifier` in its state
+    /// directory, and admits no operator at all when that is absent too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_verifier: Option<String>,
 }
 
 /// Where a fresh frame of the print is fetched from, as written down.
@@ -534,13 +551,15 @@ impl core::fmt::Debug for SharedSecret {
 /// How many random bytes a credential this server generates is drawn from.
 pub const GENERATED_CREDENTIAL_BYTES: usize = 32;
 
-/// The credential every request to a versioned operation must carry.
+/// One credential in plaintext: a legacy `api.credential`, the legacy file a
+/// server generated into its state directory, or one `printobserver credential
+/// issue` draws for the operator's own configuration.
 ///
 /// Neither rendering of this type shows the value. Its text is read in exactly
-/// one place outside this file — the client configuration the composition root
-/// writes, which exists to carry it — and the one comparison a presented
-/// credential is admitted by is [`Self::admits`], so there is no second
-/// comparison anywhere that could return early.
+/// one place — [`Self::written`], for the operator's own client configuration,
+/// which exists to carry it, and for the verifier computed from it — and the
+/// one comparison a presented credential is admitted by is [`Self::admits`], so
+/// there is no second comparison anywhere that could return early.
 #[derive(Clone)]
 pub struct ApiCredential(String);
 
@@ -606,9 +625,17 @@ impl ApiCredential {
         expected.len() == presented.len() && bool::from(expected.ct_eq(presented))
     }
 
-    /// The text, for the one file whose purpose is to carry it.
-    pub(crate) fn written(&self) -> &str {
+    /// The text, for the one file whose purpose is to carry it — the
+    /// operator's own client configuration — and nothing else.
+    #[must_use]
+    pub fn written(&self) -> &str {
         &self.0
+    }
+
+    /// The verifier this credential is checked by.
+    #[must_use]
+    pub fn verifier(&self) -> CredentialVerifier {
+        CredentialVerifier::of(&self.0)
     }
 }
 
@@ -629,6 +656,99 @@ impl core::fmt::Display for ApiCredential {
 impl core::fmt::Debug for ApiCredential {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(formatter, "ApiCredential({REDACTED})")
+    }
+}
+
+/// What a credential verifier is written with before its digest.
+pub const VERIFIER_PREFIX: &str = "sha256:";
+
+/// How many hexadecimal digits a verifier's digest is written in.
+const VERIFIER_DIGITS: usize = 64;
+
+/// What one operator credential is checked against: the SHA-256 of its UTF-8
+/// bytes.
+///
+/// It is not a secret, so its rendering shows it — written as
+/// [`VERIFIER_PREFIX`] and the digest in lowercase hexadecimal, which is the
+/// one spelling [`Self::parse`] accepts. It is still printed by nothing but the
+/// two commands that exist to print it, and logged by nothing. A verifier of a
+/// short or guessable credential can be searched offline, which is why the
+/// credential it verifies is drawn from 32 random bytes when this program
+/// draws it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct CredentialVerifier([u8; 32]);
+
+impl CredentialVerifier {
+    /// The verifier of one credential.
+    #[must_use]
+    pub fn of(credential: &str) -> Self {
+        use sha2::Digest as _;
+
+        Self(sha2::Sha256::digest(credential.as_bytes()).into())
+    }
+
+    /// The verifier this text writes down.
+    ///
+    /// # Errors
+    ///
+    /// Answers why the text is not one: anything but [`VERIFIER_PREFIX`]
+    /// followed by exactly 64 lowercase hexadecimal digits.
+    pub fn parse(text: &str) -> Result<Self, &'static str> {
+        const SHAPE: &str = "it is not `sha256:` followed by the 64 lowercase hexadecimal digits                              of a SHA-256 digest, which is what `printobserver credential issue`                              and `printobserver credential verifier` print";
+        let digits = text.strip_prefix(VERIFIER_PREFIX).ok_or(SHAPE)?;
+        if digits.len() != VERIFIER_DIGITS
+            || !digits
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(SHAPE);
+        }
+        let mut digest = [0_u8; 32];
+        for (index, pair) in digits.as_bytes().chunks(2).enumerate() {
+            let high = hex_value(pair[0]);
+            let low = hex_value(pair[1]);
+            digest[index] = (high << 4) | low;
+        }
+        Ok(Self(digest))
+    }
+
+    /// Whether a presented credential is the one this verifies.
+    ///
+    /// The presented bytes are digested and the two digests compared in
+    /// constant time, so how long this takes says nothing about how much of
+    /// the credential a caller guessed.
+    #[must_use]
+    pub fn admits(&self, presented: &[u8]) -> bool {
+        use sha2::Digest as _;
+        use subtle::ConstantTimeEq as _;
+
+        let offered: [u8; 32] = sha2::Sha256::digest(presented).into();
+        bool::from(self.0.ct_eq(&offered))
+    }
+}
+
+/// One lowercase hexadecimal digit's value, for a digit already checked.
+const fn hex_value(digit: u8) -> u8 {
+    if digit.is_ascii_digit() {
+        digit - b'0'
+    } else {
+        digit - b'a' + 10
+    }
+}
+
+impl core::fmt::Display for CredentialVerifier {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(VERIFIER_PREFIX)?;
+        for byte in self.0 {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
+
+impl core::fmt::Debug for CredentialVerifier {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "CredentialVerifier({self})")
     }
 }
 
@@ -664,9 +784,14 @@ pub struct ServerConfig {
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
     pub ingress_shared_secret: SharedSecret,
-    /// The API credential the operator configured, when they configured one.
-    /// Absent, the composition root takes the one in the state directory.
+    /// A plaintext operator credential the configuration still carries, which
+    /// is admitted — with a warning on every start — until it is replaced by
+    /// its verifier.
     pub api_credential: Option<ApiCredential>,
+    /// The verifier the operator's credential is checked against, when the
+    /// configuration names one. Absent, the composition root reads the one in
+    /// the state directory.
+    pub api_credential_verifier: Option<CredentialVerifier>,
     /// Where a fresh frame of the print is fetched from, when configured.
     pub camera_snapshot_url: Option<WebAddress>,
     /// `Obico`'s own API, when configured; its debug form omits the token.
@@ -742,6 +867,15 @@ impl ServerConfig {
                     .map_err(|why| ConfigError::about(ConfigField::ApiCredential, why))
             })
             .transpose()?;
+        let api_credential_verifier = file
+            .api
+            .credential_verifier
+            .as_deref()
+            .map(|value| {
+                CredentialVerifier::parse(value.trim())
+                    .map_err(|why| ConfigError::about(ConfigField::ApiCredentialVerifier, why))
+            })
+            .transpose()?;
         let camera_snapshot_url = file
             .camera
             .snapshot_url
@@ -760,6 +894,7 @@ impl ServerConfig {
             ingress_answer_bound,
             ingress_shared_secret,
             api_credential,
+            api_credential_verifier,
             camera_snapshot_url,
             obico_api,
         })
@@ -1077,4 +1212,45 @@ fn answer_bound(milliseconds: u64) -> Result<core::time::Duration, ConfigError> 
         ));
     }
     Ok(core::time::Duration::from_millis(milliseconds))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CredentialVerifier;
+
+    /// The SHA-256 of `abc`, as FIPS 180-2 gives it.
+    const ABC: &str = "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    /// A verifier is the SHA-256 of the credential's UTF-8 bytes, written and
+    /// read back in one spelling, and it admits that credential and no other.
+    #[test]
+    fn a_verifier_is_the_credentials_sha256_and_admits_only_it() {
+        let verifier = CredentialVerifier::of("abc");
+
+        assert_eq!(verifier.to_string(), ABC);
+        assert_eq!(CredentialVerifier::parse(ABC), Ok(verifier.clone()));
+        assert!(verifier.admits(b"abc"));
+        assert!(!verifier.admits(b"abd"));
+        assert!(!verifier.admits(b""));
+    }
+
+    /// Anything but `sha256:` and 64 lowercase hexadecimal digits is refused.
+    #[test]
+    fn a_verifier_in_any_other_spelling_is_refused() {
+        for refused in [
+            "",
+            "sha256:",
+            &ABC[..ABC.len() - 1],
+            &format!("{ABC}0"),
+            &ABC.to_uppercase(),
+            &ABC.replace("sha256:", "sha512:"),
+            &ABC.replace("sha256:", ""),
+            &ABC.replace('a', "g"),
+        ] {
+            assert!(
+                CredentialVerifier::parse(refused).is_err(),
+                "{refused:?} was accepted"
+            );
+        }
+    }
 }

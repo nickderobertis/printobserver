@@ -4,8 +4,9 @@
 //! running one supervision turn and for closing a session, the two shapes those
 //! methods carry, that port's own error type, the assessment vocabulary a turn
 //! answers with ([`assessment`]), the session a turn opens or continues
-//! ([`session`]), and the two event kinds a session's opening and closing are
-//! written down under.
+//! ([`session`]), the credential each run of a turn is issued ([`access`]),
+//! and the two event kinds a session's opening and closing are written down
+//! under.
 //!
 //! May depend on: `printobserver-types` only. A port that named an
 //! implementation would stop being a port.
@@ -23,18 +24,21 @@
 //! `Arc<dyn Port>`. An `async fn` in a trait is not dyn-compatible, so each
 //! method answers a [`BoxFuture`] instead.
 
+pub mod access;
 pub mod assessment;
 pub mod session;
 
 use core::future::Future;
 use core::pin::Pin;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{EventPayload, EventRecord, PrintId};
 
+pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
 pub use assessment::{AgentAssessment, Confidence};
 pub use session::{SessionPhase, SupervisionSession};
 
@@ -216,8 +220,14 @@ impl core::error::Error for SupervisorError {}
 /// `Arc<dyn SupervisorPort>`.
 pub trait SupervisorPort: Send + Sync {
     /// Run one supervision turn, opening the session if it is not open.
-    fn run_turn(&self, request: TurnRequest)
-    -> BoxFuture<'_, Result<TurnOutcome, SupervisorError>>;
+    ///
+    /// `access` issues each run of the turn the credential it authenticates
+    /// to the server with; see [`access`].
+    fn run_turn(
+        &self,
+        request: TurnRequest,
+        access: Arc<dyn TurnAccess>,
+    ) -> BoxFuture<'_, Result<TurnOutcome, SupervisorError>>;
 
     /// Close the session watching one print.
     fn close_session(

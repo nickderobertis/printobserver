@@ -23,9 +23,9 @@ use printobserver_types::serde_json::{Map, Value, json};
 
 use crate::config::DEFAULT_CONFIG_PATH;
 use crate::surface::{
-    CONFIG_OPTION, Command, Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS,
-    MIN_DURATION_SECONDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, VERSION_OPTION, command,
-    is_duration, usage,
+    CONFIG_OPTION, CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, CREDENTIAL_WORD, Command,
+    Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, SERVE_COMMAND,
+    SIGN_IN_COMMAND, Supply, VERSION_OPTION, command, is_duration, usage,
 };
 
 /// One request to a running supervisor, as the caller asked for it.
@@ -118,6 +118,19 @@ pub enum Invocation {
         /// its harness.
         config: PathBuf,
     },
+    /// Issue the operator a credential, writing their own client
+    /// configuration, and print its verifier.
+    CredentialIssue {
+        /// Whether a configuration already there may be replaced.
+        replace: bool,
+        /// Whether machine-readable output was asked for.
+        machine_readable: bool,
+    },
+    /// Print the verifier of the credential standard input carries.
+    CredentialVerifier {
+        /// Whether machine-readable output was asked for.
+        machine_readable: bool,
+    },
     /// Make one request to a running supervisor.
     Call(Box<Call>),
     /// The arguments do not name anything this program does.
@@ -150,15 +163,17 @@ pub fn parse(arguments: &[String]) -> Invocation {
         VERSION_OPTION => return Invocation::Version,
         _ => {}
     }
-    let Some(command) = command(named) else {
-        return refused(format!("`{named}` is not a command of this program."));
+    let (command, rest_from) = match named_command(arguments) {
+        Ok(found) => found,
+        Err(refusal) => return refusal,
     };
+    let mut flagged: Vec<&'static str> = Vec::new();
     let mut config: Option<PathBuf> = None;
     let mut machine_readable = false;
     let mut values: BTreeMap<String, Value> = BTreeMap::new();
     let mut given: BTreeMap<String, String> = BTreeMap::new();
 
-    let mut rest = arguments[1..].iter();
+    let mut rest = arguments[rest_from..].iter();
     while let Some(argument) = rest.next() {
         let option = argument.as_str();
         match option {
@@ -182,6 +197,13 @@ pub fn parse(arguments: &[String]) -> Invocation {
                 continue;
             }
             _ => {}
+        }
+        if let Some(flag) = command.flags.iter().find(|flag| **flag == option) {
+            if flagged.contains(flag) {
+                return refused(format!("`{option}` was given twice."));
+            }
+            flagged.push(flag);
+            continue;
         }
         let Some((field, supply)) = command.field_for(option) else {
             return refused(format!(
@@ -207,20 +229,8 @@ pub fn parse(arguments: &[String]) -> Invocation {
         }
     }
 
-    if command.name == SERVE_COMMAND {
-        return match config {
-            Some(config) => Invocation::Serve { config },
-            None => refused(format!(
-                "`{SERVE_COMMAND}` needs the one configuration file it runs under, named \
-                 with `{CONFIG_OPTION}`."
-            )),
-        };
-    }
-    // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
-    if command.name == SIGN_IN_COMMAND {
-        return Invocation::SignIn {
-            config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
-        };
+    if !command.is_client() {
+        return local(&command.name, config, !flagged.is_empty(), machine_readable);
     }
     for field in &command.fields {
         if field.required() && !values.contains_key(&field.parameter.name) {
@@ -236,6 +246,69 @@ pub fn parse(arguments: &[String]) -> Invocation {
         machine_readable,
         values,
     }))
+}
+
+/// The command the arguments name, and where its own options begin.
+///
+/// The credential commands are two words, the second saying which; every other
+/// command is one.
+fn named_command(arguments: &[String]) -> Result<(Command, usize), Invocation> {
+    let first = arguments.first().map(String::as_str).unwrap_or_default();
+    let (named, rest_from) = if first == CREDENTIAL_WORD {
+        match arguments.get(1) {
+            Some(which) => (format!("{CREDENTIAL_WORD} {which}"), 2),
+            None => {
+                return Err(refused(format!(
+                    "`{CREDENTIAL_WORD}` takes `issue` or `verifier` after it."
+                )));
+            }
+        }
+    } else {
+        (first.to_owned(), 1)
+    };
+    command(&named)
+        .map(|found| (found, rest_from))
+        .ok_or_else(|| refused(format!("`{named}` is not a command of this program.")))
+}
+
+/// What one command that is not a request to a running server was asked to do.
+fn local(name: &str, config: Option<PathBuf>, flagged: bool, machine_readable: bool) -> Invocation {
+    if name == SERVE_COMMAND {
+        return match config {
+            Some(config) => Invocation::Serve { config },
+            None => refused(format!(
+                "`{SERVE_COMMAND}` needs the one configuration file it runs under, named \
+                 with `{CONFIG_OPTION}`."
+            )),
+        };
+    }
+    if name == CREDENTIAL_ISSUE_COMMAND || name == CREDENTIAL_VERIFIER_COMMAND {
+        // The credential commands read no configuration, and the one file
+        // `credential issue` writes is the operator's own, under their own
+        // configuration home: a path a caller named could be one other users
+        // can read.
+        if config.is_some() {
+            return refused(format!(
+                "`{name}` takes no `{CONFIG_OPTION}`: it reads no configuration, and \
+                 `{CREDENTIAL_ISSUE_COMMAND}` writes only your own, under your configuration home."
+            ));
+        }
+        return if name == CREDENTIAL_ISSUE_COMMAND {
+            Invocation::CredentialIssue {
+                replace: flagged,
+                machine_readable,
+            }
+        } else {
+            Invocation::CredentialVerifier { machine_readable }
+        };
+    }
+    // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
+    if name == SIGN_IN_COMMAND {
+        return Invocation::SignIn {
+            config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
+        };
+    }
+    refused(format!("`{name}` is not a command of this program."))
 }
 
 /// Read one value in the form it was supplied.

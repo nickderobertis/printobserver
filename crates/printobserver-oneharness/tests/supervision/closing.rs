@@ -54,8 +54,11 @@ fn a_terminal_state_closes_the_session_with_that_state_as_the_reason() {
         &watch,
     );
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
-        .expect("the turn runs");
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
 
     let answered = block_on(supervisor.close_session(print_id, "cancelled".to_owned()));
     assert_eq!(answered, Ok(()), "closing answered the caller a failure");
@@ -88,8 +91,11 @@ fn an_abandoned_print_closes_its_session_with_abandonment_as_the_reason() {
         &watch,
     );
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
-        .expect("the turn runs");
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
 
     let answered = block_on(supervisor.close_session(print_id, "abandoned".to_owned()));
     assert_eq!(answered, Ok(()), "closing answered the caller a failure");
@@ -123,15 +129,19 @@ fn an_event_after_a_close_opens_the_next_session_of_the_sequence() {
     );
     let print_id = PrintId::new();
 
-    let first =
-        block_on(supervisor.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
-            .expect("the first turn runs");
+    let first = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the first turn runs");
     block_on(supervisor.close_session(print_id, "finished".to_owned()))
         .expect("closing answered the caller a failure");
 
-    let next =
-        block_on(supervisor.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
-            .expect("the turn after the close answered the caller a failure");
+    let next = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn after the close answered the caller a failure");
 
     // Both names are read out of the reports the runs returned.
     assert_eq!(first.session.session_name, format!("print-{print_id}"));
@@ -163,8 +173,11 @@ fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
         config(&schemas, &fixture, HARNESS, &schema, answering()),
         &watch,
     );
-    let opened = block_on(first.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
-        .expect("the first turn runs");
+    let opened = block_on(first.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the first turn runs");
     drop(first);
 
     // The same state directory, and so the same session, on another identity.
@@ -173,8 +186,11 @@ fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
         config(&schemas, &fixture, OTHER_HARNESS, &schema, answering()),
         &moved_watch,
     );
-    let after = block_on(moved.run_turn(turn(print_id, event(print_id, unreadable_body()), None)))
-        .expect("the refusal reached the caller as an error");
+    let after = block_on(moved.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the refusal reached the caller as an error");
 
     assert_eq!(opened.session.session_name, format!("print-{print_id}"));
     assert_eq!(after.session.session_name, format!("print-{print_id}-2"));
@@ -238,8 +254,11 @@ fn closing_a_print_with_no_session_open_answers_the_caller_success() {
     );
 
     let ran = PrintId::new();
-    block_on(supervisor.run_turn(turn(ran, event(ran, unreadable_body()), None)))
-        .expect("the turn runs");
+    block_on(supervisor.run_turn(
+        turn(ran, event(ran, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
     block_on(supervisor.close_session(ran, "cancelled".to_owned())).expect("the first close");
     let closed_at = last(
         &supervisor

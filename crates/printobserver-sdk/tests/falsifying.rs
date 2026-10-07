@@ -85,7 +85,7 @@ fn the_images_bytes_in_place_of_a_field(answered: &ImageAnswer) -> Value {
 #[test]
 fn the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image() {
     let root = tempfile::tempdir().expect("this walk's own root");
-    let mut standing = supervisor::standing(root.path());
+    let mut standing = supervisor::standing(root.path(), false);
     let world = standing.at.clone();
     let proxy = live::Proxy::in_front_of(&world.server);
     let client = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);

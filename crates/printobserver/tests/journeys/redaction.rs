@@ -33,7 +33,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use printobserver::failure::Exit;
-use printobserver_server::{API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE};
 
 use crate::announced;
 use crate::machine::Reports;
@@ -45,9 +44,12 @@ use super::{failures, running};
 /// How long a fragment has to be to be looked for.
 const FRAGMENT: usize = 4;
 
-/// How long a credential the server generates is, as it is written: the
+/// How long a credential `credential issue` draws is, as it is written: the
 /// unpadded URL-safe base64 of the bytes it draws.
 const GENERATED_LENGTH: usize = (printobserver_server::GENERATED_CREDENTIAL_BYTES * 4).div_ceil(3);
+
+/// The variables a configuration home is read from.
+const CONFIG_HOME_VARIABLES: [&str; 3] = ["XDG_CONFIG_HOME", "HOME", "APPDATA"];
 
 /// Every path this task defines a behaviour for, under both credentials.
 pub fn no_run_of_the_walk_prints_the_credential(world: &World) {
@@ -75,7 +77,7 @@ pub fn no_run_of_the_walk_prints_the_credential(world: &World) {
         }
     }
     a_refused_credential_is_named_and_neither_credential_is_printed(world);
-    the_server_command_under_a_credential_it_generated(world);
+    the_issued_credential_is_printed_by_nothing(world);
 }
 
 /// A credential the supervisor refuses is reported by where it is read from.
@@ -114,16 +116,63 @@ fn a_refused_credential_is_named_and_neither_credential_is_printed(world: &World
     }
 }
 
-/// The command that runs the server, under a credential it generated itself.
+/// One run of this program with its configuration home at `home`, its
+/// standard input `input`, and `PRINTOBSERVER_SERVER` naming `server`.
+fn at_home(home: &Path, arguments: &[&str], server: &str, input: &[u8]) -> std::process::Output {
+    use std::io::Write as _;
+
+    let mut command = Command::new(running::program());
+    command
+        .args(arguments)
+        .env_remove("PRINTOBSERVER_CREDENTIAL")
+        .env("PRINTOBSERVER_SERVER", server)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for name in CONFIG_HOME_VARIABLES {
+        command.env(name, home);
+    }
+    let mut child = command.spawn().expect("the program runs");
+    child
+        .stdin
+        .take()
+        .expect("standard input is piped")
+        .write_all(input)
+        .expect("standard input is written");
+    child.wait_with_output().expect("the program exits")
+}
+
+/// What a run printed, on either stream.
+fn printed_by(output: &std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stdout).into_owned() + &String::from_utf8_lossy(&output.stderr)
+}
+
+/// The operator's credential, issued by `credential issue` and put in force by
+/// the verifier it printed.
 ///
 /// Of the shipped length and alphabet, so the search is for exactly what an
-/// installed service holds. Its startup line, a refusal it makes after the
-/// credential is settled, a client command reading the configuration it wrote,
-/// and the configuration it was started under all go without it — while each
-/// still says what it is required to — and the one file that carries it is the
-/// client configuration, which is private.
-fn the_server_command_under_a_credential_it_generated(world: &World) {
-    let (configuration, state) = world.generating_server_config("generating", "127.0.0.1:0");
+/// operator holds. Issuing it, computing its verifier again from standard
+/// input, the server's startup line, a refusal the server makes after its
+/// verifier is settled, a client command reading the operator's own
+/// configuration, and every file the server was configured by or wrote all go
+/// without it — while each still says what it is required to — and the one
+/// file that carries it is the operator's own client configuration, which is
+/// private.
+fn the_issued_credential_is_printed_by_nothing(world: &World) {
+    let home = world.root.path().join("issuing-home");
+    std::fs::create_dir_all(&home).expect("the operator's own home");
+    let listen = {
+        let free = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        free.local_addr().expect("the bound address").to_string()
+    };
+    let server = format!("http://{listen}");
+
+    let (line, credential, client_config) = issued_at(&home, &server);
+
+    let (configuration, state) = world.unverified_server_config("issued", &listen);
+    let held = std::fs::read_to_string(&configuration).expect("the configuration reads");
+    std::fs::write(&configuration, format!("{line}\n{held}"))
+        .expect("the configuration is writable");
     let mut serving = Command::new(running::program())
         .arg("server")
         .arg("--config")
@@ -132,43 +181,27 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the command that runs the server runs");
-    let (_, stream) = announced::serving(&mut serving, "the generating supervisor did not start");
+    let (_, stream) = announced::serving(&mut serving, "the issued supervisor did not start");
 
-    let credential = std::fs::read_to_string(state.join(API_CREDENTIAL_FILE))
-        .expect("the server wrote the credential it generated");
-    assert_eq!(
-        credential.len(),
-        GENERATED_LENGTH,
-        "the generated credential is not of the shipped length"
+    let read = at_home(
+        &home,
+        &["status", "--print-id", &world.print_id()],
+        &server,
+        b"",
+    );
+    let said = printed_by(&read);
+    assert!(
+        said.contains("there is no print") || said.contains(&world.print_id()),
+        "a read through the operator's own configuration was not served: {said}"
+    );
+    assert_ne!(
+        read.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "a read through the operator's own configuration was not admitted: {said}"
     );
     assert!(
-        credential
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character)),
-        "the generated credential is not of the shipped alphabet"
-    );
-
-    let client_config = state.join(CLIENT_CONFIG_FILE);
-    let read = running::with(
-        world,
-        &[
-            "status".to_owned(),
-            "--print-id".to_owned(),
-            world.print_id().clone(),
-            "--config".to_owned(),
-            client_config.display().to_string(),
-        ],
-        &[],
-    );
-    assert!(
-        read.said().contains(&world.print_id()),
-        "a read through the configuration the server wrote said nothing about the print it \
-         asked for: {}",
-        read.said()
-    );
-    assert!(
-        !read.said().contains(&credential),
-        "a read through the configuration the server wrote printed the credential"
+        !said.contains(&credential),
+        "a read through the operator's own configuration printed the credential"
     );
 
     let _ = serving.kill();
@@ -177,46 +210,147 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
     printed.push_str(&String::from_utf8_lossy(&finished.stdout));
     assert!(
         !printed.contains(&credential),
-        "the server printed the credential it generated"
+        "the server printed the operator's credential"
     );
 
-    // A refusal made once the credential is settled: the address to listen on
-    // is already taken, and the credential was read before the listener was.
-    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let occupied = taken.local_addr().expect("the bound address").to_string();
-    let (refusing, _) = world.generating_server_config("generating", &occupied);
-    let refused = Command::new(running::program())
-        .arg("server")
-        .arg("--config")
-        .arg(&refusing)
-        .output()
-        .expect("the command that runs the server runs");
-    let said = String::from_utf8_lossy(&refused.stdout).into_owned()
-        + &String::from_utf8_lossy(&refused.stderr);
-    assert!(
-        said.contains("will not start") && said.contains(&occupied),
-        "the refusal did not say why the server will not start: {said}"
-    );
-    assert!(
-        !said.contains(&credential),
-        "the server's refusal printed the credential it generated"
-    );
+    let refusing = a_refusal_quotes_nothing(world, &line, &credential);
 
     for file in [configuration.as_path(), refusing.as_path()] {
         assert!(
             !std::fs::read_to_string(file)
                 .expect("the configuration reads")
                 .contains(&credential),
-            "{} carries the credential the server generated",
+            "{} carries the operator's credential",
             file.display()
+        );
+    }
+    for written in files_under(&state) {
+        assert!(
+            !std::fs::read(&written)
+                .unwrap_or_default()
+                .windows(credential.len())
+                .any(|window| window == credential.as_bytes()),
+            "{} carries the operator's credential",
+            written.display()
         );
     }
     assert_private(&client_config, &credential);
     world.wants(Reports::Printing);
 }
 
-/// The client configuration is the one file carrying the credential, and it is
-/// the service's own user's alone.
+/// Issue a credential into `home`, naming `server`, and hold `credential
+/// issue` and `credential verifier` to printing its verifier and never it:
+/// the verifier line, the credential as the operator reads it back, and the
+/// file it was written to.
+fn issued_at(home: &Path, server: &str) -> (String, String, std::path::PathBuf) {
+    let issued = at_home(home, &["credential", "issue"], server, b"");
+    assert!(issued.status.success(), "{}", printed_by(&issued));
+    let line = String::from_utf8_lossy(&issued.stdout)
+        .lines()
+        .find(|line| line.starts_with("api.credential_verifier = "))
+        .expect("`credential issue` printed the verifier line")
+        .to_owned();
+    let client_config = issued_configuration(home);
+    let written: toml::Value = toml::from_str(
+        &std::fs::read_to_string(&client_config).expect("the issued configuration reads"),
+    )
+    .expect("the issued configuration is a document");
+    let credential = written["client"]["credential"]
+        .as_str()
+        .expect("the issued configuration carries the credential")
+        .to_owned();
+    assert_eq!(written["client"]["server"].as_str(), Some(server));
+    assert_eq!(
+        credential.len(),
+        GENERATED_LENGTH,
+        "the issued credential is not of the shipped length"
+    );
+    assert!(
+        credential
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character)),
+        "the issued credential is not of the shipped alphabet"
+    );
+    assert!(
+        !printed_by(&issued).contains(&credential),
+        "`credential issue` printed the credential it issued"
+    );
+    let again = at_home(
+        home,
+        &["credential", "verifier"],
+        server,
+        format!("{credential}\n").as_bytes(),
+    );
+    assert!(again.status.success(), "{}", printed_by(&again));
+    assert!(
+        String::from_utf8_lossy(&again.stdout)
+            .lines()
+            .any(|said| said == line),
+        "`credential verifier` printed another verifier than `credential issue`: {}",
+        printed_by(&again)
+    );
+    assert!(
+        !printed_by(&again).contains(&credential),
+        "`credential verifier` echoed the credential it was handed"
+    );
+    (line, credential, client_config)
+}
+
+/// A refusal the server makes once its verifier is settled quotes nothing of
+/// the credential: answers the configuration it refused to start under.
+fn a_refusal_quotes_nothing(world: &World, line: &str, credential: &str) -> std::path::PathBuf {
+    // A refusal made once the verifier is settled: the address to listen on is
+    // already taken, and the verifier was read before the listener was.
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let occupied = taken.local_addr().expect("the bound address").to_string();
+    let (refusing, _) = world.unverified_server_config("issued-refusing", &occupied);
+    let held = std::fs::read_to_string(&refusing).expect("the configuration reads");
+    std::fs::write(&refusing, format!("{line}\n{held}")).expect("the configuration is writable");
+    let refused = Command::new(running::program())
+        .arg("server")
+        .arg("--config")
+        .arg(&refusing)
+        .output()
+        .expect("the command that runs the server runs");
+    let said = printed_by(&refused);
+    assert!(
+        said.contains("will not start") && said.contains(&occupied),
+        "the refusal did not say why the server will not start: {said}"
+    );
+    assert!(
+        !said.contains(credential),
+        "the server's refusal printed the operator's credential"
+    );
+    refusing
+}
+
+/// Where `credential issue` writes the operator's configuration under one
+/// configuration home, on this platform.
+fn issued_configuration(home: &Path) -> std::path::PathBuf {
+    let base = if cfg!(target_os = "macos") {
+        home.join("Library").join("Application Support")
+    } else {
+        home.to_path_buf()
+    };
+    base.join("printobserver").join("client.toml")
+}
+
+/// Every file under a directory.
+fn files_under(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(files_under(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// The operator's own client configuration is the one file carrying the
+/// credential, and it is the operator's alone.
 ///
 /// Its mode is asserted on Unix alone: Windows has none, and a file there
 /// carries the access its directory grants.
@@ -277,6 +411,7 @@ fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, S
             refused_configuration(world, &arguments, credential),
         ));
         if one.operation().action_kind().is_some() {
+            world.wants(failures::rejected_from(&one));
             let rejected = failures::rejected(world, &one);
             said.push((
                 format!("{name} rejected"),
