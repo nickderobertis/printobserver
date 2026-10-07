@@ -246,7 +246,7 @@ Reached at `POST /v1/prints/{print_id}/actions/cancel`.
 
 ### start-print
 
-Start a print of a named file, bounded by a manifest. Valid only while the printer is operational.
+Start a print of a named file, bounded by a manifest. Valid only while the printer is operational. When no print is open after the start reads the printer, it opens one for the file, and `record.print_id` in the output names it: act on that print afterwards.
 
 Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 

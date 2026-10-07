@@ -8,10 +8,12 @@
 
 use printobserver_core::Clock as _;
 use printobserver_core::block_on;
-use printobserver_core::listing::{ACTIVE_STATES, PrintListing};
+use printobserver_core::listing::{
+    ACTIVE_STATES, JOB_IDENTITY_TOLERANCE_S, PrintListing, REPLACED_REASON,
+};
 use printobserver_core::store::PrintStore as _;
 use printobserver_printer_api::{PrinterError, PrinterState};
-use printobserver_types::PrintId;
+use printobserver_types::{PrintId, Timestamp};
 
 use crate::fakes::PrinterMethod;
 use crate::journal::{Call, Port};
@@ -325,4 +327,340 @@ fn an_alert_opens_a_print_when_no_open_print_waits_for_it() {
             .contains(&Call::AttachObicoPrint(4211)),
         "an identifier was attached with no print waiting for it"
     );
+}
+
+/// When the job the clock now reads began, `running` seconds ago.
+fn started(world: &World, running: i64) -> Timestamp {
+    world
+        .clock
+        .now()
+        .plus_seconds(-running)
+        .expect("a representable instant")
+}
+
+/// The printer reports `file` in `state`, `running` seconds into it.
+fn reports(world: &World, file: &str, state: PrinterState, running: Option<i64>) {
+    world.printer.reports_job(Some(file), state);
+    world.printer.reports_running_time(running);
+}
+
+/// The printer prints `file`, `running` seconds into it.
+fn runs(world: &World, file: &str, running: Option<i64>) {
+    reports(world, file, PrinterState::Printing, running);
+}
+
+/// The one print the store holds.
+fn only_print(world: &World) -> printobserver_core::PrintRecord {
+    let prints = world.store.prints();
+    assert_eq!(prints.len(), 1, "one job was split into prints: {prints:?}");
+    prints[0].clone()
+}
+
+/// A print opened for a job records what the read saw of it: when the job
+/// began, and — when it was printing — how long it had printed. A job read
+/// paused records its start and no printing time, since its running time
+/// counts the pause; one reporting no running time records neither.
+#[test]
+fn a_print_opened_for_a_running_job_records_what_the_read_saw() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(3024));
+
+    let found = listing(&world);
+
+    let opened = &found.prints[0];
+    assert_eq!(found.active, Some(opened.id));
+    assert_eq!(
+        (opened.job_started_at, opened.job_print_time_s),
+        (Some(started(&world, 3024)), Some(3024)),
+        "the print does not record the start and printing time the read saw"
+    );
+    assert_eq!(world.store.print_now(opened.id), Some(opened.clone()));
+
+    let world = World::new();
+    reports(&world, RUNNING, PrinterState::Paused, Some(500));
+    listing(&world);
+    let opened = only_print(&world);
+    assert_eq!(
+        (opened.job_started_at, opened.job_print_time_s),
+        (Some(started(&world, 500)), None),
+        "a paused job's running time, which counts the pause, was taken for printing time"
+    );
+
+    let world = World::new();
+    runs(&world, RUNNING, None);
+    listing(&world);
+    let opened = only_print(&world);
+    assert_eq!(
+        (opened.job_started_at, opened.job_print_time_s),
+        (None, None),
+        "a job reporting no running time was given a sighting nobody made"
+    );
+}
+
+/// One job read again later, its printing time grown, is the same print — and
+/// so is one reporting exactly the tolerance less than the longest the print
+/// recorded, which leaves that longest where it was.
+#[test]
+fn the_same_job_read_later_is_the_same_print() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let first = listing(&world).active.expect("the job is adopted");
+
+    world.clock.advance(900);
+    runs(&world, RUNNING, Some(1500));
+    assert_eq!(listing(&world).active, Some(first));
+    assert_eq!(only_print(&world).job_print_time_s, Some(1500));
+
+    world.clock.advance(300);
+    runs(&world, RUNNING, Some(1500 - JOB_IDENTITY_TOLERANCE_S));
+    let found = listing(&world);
+    assert_eq!(
+        found.active,
+        Some(first),
+        "a job exactly the tolerance short was taken for another job"
+    );
+    let held = only_print(&world);
+    assert_eq!(held.ended_at, None);
+    assert_eq!(
+        held.job_print_time_s,
+        Some(1500),
+        "a shorter running time lowered the longest the job was seen printing"
+    );
+}
+
+/// A later job of the same file — one reporting more than the tolerance less
+/// printing than the open print's job had already done — closes the open
+/// print as replaced and opens its own.
+#[test]
+fn a_later_job_of_the_same_file_closes_the_stale_print_and_opens_its_own() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let stale = listing(&world).active.expect("the first job is adopted");
+
+    // The first job ended and a second began between two reads, and nothing
+    // read the printer while it was idle.
+    world.clock.advance(300);
+    let later = 600 - JOB_IDENTITY_TOLERANCE_S - 1;
+    runs(&world, RUNNING, Some(later));
+    let found = listing(&world);
+
+    let fresh = found.active.expect("the later job is named active");
+    assert_ne!(
+        fresh, stale,
+        "a later job of the same file was adopted into the earlier job's print"
+    );
+    let stale_now = world.store.print_now(stale).expect("the stale print reads");
+    assert_eq!(stale_now.end_reason.as_deref(), Some(REPLACED_REASON));
+    assert_eq!(stale_now.ended_at, Some(world.clock.now()));
+    assert_eq!(stale_now.state, PrinterState::Operational);
+    let fresh_now = world.store.print_now(fresh).expect("the fresh print reads");
+    assert_eq!(fresh_now.ended_at, None);
+    assert_eq!(fresh_now.file_name.as_deref(), Some(RUNNING));
+    assert_eq!(
+        (fresh_now.job_started_at, fresh_now.job_print_time_s),
+        (Some(started(&world, later)), Some(later))
+    );
+    assert_eq!(ids(&found), vec![fresh, stale]);
+    world.journal.assert_no_violations();
+}
+
+/// An open print recorded before sightings were — or a job reporting no
+/// running time — is matched by its file name alone, and the print then
+/// records what the read saw of the job adopted into it.
+#[test]
+fn an_unknown_running_time_on_either_side_is_matched_by_file_name_alone() {
+    let world = World::new();
+    let legacy = block_on(world.store.open_print(None, Some(RUNNING.to_owned())))
+        .expect("a print recorded before sightings were");
+    assert_eq!(
+        (legacy.job_started_at, legacy.job_print_time_s),
+        (None, None)
+    );
+    runs(&world, RUNNING, Some(42));
+
+    assert_eq!(listing(&world).active, Some(legacy.id));
+    assert_eq!(
+        world
+            .store
+            .print_now(legacy.id)
+            .map(|print| (print.job_started_at, print.job_print_time_s)),
+        Some((Some(started(&world, 42)), Some(42))),
+        "the adopted print does not record what the read saw of its job"
+    );
+
+    // Now the printer stops reporting a running time: nothing tells this job
+    // from another, so the file name decides as it did before.
+    world.clock.advance(7200);
+    runs(&world, RUNNING, None);
+    assert_eq!(listing(&world).active, Some(legacy.id));
+    assert_eq!(only_print(&world).id, legacy.id);
+}
+
+/// A running time no job can have run for — a negative count, the most
+/// negative one included — is no running time: the print records no sighting
+/// from it, and the job is matched by its file name alone.
+#[test]
+fn a_negative_running_time_is_read_as_none() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let first = listing(&world).active.expect("the job is adopted");
+    let began = started(&world, 600);
+
+    for nonsense in [-1, i64::MIN] {
+        world.clock.advance(60);
+        runs(&world, RUNNING, Some(nonsense));
+        assert_eq!(
+            listing(&world).active,
+            Some(first),
+            "a running time of {nonsense} split the job from its print"
+        );
+        let held = only_print(&world);
+        assert_eq!(held.ended_at, None);
+        assert_eq!(
+            (held.job_started_at, held.job_print_time_s),
+            (Some(began), Some(600)),
+            "a running time of {nonsense} was recorded as a sighting"
+        );
+    }
+
+    let world = World::new();
+    runs(&world, RUNNING, Some(-30));
+    listing(&world);
+    let opened = only_print(&world);
+    assert_eq!(
+        (opened.job_started_at, opened.job_print_time_s),
+        (None, None),
+        "a print was opened recording a sighting from a negative running time"
+    );
+}
+
+/// A pause the reads see — longer than the tolerance — and the resume after
+/// it keep one print, and the resume moves the start the print records later
+/// by the pause, which is what `OctoPrint` does to the running time.
+#[test]
+fn a_long_pause_the_reads_see_keeps_one_print_and_resets_its_start() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(600));
+    let print = listing(&world).active.expect("the job is adopted");
+    let began = started(&world, 600);
+
+    // It prints a minute more and pauses; the pause counts while it lasts.
+    world.clock.advance(60);
+    reports(&world, RUNNING, PrinterState::Paused, Some(660));
+    assert_eq!(listing(&world).active, Some(print));
+    world.clock.advance(600);
+    reports(&world, RUNNING, PrinterState::Paused, Some(1260));
+    assert_eq!(listing(&world).active, Some(print));
+    assert_eq!(only_print(&world).job_started_at, Some(began));
+
+    // It resumes, and the pause comes back out of the running time.
+    world.clock.advance(30);
+    runs(&world, RUNNING, Some(690));
+    assert_eq!(
+        listing(&world).active,
+        Some(print),
+        "the resume split the print"
+    );
+    let held = only_print(&world);
+    assert_eq!(held.ended_at, None);
+    assert_eq!(
+        (held.job_started_at, held.job_print_time_s),
+        (Some(started(&world, 690)), Some(690)),
+        "the resume did not reset the start the print records"
+    );
+    assert_eq!(
+        held.job_started_at,
+        began.plus_seconds(600).ok(),
+        "the start moved by something other than the pause"
+    );
+}
+
+/// A pause and a resume that both fall between two reads keep one print,
+/// however long the pause and however the second read finds the job.
+#[test]
+fn a_pause_between_two_reads_keeps_one_print() {
+    for pause in [60, JOB_IDENTITY_TOLERANCE_S + 1, 3600, 86_400] {
+        let world = World::new();
+        runs(&world, RUNNING, Some(600));
+        let print = listing(&world).active.expect("the job is adopted");
+
+        // Ten seconds more printing, the pause, and forty seconds after it.
+        world.clock.advance(10 + pause + 40);
+        runs(&world, RUNNING, Some(650));
+        assert_eq!(
+            listing(&world).active,
+            Some(print),
+            "a {pause} s pause split it"
+        );
+
+        // Paused again by the next read: the running time counts that pause.
+        world.clock.advance(5 + pause);
+        reports(&world, RUNNING, PrinterState::Paused, Some(650 + 5 + pause));
+        assert_eq!(
+            listing(&world).active,
+            Some(print),
+            "a {pause} s pause split it"
+        );
+        assert_eq!(only_print(&world).ended_at, None);
+    }
+}
+
+/// A job read paused, then cancelled and replaced by a job of the same file
+/// before the next read, is a later job wherever the earlier one was seen
+/// printing for longer than the later one has, by more than the tolerance.
+#[test]
+fn a_job_seen_paused_then_replaced_before_the_next_read_is_a_later_job() {
+    let world = World::new();
+    runs(&world, RUNNING, Some(1800));
+    let earlier = listing(&world).active.expect("the job is adopted");
+    world.clock.advance(60);
+    reports(&world, RUNNING, PrinterState::Paused, Some(1860));
+    assert_eq!(listing(&world).active, Some(earlier));
+
+    world.clock.advance(400);
+    runs(&world, RUNNING, Some(200));
+    let later = listing(&world)
+        .active
+        .expect("the later job is named active");
+
+    assert_ne!(
+        later, earlier,
+        "the replacement was adopted into the paused job's print"
+    );
+    assert_eq!(
+        world
+            .store
+            .print_now(earlier)
+            .and_then(|print| print.end_reason),
+        Some(REPLACED_REASON.to_owned())
+    );
+    assert_eq!(world.store.prints().len(), 2);
+}
+
+/// What the reads cannot tell from one job paused between them is kept as one
+/// print: a later job that has printed for at least as long as the earlier
+/// one was seen printing, less the tolerance, and a later job replacing one no
+/// read ever found printing.
+#[test]
+fn what_the_reads_cannot_tell_from_a_pause_is_kept_as_one_print() {
+    // The earlier job was seen printing for 100 s; the later one, read 400 s
+    // after, has printed for 300 s. The earlier job paused for 100 s between
+    // the reads and resumed would report exactly that.
+    let world = World::new();
+    runs(&world, RUNNING, Some(100));
+    let print = listing(&world).active.expect("the job is adopted");
+    world.clock.advance(400);
+    runs(&world, RUNNING, Some(300));
+    assert_eq!(listing(&world).active, Some(print));
+    assert_eq!(only_print(&world).ended_at, None);
+
+    // The earlier job was only ever seen paused, so nothing says how long it
+    // had printed; a later job ten seconds in could be it, resumed.
+    let world = World::new();
+    reports(&world, RUNNING, PrinterState::Paused, Some(1800));
+    let print = listing(&world).active.expect("the job is adopted");
+    world.clock.advance(600);
+    runs(&world, RUNNING, Some(10));
+    assert_eq!(listing(&world).active, Some(print));
+    assert_eq!(only_print(&world).ended_at, None);
 }

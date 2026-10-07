@@ -40,6 +40,28 @@ pub struct PrintRecord {
     pub state: PrinterState,
     /// When the print was opened.
     pub opened_at: Timestamp,
+    /// When the printer's job this print records began, as the printer's own
+    /// running time put it at the latest read that found the job running or
+    /// paused: the instant of that read, less the running time it reported.
+    ///
+    /// `OctoPrint` counts a pause into the running time until the job resumes
+    /// and then takes the pause back out, so a pause moves this later: a read
+    /// putting it further than `listing::JOB_IDENTITY_TOLERANCE_S` from the one
+    /// recorded resets it, rather than it being fixed once. Absent when no read has
+    /// found this print's job reporting a running time — a print opened by an
+    /// alert or a start before any read, and every print recorded before this
+    /// was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_started_at: Option<Timestamp>,
+    /// The longest running time, in whole seconds, the printer reported for
+    /// this print's job at a read that found it printing rather than paused.
+    ///
+    /// The time a job has spent printing only grows, pause or no pause, so a
+    /// job of this print's file reporting less — by more than
+    /// `listing::JOB_IDENTITY_TOLERANCE_S` — is a later job. Absent until a
+    /// read finds the job printing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_print_time_s: Option<i64>,
     /// When it ended, if it has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<Timestamp>,

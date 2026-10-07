@@ -70,6 +70,10 @@ pub struct RecordingPrinter {
     meeting: Mutex<(usize, usize)>,
     /// Signalled whenever a job read arrives.
     arrived: Condvar,
+    /// How long a start takes to answer, after which the machine reports the
+    /// job it names running, as `OctoPrint` does by the time its start answers;
+    /// absent, a start answers at once and the job is the journey's to run.
+    starting: Mutex<Option<Duration>>,
 }
 
 /// One feedrate factor, flagged against the range the contracts declare for it.
@@ -138,6 +142,7 @@ impl RecordingPrinter {
             }),
             meeting: Mutex::new((0, 0)),
             arrived: Condvar::new(),
+            starting: Mutex::new(None),
         })
     }
 
@@ -161,6 +166,14 @@ impl RecordingPrinter {
             .arrived
             .wait_timeout_while(counts, PATIENCE, |(wanted, came)| *came < *wanted)
             .expect("the meeting is not poisoned");
+    }
+
+    /// Take `delay` to answer every start, and run the job it names once it has.
+    ///
+    /// What a journey about a read made while a start is in flight needs: the
+    /// machine is idle until the start answers and running the job after.
+    pub fn starts_jobs_after(&self, delay: Duration) {
+        *self.starting.lock().expect("the start is not poisoned") = Some(delay);
     }
 
     /// A switched-off machine: while set, both its snapshot and its job are
@@ -217,6 +230,18 @@ impl RecordingPrinter {
         let mut held = self.held.lock().expect("the machine is not poisoned");
         held.snapshot.connection = state.clone();
         held.job.state = state;
+    }
+
+    /// Run `file` in `state`, reporting `print_time_s` as its running time.
+    ///
+    /// The running time is what tells one job of a file from another, so this
+    /// is how a journey stands a later job, a pause or a resume up.
+    pub fn runs_job(&self, file: &str, state: PrinterState, print_time_s: Option<i64>) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        held.snapshot.connection = state.clone();
+        held.job.file_name = Some(file.to_owned());
+        held.job.state = state;
+        held.job.print_time_s = print_time_s;
     }
 
     /// Make it report a value JSON denotes no spelling of.
@@ -323,8 +348,15 @@ impl PrinterPort for RecordingPrinter {
     }
 
     fn start(&self, file_name: FileName) -> BoxFuture<'_, Result<(), PrinterError>> {
-        self.took(Call::Start(file_name));
-        Box::pin(async move { Ok(()) })
+        self.took(Call::Start(file_name.clone()));
+        let delay = *self.starting.lock().expect("the start is not poisoned");
+        Box::pin(async move {
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+                self.runs_job(file_name.as_str(), PrinterState::Printing, Some(0));
+            }
+            Ok(())
+        })
     }
 
     fn pause(&self) -> BoxFuture<'_, Result<(), PrinterError>> {

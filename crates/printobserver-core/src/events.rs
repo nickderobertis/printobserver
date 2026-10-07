@@ -35,7 +35,7 @@
 
 use crate::records::PrintRecord;
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
-use printobserver_printer_api::PrinterState;
+use printobserver_printer_api::{JobSnapshot, PrinterState};
 use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::{
     SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest, TurnSituation,
@@ -47,6 +47,7 @@ use crate::context::PrintContext;
 use crate::error::CoreError;
 use crate::inbox::Arrival;
 use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
+use crate::listing::{self, ObservedJob, reached_reason};
 use crate::supervisor::Supervisor;
 
 /// One event written down, and the turn it claimed, when it claimed one.
@@ -57,6 +58,16 @@ pub struct Received {
     /// The turn it claimed: absent when it belongs to no print, to a print that
     /// has ended, or was handed to the turn already running for its print.
     pub turn: Option<PendingTurn>,
+}
+
+/// What became of one turn.
+enum Supervised {
+    /// It ran, and the printer was not in a terminal state.
+    Ran,
+    /// It ran, and the printer reported this terminal state.
+    Terminal(PrinterState),
+    /// The print had ended by the time the turn held it, so nothing ran.
+    Ended,
 }
 
 /// A turn one event claimed, to be run by [`Supervisor::run_supervision`].
@@ -174,18 +185,28 @@ impl Supervisor {
         let mut next = Some((arrival, Vec::new()));
         while let Some((arrival, earlier)) = next {
             let supervised = self.supervise(&print, &arrival, earlier).await;
-            self.resume_adjusted_detector_pause(print.id).await;
-            let terminal = match supervised {
-                Ok(terminal) => terminal,
+            if !matches!(supervised, Ok(Supervised::Ended)) {
+                self.resume_adjusted_detector_pause(print.id).await;
+            }
+            match supervised {
+                Ok(Supervised::Ran) => {}
+                Ok(Supervised::Ended) => {
+                    self.inboxes().release(print.id);
+                    self.forget_detector_pause(print.id);
+                    return Ok(());
+                }
+                Ok(Supervised::Terminal(state)) => {
+                    self.inboxes().release(print.id);
+                    let _turn = self.turns().acquire(print.id).await;
+                    return self
+                        .close_out_print(print.id, &state, &reached_reason(&state))
+                        .await
+                        .map(drop);
+                }
                 Err(error) => {
                     self.inboxes().release(print.id);
                     return Err(error);
                 }
-            };
-            if let Some(state) = terminal {
-                self.inboxes().release(print.id);
-                self.forget_detector_pause(print.id);
-                return self.close_out_print(&print, &state).await;
             }
             next = self
                 .inboxes()
@@ -202,12 +223,18 @@ impl Supervisor {
     /// the adapter's business, and this loop reads nothing an adapter declares.
     ///
     /// In order: the print already carrying that identifier; otherwise the most
-    /// recently opened print with no end recorded, no provider identifier and
-    /// the alert's own file name, which is a job somebody found before the
-    /// provider reported on it and which takes the identifier here; otherwise a
-    /// print opened for it. The file name is the one key the two sides share —
-    /// the provider names the job by the file the printer reported, and the
-    /// printer names it by that same file.
+    /// recently opened print with no end recorded, no provider identifier, the
+    /// alert's own file name and a job the alert's start may be
+    /// ([`listing::may_have_started_it`]), which is a job somebody found before
+    /// the provider reported on it and which takes the identifier here;
+    /// otherwise a print opened for it. The file name is the one key the two
+    /// sides share — the provider names the job by the file the printer
+    /// reported, and the printer names it by that same file — and the start is
+    /// what tells that job from a later one of the same file.
+    ///
+    /// Nothing here reads the printer: an alert is written down before anything
+    /// is asked of a port, and a print a later job replaced is closed by the
+    /// next read that finds that job, not by an alert about it.
     async fn resolve_print(
         &self,
         alert: &NormalizedAlert,
@@ -232,7 +259,9 @@ impl Supervisor {
                 .await?
                 .into_iter()
                 .find(|open| {
-                    open.provider_print_id.is_none() && open.file_name.as_ref() == Some(file_name)
+                    open.provider_print_id.is_none()
+                        && open.file_name.as_ref() == Some(file_name)
+                        && listing::may_have_started_it(open, provider_print.started_at)
                 });
             if let Some(found) = unattached {
                 let attached = self
@@ -306,15 +335,26 @@ impl Supervisor {
     /// `earlier` is what arrived for the print before `arrival` while an
     /// earlier turn was running and that turn never took, oldest first.
     ///
-    /// Answers the terminal state the printer reported, when it reported one.
+    /// Answers the terminal state the printer reported, when it reported one,
+    /// and runs nothing for a print that ended — at a read that found its job
+    /// over — before this turn came to hold it.
     async fn supervise(
         &self,
         print: &PrintRecord,
         arrival: &Arrival,
         earlier: Vec<Arrival>,
-    ) -> Result<Option<PrinterState>, CoreError> {
+    ) -> Result<Supervised, CoreError> {
         let event = &arrival.event;
         let guard = self.turns().acquire(print.id).await;
+        if self
+            .stores()
+            .prints
+            .print(print.id)
+            .await?
+            .is_none_or(|held| held.ended_at.is_some())
+        {
+            return Ok(Supervised::Ended);
+        }
         let context = self.gather_context(print, Some(event.id)).await?;
         let printer_state = context
             .printer
@@ -381,7 +421,7 @@ impl Supervisor {
                 .await;
             }
         }
-        Ok(terminal)
+        Ok(terminal.map_or(Supervised::Ran, Supervised::Terminal))
     }
 
     /// Everything a supervision turn is given about one print.
@@ -413,6 +453,13 @@ impl Supervisor {
     /// one; a context read that no event prompted has nowhere to record it and
     /// carries the absence in the context itself, which is what an absent
     /// `printer` or `job` means.
+    ///
+    /// The job read settles the open prints exactly as the listing's does
+    /// ([`crate::listing`]) before the rest of the context is read: a job found
+    /// over closes the print, a later job of its file closes it as replaced,
+    /// and a job found to be its own is recorded on it — so the context
+    /// answered is the print as it now stands. Within a turn the turn holds the
+    /// print, and that turn closes it.
     async fn gather_context(
         &self,
         print: &PrintRecord,
@@ -431,6 +478,12 @@ impl Supervisor {
                 None
             }
         };
+        // The job is read and settled under one hold on resolution, as the
+        // listing's is. A start holds it from the read that chooses its print
+        // until the printer has been asked to start, so a job read before that
+        // hold and settled after it would be the idle machine the start has
+        // since moved, and would close the print the start had just opened.
+        let resolving = self.resolving().await;
         let job = match self.read_job().await {
             Ok(job) => Some(job),
             Err(error) => {
@@ -444,6 +497,12 @@ impl Supervisor {
                 None
             }
         };
+        let print = match &job {
+            Some(job) if print.ended_at.is_none() => self.settle_for_context(print, job).await?,
+            _ => print.clone(),
+        };
+        drop(resolving);
+        let print = &print;
         let manifest = self.stores().prints.manifest(print.id).await?;
         let bounds = self.bounds_for(Some(print), print.id).await?;
         let interventions = self.stores().actions.active_interventions(print.id).await?;
@@ -479,34 +538,77 @@ impl Supervisor {
         }
     }
 
+    /// Settle the open prints against the job a context read found, and
+    /// answer the print the context is about as that left it.
+    ///
+    /// The caller holds resolution from before it read that job.
+    async fn settle_for_context(
+        &self,
+        print: &PrintRecord,
+        job: &JobSnapshot,
+    ) -> Result<PrintRecord, CoreError> {
+        let observed = ObservedJob {
+            job: job.clone(),
+            observed_at: self.clock().now(),
+        };
+        let settled = self.settle_open_prints(&observed).await?;
+        match settled.running {
+            Some(running) if running.id == print.id => Ok(running),
+            _ if settled.closed.contains(&print.id) => Ok(self
+                .stores()
+                .prints
+                .print(print.id)
+                .await?
+                .unwrap_or_else(|| print.clone())),
+            _ => Ok(print.clone()),
+        }
+    }
+
     /// End the print, expire what it had running, and close its session.
     ///
     /// The interventions are expired **before** the print is ended, because a
     /// restoration is an action against the print and a print that has already
     /// ended is one no action may be taken against.
-    async fn close_out_print(
+    ///
+    /// The caller holds the print's turn, so no turn is acting on it while it
+    /// closes. Answers whether this closed it: a print already ended — by
+    /// another read, or by the turn that held it — is left as it ended.
+    pub(crate) async fn close_out_print(
         &self,
-        print: &PrintRecord,
+        print_id: PrintId,
         state: &PrinterState,
-    ) -> Result<(), CoreError> {
-        let reason = format!("the print reached {state:?}");
-        self.expire_all_active(print.id).await?;
+        reason: &str,
+    ) -> Result<bool, CoreError> {
+        match self.stores().prints.print(print_id).await? {
+            Some(print) if print.ended_at.is_none() => {}
+            _ => return Ok(false),
+        }
+        self.forget_detector_pause(print_id);
+        self.expire_all_active(print_id).await?;
         self.stores()
             .prints
-            .end_print(print.id, state.clone(), self.clock().now(), reason.clone())
+            .end_print(
+                print_id,
+                state.clone(),
+                self.clock().now(),
+                reason.to_owned(),
+            )
             .await?;
-        let _ = self.agent().close_session(print.id, reason.clone()).await;
-        if let Some(session) = self.stores().sessions.session(print.id).await? {
+        let _ = self
+            .agent()
+            .close_session(print_id, reason.to_owned())
+            .await;
+        if let Some(session) = self.stores().sessions.session(print_id).await? {
             self.append_system_event(
-                print.id,
+                print_id,
                 EventBody::of(&SupervisionSessionClosedPayload {
                     session_name: session.session_name,
-                    close_reason: reason,
+                    close_reason: reason.to_owned(),
                 })?,
             )
             .await?;
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Append one event this system raised itself.

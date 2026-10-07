@@ -36,7 +36,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Final, Literal, NewType, TypedDict
 from urllib.parse import urlsplit
 
 HOST = "127.0.0.1"
@@ -73,7 +73,43 @@ FAULTS = (
     "pause-not-taken",
     "cancel-not-taken",
     "bounds-widened",
+    "start-names-no-print",
 )
+
+#: A print's identifier, as the supervisor mints one.
+PrintId = NewType("PrintId", str)
+
+#: An event's identifier, as the supervisor mints one.
+EventId = NewType("EventId", str)
+
+
+class Rejected(TypedDict):
+    """A decision refusing a request, as `PolicyDecision` spells one."""
+
+    rejected: str | dict[str, Any]
+
+
+#: Every decision this substitute answers: `PolicyDecision`, which
+#: `tests/test_contracts.py` holds each one this substitute makes to.
+Decision = Literal["accepted"] | Rejected
+
+#: What the supervisor decides for an action against a print that has ended.
+NO_ACTIVE_PRINT: Final[Rejected] = {"rejected": "no_active_print"}
+
+
+class Event(TypedDict):
+    """One event of the history this substitute answers, as `EventRecord` spells it.
+
+    `tests/test_contracts.py` holds the history it answers to the server's own
+    `HistoryAnswer`, so this spelling cannot drift from the contract's.
+    """
+
+    id: EventId
+    print_id: PrintId
+    source: str
+    received_at: str
+    kind: str
+    payload: dict[str, Any]
 
 
 def identifier() -> str:
@@ -129,14 +165,15 @@ class Machine:
             device: The serial device it reports being connected to.
             envelope: The bounds it enforces, which are the configured ones.
             manifest: The manifest it answers a manifest read with.
-            print_id: The print every operation of it is about.
+            print_id: The print every operation of it is about until a start,
+                which opens a print of its own as the supervisor does.
         """
         self.device = device
         self.envelope = envelope
         self.manifest = manifest
-        self.print_id = print_id
+        self.print_id = PrintId(print_id)
         self.printer = Printer()
-        self.events: list[dict[str, Any]] = []
+        self.events: list[Event] = []
         self.interventions: list[dict[str, Any]] = []
         self.operations: list[str] = []
         self.commands: list[str] = []
@@ -216,6 +253,7 @@ class Machine:
             if segments[:1] != ["v1"] or len(segments) < 4:
                 return 404, {"error": f"nothing serves {path}"}
             operation = segments[-1]
+            addressed = segments[2]
             self.operations.append(operation)
             let_through, refusals = self.refusals.get(operation, (0, 0))
             if refusals and let_through:
@@ -224,12 +262,16 @@ class Machine:
                 self.refusals[operation] = (0, refusals - 1)
                 return 500, {"error": f"this substitute was scripted to refuse `{operation}`"}
             if method == "GET":
-                return self._read(operation)
+                return self._read(operation, addressed)
             self.commands.append(operation)
+            if addressed != self.print_id and operation != "start_print":
+                # The print a start replaced has ended, and the supervisor
+                # takes no action against an ended print.
+                return 409, {"record": self._record_of(identifier(), NO_ACTIVE_PRINT)}
             return self._act(operation, json.loads(body or b"{}"))
 
-    def _read(self, operation: str) -> tuple[int, dict[str, Any]]:
-        """One read of the supervisor's surface."""
+    def _read(self, operation: str, addressed: str) -> tuple[int, dict[str, Any]]:
+        """One read of the supervisor's surface, about the print it names."""
         self._expire()
         if operation == "status":
             return 200, {
@@ -253,7 +295,11 @@ class Machine:
         if operation == "manifest":
             return 200, {"manifest": self.manifest, "narrowings": []}
         if operation == "history":
-            return 200, {"events": list(reversed(self.events))}
+            return 200, {
+                "events": [
+                    event for event in reversed(self.events) if event["print_id"] == addressed
+                ]
+            }
         return 404, {"error": f"this substitute serves no `{operation}` read"}
 
     def _bounds(self) -> dict[str, dict[str, float]]:
@@ -295,20 +341,26 @@ class Machine:
         """One action of the vocabulary, decided and then carried out."""
         self._expire()
         action_id = identifier()
+        if operation == "start_print":
+            # A start opens a print of its own, which its answer names and
+            # everything after it is about; the request itself is its first.
+            self.print_id = PrintId(identifier())
         self._record("action_requested", {"action_id": action_id, "action": operation})
 
         adjustable = ADJUSTMENTS.get(operation)
         if adjustable is not None:
             if self.printer.connection not in {PRINTING, PAUSED}:
-                decision = {"rejected": {"invalid_from_state": {"state": self.printer.connection}}}
-                self._record("action_rejected", {"action_id": action_id, "decision": decision})
-                return 409, {"record": self._record_of(action_id, decision)}
+                wrong_state: Rejected = {
+                    "rejected": {"invalid_from_state": {"state": self.printer.connection}}
+                }
+                self._record("action_rejected", {"action_id": action_id, "decision": wrong_state})
+                return 409, {"record": self._record_of(action_id, wrong_state)}
             asked = float(body[ASKED[adjustable]])
             low, high = self.envelope[adjustable]
             if not low <= asked <= high:
                 if "out-of-bounds-applied" in self.faults:
                     self.printer.values[adjustable] = asked
-                decision = {
+                outside: Rejected = {
                     "rejected": {
                         "out_of_bounds": {
                             "adjustable": adjustable,
@@ -317,8 +369,8 @@ class Machine:
                         }
                     }
                 }
-                self._record("action_rejected", {"action_id": action_id, "decision": decision})
-                return 409, {"record": self._record_of(action_id, decision)}
+                self._record("action_rejected", {"action_id": action_id, "decision": outside})
+                return 409, {"record": self._record_of(action_id, outside)}
             return self._adjust(action_id, adjustable, asked, body.get("duration_s"))
 
         return self._transition(action_id, operation, body)
@@ -371,7 +423,10 @@ class Machine:
                 printer.values["tool_target:0"] = 0.0
                 printer.values["bed_target"] = 0.0
         self._record("action_executed", {"action_id": action_id, "intervention_id": None})
-        return 200, {"record": self._record_of(action_id, "accepted")}
+        record = self._record_of(action_id, "accepted")
+        if operation == "start_print" and "start-names-no-print" in self.faults:
+            del record["print_id"]
+        return 200, {"record": record}
 
     def _expire(self) -> None:
         """Put back what every bounded change replaced, once its bound has passed."""
@@ -395,7 +450,7 @@ class Machine:
         """Write one event into the history this substitute answers."""
         self.events.append(
             {
-                "id": identifier(),
+                "id": EventId(identifier()),
                 "print_id": self.print_id,
                 "source": "supervisor",
                 "received_at": now(),
@@ -404,7 +459,7 @@ class Machine:
             }
         )
 
-    def _record_of(self, action_id: str, decision: object) -> dict[str, Any]:
+    def _record_of(self, action_id: str, decision: Decision) -> dict[str, Any]:
         """The action record one answer carries."""
         return {
             "id": action_id,

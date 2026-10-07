@@ -337,6 +337,79 @@ fn an_obico_identifier_attaches_once_and_is_refused_for_another() {
     }
 }
 
+/// What a read saw of a print's job is recorded, read back as recorded, and
+/// moved only as a sighting moves it: the start to the latest one given, the
+/// printing time only ever up.
+///
+/// A print opens carrying neither, because what opens it may not have seen the
+/// job running. What is recorded is what reads back — by the print's own
+/// identifier and in every listing — so the store does not round the start to
+/// another instant.
+#[test]
+fn a_job_sighting_resets_the_start_and_only_raises_the_printing_time() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print =
+            block_on(port.open_print(None, Some("hold.gcode".to_owned()))).expect("a print opens");
+        assert_eq!(
+            (print.job_started_at, print.job_print_time_s),
+            (None, None),
+            "{name}: a print opened with no job read carries a sighting"
+        );
+        let started: Timestamp = "2026-03-01T11:58:20.250000000Z"
+            .parse()
+            .expect("a fixed instant");
+
+        let recorded = block_on(port.record_job_sighting(print.id, started, Some(600)))
+            .expect("a sighting records");
+        assert_eq!(
+            recorded,
+            PrintRecord {
+                job_started_at: Some(started),
+                job_print_time_s: Some(600),
+                ..print.clone()
+            },
+            "{name}: recording the sighting changed something beside it"
+        );
+        assert_eq!(
+            block_on(port.print(print.id)),
+            Ok(Some(recorded.clone())),
+            "{name}: the sighting did not read back as it was recorded"
+        );
+        assert_eq!(
+            block_on(port.open_prints()),
+            Ok(vec![recorded.clone()]),
+            "{name}: the open prints do not carry the recorded sighting"
+        );
+
+        // A resume moves the start later; a paused read reports no printing
+        // time, and one reporting less leaves the longest where it was.
+        let resumed: Timestamp = "2026-03-01T12:30:00.000000000Z"
+            .parse()
+            .expect("a fixed instant");
+        for (printing, held) in [(None, 600), (Some(300), 600), (Some(900), 900)] {
+            let moved = block_on(port.record_job_sighting(print.id, resumed, printing))
+                .expect("a sighting records");
+            assert_eq!(
+                (moved.job_started_at, moved.job_print_time_s),
+                (Some(resumed), Some(held)),
+                "{name}: a sighting printing {printing:?} left the wrong record"
+            );
+            assert_eq!(block_on(port.print(print.id)), Ok(Some(moved)), "{name}");
+        }
+
+        let nowhere = PrintId::new();
+        assert_eq!(
+            block_on(port.record_job_sighting(nowhere, started, Some(1))),
+            Err(StoreError::NotFound {
+                what: format!("print {nowhere}")
+            }),
+            "{name}: a sighting recorded on a print nothing holds"
+        );
+    }
+}
+
 /// Every event this journey writes, with the kind and instant it was written at.
 struct Written {
     /// The events, oldest first.

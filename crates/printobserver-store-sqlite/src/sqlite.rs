@@ -141,6 +141,8 @@ impl SqliteStore {
             file_name,
             state: PrinterState::Printing,
             opened_at: Timestamp::now(),
+            job_started_at: None,
+            job_print_time_s: None,
             ended_at: None,
             end_reason: None,
             narrowings: Vec::new(),
@@ -255,6 +257,31 @@ impl SqliteStore {
             record.provider_print_id = Some(provider_print_id);
             Ok(record)
         })
+    }
+
+    /// Record what one read saw of a print's job.
+    ///
+    /// One statement, so the running time is raised against the value the row
+    /// holds as it is written rather than one read before it: two reads
+    /// recording at once cannot lower it.
+    fn write_job_sighting(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
+    ) -> Result<PrintRecord, StoreError> {
+        let identifier = print_id.to_string();
+        self.on_connection(move |connection| {
+            connection
+                .execute(
+                    "UPDATE prints SET job_started_at = ?2, \
+                     job_print_time_s = COALESCE(MAX(job_print_time_s, ?3), job_print_time_s, ?3) \
+                     WHERE id = ?1",
+                    params![identifier, instant_text(job_started_at), job_print_time_s],
+                )
+                .map_err(|error| database_error(&error))
+        })?;
+        self.require_print(print_id)
     }
 
     /// One print, or the refusal that there is no such print.
@@ -890,6 +917,15 @@ impl PrintStore for SqliteStore {
         obico_print_id: i64,
     ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
         Box::pin(async move { self.write_provider_print_id(print_id, obico_print_id) })
+    }
+
+    fn record_job_sighting(
+        &self,
+        print_id: PrintId,
+        job_started_at: Timestamp,
+        job_print_time_s: Option<i64>,
+    ) -> BoxFuture<'_, Result<PrintRecord, StoreError>> {
+        Box::pin(async move { self.write_job_sighting(print_id, job_started_at, job_print_time_s) })
     }
 
     fn end_print(

@@ -625,7 +625,7 @@ fn unreachable(element: &str, why: &str) -> String {
 // for every suppression standing in the tree.
 #[expect(clippy::too_many_lines)]
 pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result<(), String> {
-    let mut bindings: Bindings = BTreeMap::from([(PRINT_ID.to_owned(), world.print_id.clone())]);
+    let mut bindings: Bindings = BTreeMap::from([(PRINT_ID.to_owned(), world.print_id().clone())]);
 
     let step = documentation
         .step(1)
@@ -1162,7 +1162,7 @@ fn reads_back(
         .ok_or_else(|| unreachable(element, "no document shows a worked example of it"))?;
     let mut command = bound(
         &steps[0].command,
-        &BTreeMap::from([(PRINT_ID.to_owned(), world.print_id.clone())]),
+        &BTreeMap::from([(PRINT_ID.to_owned(), world.print_id().clone())]),
     );
     // The documented example answers the newest event alone; this reads far
     // enough back to find what was just written, through the same argument the

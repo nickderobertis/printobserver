@@ -95,6 +95,7 @@ impl Correlation {
         self.obico_print_id.map(|id| ProviderPrint {
             id,
             file_name: self.file_name.clone(),
+            started_at: self.started_at,
         })
     }
 

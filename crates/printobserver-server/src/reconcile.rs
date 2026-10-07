@@ -8,6 +8,18 @@
 //! expired through the ordinary policy so the value it should restore is
 //! restored.
 //!
+//! # The printer is asked first
+//!
+//! A print left open is one nobody saw end, which is not the same as one still
+//! running: the job may have finished, or been cancelled at the machine, while
+//! no supervisor was there to read it. So before anything is adopted the
+//! printer's job is read once, and every open print that read shows is over is
+//! closed through the same close-out a supervision turn takes
+//! ([`Supervisor::settle_with_printer`]); only what is still open after it is
+//! adopted. A printer that cannot be read closes nothing, and every open print
+//! is adopted as it is. An intervention past its expiry on a print closed here
+//! was expired by that close-out, and is not expired a second time.
+//!
 //! Each of the three is **recorded** as having happened at startup, under the
 //! [`StartupReconciliationPayload`] kind this module declares and alone writes,
 //! because a print that carried on across a restart and one that was started
@@ -112,6 +124,9 @@ impl Sample for StartupReconciliationPayload {
 /// What one start adopted.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Reconciliation {
+    /// Every print left open that the printer's job showed was over, and
+    /// which was closed rather than adopted.
+    pub closed: Vec<PrintId>,
     /// Every print left open, which this supervisor goes on watching.
     pub adopted: Vec<PrintId>,
     /// Every print whose session was resumed rather than replaced.
@@ -145,12 +160,14 @@ pub struct ReconcileStores {
     pub events: Arc<dyn EventStore>,
 }
 
-/// Adopt what the store holds, and record each adoption.
+/// Close what the printer shows is over, adopt what the store holds, and
+/// record each adoption.
 ///
 /// # Errors
 ///
-/// Returns the store's own error when the open prints could not be read or an
-/// adoption could not be recorded. An intervention that could not be expired is
+/// Returns the store's own error when the open prints could not be read, a
+/// print the printer shows is over could not be closed, or an adoption could
+/// not be recorded. An intervention that could not be expired is
 /// recorded rather than answered here: one that fails does not cost the rest,
 /// which is the same rule the ordinary expiry sweep takes.
 pub async fn reconcile(
@@ -158,7 +175,10 @@ pub async fn reconcile(
     stores: &ReconcileStores,
     overdue: Vec<Intervention>,
 ) -> Result<Reconciliation, CoreError> {
-    let mut found = Reconciliation::default();
+    let mut found = Reconciliation {
+        closed: supervisor.settle_with_printer().await?.closed,
+        ..Reconciliation::default()
+    };
 
     for print in stores.prints.open_prints().await? {
         record(&stores.events, print.id, StartupOutcome::PrintAdopted).await?;
@@ -180,7 +200,12 @@ pub async fn reconcile(
         found.resumed.push(print.id);
     }
 
-    for intervention in overdue {
+    // A print the printer showed was over was closed through the close-out,
+    // which expired every intervention on it already.
+    for intervention in overdue
+        .into_iter()
+        .filter(|overdue| !found.closed.contains(&overdue.print_id))
+    {
         let outcome = supervisor.expire_intervention(&intervention).await?;
         record(
             &stores.events,

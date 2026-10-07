@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -115,7 +116,10 @@ def test_a_client_without_the_credential_in_force_is_refused(
     equal(served["print"]["id"], world.print_id)
 
 
-def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Supervisor) -> None:
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+def test_the_same_nine_steps_are_answered_against_a_real_octoprint(
+    world: Supervisor,
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """The nine steps, in the one order a real machine admits."""
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     client = Client(world.server, "operator", world.credential)
@@ -148,10 +152,15 @@ def test_the_same_nine_steps_are_answered_against_a_real_octoprint(world: Superv
         client.cancel(world.print_id, "making room for the step that starts one")
     _until(client, world.print_id, {"operational"})
 
-    # journey step 4: start
+    # journey step 4: start — which opens a print of its own, since the cancel
+    #                          above ended the one the bring-up left; every step
+    #                          after it acts on the print its answer names.
     started = client.start_print(world.print_id, world.file_name, wanted, REASON)
     equal(started["record"]["decision"], "accepted")
+    world = replace(world, print_id=started["record"]["print_id"])
     _until(client, world.print_id, {"printing"})
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    equal(client.manifest_get(world.print_id)["manifest"], wanted)
 
     # journey step 5: adjustment — accepted, carrying a reason and a duration.
     adjusted = client.set_feedrate_factor(world.print_id, INSIDE, REASON, DURATION)

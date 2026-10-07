@@ -164,7 +164,7 @@ fn a_look_answers_the_cameras_frame_and_keeps_it() {
     let world = World::open(STOOD_IN);
     let look = running::read(
         &world,
-        &["look", "--print-id", &world.print_id, "--wait-s", "0"],
+        &["look", "--print-id", &world.print_id(), "--wait-s", "0"],
     );
 
     assert_eq!(look["frame"]["sha256"], World::frame_digest(), "{look}");
@@ -180,7 +180,7 @@ fn a_look_answers_the_cameras_frame_and_keeps_it() {
         look["printer"].is_object() && look["job"].is_object(),
         "{look}"
     );
-    let kept = events_of(&world, &world.print_id, "camera_look");
+    let kept = events_of(&world, &world.print_id(), "camera_look");
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0]["id"], look["event"]["id"]);
     assert_eq!(kept[0]["image"]["sha256"], World::frame_digest());
@@ -201,13 +201,13 @@ fn a_look_with_no_camera_carries_no_frame() {
             .expect("the configuration is a table")
             .remove("camera");
     });
-    let look = running::read(&world, &["look", "--print-id", &world.print_id]);
+    let look = running::read(&world, &["look", "--print-id", &world.print_id()]);
 
     assert!(look.get("frame").is_none(), "{look}");
     assert!(look.get("image_path").is_none(), "{look}");
     assert!(look["printer"].is_object(), "{look}");
-    assert_eq!(events_of(&world, &world.print_id, "camera_look").len(), 1);
-    assert!(events_of(&world, &world.print_id, "port_failure").is_empty());
+    assert_eq!(events_of(&world, &world.print_id(), "camera_look").len(), 1);
+    assert!(events_of(&world, &world.print_id(), "port_failure").is_empty());
     assert!(world.camera.received().is_empty());
 }
 
@@ -219,7 +219,7 @@ fn a_wait_above_ninety_is_refused() {
     let started = Instant::now();
     let ran = running::command(
         &world,
-        &["look", "--print-id", &world.print_id, "--wait-s", "91"],
+        &["look", "--print-id", &world.print_id(), "--wait-s", "91"],
     );
 
     assert_eq!(
@@ -230,7 +230,7 @@ fn a_wait_above_ninety_is_refused() {
     );
     assert!(ran.said().contains("90"), "{}", ran.said());
     assert!(started.elapsed() < Duration::from_secs(30));
-    assert!(events_of(&world, &world.print_id, "camera_look").is_empty());
+    assert!(events_of(&world, &world.print_id(), "camera_look").is_empty());
     assert!(world.camera.received().is_empty());
 }
 
@@ -256,14 +256,14 @@ fn a_camera_that_gives_no_frame_is_recorded_against_the_look() {
         let world = World::configured(STOOD_IN, &committed_skill(), None, |document| {
             document["camera"] = json!({ "snapshot_url": url });
         });
-        let look = running::read(&world, &["look", "--print-id", &world.print_id]);
+        let look = running::read(&world, &["look", "--print-id", &world.print_id()]);
 
         assert!(look.get("frame").is_none(), "{look}");
-        let failures = events_of(&world, &world.print_id, "port_failure");
+        let failures = events_of(&world, &world.print_id(), "port_failure");
         assert_eq!(failures.len(), 1, "{failures:?}");
         assert_eq!(failures[0]["payload"]["site"], "camera_look");
         assert_eq!(failures[0]["payload"]["event_id"], look["event"]["id"]);
-        let looked = events_of(&world, &world.print_id, "camera_look");
+        let looked = events_of(&world, &world.print_id(), "camera_look");
         assert_eq!(looked.len(), 1);
         assert_eq!(looked[0]["id"], look["event"]["id"]);
         assert!(looked[0].get("image").is_none());
@@ -291,7 +291,7 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
         &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
     );
     wait_for("the alert's turn to be over", PATIENCE, || {
-        !events_of(&world, &world.print_id, "port_failure").is_empty()
+        !events_of(&world, &world.print_id(), "port_failure").is_empty()
     });
 
     let ran = running::command(
@@ -299,7 +299,7 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
         &[
             "set-fan-percent",
             "--print-id",
-            &world.print_id,
+            &world.print_id(),
             "--percent",
             "80",
             "--reason",
@@ -311,7 +311,7 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
     assert_eq!(ran.code, Some(0), "{}", ran.said());
     // The first adjustment was applied no later than this.
     let adjusted = Instant::now();
-    let look = running::read(&world, &["look", "--print-id", &world.print_id]);
+    let look = running::read(&world, &["look", "--print-id", &world.print_id()]);
     assert_eq!(look["detector_paused"], true, "{look}");
 
     // Short enough that the second adjustment reaches the server well inside
@@ -329,7 +329,7 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
         &[
             "set-fan-percent",
             "--print-id",
-            &world.print_id,
+            &world.print_id(),
             "--percent",
             "90",
             "--reason",
@@ -351,7 +351,7 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
     // With timestamps kept to the second, that puts the resume past the first
     // adjustment's own grace: the second one moved it on.
     assert!(again.duration_since(adjusted) >= Duration::from_secs(2));
-    let resumes: Vec<Value> = actions_asked(&world, &world.print_id)
+    let resumes: Vec<Value> = actions_asked(&world, &world.print_id())
         .into_iter()
         .filter(|action| action["action"] == "resume")
         .collect();
@@ -359,7 +359,7 @@ fn an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace() {
     assert_eq!(resumes[0]["actor"], "system");
     wait_for("Obico to be told", PATIENCE, || acknowledged(&api));
 
-    let history = Value::Array(history(&world, &world.print_id)).to_string();
+    let history = Value::Array(history(&world, &world.print_id())).to_string();
     assert!(
         !history.contains(OBICO_TOKEN),
         "the history carries the token"
@@ -387,9 +387,9 @@ fn an_acknowledgement_obico_refuses_is_recorded_against_the_detection() {
         &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
     );
     wait_for("the alert to be written down", PATIENCE, || {
-        !events_of(&world, &world.print_id, "obico_failure_alert").is_empty()
+        !events_of(&world, &world.print_id(), "obico_failure_alert").is_empty()
     });
-    let detection = events_of(&world, &world.print_id, "obico_failure_alert")
+    let detection = events_of(&world, &world.print_id(), "obico_failure_alert")
         .pop()
         .expect("the alert")["id"]
         .clone();
@@ -398,7 +398,7 @@ fn an_acknowledgement_obico_refuses_is_recorded_against_the_detection() {
         &[
             "set-fan-percent",
             "--print-id",
-            &world.print_id,
+            &world.print_id(),
             "--percent",
             "80",
             "--reason",
@@ -410,7 +410,7 @@ fn an_acknowledgement_obico_refuses_is_recorded_against_the_detection() {
     assert_eq!(ran.code, Some(0), "{}", ran.said());
 
     let refused = || {
-        events_of(&world, &world.print_id, "port_failure")
+        events_of(&world, &world.print_id(), "port_failure")
             .into_iter()
             .find(|failure| failure["payload"]["site"] == "detector_acknowledgement")
     };
@@ -442,10 +442,11 @@ fn adjustments_to_a_paused_print_skip_the_interval_and_nothing_else_does() {
             json!(["set_fan_percent", "set_feedrate_factor", "pause", "cancel"]);
     });
     let asking = |command: &str, value: &[&str]| {
+        let print_id = world.print_id();
         let mut given = vec![
             command,
             "--print-id",
-            &world.print_id,
+            &print_id,
             "--reason",
             "a journey about the interval",
             "--actor",
@@ -518,20 +519,20 @@ fn without_an_adjustment_the_detectors_pause_holds_past_the_grace() {
         &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
     );
     wait_for("the alert's turn to be over", PATIENCE, || {
-        !events_of(&world, &world.print_id, "port_failure").is_empty()
+        !events_of(&world, &world.print_id(), "port_failure").is_empty()
     });
     std::thread::sleep(Duration::from_secs(23));
 
     assert_eq!(reports(&world), Some(Reports::Paused));
     assert!(
-        actions_asked(&world, &world.print_id).is_empty(),
+        actions_asked(&world, &world.print_id()).is_empty(),
         "something was asked of a print nobody adjusted"
     );
     assert!(
         api.received().is_empty(),
         "Obico was told about a pause nobody handled"
     );
-    let look = running::read(&world, &["look", "--print-id", &world.print_id]);
+    let look = running::read(&world, &["look", "--print-id", &world.print_id()]);
     assert_eq!(look["detector_paused"], true, "{look}");
 }
 
@@ -554,14 +555,14 @@ fn a_repeated_detection_keeps_the_resume_and_is_the_one_acknowledged() {
         &alert(&world, 4211, crate::machine::RUNNING_FILE, false, true),
     );
     wait_for("the alert's turn to be over", PATIENCE, || {
-        !events_of(&world, &world.print_id, "port_failure").is_empty()
+        !events_of(&world, &world.print_id(), "port_failure").is_empty()
     });
     let ran = running::command(
         &world,
         &[
             "set-fan-percent",
             "--print-id",
-            &world.print_id,
+            &world.print_id(),
             "--percent",
             "80",
             "--reason",
@@ -576,7 +577,7 @@ fn a_repeated_detection_keeps_the_resume_and_is_the_one_acknowledged() {
     post(&world, &again);
 
     let refused = || {
-        events_of(&world, &world.print_id, "port_failure")
+        events_of(&world, &world.print_id(), "port_failure")
             .into_iter()
             .find(|failure| failure["payload"]["site"] == "detector_acknowledgement")
     };
@@ -586,12 +587,12 @@ fn a_repeated_detection_keeps_the_resume_and_is_the_one_acknowledged() {
         || refused().is_some(),
     );
     assert_eq!(reports(&world), Some(Reports::Printing));
-    let resumes = actions_asked(&world, &world.print_id)
+    let resumes = actions_asked(&world, &world.print_id())
         .into_iter()
         .filter(|action| action["action"] == "resume")
         .count();
     assert_eq!(resumes, 1);
-    let newer = events_of(&world, &world.print_id, "obico_failure_alert")
+    let newer = events_of(&world, &world.print_id(), "obico_failure_alert")
         .pop()
         .expect("the newer detection")["id"]
         .clone();

@@ -795,6 +795,7 @@ def emit_live(contract: Contract) -> str:
         "import json",
         "import time",
         "from collections.abc import Iterator",
+        "from dataclasses import replace",
         "from typing import cast",
         "",
         "import pytest",
@@ -866,7 +867,8 @@ def emit_live(contract: Contract) -> str:
         call = ", ".join(_live_argument(token) for _, token in step.arguments)
         spelled = method_name(step.name, "python")
         lines += [
-            f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
+            f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> "
+            f"{'Supervisor' if step.follows else 'None'}:",
             f'    """`{step.name}`, answered by a real supervisor."""',
             f'    ready(client, world.print_id, "{step.state}")',
             "",
@@ -879,6 +881,11 @@ def emit_live(contract: Contract) -> str:
             f'    equal(seen.status, 200, describing="`{step.name}`")',
             *_live_body(step),
             f'    same("{step.name}", answered, seen.answer)',
+            *(
+                ['    return replace(world, print_id=answered["record"]["print_id"])']
+                if step.follows
+                else []
+            ),
             "",
             "",
         ]
@@ -893,12 +900,30 @@ def emit_live(contract: Contract) -> str:
         "    with Proxy(world.server) as proxy:",
         "        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.",
         '        client = Client(proxy.url, "operator", world.credential)',
-        *(f"        step_{step.name}(client, world, proxy)" for step in steps),
+        *(
+            f"        {'world = ' if step.follows else ''}step_{step.name}(client, world, proxy)"
+            for step in steps
+        ),
         "",
         "        truth(",
         f"            proxy.calls() >= {len(steps)},",
         '            describing="every call to have gone through the proxy",',
         "        )",
+        "",
+        "",
+    ]
+
+    lines += [
+        "def about_the_running_print(client: Client, world: Supervisor) -> Supervisor:",
+        '    """The world, about the print the machine is running when it runs one.',
+        "",
+        "    The policy refuses an action against an ended print before it asks whether",
+        "    the actor may request it at all, so a refusal for the grant is asked of the",
+        "    print the machine is running rather than of one a read has ended.",
+        '    """',
+        f"    {ASYNC_DIRECTIVE}",
+        '    active = client.prints().get("active")',
+        "    return replace(world, print_id=active) if active else world",
         "",
         "",
     ]
@@ -927,12 +952,17 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
-        "def test_every_action_is_refused_as_a_typed_rejection(world: Supervisor) -> None:",
+        "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
+        "def test_every_action_is_refused_as_a_typed_rejection(",
+        "    world: Supervisor,",
+        ") -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
+        " See suppressions.toml.",
         '    """Every action, refused by a real supervisor\'s own policy, typed.',
         "",
-        "    One client acting as an actor class the envelope grants nothing. The policy",
-        "    takes that decision before it looks at the state, the interval or the",
-        "    bounds, so every action is refused from wherever the machine happens to be.",
+        "    One client acting as an actor class the envelope grants nothing, against the",
+        "    print the machine is running. The policy takes that decision before it looks",
+        "    at the state, the interval or the bounds, so every action is refused from",
+        "    wherever the machine happens to be.",
         '    """',
         "    with Proxy(world.server) as proxy:",
         "        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.",
@@ -941,6 +971,7 @@ def emit_live(contract: Contract) -> str:
         '            {"agent": {"session_name": "an actor this envelope grants nothing"}},',
         "            world.credential,",
         "        )",
+        "        world = about_the_running_print(client, world)",
         *(f"        refused_{step.name}(client, world, proxy)" for step in rejected_live(contract)),
     ]
     return "\n".join(lines).rstrip("\n") + "\n"

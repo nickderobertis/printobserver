@@ -47,12 +47,28 @@ Every print the supervisor holds, most recently opened first, and which of them
 the printer's current job belongs to. This is where `PRINT_ID` comes from: start
 a print in OctoPrint, run this, and take `active`.
 
-When the printer reports a job it is printing or has paused and no open print
-carries that job's file name, this read opens one for it — which is how a print
-started at the printer has an identifier before Obico has reported anything.
-Reading it again while the same job runs opens nothing further, and it asks the
-printer for nothing but what it is doing. The first Obico alert about that job
-joins the print this opened rather than opening a second.
+When the printer reports a job it is printing or has paused and no open print is
+that job, this read opens one for it — which is how a print started at the
+printer has an identifier before Obico has reported anything. Reading it again
+while the same job runs opens nothing further, and it asks the printer for
+nothing but what it is doing. The first Obico alert about that job joins the
+print this opened rather than opening a second.
+
+An open print of the job's file is that job unless the job reports more than 120
+seconds (the identity tolerance) less printing (`job.print_time_s`) than the print's `job_print_time_s`,
+the longest it was seen printing: then it is a later job, the open print ends with
+`a later job of the same file replaced it`, and the job gets a print of its own.
+A pause never splits a print — OctoPrint takes a pause back out of the running
+time when the job resumes — and a print with no `job_print_time_s`, or a job
+reporting no running time, is matched by file name alone. What this keeps as one
+print although it may be two: a later job first read after it has printed about
+as long as the earlier job was last seen printing, or longer, and a later job
+replacing one never seen printing.
+
+A print ends when any read — this one, `status`, `context`, a supervision turn, a
+start, or the supervisor's own start — finds its job no longer printing or
+paused: its interventions are expired, it ends with `the print reached <state>`,
+and its session is closed. A printer that cannot be read ends nothing.
 
 An open print's `state` is the state it was opened in, which is `printing`
 whether or not the printer is paused now. What the printer is doing is `status`'s
@@ -64,6 +80,8 @@ $ printobserver prints
 active: PRINT_ID
 prints.0.file_name: FILE
 prints.0.id: PRINT_ID
+prints.0.job_print_time_s: 900
+prints.0.job_started_at: TIMESTAMP
 prints.0.narrowings: []
 prints.0.opened_at: TIMESTAMP
 prints.0.provider_print_id: 4211
@@ -89,6 +107,8 @@ job.size_bytes: 4211
 job.state: printing
 print.file_name: FILE
 print.id: PRINT_ID
+print.job_print_time_s: 900
+print.job_started_at: TIMESTAMP
 print.narrowings: []
 print.opened_at: TIMESTAMP
 print.provider_print_id: 4211
@@ -137,6 +157,8 @@ context.latest_image.id: IMAGE_ID
 context.latest_image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
 context.print.file_name: FILE
 context.print.id: PRINT_ID
+context.print.job_print_time_s: 900
+context.print.job_started_at: TIMESTAMP
 context.print.narrowings: []
 context.print.opened_at: TIMESTAMP
 context.print.provider_print_id: 4211
@@ -459,7 +481,9 @@ record.request.requested_at: TIMESTAMP
 ### start_print
 
 Start a print of a named file, bounded by a manifest. Valid only while the
-printer is operational.
+printer is operational. A start opens a print of its own when no print is open,
+so `record.print_id` names the print the job runs under and its manifest is
+attached to: act on that print afterwards. The examples below this one do.
 
 ```console
 $ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
@@ -467,7 +491,7 @@ record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
 record.outcome: succeeded
-record.print_id: PRINT_ID
+record.print_id: ID
 record.request.action.action: start_print
 record.request.action.actor: operator
 record.request.action.file_name: FILE
@@ -545,11 +569,11 @@ job.state: printing
 printer.bed.actual_c.out_of_range: false
 printer.bed.actual_c.value: 59.5
 printer.bed.target_c.out_of_range: false
-printer.bed.target_c.value: 62.0
+printer.bed.target_c.value: 60.0
 printer.connection: printing
 printer.observed_at: TIMESTAMP
 printer.tools.0.actual_c.out_of_range: false
 printer.tools.0.actual_c.value: 209.5
 printer.tools.0.target_c.out_of_range: false
-printer.tools.0.target_c.value: 208.0
+printer.tools.0.target_c.value: 210.0
 ```

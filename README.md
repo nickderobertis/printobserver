@@ -414,6 +414,17 @@ the stored prints are still listed and `active` is absent. A print's recorded
 `state` stays `printing` while it is open, even when the printer is paused;
 `printobserver status` shows what the printer is doing now.
 
+A print ends the first time any read of the printer — this listing, `status`, a
+supervision turn, or the supervisor starting up — finds its job finished,
+cancelled or failed. A later job of the same file gets a print of its own once a
+read finds it has printed more than 120 seconds (the identity tolerance) less than the earlier job was
+seen printing, and the earlier print ends with `a later job of the same file
+replaced it`; a pause never splits a print. Two cases cannot be told from one
+paused job and stay one print: a later job first read after it has printed about
+as long as the earlier one was last seen printing, and a later job replacing one
+no read ever saw printing. `start-print` opens a print of its own and names it in
+its answer's `record.print_id`.
+
 Make the first read with that ID in place of `PRINT_ID`:
 
 ```console

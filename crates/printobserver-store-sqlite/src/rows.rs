@@ -13,7 +13,7 @@ use crate::values::{from_json, from_json_option, from_tag, parsed, parsed_option
 
 /// Every column of one print, in the order [`print_from_row`] reads them.
 pub(crate) const PRINT_SELECT: &str = "SELECT id, provider_print_id, file_name, state, opened_at, \
-     ended_at, end_reason, narrowings FROM prints";
+     ended_at, end_reason, narrowings, job_started_at, job_print_time_s FROM prints";
 
 /// Every column of one event, with the image it arrived with.
 ///
@@ -54,6 +54,8 @@ pub(crate) fn print_from_row(row: &Row<'_>) -> rusqlite::Result<PrintRecord> {
         ended_at: parsed_option(row, 5)?,
         end_reason: row.get(6)?,
         narrowings: from_json(row, 7)?,
+        job_started_at: parsed_option(row, 8)?,
+        job_print_time_s: row.get(9)?,
     })
 }
 

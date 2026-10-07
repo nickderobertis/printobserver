@@ -791,7 +791,7 @@ fn the_reading_shows_it_in_force(bounded: &Bounded, reading: &Reading) {
 fn status_in_process(world: &World) -> (Value, Timestamp) {
     let client = Client::new(world.proxy.url(), Actor::Operator).with_credential(world::CREDENTIAL);
     let answer = client
-        .status(&world.print_id)
+        .status(&world.print_id())
         .unwrap_or_else(|error| panic!("the status could not be read in this process: {error}"));
     let answered = Timestamp::now();
     let status = printobserver_sdk::as_value(&answer)
@@ -810,11 +810,11 @@ fn status_in_process(world: &World) -> (Value, Timestamp) {
 pub fn the_prior_value_is_back_shortly_after_it_expires(world: &World, opened: &[Bounded]) {
     for bounded in opened {
         let at = just_after(bounded.expires_at, EXPIRY_POLL + MARGIN);
-        let status = running::read(world, &["status", "--print-id", &world.print_id]);
+        let status = running::read(world, &["status", "--print-id", &world.print_id()]);
         let held = in_force(&status);
         let history = running::read(
             world,
-            &["history", "--print-id", &world.print_id, "--limit", "40"],
+            &["history", "--print-id", &world.print_id(), "--limit", "40"],
         );
 
         assert!(
@@ -928,7 +928,7 @@ fn expiry_outcome(history: &Value, intervention: &str) -> Option<String> {
 fn every_refused_duration_records_nothing(world: &World, one: &Driven) {
     let before = in_force(&running::read(
         world,
-        &["status", "--print-id", &world.print_id],
+        &["status", "--print-id", &world.print_id()],
     ))
     .len();
     for offered in REFUSED {
@@ -959,7 +959,7 @@ fn every_refused_duration_records_nothing(world: &World, one: &Driven) {
     }
     let after = in_force(&running::read(
         world,
-        &["status", "--print-id", &world.print_id],
+        &["status", "--print-id", &world.print_id()],
     ))
     .len();
     assert_eq!(

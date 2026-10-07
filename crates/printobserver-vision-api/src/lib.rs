@@ -64,6 +64,12 @@ pub struct ProviderPrint {
     /// The file the provider named, when it named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    /// When the provider says the print started, when it said.
+    ///
+    /// What tells this print's job from a later job of the same file that the
+    /// supervisor found before any alert about it arrived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
 }
 
 /// An `http` or `https` address an image or a provider's API is reached at,

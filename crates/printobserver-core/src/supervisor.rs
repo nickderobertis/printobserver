@@ -111,6 +111,13 @@ pub struct Supervisor {
     resolving: TurnLocks,
     /// The one key [`Supervisor::resolving`] is held under.
     resolving_key: PrintId,
+    /// One expiry of a print's interventions at a time.
+    ///
+    /// The expiry driver's sweep, a print's close-out and a start's
+    /// reconciliation can each reach one intervention, and its restoration is
+    /// issued before its outcome is settled, so two expiries interleaved would
+    /// each put the value back.
+    expiring: TurnLocks,
     /// When the agent last acted on each print.
     last_agent_action: Mutex<BTreeMap<PrintId, Timestamp>>,
     /// The context collected for the turn currently running on each print.
@@ -164,6 +171,7 @@ impl Supervisor {
             turns: TurnLocks::default(),
             resolving: TurnLocks::default(),
             resolving_key: PrintId::new(),
+            expiring: TurnLocks::default(),
             last_agent_action: Mutex::new(BTreeMap::new()),
             pending_context: Mutex::new(BTreeMap::new()),
             inboxes: Inboxes::default(),
@@ -213,6 +221,11 @@ impl Supervisor {
     /// One supervision turn per print at a time.
     pub(crate) const fn turns(&self) -> &TurnLocks {
         &self.turns
+    }
+
+    /// One expiry of a print's interventions at a time.
+    pub(crate) const fn expiring(&self) -> &TurnLocks {
+        &self.expiring
     }
 
     /// What reaches each print's running turn.

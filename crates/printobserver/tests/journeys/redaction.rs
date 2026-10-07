@@ -87,6 +87,7 @@ pub fn no_run_of_the_walk_prints_the_credential(world: &World) {
 fn a_refused_credential_is_named_and_neither_credential_is_printed(world: &World) {
     for one in walk::walk(world) {
         world.wants(one.reports);
+        let one = walk::about_now(&one, world);
         let ran = running::configured(world, &failures::succeeding(&one), OTHER_CREDENTIAL);
         let said = ran.said();
         assert_eq!(
@@ -153,14 +154,14 @@ fn the_server_command_under_a_credential_it_generated(world: &World) {
         &[
             "status".to_owned(),
             "--print-id".to_owned(),
-            world.print_id.clone(),
+            world.print_id().clone(),
             "--config".to_owned(),
             client_config.display().to_string(),
         ],
         &[],
     );
     assert!(
-        read.said().contains(&world.print_id),
+        read.said().contains(&world.print_id()),
         "a read through the configuration the server wrote said nothing about the print it \
          asked for: {}",
         read.said()
@@ -252,6 +253,7 @@ fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, S
     let mut said = Vec::new();
     for one in walk::walk(world) {
         world.wants(one.reports);
+        let one = walk::about_now(&one, world);
         let arguments = failures::succeeding(&one);
         let name = one.command.name.clone();
         said.push((

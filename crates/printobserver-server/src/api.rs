@@ -330,9 +330,13 @@ async fn list_and_adopt_prints(State(state): State<ApiState>) -> Response {
 }
 
 /// Read one print's status.
+///
+/// The print answered is the context's, read after the context read settled
+/// the open prints against the printer's job — so a status that finds the job
+/// over answers the print it closed rather than the one it found.
 async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
-    let print = match state.prints.print(print_id).await {
-        Ok(Some(print)) => print,
+    match state.prints.print(print_id).await {
+        Ok(Some(_)) => {}
         Ok(None) => {
             return refusal(
                 StatusCode::NOT_FOUND,
@@ -340,7 +344,7 @@ async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) ->
             );
         }
         Err(error) => return refusal(store_status(&error), error),
-    };
+    }
     let context = match state.supervisor.context(print_id).await {
         Ok(context) => context,
         Err(error) => return refusal(core_status(&error), error),
@@ -352,7 +356,7 @@ async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) ->
     answer(
         StatusCode::OK,
         &StatusAnswer {
-            print,
+            print: context.print,
             printer: context.printer,
             job: context.job,
             session,

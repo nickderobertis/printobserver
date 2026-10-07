@@ -161,6 +161,8 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("ended_at", "Timestamp", false),
             ("file_name", "string", false),
             ("id", "PrintId", true),
+            ("job_print_time_s", "integer", false),
+            ("job_started_at", "Timestamp", false),
             ("narrowings", "array:ManifestNarrowing", true),
             ("opened_at", "Timestamp", true),
             ("provider_print_id", "integer", false),

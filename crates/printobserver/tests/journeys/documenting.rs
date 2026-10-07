@@ -150,7 +150,7 @@ fn examples_in(root: &Path, document: &str) -> Vec<Example> {
 /// What each placeholder stands for in this world.
 fn bindings(world: &World) -> BTreeMap<&'static str, String> {
     BTreeMap::from([
-        ("PRINT_ID", world.print_id.clone()),
+        ("PRINT_ID", world.print_id().clone()),
         ("IMAGE_ID", world.image_id.clone()),
         ("EVENT_ID", world.event_id.clone()),
         ("FILE", world.printable_file()),
@@ -439,6 +439,15 @@ fn run(world: &World, example: &Example) -> (Vec<Step>, Vec<String>) {
             }
         };
         last_status = status;
+        // A start opens a print of its own, and the examples after it are
+        // about that print: `PRINT_ID` stands for it from the next example on.
+        if step.command.starts_with("printobserver start-print")
+            && let Some(started) = printed
+                .lines()
+                .find_map(|line| line.strip_prefix("record.print_id: "))
+        {
+            world.follows(started.trim());
+        }
         let shown: Vec<String> = abstracted(&printed, &bindings)
             .lines()
             .map(str::to_owned)

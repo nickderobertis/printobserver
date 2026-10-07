@@ -48,14 +48,17 @@ pub fn the_cross_product_walk(world: &World) {
         "this walk does not cover the surface it claims to: {uncovered:#?}"
     );
 
-    for one in &driven {
-        for invocation in walk::invocations(one, world) {
+    for planned in &driven {
+        for index in 0..walk::invocations(planned, world).len() {
             // Before every invocation rather than once per command: a real
             // machine is moved by the command that just ran, so the next
             // invocation of that same command needs it put back — and a heater
             // it already holds the asked-for value on would let a command that
-            // did nothing pass.
-            world.wants(one.reports);
+            // did nothing pass. Putting it back running after a cancel is a
+            // job of its own, so the invocation is about the print it is now.
+            world.wants(planned.reports);
+            let one = &walk::about_now(planned, world);
+            let invocation = walk::invocations(one, world).swap_remove(index);
             starting_from_somewhere_else(world, &one.command.name);
             let ran = drive(world, &invocation);
             let received = world.proxy.the_one_request();
@@ -176,28 +179,32 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
     ran: &Ran,
 ) {
     let said = answered(ran, invocation.machine_readable);
+    if one.command.name == "start-print" {
+        // A start opens a print of its own, and what follows is about it.
+        world.follows(&at(&said, "record.print_id"));
+    }
     match one.command.name.as_str() {
         "prints" => {
             assert_eq!(
                 said.get("active"),
-                Some(&world.print_id),
+                Some(&world.print_id()),
                 "the listing did not name this world's print as the running job's: {said:#?}"
             );
             assert!(
                 said.iter().any(|(key, value)| key.starts_with("prints.")
                     && key.rsplit('.').next() == Some("id")
-                    && *value == world.print_id),
+                    && *value == world.print_id()),
                 "the listing does not carry this world's print: {said:#?}"
             );
         }
         "status" => {
-            assert_eq!(at(&said, "print.id"), world.print_id);
+            assert_eq!(at(&said, "print.id"), world.print_id());
             assert!(
                 said.contains_key("printer.connection") && said.contains_key("job.state"),
                 "a status read answered no printer and no job: {said:#?}"
             );
         }
-        "context" => assert_eq!(at(&said, "context.print.id"), world.print_id),
+        "context" => assert_eq!(at(&said, "context.print.id"), world.print_id()),
         "image" => assert_eq!(at(&said, "record.id"), world.image_id),
         "history" => the_history_it_answers_is_this_prints(world, &said),
         "look" => the_look_took_this_worlds_frame(world, &said),
@@ -308,7 +315,7 @@ fn the_look_took_this_worlds_frame(world: &World, said: &BTreeMap<String, String
     use sha2::{Digest as _, Sha256};
 
     assert_eq!(at(said, "event.kind"), "camera_look", "{said:#?}");
-    assert_eq!(at(said, "event.print_id"), world.print_id, "{said:#?}");
+    assert_eq!(at(said, "event.print_id"), world.print_id(), "{said:#?}");
     let digest = format!("{:x}", Sha256::digest(crate::world::FRAME_BYTES));
     assert_eq!(at(said, "frame.sha256"), digest, "{said:#?}");
     assert_eq!(at(said, "event.image.sha256"), digest, "{said:#?}");
@@ -338,7 +345,8 @@ fn the_history_it_answers_is_this_prints(world: &World, said: &BTreeMap<String, 
             continue;
         };
         assert_eq!(
-            print, &world.print_id,
+            print,
+            &world.print_id(),
             "a history read answered an event belonging to another print"
         );
         seen += 1;
@@ -384,7 +392,7 @@ pub fn this_answer_carries_the_manifest(
 /// name, the material, the nozzle and the ranges and stored one of them would
 /// satisfy a comparison of one field and lose the rest.
 fn the_manifest_it_answers_is_the_one_that_was_written(world: &World, written: &Value) {
-    let read = running::read(world, &["manifest-get", "--print-id", &world.print_id]);
+    let read = running::read(world, &["manifest-get", "--print-id", &world.print_id()]);
     assert_eq!(
         read.get("manifest"),
         Some(written),
@@ -404,7 +412,7 @@ fn the_action_was_carried_out(world: &World, one: &Driven, said: &BTreeMap<Strin
     let action_id = at(said, "record.id");
     let read = running::read(
         world,
-        &["history", "--print-id", &world.print_id, "--limit", "40"],
+        &["history", "--print-id", &world.print_id(), "--limit", "40"],
     );
     the_request_in_the_history_carries_the_callers_values(one, &read, &action_id);
     assert!(
@@ -442,7 +450,7 @@ fn the_intervention_this_invocation_opened_is_the_one_in_force(
 ) {
     let opened = at(said, "intervention.id");
     let applied = adjusted_value(one).expect("an adjustment applies a value");
-    let read = running::read(world, &["status", "--print-id", &world.print_id]);
+    let read = running::read(world, &["status", "--print-id", &world.print_id()]);
     let held = read
         .get("interventions")
         .and_then(Value::as_array)

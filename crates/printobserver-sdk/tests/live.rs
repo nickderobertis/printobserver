@@ -273,7 +273,7 @@ fn step_start_print(
     world: &supervisor::Supervisor,
     proxy: &live::Proxy,
     manifest: &printobserver_sdk::JobManifest,
-) {
+) -> supervisor::Supervisor {
     ready(client, &world.print_id, "operational");
 
     let answered = client
@@ -314,6 +314,10 @@ fn step_start_print(
         "`start_print` sent another `reason`"
     );
     live::same("start_print", &answered, &seen.answer);
+    supervisor::Supervisor {
+        print_id: answered.record.print_id.clone(),
+        ..world.clone()
+    }
 }
 
 /// `set_feedrate_factor`, answered by a real supervisor.
@@ -891,6 +895,21 @@ fn refused_resume(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     live::same("resume", rejection.answer.as_ref(), &seen.answer);
 }
 
+/// The world, about the print the machine is running when it runs one.
+///
+/// The policy refuses an action against an ended print before it asks whether
+/// the actor may request it at all, so a refusal for the grant is asked of the
+/// print the machine is running rather than of one a read has ended.
+fn about_the_running_print(
+    client: &Client,
+    world: supervisor::Supervisor,
+) -> supervisor::Supervisor {
+    match client.prints().expect("a listing is answered").active {
+        Some(print_id) => supervisor::Supervisor { print_id, ..world },
+        None => world,
+    }
+}
+
 /// Every method, answered by a real supervisor, in the one order it admits.
 #[test]
 fn every_method_is_answered_by_a_real_supervisor() {
@@ -909,7 +928,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_history(&client, &world, &proxy);
     step_look(&client, &world, &proxy);
     step_cancel(&client, &world, &proxy);
-    step_start_print(&client, &world, &proxy, &manifest);
+    let world = step_start_print(&client, &world, &proxy, &manifest);
     step_set_feedrate_factor(&client, &world, &proxy);
     step_set_flowrate_factor(&client, &world, &proxy);
     step_set_fan_percent(&client, &world, &proxy);
@@ -926,9 +945,10 @@ fn every_method_is_answered_by_a_real_supervisor() {
 
 /// Every action, refused by a real supervisor's own policy, as a typed rejection.
 ///
-/// One client acting as an actor class the envelope grants nothing. The policy
-/// takes that decision before it looks at the state, the interval or the
-/// bounds, so every action is refused from wherever the machine happens to be.
+/// One client acting as an actor class the envelope grants nothing, against the
+/// print the machine is running. The policy takes that decision before it
+/// looks at the state, the interval or the bounds, so every action is refused
+/// from wherever the machine happens to be.
 #[test]
 fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
     let root = tempfile::tempdir().expect("this walk's own root");
@@ -943,6 +963,7 @@ fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
     )
     .with_credential(&*world.credential);
     let manifest = manifest(&world.file_name);
+    let world = about_the_running_print(&client, world);
 
     refused_cancel(&client, &world, &proxy);
     refused_start_print(&client, &world, &proxy, &manifest);

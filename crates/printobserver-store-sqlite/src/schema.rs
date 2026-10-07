@@ -152,13 +152,25 @@ DROP INDEX prints_by_obico_id;
 CREATE INDEX prints_by_provider_id ON prints(provider_print_id);
 ";
 
+/// What reads of the printer saw of a print's job: when it began, and the
+/// longest it was seen printing.
+///
+/// Nullable columns with no backfill: a print recorded before they existed has
+/// no sighting anybody recorded, and one guessed now would be a sighting nobody
+/// made. Such a print is matched to a running job by its file name alone, as it
+/// was when it was written.
+const V4_JOB_SIGHTING: &str = "\
+ALTER TABLE prints ADD COLUMN job_started_at TEXT;
+ALTER TABLE prints ADD COLUMN job_print_time_s INTEGER;
+";
+
 /// Every migration, in the order they are applied.
 ///
 /// Forward-only: a step is never rewritten once it has run anywhere, because a
 /// database in the field was created by the text as it stood — which is why
 /// the first two steps still spell the column the first version created it
 /// as, and the third renames it.
-pub const MIGRATIONS: [Migration; 3] = [
+pub const MIGRATIONS: [Migration; 4] = [
     Migration {
         version: 1,
         sql: V1_TABLES,
@@ -170,6 +182,10 @@ pub const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: 3,
         sql: V3_PROVIDER_PRINT_ID,
+    },
+    Migration {
+        version: 4,
+        sql: V4_JOB_SIGHTING,
     },
 ];
 
