@@ -16,3 +16,13 @@ process of a throwaway Docker container, launchd on the host through a
 password-free `sudo` on macOS and against a `launchctl` stand-in on Linux, and
 the Windows service through `sc.exe`. Change the lifecycle there; this suite
 carries no copy of it and needs no Docker.
+
+## Where a client reads its server and credential from
+
+`config::load` reads the operator's own `client.toml` under their configuration
+home (`locations::operator_client_config`), then the server's default file — a
+client with no `[client]` table takes the address the server listens on. With
+`--config`, that one file alone. `PRINTOBSERVER_SERVER` and
+`PRINTOBSERVER_CREDENTIAL` win over any file, and with both set and no
+`--config` no file is opened at all, which is how a supervision turn runs:
+`tests/service.rs` traces the open calls to hold that order.

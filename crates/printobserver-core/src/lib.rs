@@ -65,6 +65,7 @@ pub mod look;
 pub mod records;
 pub mod store;
 pub mod supervisor;
+pub mod turn_access;
 pub mod turn_lock;
 
 pub use actions::{ActionOutcome, reported_value};
@@ -99,4 +100,5 @@ pub use store::{
     StoreError, Stores, resolve_history_limit,
 };
 pub use supervisor::{Issued, Supervisor};
+pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};

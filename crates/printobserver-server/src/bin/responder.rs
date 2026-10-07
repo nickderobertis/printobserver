@@ -15,9 +15,11 @@
 //! own arm rather than the agent's.
 //!
 //! So this responder issues its actions through the **running HTTP API**, as
-//! the agent, before it answers. It finds the server and the print the way an
-//! agent does: out of its own prompt, which carries the context command this
-//! server told the turn to run.
+//! the agent, before it answers. It finds the server and its credential the way
+//! the command-line program a real turn runs does — in its environment, which
+//! carries the address the server bound and the credential minted for this
+//! turn — and the print out of its own prompt, which carries the context
+//! command this server told the turn to run.
 //!
 //! Every action it issues is appended to the file [`LOG`] names as **one JSON
 //! object per line** — the operation, the status the server answered under, and
@@ -53,12 +55,8 @@ const SEEN: &str = "PRINTOBSERVER_RESPONDER_SEEN";
 const SYSTEM_FLAGS: (&str, &str) = ("--append-system-prompt", "--append-system-prompt-file");
 
 /// What the context command in a prompt begins with, which is what a turn is
-/// told to run and what this responder finds its configuration and its print
-/// in.
-const CONTEXT_MARKER: &str = "printobserver context --config ";
-
-/// The table the client configuration names the server and the credential in.
-const CLIENT_TABLE: &str = "client";
+/// told to run and what this responder finds its print in.
+const CONTEXT_MARKER: &str = "printobserver context ";
 
 /// How long one action this responder issues may take.
 ///
@@ -96,45 +94,34 @@ impl Credential {
     }
 }
 
-/// One text value of the client configuration's `[client]` table.
-///
-/// Read as the TOML document the server wrote rather than line by line, so a
-/// credential carrying a character TOML escapes is read as the credential
-/// rather than as its escaped spelling. A value that is empty, or that carries
-/// anything outside printable ASCII, is not one this responder puts into a
-/// request head, and is taken as absent.
-fn client_value(configuration: &str, key: &str) -> Option<String> {
-    let document: toml::Table = toml::from_str(configuration).ok()?;
-    document
-        .get(CLIENT_TABLE)?
-        .get(key)?
-        .as_str()
-        .filter(|value| {
-            !value.is_empty() && value.bytes().all(|byte| (b' '..=b'~').contains(&byte))
-        })
-        .map(str::to_owned)
+/// One variable of this turn's environment, when it is something a request
+/// head carries: not empty, and printable ASCII throughout.
+fn from_the_environment(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| {
+        !value.is_empty() && value.bytes().all(|byte| (b' '..=b'~').contains(&byte))
+    })
 }
 
-/// The server and the print this turn's own prompt names.
+/// The server and the credential this turn's environment carries, and the
+/// print its own prompt names.
 ///
-/// The prompt reaches the harness on its argv, which is where a real one reads
-/// it from too. A prompt that names no context command is a turn this responder
-/// does not act on — it answers and nothing else.
+/// The environment is where a turn is handed both — the address the server
+/// bound and the credential minted for this turn — and the context command it
+/// is told to run names neither, which is why the program a real turn runs
+/// reads them from there too. The prompt reaches the harness on its argv,
+/// which is where a real one reads it from. A turn that carries neither
+/// variable, or whose prompt names no context command, is a turn this
+/// responder does not act on — it answers and nothing else.
 fn turn_from_the_prompt() -> Option<Turn> {
     let prompt = std::env::args().find(|word| word.contains(CONTEXT_MARKER))?;
     let after = prompt.split(CONTEXT_MARKER).nth(1)?;
-    // The path is quoted for a POSIX shell, and read back the way one reads it.
-    let (path, rest) = single_quoted(after.trim_start())?;
-    // The command names a configuration file rather than an address, because
-    // no client command of that program takes an address. This responder is
-    // not that program, so it reads the two values it needs out of the file the
-    // server wrote — which is where a real client reads them from too.
-    let configuration = std::fs::read_to_string(path).ok()?;
-    let server = client_value(&configuration, "server")?
+    let server = from_the_environment(printobserver_supervisor_api::SERVER_ENV)?
         .trim_end_matches('/')
         .to_owned();
-    let credential = Credential::admitted(client_value(&configuration, "credential")?)?;
-    let print = rest
+    let credential = Credential::admitted(from_the_environment(
+        printobserver_supervisor_api::CREDENTIAL_ENV,
+    )?)?;
+    let print = after
         .split_whitespace()
         .skip_while(|word| *word != "--print-id")
         .nth(1)?
@@ -145,24 +132,6 @@ fn turn_from_the_prompt() -> Option<Turn> {
         credential,
         print,
     })
-}
-
-/// One word a POSIX shell reads out of single quotes at the start of `text` —
-/// each `'\''` a single quote of its own — and what follows it.
-fn single_quoted(text: &str) -> Option<(String, &str)> {
-    let mut word = String::new();
-    let mut rest = text.strip_prefix('\'')?;
-    loop {
-        let (quoted, after) = rest.split_once('\'')?;
-        word.push_str(quoted);
-        match after.strip_prefix("\\''") {
-            Some(reopened) => {
-                word.push('\'');
-                rest = reopened;
-            }
-            None => return Some((word, after)),
-        }
-    }
 }
 
 /// One action this responder could not issue at all.
@@ -236,7 +205,11 @@ fn act() {
     let Some(turn) = turn_from_the_prompt() else {
         append(
             &log,
-            &refused("this turn's prompt names no context command").to_string(),
+            &refused(
+                "this turn's prompt names no context command, or its environment carries no \
+                 server and credential",
+            )
+            .to_string(),
         );
         return;
     };

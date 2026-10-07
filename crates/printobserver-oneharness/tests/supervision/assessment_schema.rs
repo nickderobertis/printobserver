@@ -59,7 +59,10 @@ fn drive(
         &watch,
     );
     let print_id = PrintId::new();
-    let outcome = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)));
+    let outcome = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ));
     (outcome, watch.requests())
 }
 

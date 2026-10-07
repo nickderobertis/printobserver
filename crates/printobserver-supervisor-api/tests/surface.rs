@@ -54,7 +54,7 @@ fn supervisor_port_declares_exactly_the_stated_methods() {
     let expected = vec![
         method(
             "run_turn",
-            &[("request", "TurnRequest")],
+            &[("request", "TurnRequest"), ("access", "Arc<dynTurnAccess>")],
             "BoxFuture<'_,Result<TurnOutcome,SupervisorError>>",
         ),
         method(

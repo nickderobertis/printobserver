@@ -29,8 +29,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command as Process;
 
 use printobserver::surface::{
-    Field, Form, GLOBAL_OPTIONS, LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply,
-    command_for, option_for, surface,
+    CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, Field, Form, GLOBAL_OPTIONS,
+    LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, command_for, option_for, surface,
 };
 use printobserver_server::operations::{ActionKind, PrintAction};
 use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, ValueKind};
@@ -212,6 +212,8 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
     wanted.extend(READS.iter().map(|read| command_for(read)));
     wanted.insert("server".to_owned());
     wanted.insert("sign-in".to_owned());
+    wanted.insert("credential issue".to_owned());
+    wanted.insert("credential verifier".to_owned());
     let present: BTreeSet<String> = surface.iter().map(|command| command.name.clone()).collect();
     found.extend(
         wanted
@@ -253,7 +255,14 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
             }
         }
         if LOCAL_COMMANDS.contains(&command.name.as_str()) {
-            found.extend(taken.iter().map(|option| {
+            // One flag, and only on `credential issue`: the one that lets it
+            // replace an operator configuration already there.
+            let flagged: BTreeSet<String> = if command.name == "credential issue" {
+                BTreeSet::from(["--replace".to_owned()])
+            } else {
+                BTreeSet::new()
+            };
+            found.extend(taken.difference(&flagged).map(|option| {
                 format!(
                     "`{}` accepts `{option}`, and it takes no value of its own",
                     command.name
@@ -506,14 +515,15 @@ fn the_parser_accepts_exactly_the_options_the_surface_declares() {
         spellings.insert(command.name.clone(), command.options());
     }
     for (name, options) in spellings {
+        let words: Vec<&str> = name.split_whitespace().collect();
         for option in &options {
-            let (_, said) = run(&[&name, option, "1"]);
+            let (_, said) = run(&[words.as_slice(), &[option.as_str(), "1"]].concat());
             assert!(
                 !said.contains(&format!("`{option}` is not an option")),
                 "`{name}` declares `{option}` and its parser refuses it: {said}"
             );
         }
-        let (code, said) = run(&[&name, "--fast", "1"]);
+        let (code, said) = run(&[words.as_slice(), &["--fast", "1"]].concat());
         assert_eq!(code, Some(2), "`{name} --fast` was not refused: {said}");
         assert!(
             said.contains("`--fast` is not an option"),
@@ -523,9 +533,10 @@ fn the_parser_accepts_exactly_the_options_the_surface_declares() {
 }
 
 /// Every command of the surface names an operation, except the one that runs
-/// the server and the one that signs its harness in.
+/// the server, the one that signs its harness in, and the two that issue and
+/// verify the operator's credential.
 #[test]
-fn only_the_commands_that_run_the_server_and_sign_it_in_name_no_operation() {
+fn only_the_commands_that_run_the_server_sign_it_in_and_handle_credentials_name_no_operation() {
     let without: Vec<String> = surface()
         .into_iter()
         .filter(|command| !command.is_client())
@@ -534,11 +545,17 @@ fn only_the_commands_that_run_the_server_and_sign_it_in_name_no_operation() {
 
     assert_eq!(
         without,
-        vec![SERVE_COMMAND.to_owned(), SIGN_IN_COMMAND.to_owned()]
+        vec![
+            SERVE_COMMAND.to_owned(),
+            SIGN_IN_COMMAND.to_owned(),
+            CREDENTIAL_ISSUE_COMMAND.to_owned(),
+            CREDENTIAL_VERIFIER_COMMAND.to_owned(),
+        ]
     );
 }
 
-/// A third command that is not a request to a running server is refused.
+/// A command that is not a request to a running server, beside the four that
+/// are declared, is refused.
 #[test]
 fn a_third_command_naming_no_operation_is_refused() {
     let mut broken = surface();
@@ -546,13 +563,14 @@ fn a_third_command_naming_no_operation_is_refused() {
         name: "reset".to_owned(),
         operation: None,
         fields: Vec::new(),
+        flags: Vec::new(),
     });
 
     let found = findings(&broken, &GLOBAL_OPTIONS);
 
     assert!(
         found.iter().any(|finding| finding.contains("`reset`")),
-        "a command naming no operation beside the two local ones was accepted: {found:#?}"
+        "a command naming no operation beside the local ones was accepted: {found:#?}"
     );
 }
 

@@ -71,6 +71,10 @@ class CommandSpec:
         """The command's line of the usage, as `surface.rs` writes it."""
         taken = []
         for field in self.fields:
+            if field.kind == "flag":
+                # A flag carries no value: `credential issue`'s `--replace`.
+                taken.append(f"[{field.forms[0]}]")
+                continue
             value = "<json>" if field.structured else "<value>"
             option = f"{field.forms[0]} {value}"
             taken.append(option if field.required else f"[{option}]")
@@ -121,7 +125,7 @@ def surface() -> Surface:
             fields[option["field"]] = Field(
                 name=option["field"],
                 required=(held.required if held else False) or option["required"],
-                kind=parameter.get("kind", "text"),
+                kind="flag" if option["supply"] == "flag" else parameter.get("kind", "text"),
                 located=option["located"],
                 forms=forms,
                 file_forms=files,

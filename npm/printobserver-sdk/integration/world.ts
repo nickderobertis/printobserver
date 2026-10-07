@@ -14,7 +14,7 @@ import { delimiter, dirname, resolve } from "node:path";
 /** Where the supervisor is, and what a journey acts on. */
 export interface Supervisor {
   server: string;
-  /** The credential it serves under, as the client configuration it wrote carries it. */
+  /** The operator credential it admits, whose verifier it is configured with. */
   credential: string;
   print_id: string;
   image_id: string;
@@ -71,8 +71,12 @@ export class Standing {
     this.at = at;
   }
 
-  /** Bring one up under `into`, over the scripted OctoPrint. */
-  static async standing(into: string): Promise<Standing> {
+  /**
+   * Bring one up under `into`, over the scripted OctoPrint. A `refusing` world's
+   * envelope grants the operator nothing, which refuses every action by the
+   * policy's own grant.
+   */
+  static async standing(into: string, refusing = false): Promise<Standing> {
     const holding = Bun.spawn(
       [
         "uv",
@@ -85,6 +89,7 @@ export class Standing {
         "--octoprint",
         "--into",
         into,
+        ...(refusing ? ["--refusing"] : []),
       ],
       {
         cwd: REPO_ROOT,

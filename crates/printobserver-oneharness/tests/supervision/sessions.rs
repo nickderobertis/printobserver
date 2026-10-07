@@ -53,19 +53,21 @@ fn each_print_keeps_its_own_session_across_a_rebuild() {
     // Each print's first event opens its own session.
     let mut opened = Vec::new();
     for print_id in [first, second] {
-        let outcome = block_on(supervisor.run_turn(turn(print_id, event(print_id, alert()), None)))
-            .expect("the first turn of a print runs");
+        let outcome = block_on(supervisor.run_turn(
+            turn(print_id, event(print_id, alert()), None),
+            crate::support::access(),
+        ))
+        .expect("the first turn of a print runs");
         assert_eq!(outcome.phase, SessionPhase::Created);
         opened.push(outcome.session.session_name);
     }
 
     // A later event of each print continues the session it opened.
     for (index, print_id) in [first, second].into_iter().enumerate() {
-        let outcome = block_on(supervisor.run_turn(turn(
-            print_id,
-            event(print_id, notification_body()),
-            None,
-        )))
+        let outcome = block_on(supervisor.run_turn(
+            turn(print_id, event(print_id, notification_body()), None),
+            crate::support::access(),
+        ))
         .expect("a later turn of a print runs");
         assert_eq!(outcome.phase, SessionPhase::Continued);
         assert_eq!(outcome.session.session_name, opened[index]);
@@ -82,9 +84,11 @@ fn each_print_keeps_its_own_session_across_a_rebuild() {
     );
 
     for (index, print_id) in [first, second].into_iter().enumerate() {
-        let outcome =
-            block_on(rebuilt.run_turn(turn(print_id, event(print_id, notification_body()), None)))
-                .expect("a turn after the rebuild runs");
+        let outcome = block_on(rebuilt.run_turn(
+            turn(print_id, event(print_id, notification_body()), None),
+            crate::support::access(),
+        ))
+        .expect("a turn after the rebuild runs");
         assert_eq!(
             outcome.phase,
             SessionPhase::Continued,

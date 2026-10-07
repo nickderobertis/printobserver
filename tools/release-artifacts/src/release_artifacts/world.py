@@ -16,19 +16,21 @@ identifiers are then read out of the store the supervisor wrote.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import queue
+import secrets
 import sqlite3
 import subprocess
 import sys
 import threading
 import time
-import tomllib
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from socket import socket
 from types import TracebackType
-from typing import NewType
+from typing import IO, NewType
 from urllib.parse import urlsplit
 
 from repo_checks.shell import start
@@ -58,11 +60,15 @@ INGRESS_WORD = "a-shared-word-for-a-smoke-check"
 #: The header that word travels in, as the ingress spells it.
 INGRESS_HEADER = "x-printobserver-token"
 
-#: The file the supervisor writes the address it bound and the credential in
-#: force into, for the clients beside it. Reading it is how this finds a server
-#: started on a port the operating system chose, and authenticates to one that
-#: generated its own credential.
-CLIENT_CONFIG = "client.toml"
+#: What the supervisor says on standard error, followed by the address it
+#: bound, once it is serving. Reading it is how this finds a server started on
+#: a port the operating system chose: the supervisor writes the address down
+#: nowhere else.
+SERVING_ON = "printobserver is serving on "
+
+#: How many random bytes the operator credential this puts in force is drawn
+#: from, in the URL-safe alphabet an `Authorization` header carries as it is.
+CREDENTIAL_BYTES = 32
 
 #: The store the supervisor keeps its record in.
 STORE = "printobserver.sqlite3"
@@ -106,9 +112,9 @@ Credential = NewType("Credential", str)
 class Running:
     """A supervisor a client can be pointed at."""
 
-    #: Where it answers, as its own client configuration writes it.
+    #: Where it answers, as it said it does.
     server: str
-    #: The credential it serves under, as that same configuration carries it.
+    #: The operator credential it admits, whose verifier its configuration names.
     credential: Credential
     #: The print every read of the smoke checks is about.
     print_id: str
@@ -136,28 +142,14 @@ def _addressable(server: str) -> bool:
     return split.scheme == "http" and bool(split.hostname) and port is not None
 
 
-def _presentable(credential: str) -> bool:
-    """Whether a credential is one an `Authorization` header carries intact.
+def verifier_of(credential: Credential) -> str:
+    """The `api.credential_verifier` a supervisor admits one credential by.
 
-    The same rule the server holds its own credential to, and each installed
-    smoke check holds its `--credential` to.
+    The SHA-256 of its UTF-8 bytes in lowercase hexadecimal, behind `sha256:`:
+    what `printobserver credential issue` prints, computed here because the
+    world is configured before the program could be asked.
     """
-    return (
-        bool(credential)
-        and all(" " <= character <= "~" for character in credential)
-        and not credential.startswith(" ")
-        and not credential.endswith(" ")
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class ClientConfiguration:
-    """What a supervisor wrote for the clients beside it."""
-
-    #: The address it bound.
-    server: str
-    #: The credential it serves under.
-    credential: Credential
+    return "sha256:" + hashlib.sha256(credential.encode("utf-8")).hexdigest()
 
 
 class Machine:
@@ -273,11 +265,17 @@ def every_action(contract: Path = ACTION_KINDS) -> list[str]:
     return kinds
 
 
-def _configuration(state: Path, printer: Printer, credential: str | None = None) -> str:
+def _configuration(
+    state: Path, printer: Printer, credential: Credential, *, refusing: bool = False
+) -> str:
     """The one configuration file the supervisor reads, as a document.
 
-    `credential` is the one the supervisor serves under; given none, the
-    document names none and the supervisor generates its own.
+    It names the verifier of `credential` alone, as an operator who issued one
+    configures it, and never the credential. `refusing` grants the operator
+    nothing: a client of such a supervisor acts as the operator, the one
+    identity its credential is, and is refused every action by the grant — the
+    one rejection the policy takes before it looks at the state, the interval
+    or the bounds — from wherever the machine happens to be.
     """
     document = {
         "state_dir": str(state),
@@ -299,21 +297,18 @@ def _configuration(state: Path, printer: Printer, credential: str | None = None)
                 "tool_target:0": {"min": 0.0, "max": 260.0},
             },
             "actions": {
-                # Every action there is, read from the contract that names them.
-                "operator": every_action(),
-                # Nothing at all, and deliberately: the all-operation walk
-                # needs one refusal per action method, and the grant is the
-                # one rejection the policy takes before it looks at the
-                # state, the interval or the bounds — so a client acting as
-                # an agent is refused every action from wherever the
-                # machine happens to be.
+                # Every action there is, read from the contract that names them —
+                # or, for a refusing world, none.
+                "operator": [] if refusing else every_action(),
+                # Nothing: no client of this world is a supervision turn, and
+                # an operator's credential claiming the agent is refused
+                # before the policy is asked anything.
                 "agent": [],
                 "system": ["pause"],
             },
         },
     }
-    if credential is not None:
-        document["api"] = {"credential": credential}
+    document["api"] = {"credential_verifier": verifier_of(credential)}
     return json.dumps(document, indent=2)
 
 
@@ -371,7 +366,8 @@ class World:
         root: Path,
         printer: Printer | None = None,
         *,
-        credential: str | None = None,
+        credential: Credential | None = None,
+        refusing: bool = False,
     ) -> None:
         """Bring one up under `root`, running the program at `program`.
 
@@ -380,14 +376,16 @@ class World:
         what the supervisor drives and the stand-in serves only the snapshot the
         alert below names.
 
-        `credential` is the one the supervisor is configured to serve under.
-        Given none, it generates its own, which is what an installed service
-        does; a journey names one to hold a client to a credential of a
-        particular shape.
+        `credential` is the operator credential the supervisor is configured
+        to admit, by its verifier. Given none, one is drawn from
+        `CREDENTIAL_BYTES` random bytes; a
+        journey names one to hold a client to a credential of a particular
+        shape. `refusing` grants the operator nothing; see `_configuration`.
         """
         self.program = program
         self.root = root
-        self.credential = credential
+        self.credential = credential or Credential(secrets.token_urlsafe(CREDENTIAL_BYTES))
+        self.refusing = refusing
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
         self.state = root / "state"
@@ -413,24 +411,26 @@ class World:
         Raises:
             WorldError: If the supervisor did not come up, or opened no print.
         """
-        # A state directory a previous run left behind still carries the
-        # address that run bound. Reading it would point a journey at a
-        # supervisor that stopped, so it goes before this one starts.
-        (self.state / CLIENT_CONFIG).unlink(missing_ok=True)
         configuration = self.root / "supervisor.toml"
         configuration.write_text(
-            _as_toml(json.loads(_configuration(self.state, self.printer, self.credential))),
+            _as_toml(
+                json.loads(
+                    _configuration(
+                        self.state, self.printer, self.credential, refusing=self.refusing
+                    )
+                )
+            ),
             encoding="utf-8",
         )
         self._supervisor = start(
             [str(self.program), "server", "--config", str(configuration)],
             cwd=self.root,
         )
-        written = self._await_client_configuration()
-        print_id, image_id, event_id = self._open_a_print(written.server)
+        server = self._await_serving()
+        print_id, image_id, event_id = self._open_a_print(server)
         return Running(
-            server=written.server,
-            credential=written.credential,
+            server=server,
+            credential=self.credential,
             print_id=print_id,
             image_id=image_id,
             event_id=event_id,
@@ -450,57 +450,49 @@ class World:
             self._supervisor = None
         self.machine.stop()
 
-    def _await_client_configuration(self) -> ClientConfiguration:
-        """The address the supervisor bound and the credential in force.
+    def _await_serving(self) -> str:
+        """The address the supervisor bound, as it says it is serving on it.
 
-        Both read from the `[client]` table it wrote for its clients, which is
-        where every client beside a real service reads them from: the
-        configuration this writes names no credential, so the supervisor
-        generated one.
+        Read off its standard error, by a thread of its own that goes on
+        reading — so nothing it prints later can fill a pipe nobody empties.
 
         Raises:
-            WorldError: If it never wrote both, or wrote either as nothing a
-                client could use: a server that is no `http://host:port`
-                address, or a credential no `Authorization` header carries
-                intact — which no supervisor serves under.
+            WorldError: If it stopped first, never said, or said something that
+                is no `http://host:port` address.
         """
-        written = self.state / CLIENT_CONFIG
+        supervisor = self._supervisor
+        if supervisor is None or supervisor.stderr is None:
+            msg = "the supervisor was not started with its standard error read"
+            raise WorldError(msg)
+        lines: queue.Queue[str | None] = queue.Queue()
+        said: list[str] = []
+
+        def pump(stream: IO[str]) -> None:
+            for line in stream:
+                lines.put(line)
+            lines.put(None)
+
+        threading.Thread(target=pump, args=(supervisor.stderr,), daemon=True).start()
         deadline = time.monotonic() + STARTUP_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            if self._supervisor is not None and self._supervisor.poll() is not None:
-                said = self._supervisor.communicate()[1]
-                msg = f"the supervisor stopped before it answered:\n{said}"
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                line = lines.get(timeout=remaining)
+            except queue.Empty:
+                break
+            if line is None:
+                supervisor.wait(timeout=30)
+                msg = "the supervisor stopped before it answered:\n" + "".join(said)
                 raise WorldError(msg)
-            if written.is_file():
-                try:
-                    table = tomllib.loads(written.read_text(encoding="utf-8")).get("client", {})
-                except tomllib.TOMLDecodeError:
-                    # Caught part-way through being written; the next look
-                    # reads the whole of it.
-                    table = {}
-                match table:
-                    case {"server": str(server), "credential": str(credential)}:
-                        if not _addressable(server):
-                            msg = (
-                                f"the supervisor wrote {written} with a server that is no "
-                                f"http://host:port address: {server!r}"
-                            )
-                            raise WorldError(msg)
-                        if not _presentable(credential):
-                            # The credential is never quoted: it is the one
-                            # the supervisor serves under.
-                            msg = (
-                                f"the supervisor wrote {written} with a credential no request "
-                                "presents: printable ASCII, not empty, and neither beginning "
-                                "nor ending with a space"
-                            )
-                            raise WorldError(msg)
-                        return ClientConfiguration(server=server, credential=Credential(credential))
-                    case _:
-                        # Neither is written yet; the next look reads both.
-                        pass
-            time.sleep(0.1)
-        msg = f"the supervisor wrote no {CLIENT_CONFIG} in {STARTUP_TIMEOUT_SECONDS}s"
+            said.append(line)
+            if line.startswith(SERVING_ON):
+                server = "http://" + line.removeprefix(SERVING_ON).strip()
+                if not _addressable(server):
+                    msg = (
+                        f"the supervisor said it serves on no http://host:port address: {server!r}"
+                    )
+                    raise WorldError(msg)
+                return server
+        msg = f"the supervisor never said where it serves in {STARTUP_TIMEOUT_SECONDS}s"
         raise WorldError(msg)
 
     def _open_a_print(self, server: str) -> tuple[str, str, str]:

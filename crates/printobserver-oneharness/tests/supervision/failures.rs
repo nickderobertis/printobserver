@@ -50,7 +50,11 @@ fn answering<Mode>(held: &SchemaHold<Mode>, fixture: &Fixture) -> SupervisorConf
 fn unwatched_turn(configured: SupervisorConfig) -> Result<(), SupervisorError> {
     let supervisor = OneharnessSupervisor::open(configured)?;
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None))).map(drop)
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .map(drop)
 }
 
 /// One turn of a fresh print, watched, answering what the port made of it.
@@ -58,7 +62,11 @@ fn watched_turn(configured: SupervisorConfig) -> Result<(), SupervisorError> {
     let watch = Arc::new(Watch::default());
     let supervisor = port(configured, &watch);
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None))).map(drop)
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .map(drop)
 }
 
 /// The detail one error carries, or the shape it turned out to be.
@@ -281,8 +289,11 @@ fn a_turn_answering(tag: &str, said: &str) -> (SupervisorError, String) {
     let watch = Arc::new(Watch::default());
     let supervisor = port(configured, &watch);
     let print_id = PrintId::new();
-    let refused = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect_err("prose was accepted as an assessment");
+    let refused = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect_err("prose was accepted as an assessment");
     let recorded = supervisor
         .recorded_turns(&print_id)
         .expect("the ledger reads back")
@@ -378,8 +389,11 @@ fn a_ledger_that_cannot_be_read_is_reported() {
     let watch = Arc::new(Watch::default());
     let supervisor = port(answering(&schemas, &fixture), &watch);
 
-    let refused = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect_err("a turn ran against a ledger it could not read");
+    let refused = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect_err("a turn ran against a ledger it could not read");
     assert!(
         detail(&refused).contains("is unreadable"),
         "the unreadable ledger was not named: {}",
@@ -438,8 +452,11 @@ fn a_ledger_that_cannot_be_written_is_reported() {
     let supervisor = port(answering(&schemas, &fixture), &watch);
     let print_id = PrintId::new();
 
-    let refused = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect_err("a turn was recorded into a ledger that cannot be written");
+    let refused = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect_err("a turn was recorded into a ledger that cannot be written");
     assert!(
         detail(&refused).contains("could not be written"),
         "the unwritable ledger was not named: {}",
@@ -468,8 +485,11 @@ fn a_harness_that_answers_and_exits_non_zero_still_took_the_turn() {
     let watch = Arc::new(Watch::default());
     let supervisor = port(configured, &watch);
     let print_id = PrintId::new();
-    let outcome = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("a harness that answered and exited non-zero was read as a failed turn");
+    let outcome = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("a harness that answered and exited non-zero was read as a failed turn");
 
     assert_eq!(outcome.assessment.summary, "the print is fine");
     assert_eq!(outcome.phase, SessionPhase::Created);
@@ -667,8 +687,11 @@ fn a_lost_harness_store_opens_the_conversation_again() {
     let supervisor = port(answering(&schemas, &fixture), &watch);
     let print_id = PrintId::new();
 
-    let opened = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the first turn runs");
+    let opened = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the first turn runs");
     assert_eq!(opened.phase, SessionPhase::Created);
     assert_eq!(
         opened.session.session_name,
@@ -678,8 +701,11 @@ fn a_lost_harness_store_opens_the_conversation_again() {
     let store: &Path = &fixture.state_dir().join(HARNESS_SESSIONS_DIRECTORY);
     fs::remove_dir_all(store).expect("the harness session store is removable");
 
-    let again = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn after the store was lost runs");
+    let again = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn after the store was lost runs");
     assert_eq!(
         again.phase,
         SessionPhase::Created,

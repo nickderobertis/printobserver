@@ -65,8 +65,11 @@ fn one_real_report<Mode>(held: &SchemaHold<Mode>, tag: &str) -> RunReport {
         &watch,
     );
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn runs");
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
     watch
         .reports()
         .into_iter()

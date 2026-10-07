@@ -1238,6 +1238,15 @@ pub struct FakeSupervisor {
     overlap: Mutex<Overlap>,
     /// Where a test holds the first call.
     gate: Gate,
+    /// Every credential a turn was issued, and who the authority admitted it
+    /// as while that turn was still running.
+    issued: Mutex<Vec<(String, Option<TurnBinding>)>>,
+    /// The authority core opens each turn's issuer from.
+    authority: Mutex<Option<Arc<FakeTurnAuthority>>>,
+    /// Why each turn that asked for a credential was issued none.
+    unissued: Mutex<Vec<String>>,
+    /// Whether a turn, once issued its credential, never returns.
+    stalls: Mutex<bool>,
 }
 
 impl FakeSupervisor {
@@ -1256,7 +1265,35 @@ impl FakeSupervisor {
             failure: Mutex::new(None),
             overlap: Mutex::new(Overlap::default()),
             gate: Gate::default(),
+            issued: Mutex::new(Vec::new()),
+            authority: Mutex::new(None),
+            unissued: Mutex::new(Vec::new()),
+            stalls: Mutex::new(false),
         }
+    }
+
+    /// Never return from a turn once it has been issued its credential, so
+    /// the only way it ends is by whoever is awaiting it giving up.
+    pub fn stalls(&self) {
+        *self.stalls.lock().expect("the harness holds") = true;
+    }
+
+    /// Why each turn that asked for a credential was issued none, in order.
+    #[must_use]
+    pub fn unissued(&self) -> Vec<String> {
+        self.unissued.lock().expect("the harness holds").clone()
+    }
+
+    /// Every credential a turn was issued, in order, and who the authority
+    /// admitted it as while that turn was still running.
+    #[must_use]
+    pub fn issued(&self) -> Vec<(String, Option<TurnBinding>)> {
+        self.issued.lock().expect("the harness holds").clone()
+    }
+
+    /// Read the authority core opens each turn's issuer from.
+    pub fn reads_authority(&self, authority: &Arc<FakeTurnAuthority>) {
+        *self.authority.lock().expect("the harness holds") = Some(Arc::clone(authority));
     }
 
     /// Give the harness the core its turns read context from and act through.
@@ -1392,6 +1429,7 @@ impl SupervisorPort for FakeSupervisor {
     fn run_turn(
         &self,
         request: TurnRequest,
+        access: Arc<dyn printobserver_supervisor_api::TurnAccess>,
     ) -> printobserver_supervisor_api::BoxFuture<'_, Result<TurnOutcome, SupervisorError>> {
         self.journal.record(Call::RunTurn(request.print_id));
         self.turns
@@ -1402,6 +1440,41 @@ impl SupervisorPort for FakeSupervisor {
             self.on_enter();
             self.wait_while_held();
             let core = self.core.lock().expect("the harness holds").upgrade();
+            // What a run is handed to reach the server with, and who core
+            // admits it as while this turn runs.
+            let issued = printobserver_supervisor_api::TurnSession::new(format!(
+                "print-{}",
+                request.print_id
+            ))
+            .and_then(|session| access.issue(&session));
+            if let Err(error) = &issued {
+                self.unissued
+                    .lock()
+                    .expect("the harness holds")
+                    .push(error.to_string());
+            }
+            if let Ok(pass) = issued {
+                let credential = pass
+                    .environment()
+                    .into_iter()
+                    .find(|(name, _)| *name == printobserver_supervisor_api::CREDENTIAL_ENV)
+                    .map(|(_, value)| value)
+                    .unwrap_or_default();
+                let admitted = self
+                    .authority
+                    .lock()
+                    .expect("the harness holds")
+                    .as_ref()
+                    .and_then(|authority| authority.admit(&credential));
+                self.issued
+                    .lock()
+                    .expect("the harness holds")
+                    .push((credential, admitted));
+            }
+            let stalls = *self.stalls.lock().expect("the harness holds");
+            if stalls {
+                std::future::pending::<()>().await;
+            }
             if let Some(core) = core {
                 // What the turn's own context command does: read the print's
                 // context back through core.
@@ -1502,5 +1575,109 @@ pub fn job_snapshot() -> JobSnapshot {
         print_time_left_s: Some(4176),
         state: PrinterState::Printing,
         error: None,
+    }
+}
+
+/// Who one turn credential authenticates as.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnBinding {
+    /// The session the run that holds it is in.
+    pub session_name: String,
+    /// The print the turn is about.
+    pub print_id: PrintId,
+}
+
+/// An authority that mints numbered credentials and remembers which are live.
+///
+/// What core is responsible for is when an issuer is opened and when it is
+/// revoked; how a credential is drawn is the composition root's, and its own
+/// tier holds that. So these are numbered rather than random.
+#[derive(Debug, Default)]
+pub struct FakeTurnAuthority {
+    /// Every live credential, and which turn issued it.
+    live: Mutex<BTreeMap<String, (u64, TurnBinding)>>,
+    /// The number the next credential or turn takes.
+    next: Mutex<u64>,
+}
+
+impl FakeTurnAuthority {
+    /// Who one credential authenticates as, while it is live.
+    #[must_use]
+    pub fn admit(&self, credential: &str) -> Option<TurnBinding> {
+        self.live
+            .lock()
+            .expect("the authority holds")
+            .get(credential)
+            .map(|(_, binding)| binding.clone())
+    }
+
+    /// How many credentials are live.
+    #[must_use]
+    pub fn live(&self) -> usize {
+        self.live.lock().expect("the authority holds").len()
+    }
+
+    /// The next number.
+    fn number(&self) -> u64 {
+        let mut next = self.next.lock().expect("the authority holds");
+        *next += 1;
+        *next
+    }
+}
+
+/// One turn's issuer, over the fake authority.
+struct FakeTurnScope {
+    /// The authority it issues into.
+    authority: Arc<FakeTurnAuthority>,
+    /// Which turn this is.
+    turn: u64,
+    /// The print the turn is about.
+    print_id: PrintId,
+}
+
+impl printobserver_supervisor_api::TurnAccess for FakeTurnScope {
+    fn issue(
+        &self,
+        session: &printobserver_supervisor_api::TurnSession,
+    ) -> Result<printobserver_supervisor_api::TurnPass, SupervisorError> {
+        let credential = format!("turn-credential-{}", self.authority.number());
+        let mut live = self.authority.live.lock().expect("the authority holds");
+        live.retain(|_, (turn, _)| *turn != self.turn);
+        live.insert(
+            credential.clone(),
+            (
+                self.turn,
+                TurnBinding {
+                    session_name: session.to_string(),
+                    print_id: self.print_id,
+                },
+            ),
+        );
+        printobserver_supervisor_api::TurnPass::new(None, credential)
+    }
+}
+
+/// Opens one issuer per turn, over the one authority.
+#[derive(Debug)]
+pub struct OpensTurns(pub Arc<FakeTurnAuthority>);
+
+impl printobserver_core::TurnAuthority for OpensTurns {
+    fn open(&self, print_id: PrintId) -> printobserver_core::OpenedTurn {
+        let turn = self.0.number();
+        let authority = Arc::clone(&self.0);
+        printobserver_core::OpenedTurn::new(
+            Arc::new(FakeTurnScope {
+                authority: Arc::clone(&self.0),
+                turn,
+                print_id,
+            }),
+            Box::new(move || {
+                authority
+                    .live
+                    .lock()
+                    .expect("the authority holds")
+                    .retain(|_, (issued_by, _)| *issued_by != turn);
+            }),
+        )
     }
 }

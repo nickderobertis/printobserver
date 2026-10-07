@@ -44,11 +44,17 @@ fn every_process_a_turn_creates_is_the_responder_this_repository_ships() {
     let print_id = PrintId::new();
     let payload = || unreadable("the body was not JSON");
 
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn runs");
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
     block_on(supervisor.close_session(print_id, "finished".to_owned())).expect("the close runs");
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn after the close runs");
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn after the close runs");
 
     let programs = watch.programs();
     assert!(

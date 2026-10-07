@@ -38,10 +38,16 @@ pub fn both_renderings_carry_the_same_fields(world: &World) {
 
     for one in walk::walk(world) {
         let arguments = failures::succeeding(&one);
-        both_ways(world, &arguments, &one.operation(), Answer::Success);
+        both_ways(world, &arguments, &one.operation(), Answer::Success, None);
         if one.operation().action_kind().is_some() {
             let refused = failures::rejected(world, &one);
-            both_ways(world, &refused, &one.operation(), Answer::Rejected);
+            both_ways(
+                world,
+                &refused,
+                &one.operation(),
+                Answer::Rejected,
+                Some(failures::rejected_from(&one)),
+            );
         }
     }
     materializing::both_renderings_of_a_path_that_names_no_file(world);
@@ -70,9 +76,10 @@ pub fn both_ways(
     arguments: &[String],
     operation: &printobserver_server::Operation,
     answer: Answer,
+    from: Option<crate::machine::Reports>,
 ) {
-    let machine = run(world, arguments, true);
-    let plain = run(world, arguments, false);
+    let machine = run(world, arguments, true, from);
+    let plain = run(world, arguments, false, from);
     the_two_renderings_agree(&machine, &plain, operation, answer);
 }
 
@@ -94,8 +101,15 @@ pub fn the_two_renderings_agree(
 /// rather than before the pair: an action moves it, so the second run of a
 /// resume would be one the policy refuses from the state the first left — and
 /// the two renderings would then be of two different answers.
-fn run(world: &World, arguments: &[String], machine_readable: bool) -> Ran {
-    if let Some(one) = walk::walk(world)
+fn run(
+    world: &World,
+    arguments: &[String],
+    machine_readable: bool,
+    from: Option<crate::machine::Reports>,
+) -> Ran {
+    if let Some(state) = from {
+        world.wants(state);
+    } else if let Some(one) = walk::walk(world)
         .into_iter()
         .find(|found| Some(&found.command.name) == arguments.first())
     {

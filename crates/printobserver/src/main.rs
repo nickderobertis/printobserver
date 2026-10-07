@@ -10,18 +10,34 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use printobserver::client::{perform, refusal};
+use printobserver::client::{Outcome, perform, refusal};
+use printobserver::credential;
 use printobserver::failure::{Exit, Failure};
 use printobserver::parse::{Invocation, parse};
 use printobserver::sign_in::sign_in;
 use printobserver::surface::{usage, version};
 use printobserver_server::Server;
 
+/// What one credential command printed, as this program's own output.
+fn printed(answered: Result<credential::Printed, Failure>) -> Outcome {
+    match answered {
+        Ok(printed) => Outcome {
+            out: printed.out,
+            err: String::new(),
+            exit: printed.exit,
+        },
+        Err(failure) => refusal(&failure),
+    }
+}
+
 /// Run the supervisor until the service manager stops it.
 async fn serve(config: PathBuf) -> Result<(), String> {
     let running = Server::start(&config)
         .await
         .map_err(|error| error.to_string())?;
+    for warning in running.warnings() {
+        eprintln!("printobserver: warning: {warning}");
+    }
     eprintln!("printobserver is serving on {}", running.address());
     running
         .serve_until_signalled()
@@ -75,6 +91,13 @@ fn main() -> ExitCode {
             Ok(status) => return ExitCode::from(status),
             Err(failure) => refusal(&failure),
         },
+        Invocation::CredentialIssue {
+            replace,
+            machine_readable,
+        } => printed(credential::issue(replace, machine_readable)),
+        Invocation::CredentialVerifier { machine_readable } => {
+            printed(credential::verifier(machine_readable))
+        }
         Invocation::Refused { detail } => refusal(&Failure::of(Exit::Usage, detail)),
         Invocation::Call(call) => perform(&call),
     };

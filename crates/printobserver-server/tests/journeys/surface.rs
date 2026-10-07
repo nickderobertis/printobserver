@@ -285,10 +285,11 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
         events: std::sync::Arc::clone(&world.server.stores().events),
         images: std::sync::Arc::clone(&world.server.stores().images),
         sessions: std::sync::Arc::clone(&world.server.stores().sessions),
-        credential: std::sync::Arc::new(
+        operator: std::sync::Arc::new(printobserver_server::OperatorCredential::Plaintext(
             printobserver_server::ApiCredential::new(&world.credential)
-                .expect("the generated credential is one"),
-        ),
+                .expect("the operator's credential is one"),
+        )),
+        turns: printobserver_server::TurnCredentials::new(None),
     };
     let rendered = format!(
         "{state:?} {:?} {:?}",

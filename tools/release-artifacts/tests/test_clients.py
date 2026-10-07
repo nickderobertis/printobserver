@@ -42,7 +42,7 @@ from release_artifacts.installing import (
     smoke_check,
     without_rust,
 )
-from release_artifacts.world import World
+from release_artifacts.world import Credential, World
 from repo_checks import platforms
 from repo_checks.expect import absent, contains, equal, passing
 from repo_checks.model import Repo
@@ -59,7 +59,7 @@ BUILD_TIMEOUT_SECONDS = 2400
 #: sixty-four of those does. An option parser reads a value beginning with `-`
 #: as the start of another option, so a smoke check that parsed its arguments
 #: that way stopped as a usage error on a credential the server itself issued.
-HYPHEN_LEADING = "-qx_generated-shaped_credential_of_43_chars"
+HYPHEN_LEADING = Credential("-qx_generated-shaped_credential_of_43_chars")
 
 
 @pytest.fixture(scope="module")

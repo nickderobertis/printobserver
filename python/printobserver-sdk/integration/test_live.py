@@ -737,22 +737,22 @@ def refused_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 def test_every_action_is_refused_as_a_typed_rejection(
-    world: Supervisor,
+    tmp_path_factory: pytest.TempPathFactory,
 ) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """Every action, refused by a real supervisor's own policy, typed.
 
-    One client acting as an actor class the envelope grants nothing, against the
-    print the machine is running. The policy takes that decision before it looks
+    One client acting as the operator, the one identity its credential is,
+    against a supervisor whose envelope grants the operator nothing, about the
+    print its machine is running. The policy takes that decision before it looks
     at the state, the interval or the bounds, so every action is refused from
-    wherever the machine happens to be.
+    wherever the machine happens to be, and nothing moves.
     """
-    with Proxy(world.server) as proxy:
+    with (
+        Standing(tmp_path_factory.mktemp("refusing"), refusing=True) as world,
+        Proxy(world.server) as proxy,
+    ):
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        client = Client(
-            proxy.url,
-            {"agent": {"session_name": "an actor this envelope grants nothing"}},
-            world.credential,
-        )
+        client = Client(proxy.url, "operator", world.credential)
         world = about_the_running_print(client, world)
         refused_cancel(client, world, proxy)
         refused_start_print(client, world, proxy)

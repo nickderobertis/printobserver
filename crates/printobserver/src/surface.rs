@@ -4,9 +4,10 @@
 //!
 //! [`surface`] folds over
 //! [`OPERATIONS`](printobserver_server::OPERATIONS) — one client command per
-//! public operation the server serves — and puts the two commands that are not
-//! requests to a running server beside them: the one that runs the server, and
-//! the one that signs its harness in. Each client command's options are built from that
+//! public operation the server serves — and puts the four commands that are not
+//! requests to a running server beside them: the one that runs the server, the
+//! one that signs its harness in, and the two that issue and verify the
+//! operator's credential. Each client command's options are built from that
 //! operation's own [`request`](printobserver_server::Operation::request), whose
 //! body for an action is the fields the contracts' `PrintAction` declares for
 //! that variant. So the set of commands, the set of options each takes, and
@@ -47,9 +48,36 @@ pub const SERVE_COMMAND: &str = "server";
 /// request to a running server either.
 pub const SIGN_IN_COMMAND: &str = "sign-in";
 
+/// The command that issues the operator a credential, which reaches no server.
+pub const CREDENTIAL_ISSUE_COMMAND: &str = "credential issue";
+
+/// The command that prints the verifier of a credential the operator already
+/// holds, which reaches no server either.
+pub const CREDENTIAL_VERIFIER_COMMAND: &str = "credential verifier";
+
+/// The word both credential commands begin with.
+pub const CREDENTIAL_WORD: &str = "credential";
+
 /// Every command that is not a request to a running server, and there is no
 /// other.
-pub const LOCAL_COMMANDS: [&str; 2] = [SERVE_COMMAND, SIGN_IN_COMMAND];
+pub const LOCAL_COMMANDS: [&str; 4] = [
+    SERVE_COMMAND,
+    SIGN_IN_COMMAND,
+    CREDENTIAL_ISSUE_COMMAND,
+    CREDENTIAL_VERIFIER_COMMAND,
+];
+
+/// The flags one command that is not a request takes of its own: only
+/// `credential issue` has one, the flag that lets it replace a configuration
+/// already there.
+#[must_use]
+pub fn local_flags(command: &str) -> Vec<&'static str> {
+    if command == CREDENTIAL_ISSUE_COMMAND {
+        vec![crate::credential::REPLACE_OPTION]
+    } else {
+        Vec::new()
+    }
+}
 
 /// The field a bounded intervention's duration travels in, as the contracts
 /// spell it.
@@ -139,6 +167,9 @@ pub struct Command {
     pub operation: Option<Operation>,
     /// The values it takes.
     pub fields: Vec<Field>,
+    /// The flags it takes of its own, which carry no value: only a command
+    /// that is not a request has any.
+    pub flags: Vec<&'static str>,
 }
 
 impl Command {
@@ -166,6 +197,7 @@ impl Command {
         self.fields
             .iter()
             .flat_map(|field| field.forms.iter().map(|form| form.option.clone()))
+            .chain(self.flags.iter().map(|flag| (*flag).to_owned()))
             .collect()
     }
 
@@ -187,6 +219,7 @@ impl Command {
                     format!("[{option} {value}]")
                 }
             })
+            .chain(self.flags.iter().map(|flag| format!("[{flag}]")))
             .collect();
         format!("  printobserver {} {}", self.name, taken.join(" "))
             .trim_end()
@@ -206,10 +239,11 @@ pub use printobserver_server::command_for;
 
 /// Every command this program has, and there is no other.
 ///
-/// One per operation the server declares, plus the one that runs the server and
-/// the one that signs its harness in. Neither of those two takes a value of its
-/// own: the configuration file each reads is the global option every command
-/// takes.
+/// One per operation the server declares, plus the one that runs the server,
+/// the one that signs its harness in, and the two credential commands. None of
+/// those four takes a value of its own: the server and sign-in commands read
+/// the configuration file the global option names, the credential commands
+/// refuse it, and only `credential issue` takes a flag.
 #[must_use]
 pub fn surface() -> Vec<Command> {
     let mut found: Vec<Command> = LOCAL_COMMANDS
@@ -218,12 +252,14 @@ pub fn surface() -> Vec<Command> {
             name: (*name).to_owned(),
             operation: None,
             fields: Vec::new(),
+            flags: local_flags(name),
         })
         .collect();
     found.extend(OPERATIONS.iter().map(|operation| Command {
         name: command_for(operation.name),
         operation: Some(*operation),
         fields: operation.request().into_iter().map(Field::of).collect(),
+        flags: Vec::new(),
     }));
     found
 }

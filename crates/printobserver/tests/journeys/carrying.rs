@@ -19,6 +19,7 @@
 use printobserver::render::fields;
 use printobserver_types::serde_json::{self, Value};
 
+use crate::machine::Reports;
 use crate::traced::Ran;
 use crate::walk::{self, Driven};
 use crate::world::World;
@@ -30,9 +31,14 @@ use super::{failures, running};
 /// was given.
 pub fn every_output_carries_only_what_the_answer_carried(world: &World) {
     for one in walk::walk(world) {
-        on_this_path(world, &one, &failures::succeeding(&one));
+        on_this_path(world, &one, &failures::succeeding(&one), one.reports);
         if one.operation().action_kind().is_some() {
-            on_this_path(world, &one, &failures::rejected(world, &one));
+            on_this_path(
+                world,
+                &one,
+                &failures::rejected(world, &one),
+                failures::rejected_from(&one),
+            );
         }
     }
 }
@@ -43,8 +49,8 @@ pub fn every_output_carries_only_what_the_answer_carried(world: &World) {
 /// the other one's: an answer carries the instant it was observed, so two runs
 /// of one command differ in it by design, and comparing across them would be
 /// comparing two facts rather than one.
-fn on_this_path(world: &World, one: &Driven, arguments: &[String]) {
-    let (machine, machine_answered) = run(world, one, arguments, true);
+fn on_this_path(world: &World, one: &Driven, arguments: &[String], from: Reports) {
+    let (machine, machine_answered) = run(world, from, arguments, true);
     let printed: Vec<(String, String)> =
         fields(&document(&machine.out, "this program's own output"));
     assert_eq!(
@@ -54,7 +60,7 @@ fn on_this_path(world: &World, one: &Driven, arguments: &[String]) {
         one.command.name
     );
 
-    let (plain, plain_answered) = run(world, one, arguments, false);
+    let (plain, plain_answered) = run(world, from, arguments, false);
     let carried = fields(&document(&plain_answered, "the supervisor's own answer"));
     let lines = labelled(&plain.out);
     for (at, value) in &carried {
@@ -84,8 +90,13 @@ fn document(text: &str, whose: &str) -> Value {
 /// The machine is put back where the command needs it before **each** run
 /// rather than before the pair: an action moves it, so the second run of a
 /// resume would be one the policy refuses from the state the first left.
-fn run(world: &World, one: &Driven, arguments: &[String], machine_readable: bool) -> (Ran, String) {
-    world.wants(one.reports);
+fn run(
+    world: &World,
+    from: Reports,
+    arguments: &[String],
+    machine_readable: bool,
+) -> (Ran, String) {
+    world.wants(from);
     let arguments = walk::naming_the_print_now(arguments, world);
     let mut asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
     if machine_readable {

@@ -64,8 +64,11 @@ fn one_turn(
     let supervisor = port(configured, &watch);
 
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn runs");
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
 
     let request = watch
         .requests()

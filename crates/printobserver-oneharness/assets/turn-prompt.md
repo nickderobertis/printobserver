@@ -35,8 +35,10 @@ Run this command and read what it answers:
 {{context_command}}
 ```
 
-Give every other command you run the same `--config` file this one takes. It
-names the supervisor this turn belongs to and the credential it answers to.
+Run every other command the same way, with no `--config`: this turn's
+environment already names the supervisor it belongs to and carries a
+credential minted for this turn alone, which answers for you, in this session,
+on this print, and stops working when the turn ends.
 
 A command whose usage lists `--actor` names who is asking. In this turn that is
 you, in the session this turn runs in, so give each of those commands this

@@ -189,7 +189,7 @@ def _command(built: Built, step: Step, *, reason: bool = True) -> str:
     if reason:
         supplied["reason"] = '"what I saw, and what a person should check"'
     spec = surface().command(step.operation)
-    words = ["printobserver", step.operation, "--config", f"'{built.config}'"]
+    words = ["printobserver", step.operation]
     options = {name: str(value) for name, value in step.args.items()}
     for required in (field for field in (spec.fields if spec else ()) if field.required):
         if required.name not in options and required.name in supplied:
@@ -462,9 +462,11 @@ def test_commands_route_to_the_stub_that_answers_them(built: dict[str, Built]) -
     if case.event is None:
         pytest.fail("no scenario with two looks carries an event")
     event = case.event["id"]
-    config = f"'{case.config}'"
+    # A configuration file a command may still be given, though a turn needs
+    # none: its environment names the server and carries its credential.
+    config = "'/var/lib/printobserver/an-operators-own.toml'"
     actor = f"'{case.actor}'"
-    common = f"--config {config} --print-id {case.print_id}"
+    common = f"--print-id {case.print_id}"
     changing = f"{common} --actor {actor}"
     routes = {
         f"printobserver context {common}": "context",

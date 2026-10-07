@@ -130,7 +130,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         let expected_command = request.context_command.clone();
         // A print's first turn runs in that print's first session.
         let expected_actor = actor_in(&format!("print-{print_id}"));
-        block_on(supervisor.run_turn(request)).expect("the turn runs");
+        block_on(supervisor.run_turn(request, crate::support::access())).expect("the turn runs");
 
         let prompt = watch
             .requests()
@@ -218,8 +218,11 @@ fn a_turn_moved_to_a_new_session_hands_the_agent_that_sessions_actor() {
         config(&schemas, &fixture, HARNESS, &schema, answering()),
         &Arc::new(Watch::default()),
     );
-    block_on(first.run_turn(turn(print_id, event(print_id, unreadable("first")), None)))
-        .expect("the first turn runs");
+    block_on(first.run_turn(
+        turn(print_id, event(print_id, unreadable("first")), None),
+        crate::support::access(),
+    ))
+    .expect("the first turn runs");
     drop(first);
 
     // The same state directory, and so the same session, on another identity,
@@ -229,9 +232,11 @@ fn a_turn_moved_to_a_new_session_hands_the_agent_that_sessions_actor() {
         config(&schemas, &fixture, OTHER_HARNESS, &schema, answering()),
         &watch,
     );
-    let after =
-        block_on(moved.run_turn(turn(print_id, event(print_id, unreadable("second")), None)))
-            .expect("the moved turn runs");
+    let after = block_on(moved.run_turn(
+        turn(print_id, event(print_id, unreadable("second")), None),
+        crate::support::access(),
+    ))
+    .expect("the moved turn runs");
     assert_eq!(after.session.session_name, format!("print-{print_id}-2"));
 
     let prompts: Vec<String> = watch.requests().iter().map(prompt_of).collect();
@@ -272,11 +277,14 @@ fn the_filled_prompt_hands_acting_to_the_skill_and_the_policy() {
         &watch,
     );
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(
-        print_id,
-        event(print_id, failure_alert(7, Some("bracket.gcode"))),
-        None,
-    )))
+    block_on(supervisor.run_turn(
+        turn(
+            print_id,
+            event(print_id, failure_alert(7, Some("bracket.gcode"))),
+            None,
+        ),
+        crate::support::access(),
+    ))
     .expect("the turn runs");
     let prompt = prompt_of(
         watch
@@ -291,7 +299,9 @@ fn the_filled_prompt_hands_acting_to_the_skill_and_the_policy() {
         "decide, and act as your skill describes.",
         "Everything you ask for goes through the same policy an operator's requests do, \
          and that policy decides what your role may change.",
-        "Give every other command you run the same `--config` file this one takes.",
+        "Run every other command the same way, with no `--config`:",
+        "a credential minted for this turn alone",
+        "stops working when the turn ends.",
         "A command whose usage lists `--actor` names who is asking.",
         "A command whose usage does not list it, the one above included, refuses it:",
         "what you did (each command you ran and what it answered)",
@@ -303,6 +313,7 @@ fn the_filled_prompt_hands_acting_to_the_skill_and_the_policy() {
     }
     for unsaid in [
         "This turn is a reading, not a repair.",
+        "the same `--config` file this one takes",
         "Nothing here asks you to change what the machine is doing",
         "the only command named below is the one that reads",
     ] {
@@ -346,11 +357,14 @@ fn system_prompt_over(
     let watch = Arc::new(Watch::default());
     let supervisor = port(configured, &watch);
     let print_id = PrintId::new();
-    block_on(supervisor.run_turn(turn(
-        print_id,
-        event(print_id, unreadable("the body was not JSON")),
-        None,
-    )))
+    block_on(supervisor.run_turn(
+        turn(
+            print_id,
+            event(print_id, unreadable("the body was not JSON")),
+            None,
+        ),
+        crate::support::access(),
+    ))
     .expect("the turn runs");
     watch
         .requests()

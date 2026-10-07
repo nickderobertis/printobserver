@@ -38,173 +38,238 @@ use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 
 use crate::api::{ApiState, router};
-use crate::config::{ApiCredential, ConfigError, ConfigField, ServerConfig};
+use crate::config::{ApiCredential, ConfigError, ConfigField, CredentialVerifier, ServerConfig};
 use crate::ingress::{IngressState, receive};
 use crate::operations::{INGRESS_PATH, OPERATIONS, command_for};
 use crate::reconcile::{ReconcileStores, Reconciliation, overdue, reconcile};
+use crate::turns::TurnCredentials;
 
 /// The program a supervision turn runs to read its print's context.
 pub const CONTEXT_PROGRAM: &str = "printobserver";
 
-/// The file this server writes the address it took and the credential in force
-/// into, under the state directory, for the clients that run beside it.
+/// The file, under the state directory, a server before this one wrote the
+/// address it took and the credential in force into. A start deletes it: a
+/// supervision turn runs as the service's user and could read the operator's
+/// credential out of it.
 pub const CLIENT_CONFIG_FILE: &str = "client.toml";
 
-/// The file, under the state directory, holding the API credential this server
-/// generated for itself — read when `api.credential` is not configured, and
-/// written only when it is not there.
+/// The file, under the state directory, a server before this one generated its
+/// API credential into, as plaintext. A start converts it into
+/// [`API_CREDENTIAL_VERIFIER_FILE`] and deletes it, so the credential it held
+/// keeps authenticating while nothing the service's user can read holds it.
 pub const API_CREDENTIAL_FILE: &str = "api-credential";
 
-/// The mode both files carrying the credential are created with.
+/// The file, under the state directory, holding the verifier of the operator's
+/// credential — read when `api.credential_verifier` is not configured.
+pub const API_CREDENTIAL_VERIFIER_FILE: &str = "api-credential.verifier";
+
+/// The command that gives an operator a credential, as every refusal and
+/// warning about one names it.
+pub const CREDENTIAL_ISSUE: &str = "printobserver credential issue";
+
+/// The command that prints the verifier of a credential an operator already
+/// holds.
+pub const CREDENTIAL_VERIFIER: &str = "printobserver credential verifier";
+
+/// The mode the verifier file is created with.
 ///
 /// Unix alone has one. A file Windows creates carries the access its directory
-/// grants rather than a mode, so there the state directory is what keeps both
-/// files to the service's own account.
+/// grants rather than a mode, so there the state directory is what keeps it to
+/// the service's own account.
 #[cfg(unix)]
 const PRIVATE: u32 = 0o600;
 
 /// The command a supervision turn runs to read its print's context.
 ///
-/// This program's own context read, against the print the turn is about and
-/// the configuration file naming the address this server took — which is the
-/// bound address rather than the configured one, because a configuration may
-/// ask for any free port and a turn has to reach the one that was taken — and
-/// the credential in force.
+/// This program's own context read, against the print the turn is about, and
+/// nothing else: where the server is and the credential the turn answers to
+/// reach the turn through its environment alone — the address the server
+/// bound and a credential minted for that turn — so the command names no
+/// configuration file and the program reads none.
 /// `printobserver-oneharness` substitutes the print for the placeholder.
-///
-/// Both travel in a file rather than on the command line because no client
-/// command of that program takes either: where a server is and what
-/// authenticates to it are configuration, and a command line that could carry
-/// them is a command line that could be pointed anywhere — and one that lands a
-/// credential in a process table.
-///
-/// The path is quoted for a POSIX shell, which is what a turn's shell is on
-/// every host, Windows included: unquoted, that shell strips a Windows path's
-/// backslashes and the agent's first command fails on a file that is not there.
 #[must_use]
-pub fn context_command(client_config: &Path) -> String {
-    format!(
-        "{CONTEXT_PROGRAM} context --config {} --print-id {{print_id}}",
-        shell_quoted(&client_config.display().to_string())
-    )
+pub fn context_command() -> String {
+    format!("{CONTEXT_PROGRAM} context --print-id {{print_id}}")
 }
 
-/// One word as a POSIX shell reads it back unchanged: single-quoted, with each
-/// single quote it carries closed, escaped and reopened.
-fn shell_quoted(word: &str) -> String {
-    format!("'{}'", word.replace('\'', r"'\''"))
+/// Who an operator's credential is checked against, as one start settled it.
+#[derive(Debug, Clone)]
+pub enum OperatorCredential {
+    /// Its verifier, from `api.credential_verifier` or the state directory.
+    Verifier(CredentialVerifier),
+    /// A plaintext `api.credential` the configuration still carries, admitted
+    /// until it is replaced.
+    Plaintext(ApiCredential),
+    /// Nothing at all: a fresh install whose operator has not run
+    /// `printobserver credential issue` yet. No operator request is admitted.
+    Unconfigured,
 }
 
-/// Write the configuration the clients beside this server read it by.
-///
-/// One `[client]` table naming the address that was actually bound and the
-/// credential in force, so a supervision turn — and an operator on this host
-/// who can read the state directory — reaches and authenticates to this server
-/// without being told either or copying a secret by hand. It is the one file
-/// this program writes the credential into beside the one it generated, so it
-/// is private to the service's own user from the moment it exists: created, or
-/// narrowed when an earlier start left it, before a byte is written.
-fn write_client_config(
-    directory: &Path,
-    address: SocketAddr,
-    credential: &ApiCredential,
-) -> Result<PathBuf, StartError> {
-    use std::io::Write as _;
-
-    let path = directory.join(CLIENT_CONFIG_FILE);
-    let failing = |error: std::io::Error| StartError::State {
-        detail: format!("{} could not be written: {error}", path.display()),
-    };
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE);
-    let mut file = options.open(&path).map_err(failing)?;
-    #[cfg(unix)]
-    file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(PRIVATE))
-        .map_err(failing)?;
-    file.write_all(
-        format!(
-            "[client]\nserver = \"http://{address}\"\ncredential = \"{}\"\n",
-            toml_basic_string(credential.written())
-        )
-        .as_bytes(),
-    )
-    .map_err(failing)?;
-    Ok(path)
-}
-
-/// Text as the body of a TOML basic string.
-///
-/// A credential is printable ASCII by construction, so the quote and the
-/// backslash are the only two characters that need an escape.
-fn toml_basic_string(text: &str) -> String {
-    text.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-/// The API credential this start serves under.
-///
-/// The configured one when `api.credential` names one, in which case the state
-/// directory's file is neither read nor written. Otherwise the file: created
-/// with a fresh credential when it is not there — exclusively, so that nothing
-/// already at that path is ever replaced — and read as it is when it is.
-///
-/// # Errors
-///
-/// Returns [`StartError::Credential`] naming the file, and never what it holds,
-/// when it cannot be created or read or holds nothing a header could present.
-fn credential_in_force(config: &ServerConfig) -> Result<ApiCredential, StartError> {
-    use std::io::Write as _;
-
-    if let Some(configured) = &config.api_credential {
-        return Ok(configured.clone());
+impl OperatorCredential {
+    /// Whether a presented credential is the operator's.
+    #[must_use]
+    pub fn admits(&self, presented: &[u8]) -> bool {
+        match self {
+            Self::Verifier(verifier) => verifier.admits(presented),
+            Self::Plaintext(credential) => credential.admits(presented),
+            Self::Unconfigured => false,
+        }
     }
-    let path = config.state_dir.join(API_CREDENTIAL_FILE);
-    let refusing = |detail: String| StartError::Credential {
-        path: path.clone(),
-        detail,
-    };
+}
+
+/// The warning every start under a plaintext `api.credential` gives, which
+/// names the key, its replacement and the command that computes one, and never
+/// what the key holds.
+#[must_use]
+pub fn plaintext_credential_warning() -> String {
+    format!(
+        "the server configuration carries `api.credential`, an operator credential in \
+         plaintext. A supervision turn runs as this service's user and can read that file, \
+         so it can read that credential until it is replaced. Replace it with \
+         `api.credential_verifier`: pipe the credential into `{CREDENTIAL_VERIFIER}` to print \
+         that line, put it in the configuration, delete `api.credential`, and restart the \
+         service"
+    )
+}
+
+/// Write one file this start creates, exclusively and private to the service.
+fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE);
-    match options.open(&path) {
-        Ok(mut file) => {
-            let generated = ApiCredential::generate().map_err(|error| {
-                refusing(format!(
-                    "no credential could be generated for it, because the operating system's \
-                     random source refused: {error}"
-                ))
-            });
-            let written = generated.and_then(|credential| {
-                file.write_all(credential.written().as_bytes())
-                    .and_then(|()| file.sync_all())
-                    .map(|()| credential)
-                    .map_err(|error| refusing(format!("it could not be written: {error}")))
-            });
-            if written.is_err() {
-                // The file is this start's own and holds nothing usable, so it
-                // is taken back rather than left for the next start to refuse.
-                let _ = std::fs::remove_file(&path);
-            }
-            written
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            // llmlint: ignore[least_privilege_grants] The contract reuses an existing credential file's contents unchanged and never rewrites a file this start did not write, so the server does not change a hand-provisioned file's mode. The installed path keeps the file private by its directory: the installer creates the state directory at mode 0700, owned by the service user, and a file this server generates is created 0600. A mode check on hand-provisioned files is recorded as a follow-up.
-            let held = std::fs::read(&path)
-                .map_err(|error| refusing(format!("it cannot be read: {error}")))?;
-            let text = core::str::from_utf8(&held).ok().map(without_terminator);
-            text.ok_or("it is not text")
-                .and_then(ApiCredential::new)
-                .map_err(|why| {
-                    refusing(format!(
-                        "{why}. This server does not replace a credential it did not write \
-                         just now: correct the file, or remove it to have a new one generated"
-                    ))
-                })
-        }
-        Err(error) => Err(refusing(format!("it cannot be created: {error}"))),
+    let mut file = options.open(path)?;
+    // llmlint: ignore[changed_behavior_has_e2e] A write or sync failing into a file this start just created exclusively is a full or failing disk, which no journey can arrange on a runner without root; the conversion it serves, and the next start after it, are driven by `a_legacy_installation_keeps_its_operators_credential_through_every_route`.
+    let written = file.write_all(contents).and_then(|()| file.sync_all());
+    if written.is_err() {
+        // The file is this start's own and holds nothing usable, so it is
+        // taken back rather than left for the next start to refuse.
+        let _ = std::fs::remove_file(path);
     }
+    written
+}
+
+/// Remove one file a server before this one left, when it is there.
+fn remove_if_there(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
+/// Take the plaintext a server before this one left in the state directory out
+/// of it.
+///
+/// `client.toml` is deleted. `api-credential` is converted into the verifier
+/// file — written first, exclusively, so a start that stops between the two
+/// leaves the credential still convertible — and then deleted; one left beside
+/// a verifier file that is already there is deleted outright, because that
+/// verifier is what is in force.
+///
+/// # Errors
+///
+/// Returns [`StartError::Credential`] naming the file, and never what it holds,
+/// when the legacy credential cannot be read, holds nothing a header could
+/// present, or cannot be converted or removed; and [`StartError::State`] when
+/// `client.toml` cannot be removed.
+fn take_plaintext_out(state_dir: &Path) -> Result<(), StartError> {
+    let client_config = state_dir.join(CLIENT_CONFIG_FILE);
+    remove_if_there(&client_config).map_err(|error| StartError::State {
+        detail: format!(
+            "{} could not be removed, and it may carry the operator's credential where a \
+             supervision turn can read it: {error}",
+            client_config.display()
+        ),
+    })?;
+    let legacy = state_dir.join(API_CREDENTIAL_FILE);
+    let refusing = |detail: String| StartError::Credential {
+        path: legacy.clone(),
+        detail,
+    };
+    let held = match std::fs::read(&legacy) {
+        Ok(held) => held,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(refusing(format!("it cannot be read: {error}"))),
+    };
+    let verifier_file = state_dir.join(API_CREDENTIAL_VERIFIER_FILE);
+    if !verifier_file.exists() {
+        let text = core::str::from_utf8(&held).ok().map(without_terminator);
+        let credential = text
+            .ok_or("it is not text")
+            .and_then(ApiCredential::new)
+            .map_err(|why| {
+                refusing(format!(
+                    "{why}. This server converts the credential an earlier version generated \
+                     there into its verifier: correct the file, or remove it and run \
+                     `{CREDENTIAL_ISSUE} --replace`"
+                ))
+            })?;
+        write_private(
+            &verifier_file,
+            format!("{}\n", credential.verifier()).as_bytes(),
+        )
+        .map_err(|error| {
+            refusing(format!(
+                "its verifier could not be written to {}: {error}",
+                verifier_file.display()
+            ))
+        })?;
+    }
+    std::fs::remove_file(&legacy)
+        .map_err(|error| refusing(format!("it could not be removed: {error}")))
+}
+
+/// The operator credential this start serves under, and the warnings it owes.
+///
+/// The legacy plaintext is taken out of the state directory first. Then
+/// `api.credential_verifier` when it is configured, a plaintext
+/// `api.credential` when that is all the configuration carries, the verifier
+/// file in the state directory, and otherwise nothing — a fresh install, which
+/// supervises and admits no operator until one is issued. A plaintext
+/// `api.credential` warns whether or not a verifier wins over it.
+///
+/// # Errors
+///
+/// Returns [`StartError::Credential`] naming the file, and never what it
+/// holds, when the legacy plaintext cannot be taken out or the verifier file
+/// cannot be read as one.
+pub fn operator_credential(
+    config: &ServerConfig,
+) -> Result<(OperatorCredential, Vec<String>), StartError> {
+    take_plaintext_out(&config.state_dir)?;
+    let mut warnings = Vec::new();
+    if config.api_credential.is_some() {
+        warnings.push(plaintext_credential_warning());
+    }
+    if let Some(verifier) = &config.api_credential_verifier {
+        return Ok((OperatorCredential::Verifier(verifier.clone()), warnings));
+    }
+    if let Some(plaintext) = &config.api_credential {
+        return Ok((OperatorCredential::Plaintext(plaintext.clone()), warnings));
+    }
+    let path = config.state_dir.join(API_CREDENTIAL_VERIFIER_FILE);
+    let held = match std::fs::read_to_string(&path) {
+        Ok(held) => held,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((OperatorCredential::Unconfigured, warnings));
+        }
+        Err(error) => {
+            return Err(StartError::Credential {
+                path,
+                detail: format!("it cannot be read: {error}"),
+            });
+        }
+    };
+    let verifier =
+        CredentialVerifier::parse(held.trim()).map_err(|why| StartError::Credential {
+            path: path.clone(),
+            detail: format!(
+                "{why}. Correct the file, or remove it and set `api.credential_verifier`"
+            ),
+        })?;
+    Ok((OperatorCredential::Verifier(verifier), warnings))
 }
 
 /// A credential file's text with the one line terminator a person's editor or
@@ -263,7 +328,7 @@ pub enum StartError {
         /// What went wrong.
         detail: String,
     },
-    /// The API credential file in the state directory cannot be used.
+    /// A credential file in the state directory cannot be used.
     Credential {
         /// The file.
         path: PathBuf,
@@ -317,7 +382,7 @@ impl core::fmt::Display for StartError {
             }
             Self::Credential { path, detail } => write!(
                 formatter,
-                "the API credential file {} cannot be used: {detail}",
+                "the credential file {} cannot be used: {detail}",
                 path.display()
             ),
             Self::Listen { address, detail } => {
@@ -393,10 +458,11 @@ impl Server {
     /// The same as [`Server::start`], less the refusals that belong to building
     /// the implementations.
     pub async fn start_with(config: ServerConfig, ports: Ports) -> Result<Running, StartError> {
-        // The credential is settled before anything listens, so there is no
-        // moment at which this server answers a request it has nothing to
-        // check against.
-        let credential = credential_in_force(&config)?;
+        // The operator's credential is settled before anything listens, so
+        // there is no moment at which this server answers a request it has
+        // nothing to check against — and the plaintext an earlier version left
+        // is out of the state directory before the first turn could read it.
+        let (operator, warnings) = operator_credential(&config)?;
         // The listener is taken next, because the command a supervision turn
         // runs to read its context names the address this server is answering
         // on — and a configuration may ask for any free port.
@@ -411,15 +477,13 @@ impl Server {
             address: config.listen,
             detail: error.to_string(),
         })?;
-        let client_config = write_client_config(&config.state_dir, address, &credential)?;
         let clock = Arc::new(SystemClock);
         let due = overdue(&ports.stores.actions, clock.now())
             .await
             .map_err(|error| StartError::Reconciliation {
                 detail: error.to_string(),
             })?;
-        let mut core_config =
-            CoreConfig::new(config.safety.clone(), context_command(&client_config));
+        let mut core_config = CoreConfig::new(config.safety.clone(), context_command());
         core_config
             .camera_snapshot_url
             .clone_from(&config.camera_snapshot_url);
@@ -431,6 +495,10 @@ impl Server {
             Arc::clone(&ports.agent),
             clock,
         );
+        // Every turn's runs are told the address this server bound, beside the
+        // credential minted for them.
+        let turns = TurnCredentials::new(Some(address));
+        supervisor.install_turn_authority(Arc::new(turns.clone()));
         let reconciliation = reconcile(
             &supervisor,
             &ReconcileStores {
@@ -459,7 +527,8 @@ impl Server {
             events: Arc::clone(&ports.stores.events),
             images: Arc::clone(&ports.stores.images),
             sessions: Arc::clone(&ports.stores.sessions),
-            credential: Arc::new(credential),
+            operator: Arc::new(operator),
+            turns,
         })
         .merge(
             Router::new()
@@ -478,6 +547,7 @@ impl Server {
         Ok(Running {
             address,
             config,
+            warnings,
             supervisor,
             stores: ports.stores,
             reconciliation,
@@ -733,6 +803,9 @@ pub struct Running {
     address: SocketAddr,
     /// What it was configured with.
     config: ServerConfig,
+    /// What this start found that its operator should change, in words that
+    /// quote no credential.
+    warnings: Vec<String>,
     /// The supervision core.
     supervisor: Arc<Supervisor>,
     /// Durable state, one handle per aggregate.
@@ -784,6 +857,14 @@ impl Running {
     #[must_use]
     pub const fn config(&self) -> &ServerConfig {
         &self.config
+    }
+
+    /// What this start found that its operator should change — a plaintext
+    /// `api.credential` among them — in words that quote no credential. The
+    /// program running the server writes each to its log on every start.
+    #[must_use]
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// What this start adopted from the store.

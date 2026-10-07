@@ -65,6 +65,15 @@ fn command_entry(command: &Command) -> Value {
                 })
             })
         })
+        .chain(command.flags.iter().map(|flag| {
+            json!({
+                "option": flag,
+                "field": flag.trim_start_matches('-'),
+                "required": false,
+                "supply": "flag",
+                "located": "local",
+            })
+        }))
         .collect();
     match &command.operation {
         None => json!({

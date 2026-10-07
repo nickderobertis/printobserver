@@ -20,6 +20,8 @@ mod world;
 
 #[path = "journeys/authenticating.rs"]
 mod authenticating;
+#[path = "journeys/binding.rs"]
+mod binding;
 #[path = "journeys/configuration.rs"]
 mod configuration;
 #[path = "journeys/failing.rs"]

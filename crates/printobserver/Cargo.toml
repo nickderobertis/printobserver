@@ -82,6 +82,9 @@ jsonschema.workspace = true
 # The digest an image record declares, so a journey can open the file at the
 # path a materialization printed and check it is that image.
 sha2 = "0.10"
+# The alphabet `credential issue` writes a credential in, so its journey reads
+# back the bytes that were drawn rather than the length of their spelling.
+base64.workspace = true
 tempfile = "3"
 # The reader `tests/service.rs` holds a launchd property list to: the one the
 # installer writes on macOS is read as a document, on every host, rather than

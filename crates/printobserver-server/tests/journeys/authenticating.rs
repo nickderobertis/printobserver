@@ -1,4 +1,5 @@
-//! Who this server serves: a caller that presented the credential in force.
+//! Who this server serves: a caller that presented the operator's credential
+//! or a live supervision turn's.
 //!
 //! # What is refused, and what that refusal touches
 //!
@@ -11,28 +12,30 @@
 //! server over a store that fails every read answers the same `401` rather than
 //! the store's own failure, which it could only do by never reaching the store.
 //!
-//! # Where the credential in force comes from
+//! # What the operator's credential is checked against
 //!
-//! `api.credential` when the operator configured one, and otherwise the file
-//! the server generated into its state directory. Both are driven through
+//! Its verifier, and nothing the server could be read for: `api.credential_verifier`,
+//! or `api-credential.verifier` in the state directory. A fresh install has
+//! neither, supervises anyway, and refuses every operator naming the command
+//! that issues one. Every layout an earlier version left is driven through
 //! [`Server::start`], the composition root the installed unit's own command
-//! reaches: the configured one leaves a stale file untouched and unread, the
-//! generated one is reused unchanged by a second start, and every state of that
-//! file a person could leave behind refuses the start naming the file and never
-//! what it holds.
+//! reaches, built here as that version left it: the generated plaintext is
+//! converted into its verifier and removed, the client configuration it wrote
+//! is removed, and a plaintext `api.credential` keeps working with a warning on
+//! every start that never quotes it.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine as _;
 use printobserver_core::store::{HistoryQuery, Stores};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_server::{
-    API_CREDENTIAL_FILE, ApiCredential, BODY_BOUND, CLIENT_CONFIG_FILE, ConfigField, DRAIN_BOUND,
-    GENERATED_CREDENTIAL_BYTES, MEDIA_TYPE, Method, OPERATIONS, Operation, Ports, REDACTED,
-    Running, Server, ServerConfig, StartError, TOKEN_HEADER,
+    API_CREDENTIAL_FILE, API_CREDENTIAL_VERIFIER_FILE, ApiCredential, BODY_BOUND,
+    CLIENT_CONFIG_FILE, ConfigField, CredentialVerifier, DRAIN_BOUND, MEDIA_TYPE, Method,
+    OPERATIONS, Operation, Ports, REDACTED, Running, Server, ServerConfig, StartError,
+    TOKEN_HEADER,
 };
 use printobserver_types::PrintId;
 use printobserver_types::serde_json::Value;
@@ -44,22 +47,21 @@ use crate::printer::RecordingPrinter;
 use crate::probes::{base_url, silent_host};
 use crate::surface::{body_for, image_id};
 use crate::world::{
-    SECRET, World, committed_sample, document, generated_credential, manifest_write, presenting,
-    set, write,
+    OPERATOR, SECRET, World, committed_sample, document, files_carrying, manifest_write,
+    presenting, remove, set, write,
 };
 
-/// A credential an operator chose, spelled so that a search for it finds only
-/// a rendering of it — and carrying both characters a TOML string escapes, so
-/// the client configuration the server writes is proven to carry it as it is.
+/// A plaintext credential an operator wrote into `api.credential`, spelled so
+/// that a search for it finds only a rendering of it — and carrying both
+/// characters a TOML string escapes.
 const CONFIGURED: &str = r#"an-operators-own-"credential"-7Hq2\vX9mKp4Lw"#;
 
-/// What a stale file left in the state directory holds.
+/// What a credential nobody configured is.
 const STALE: &str = "a-stale-credential-nothing-should-read-3Rt8";
 
-/// The characters unpadded URL-safe base64 is written in.
-fn url_safe(character: char) -> bool {
-    character.is_ascii_alphanumeric() || character == '-' || character == '_'
-}
+/// The credential printobserver v0.3.0 generated into its state directory, as
+/// a legacy layout carries it: unpadded URL-safe base64 of 32 random bytes.
+const LEGACY: &str = "Zq9Xr2Lk7Vb4Nw1Hc8Td5Ms3Pf6Jy0GaUe2Qo9Ri4Ex";
 
 /// One way a request can fail to present the credential in force.
 struct Presenting {
@@ -318,7 +320,7 @@ async fn a_refused_request_reads_nothing_from_the_store() {
     )
     .await
     .expect("a store that fails afterwards lets the server start");
-    let credential = generated_credential(&server.config().state_dir);
+    let credential = OPERATOR.to_owned();
 
     for operation in OPERATIONS {
         let response = ask(
@@ -606,6 +608,12 @@ impl Rooted {
         }
     }
 
+    /// A root whose configuration names no operator verifier at all: what a
+    /// fresh install, and every installation before verifiers, carries.
+    async fn unverified() -> Self {
+        Self::with(|configured| remove(configured, "api.credential_verifier")).await
+    }
+
     /// The state directory the configuration names, created.
     fn state(&self) -> PathBuf {
         let state = self.root.path().join("state");
@@ -613,14 +621,42 @@ impl Rooted {
         state
     }
 
-    /// The credential file in that state directory.
+    /// The legacy plaintext credential file in that state directory.
     fn credential_file(&self) -> PathBuf {
         self.state().join(API_CREDENTIAL_FILE)
+    }
+
+    /// The verifier file in that state directory.
+    fn verifier_file(&self) -> PathBuf {
+        self.state().join(API_CREDENTIAL_VERIFIER_FILE)
+    }
+
+    /// Lay the state directory out as printobserver v0.3.0 left it: the
+    /// credential it generated, and the client configuration carrying it, both
+    /// private to the service.
+    fn legacy_layout(&self, credential: &str) {
+        std::fs::write(self.credential_file(), credential).expect("the legacy file is writable");
+        set_mode(&self.credential_file(), 0o600);
+        let client = self.state().join(CLIENT_CONFIG_FILE);
+        std::fs::write(
+            &client,
+            format!(
+                "[client]\nserver = \"http://127.0.0.1:8420\"\ncredential = \"{credential}\"\n"
+            ),
+        )
+        .expect("the legacy client configuration is writable");
+        set_mode(&client, 0o600);
     }
 
     /// Start the real composition root over it.
     async fn start(&self) -> Result<Running, StartError> {
         Server::start(&self.path).await
+    }
+
+    /// Every file under the root — the state directory and the configuration
+    /// — whose bytes carry `credential`.
+    fn carrying(&self, credential: &str) -> Vec<PathBuf> {
+        files_carrying(self.root.path(), credential)
     }
 }
 
@@ -657,234 +693,307 @@ fn set_mode(path: &Path, mode: u32) {
     let _ = (path, mode);
 }
 
-/// The client configuration a running server wrote, as a document.
-fn client_configuration(state: &Path) -> toml::Value {
-    let path = state.join(CLIENT_CONFIG_FILE);
-    assert_mode(
-        &path,
-        0o600,
-        "the client configuration carrying the credential is readable by others",
-    );
-    toml::from_str(&std::fs::read_to_string(&path).expect("the client configuration reads"))
-        .expect("the client configuration is a document")
-}
-
 /// Whether one server admits one credential, asked through a status read.
 async fn admits(server: &Running, credential: &str) -> bool {
+    status_of(server, credential).await.0 != reqwest::StatusCode::UNAUTHORIZED
+}
+
+/// What one server answers a status read presenting one credential.
+async fn status_of(server: &Running, credential: &str) -> (reqwest::StatusCode, String) {
     let status = printobserver_server::operation("status").expect("status is served");
-    presenting(credential)
+    let response = presenting(credential)
         .get(url_of(server.address(), status, PrintId::new()))
         .send()
         .await
-        .expect("the server answers")
-        .status()
-        != reqwest::StatusCode::UNAUTHORIZED
+        .expect("the server answers");
+    let code = response.status();
+    (code, response.text().await.expect("an answer has a body"))
 }
 
-/// With no credential configured, a first start generates one and a second
-/// reuses it unchanged.
+/// A fresh install starts and supervises, writes no credential of its own
+/// anywhere, and refuses every operator request naming the command that issues
+/// one.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_generated_credential_is_written_privately_once_and_reused() {
-    let rooted = Rooted::with(|_| {}).await;
-    let file = rooted.credential_file();
-    assert!(
-        !file.exists(),
-        "the journey's state directory already holds a credential"
-    );
-
-    let first = rooted.start().await.expect("the server starts");
-    let generated = std::fs::read_to_string(&file).expect("the server wrote a credential");
-    assert_mode(
-        &file,
-        0o600,
-        "the generated credential is readable by others",
-    );
-    assert!(
-        generated.chars().all(url_safe) && !generated.contains('='),
-        "the generated credential is not unpadded URL-safe base64"
-    );
-    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(&generated)
-        .expect("the generated credential decodes");
-    assert!(
-        decoded.len() >= GENERATED_CREDENTIAL_BYTES && GENERATED_CREDENTIAL_BYTES >= 32,
-        "the generated credential carries {} random bytes",
-        decoded.len()
-    );
-
-    let written = client_configuration(&rooted.state());
-    assert_eq!(
-        written["client"]["server"].as_str(),
-        Some(format!("http://{}", first.address()).as_str()),
-        "the client configuration does not name the address this server bound"
-    );
-    assert_eq!(
-        written["client"]["credential"].as_str(),
-        Some(generated.as_str()),
-        "the client configuration does not carry the credential in force"
-    );
-    assert!(admits(&first, &generated).await);
-    assert!(!admits(&first, STALE).await);
-    let modified = std::fs::metadata(&file)
-        .and_then(|metadata| metadata.modified())
-        .expect("the file has a modification time");
-    first.stop().await;
-
-    let second = rooted.start().await.expect("the server starts again");
-    assert_eq!(
-        std::fs::read_to_string(&file).expect("the credential is still there"),
-        generated,
-        "a second start replaced the credential the first generated"
-    );
-    assert_eq!(
-        std::fs::metadata(&file)
-            .and_then(|metadata| metadata.modified())
-            .expect("the file has a modification time"),
-        modified,
-        "a second start rewrote the credential file"
-    );
-    assert!(
-        admits(&second, &generated).await,
-        "a second start does not admit the credential the first generated"
-    );
-    assert_eq!(
-        client_configuration(&rooted.state())["client"]["credential"].as_str(),
-        Some(generated.as_str())
-    );
-    second.stop().await;
-
-    // A second state directory is a second credential: nothing about the draw
-    // is fixed.
-    let elsewhere = Rooted::with(|_| {}).await;
-    let other = elsewhere.start().await.expect("the server starts");
-    assert_ne!(
-        std::fs::read_to_string(elsewhere.credential_file()).expect("a credential was written"),
-        generated,
-        "two state directories were given the same credential"
-    );
-    other.stop().await;
-}
-
-/// A configured credential is the one in force, and the state directory's file
-/// is neither read nor written.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_configured_credential_is_in_force_and_the_file_is_left_alone() {
-    let rooted = Rooted::with(|configured| {
-        let mut api = toml::Table::new();
-        api.insert(
-            "credential".to_owned(),
-            toml::Value::String(CONFIGURED.to_owned()),
-        );
-        set(configured, "api", toml::Value::Table(api));
-    })
+async fn a_fresh_install_supervises_and_refuses_every_operator_until_one_is_issued() {
+    let world = World::configured(
+        crate::printer::RecordingPrinter::printing(),
+        StandInAgent::new(),
+        |configured| remove(configured, "api.credential_verifier"),
+    )
     .await;
-    let stale = rooted.credential_file();
-    std::fs::write(&stale, STALE).expect("a stale file is writable");
-    set_mode(&stale, 0o640);
-    let modified = std::fs::metadata(&stale)
-        .and_then(|metadata| metadata.modified())
-        .expect("the file has a modification time");
+    let state = world.state_dir();
+    for absent in [
+        API_CREDENTIAL_FILE,
+        CLIENT_CONFIG_FILE,
+        API_CREDENTIAL_VERIFIER_FILE,
+    ] {
+        assert!(
+            !state.join(absent).exists(),
+            "a fresh install wrote {absent} into its state directory"
+        );
+    }
+
+    for presented in [OPERATOR, STALE] {
+        let (status, said) = status_of(&world.server, presented).await;
+        assert_eq!(status, reqwest::StatusCode::UNAUTHORIZED, "{said}");
+        assert!(
+            said.contains("printobserver credential issue")
+                && said.contains("api.credential_verifier"),
+            "the refusal does not say how an operator gets a credential: {said}"
+        );
+    }
+
+    // It supervises: an alert is taken, a turn runs, and the turn is issued a
+    // credential of its own.
+    world.open_print().await;
+    let mut completions = world.server.completions();
+    let accepted = reqwest::Client::new()
+        .post(format!("{}?token={SECRET}", world.server.ingress_url()))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(crate::world::failure_alert(4211, "http://127.0.0.1:1/frame.jpg").to_string())
+        .send()
+        .await
+        .expect("the ingress answers")
+        .status();
+    assert_eq!(accepted, reqwest::StatusCode::ACCEPTED);
+    completions.changed().await.expect("the handling finishes");
+    assert_eq!(world.agent.turns().len(), 1, "no turn ran");
+    assert_eq!(
+        world.agent.passes().len(),
+        1,
+        "the turn was issued no credential"
+    );
+    world.server.stop().await;
+}
+
+/// The operator is admitted by the verifier the configuration names, a
+/// credential it does not verify is refused, and nothing the server holds or
+/// writes carries the operator's credential.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_operator_is_admitted_by_its_verifier_and_the_server_holds_no_plaintext() {
+    let rooted = Rooted::with(|_| {}).await;
 
     let server = rooted.start().await.expect("the server starts");
 
     assert!(
-        admits(&server, CONFIGURED).await,
-        "the configured credential is not in force"
+        admits(&server, OPERATOR).await,
+        "the verified credential was refused"
     );
+    let (status, said) = status_of(&server, STALE).await;
+    assert_eq!(status, reqwest::StatusCode::UNAUTHORIZED, "{said}");
+    for absent in [
+        API_CREDENTIAL_FILE,
+        CLIENT_CONFIG_FILE,
+        API_CREDENTIAL_VERIFIER_FILE,
+    ] {
+        assert!(
+            !rooted.state().join(absent).exists(),
+            "a server with a configured verifier wrote {absent}"
+        );
+    }
     assert!(
-        !admits(&server, STALE).await,
-        "the stale file's credential was admitted"
+        rooted.carrying(OPERATOR).is_empty(),
+        "the operator's credential is written somewhere: {:?}",
+        rooted.carrying(OPERATOR)
     );
-    assert_eq!(
-        std::fs::read_to_string(&stale).expect("the stale file is still there"),
-        STALE,
-        "a server with a configured credential rewrote the state directory's file"
-    );
-    assert_eq!(
-        std::fs::metadata(&stale)
-            .and_then(|metadata| metadata.modified())
-            .expect("the file has a modification time"),
-        modified,
-        "a server with a configured credential touched the state directory's file"
-    );
-    assert_mode(&stale, 0o640, "the stale file's mode was changed");
-    assert_eq!(
-        client_configuration(&rooted.state())["client"]["credential"].as_str(),
-        Some(CONFIGURED),
-        "the client configuration does not carry the configured credential"
-    );
-    let rendered = format!("{:?} {server:?}", server.config());
-    assert!(
-        !rendered.contains(CONFIGURED) && rendered.contains(REDACTED),
-        "a rendering of the configuration carries the configured credential: {rendered}"
-    );
+    assert!(server.warnings().is_empty(), "{:?}", server.warnings());
     server.stop().await;
-
-    std::fs::remove_file(&stale).expect("the stale file is removable");
-    let again = rooted.start().await.expect("the server starts");
-    assert!(
-        !stale.exists(),
-        "a server with a configured credential generated one into the state directory"
-    );
-    again.stop().await;
 }
 
-/// A credential file a person wrote with a shell or an editor ends in one line
-/// terminator, and the credential in force is the text before it — while the
-/// file itself is left exactly as that person wrote it, by every start over it.
+/// With no verifier configured, the one in the state directory is in force.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_credential_file_ending_in_one_line_terminator_is_the_text_before_it() {
-    const HELD: &str = "an-operators-hand-written-credential-5Vn9";
+async fn the_state_directorys_verifier_is_in_force_when_none_is_configured() {
+    let rooted = Rooted::unverified().await;
+    std::fs::write(
+        rooted.verifier_file(),
+        format!("{}\n", CredentialVerifier::of(OPERATOR)),
+    )
+    .expect("the verifier file is writable");
+
+    let server = rooted.start().await.expect("the server starts");
+
+    assert!(admits(&server, OPERATOR).await);
+    assert!(!admits(&server, STALE).await);
+    server.stop().await;
+}
+
+/// The layout printobserver v0.3.0 left — the credential it generated and the
+/// client configuration carrying it — is converted on the first start: the
+/// credential into its verifier, private to the service, and both plaintext
+/// files removed. The same credential keeps authenticating, on that start and
+/// every one after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_legacy_layout_is_converted_into_a_verifier_and_its_plaintext_removed() {
+    let rooted = Rooted::unverified().await;
+    rooted.legacy_layout(LEGACY);
+
+    let first = rooted
+        .start()
+        .await
+        .expect("the server starts over the legacy layout");
+
+    assert!(
+        !rooted.credential_file().exists(),
+        "the generated plaintext was left in the state directory"
+    );
+    assert!(
+        !rooted.state().join(CLIENT_CONFIG_FILE).exists(),
+        "the legacy client configuration was left in the state directory"
+    );
+    assert_eq!(
+        std::fs::read_to_string(rooted.verifier_file()).expect("a verifier was written"),
+        format!("{}\n", CredentialVerifier::of(LEGACY)),
+    );
+    assert_mode(
+        &rooted.verifier_file(),
+        0o600,
+        "the verifier file is readable by others",
+    );
+    assert!(
+        admits(&first, LEGACY).await,
+        "the legacy credential stopped working"
+    );
+    assert!(!admits(&first, STALE).await);
+    assert!(
+        rooted.carrying(LEGACY).is_empty(),
+        "the legacy credential is still written somewhere: {:?}",
+        rooted.carrying(LEGACY)
+    );
+    first.stop().await;
+
+    let second = rooted.start().await.expect("the server starts again");
+    assert!(
+        admits(&second, LEGACY).await,
+        "a second start lost the converted credential"
+    );
+    assert!(!rooted.credential_file().exists());
+    second.stop().await;
+}
+
+/// A client configuration an earlier version wrote is removed whenever a start
+/// finds one, whatever else is configured.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_client_configuration_is_removed_at_every_start() {
+    let rooted = Rooted::with(|_| {}).await;
+    let client = rooted.state().join(CLIENT_CONFIG_FILE);
+    std::fs::write(
+        &client,
+        format!("[client]\nserver = \"http://127.0.0.1:8420\"\ncredential = \"{OPERATOR}\"\n"),
+    )
+    .expect("the file is writable");
+
+    let server = rooted.start().await.expect("the server starts");
+
+    assert!(!client.exists(), "the legacy client configuration was left");
+    server.stop().await;
+}
+
+/// A legacy credential file ending in one line terminator, as a person's shell
+/// or editor ends one, converts as the text before it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_ending_in_one_line_terminator_converts_as_the_text_before_it() {
     for (what, terminator) in [
         ("one line feed", "\n"),
         ("a carriage return and line feed", "\r\n"),
     ] {
-        let rooted = Rooted::with(|_| {}).await;
-        let file = rooted.credential_file();
-        let written = format!("{HELD}{terminator}").into_bytes();
-        std::fs::write(&file, &written).expect("the file is writable");
-        set_mode(&file, 0o600);
-        let modified = || {
-            std::fs::metadata(&file)
-                .and_then(|metadata| metadata.modified())
-                .expect("the file has a modification time")
-        };
-        let as_written = modified();
+        let rooted = Rooted::unverified().await;
+        std::fs::write(rooted.credential_file(), format!("{LEGACY}{terminator}"))
+            .expect("the file is writable");
 
-        for start in ["a first start", "a second start"] {
-            let server = rooted.start().await.unwrap_or_else(|error| {
-                panic!("{start} over a credential file ending in {what} refused: {error}")
-            });
+        let server = rooted.start().await.unwrap_or_else(|error| {
+            panic!("a start over a legacy credential ending in {what} refused: {error}")
+        });
 
-            assert!(
-                admits(&server, HELD).await,
-                "after {start}, a credential file ending in {what} is not in force as the \
-                 text before it"
-            );
-            assert_eq!(
-                client_configuration(&rooted.state())["client"]["credential"].as_str(),
-                Some(HELD),
-                "after {start}, the client configuration does not carry the text before {what}"
-            );
-            server.stop().await;
-            assert_eq!(
-                std::fs::read(&file).expect("the file is still there"),
-                written,
-                "{start} changed the bytes of a credential file ending in {what}"
-            );
-            assert_eq!(
-                modified(),
-                as_written,
-                "{start} rewrote a credential file ending in {what}"
-            );
-        }
+        assert!(
+            admits(&server, LEGACY).await,
+            "a legacy credential ending in {what} did not convert as the text before it"
+        );
+        server.stop().await;
     }
 }
 
-/// Every state of the credential file a server cannot use refuses the start,
-/// naming the file and never what it holds, and leaves the file as it was.
+/// A plaintext `api.credential` does not stop the server: it is admitted, and
+/// every start warns that it is there, naming its replacement and the command
+/// that computes one, and never quoting it.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_credential_file_that_cannot_be_used_refuses_the_start() {
+async fn a_plaintext_credential_is_admitted_and_warned_about_on_every_start() {
+    let rooted = Rooted::with(|configured| {
+        remove(configured, "api.credential_verifier");
+        set(
+            configured,
+            "api.credential",
+            toml::Value::String(CONFIGURED.to_owned()),
+        );
+    })
+    .await;
+
+    for start in ["a first start", "a second start"] {
+        let server = rooted.start().await.expect("the server starts");
+        assert!(
+            admits(&server, CONFIGURED).await,
+            "after {start}, the plaintext credential is not admitted"
+        );
+        assert_plaintext_warned(&server, start);
+        server.stop().await;
+    }
+}
+
+/// With both keys, the verifier wins: the credential it verifies is the
+/// operator, the plaintext one is refused, and the warning still fires.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_verifier_beside_a_plaintext_credential_wins_and_still_warns() {
+    let rooted = Rooted::with(|configured| {
+        set(
+            configured,
+            "api.credential",
+            toml::Value::String(CONFIGURED.to_owned()),
+        );
+    })
+    .await;
+
+    let server = rooted.start().await.expect("the server starts");
+
+    assert!(
+        admits(&server, OPERATOR).await,
+        "the verified credential was refused"
+    );
+    assert!(
+        !admits(&server, CONFIGURED).await,
+        "the plaintext credential was admitted beside a verifier"
+    );
+    assert_plaintext_warned(&server, "a start under both keys");
+    server.stop().await;
+}
+
+/// One start warned about a plaintext `api.credential`, in words that name what
+/// to do and quote nothing of it.
+fn assert_plaintext_warned(server: &Running, start: &str) {
+    let warnings = server.warnings();
+    let warning = warnings
+        .iter()
+        .find(|warning| warning.contains("`api.credential`"))
+        .unwrap_or_else(|| panic!("{start} gave no warning about the plaintext: {warnings:?}"));
+    for named in [
+        "api.credential_verifier",
+        "printobserver credential verifier",
+        "supervision turn",
+    ] {
+        assert!(
+            warning.contains(named),
+            "{start}'s warning does not name {named:?}: {warning}"
+        );
+    }
+    assert!(
+        !warning.contains(CONFIGURED) && !warning.contains("7Hq2"),
+        "{start}'s warning quotes the credential: {warning}"
+    );
+}
+
+/// Every state of the legacy credential file a server cannot convert refuses
+/// the start, naming the file and never what it holds, and leaves the file as
+/// it was with no verifier written beside it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_that_cannot_be_converted_refuses_the_start() {
     let held_values: [(&str, &[u8]); 10] = [
         ("empty", b""),
         ("only whitespace", b"  \t \n"),
@@ -910,7 +1019,7 @@ async fn a_credential_file_that_cannot_be_used_refuses_the_start() {
         ("not text", b"qx-distinctive-held\xff\xfe"),
     ];
     for (what, held) in held_values {
-        let rooted = Rooted::with(|_| {}).await;
+        let rooted = Rooted::unverified().await;
         let file = rooted.credential_file();
         std::fs::write(&file, held).expect("the file is writable");
 
@@ -927,13 +1036,13 @@ async fn a_credential_file_that_cannot_be_used_refuses_the_start() {
             "a credential file {what} was replaced"
         );
         assert!(
-            !rooted.state().join(CLIENT_CONFIG_FILE).exists(),
-            "a server refused for a credential file {what} got as far as listening"
+            !rooted.verifier_file().exists(),
+            "a verifier was written for a credential file {what}"
         );
     }
 
     // A path that cannot be read at all: a directory where the file would be.
-    let rooted = Rooted::with(|_| {}).await;
+    let rooted = Rooted::unverified().await;
     let file = rooted.credential_file();
     std::fs::create_dir(&file).expect("a directory is creatable");
     let refusal = rooted
@@ -943,6 +1052,22 @@ async fn a_credential_file_that_cannot_be_used_refuses_the_start() {
         .unwrap_or_else(|| panic!("a credential file that cannot be read was accepted"));
     assert_refused_naming(&refusal, &file, "that cannot be read");
     assert!(file.is_dir(), "an unreadable credential path was replaced");
+}
+
+/// A verifier file that is not one refuses the start, naming the file.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_verifier_file_that_is_not_one_refuses_the_start() {
+    let rooted = Rooted::unverified().await;
+    let file = rooted.verifier_file();
+    std::fs::write(&file, b"qx-distinctive-held-not-a-digest\n").expect("writable");
+
+    let refusal = rooted
+        .start()
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a verifier file that is not one was accepted"));
+
+    assert_refused_naming(&refusal, &file, "that is not a verifier");
 }
 
 /// One refusal is about the credential file, names it, and quotes nothing of it.
@@ -1021,19 +1146,191 @@ async fn a_configured_credential_no_caller_could_present_is_refused() {
             "the refusal of a configured credential {what} quotes it: {said}"
         );
         assert!(
-            !rooted.credential_file().exists(),
-            "a refused configuration generated a credential anyway"
+            !rooted.credential_file().exists() && !rooted.verifier_file().exists(),
+            "a refused configuration wrote a credential file anyway"
         );
     }
 }
 
-/// Neither rendering of a credential shows it.
-#[test]
-fn neither_rendering_of_a_credential_shows_it() {
+/// Neither rendering of a credential shows it, and a rendering of a
+/// configuration carrying one shows only that something is redacted.
+#[tokio::test(flavor = "multi_thread")]
+async fn neither_rendering_of_a_credential_shows_it() {
     let credential = ApiCredential::new(CONFIGURED).expect("a credential");
     assert_eq!(credential.to_string(), REDACTED);
     assert!(!format!("{credential:?}").contains(CONFIGURED));
     assert!(credential.admits(CONFIGURED.as_bytes()));
     assert!(!credential.admits(STALE.as_bytes()));
     assert!(!credential.admits(&CONFIGURED.as_bytes()[1..]));
+
+    let rooted = Rooted::with(|configured| {
+        set(
+            configured,
+            "api.credential",
+            toml::Value::String(CONFIGURED.to_owned()),
+        );
+    })
+    .await;
+    let server = rooted.start().await.expect("the server starts");
+    let rendered = format!("{:?} {server:?}", server.config());
+    assert!(
+        !rendered.contains(CONFIGURED) && rendered.contains(REDACTED),
+        "a rendering of the configuration carries the configured credential: {rendered}"
+    );
+    server.stop().await;
+}
+
+/// A verifier file that cannot be read at all — a directory where it would be —
+/// refuses the start, naming it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_verifier_file_that_cannot_be_read_refuses_the_start() {
+    let rooted = Rooted::unverified().await;
+    std::fs::create_dir(rooted.verifier_file()).expect("a directory is creatable");
+
+    let refusal = rooted
+        .start()
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("an unreadable verifier file was accepted"));
+
+    assert_refused_naming(&refusal, &rooted.verifier_file(), "that cannot be read");
+}
+
+/// A legacy plaintext left beside a verifier already there is removed, and the
+/// verifier there is the one in force: the plaintext's credential is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_beside_a_verifier_is_removed_and_the_verifier_kept() {
+    let rooted = Rooted::unverified().await;
+    let verifier = format!("{}\n", CredentialVerifier::of(OPERATOR));
+    std::fs::write(rooted.verifier_file(), &verifier).expect("writable");
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+
+    let server = rooted.start().await.expect("the server starts");
+
+    assert!(!rooted.credential_file().exists(), "the plaintext was left");
+    assert_eq!(
+        std::fs::read_to_string(rooted.verifier_file()).expect("still there"),
+        verifier,
+        "the verifier already there was replaced"
+    );
+    assert!(admits(&server, OPERATOR).await);
+    assert!(
+        !admits(&server, LEGACY).await,
+        "the removed plaintext was admitted"
+    );
+    server.stop().await;
+}
+
+/// A legacy client configuration that cannot be removed refuses the start,
+/// naming it: a start that went on would leave a turn able to read it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_client_configuration_that_cannot_be_removed_refuses_the_start() {
+    let rooted = Rooted::with(|_| {}).await;
+    let client = rooted.state().join(CLIENT_CONFIG_FILE);
+    std::fs::create_dir_all(client.join("held")).expect("a directory where the file would be");
+
+    let refusal = rooted
+        .start()
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a start went on over a client configuration it kept"));
+
+    assert!(matches!(refusal, StartError::State { .. }), "{refusal}");
+    assert!(
+        refusal.to_string().contains(CLIENT_CONFIG_FILE),
+        "{refusal}"
+    );
+}
+
+/// Start the server over `rooted` with its state directory closed to writes
+/// once the store is open, as the composition root opens it — so what the
+/// closed directory refuses is the migration — and open it again after.
+#[cfg(unix)]
+async fn started_closed(rooted: &Rooted) -> Option<StartError> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let state = rooted.state();
+    let config = ServerConfig::load(&rooted.path).expect("the configuration is accepted");
+    let stores = Stores::of(Arc::new(
+        printobserver_store_sqlite::SqliteStore::open(&state).expect("the store opens"),
+    ));
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o500))
+        .expect("the state directory is closed to writes");
+    let started = Server::start_with(
+        config,
+        Ports {
+            printer: RecordingPrinter::printing()
+                as Arc<dyn printobserver_printer_api::PrinterPort>,
+            stores,
+            vision: Arc::new(
+                ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
+            ),
+            agent: StandInAgent::new() as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        },
+    )
+    .await;
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700))
+        .expect("the state directory is opened again");
+    match started {
+        Ok(running) => {
+            running.stop().await;
+            None
+        }
+        Err(refusal) => Some(refusal),
+    }
+}
+
+/// A legacy credential whose verifier cannot be written refuses the start,
+/// naming the file and quoting nothing, and leaves the plaintext where it was
+/// rather than losing the operator's one copy of their credential.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_that_cannot_be_converted_for_want_of_a_write_is_left() {
+    let rooted = Rooted::unverified().await;
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+
+    let refusal = started_closed(&rooted)
+        .await
+        .unwrap_or_else(|| panic!("a start went on with nothing converted"));
+
+    assert_refused_naming(
+        &refusal,
+        &rooted.credential_file(),
+        "whose verifier cannot be written",
+    );
+    assert_eq!(
+        std::fs::read_to_string(rooted.credential_file()).expect("still there"),
+        LEGACY
+    );
+    assert!(!rooted.verifier_file().exists());
+}
+
+/// A legacy credential that cannot be removed refuses the start, naming the
+/// file and quoting nothing, even when its verifier is already in place: a
+/// start that went on would leave a plaintext a turn can read.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_that_cannot_be_removed_refuses_the_start() {
+    let rooted = Rooted::unverified().await;
+    let verifier = format!("{}\n", CredentialVerifier::of(LEGACY));
+    std::fs::write(rooted.verifier_file(), &verifier).expect("writable");
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+
+    let refusal = started_closed(&rooted)
+        .await
+        .unwrap_or_else(|| panic!("a start went on over a plaintext it could not remove"));
+
+    assert_refused_naming(
+        &refusal,
+        &rooted.credential_file(),
+        "that cannot be removed",
+    );
+    assert!(
+        refusal.to_string().contains("could not be removed"),
+        "{refusal}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(rooted.verifier_file()).expect("still there"),
+        verifier
+    );
 }

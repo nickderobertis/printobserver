@@ -206,11 +206,15 @@ out of what the server declares: one **client command** per operation
 that operation's own `Operation::request` — whose body, for an action, is read at
 run time from the contracts' own `PrintAction` schema. So a vocabulary that gains
 a variant gains a command, a variant that gains a field gains an option, and
-growing a declaration beside the parser grows nothing. Two commands sit beside
+growing a declaration beside the parser grows nothing. Four commands sit beside
 them, and they are the only ones that are not requests to an already-running
-server: the **server command**, which runs the supervisor, and the **sign-in
+server: the **server command**, which runs the supervisor; the **sign-in
 command**, which signs that supervisor's harness in as the user the service runs
-as.
+as; and the two **credential commands** — `credential issue`, which draws the
+operator's credential into their own client configuration and prints the
+`api.credential_verifier` line the server's configuration takes, and
+`credential verifier`, which prints the verifier of a credential handed to it on
+standard input.
 
 <!-- llmlint: ignore[instruction_layer_localized] The task that added the sign-in command requires this section to describe it beside the server command, and this section is the root's one statement of the program's whole surface, which spans the adapter, server and command-line crates; no one crate's subtree owns it. suppressions.toml has the full reason. -->
 The sign-in command exists because the service runs as a system user whose unit
@@ -228,11 +232,13 @@ the closure that matters is the closure of the **action** surface: a path to a
 file reaches no printer and cannot be composed into an action.
 
 - **Where a server is and what authenticates to it are configuration.** No client
-  command takes either as an argument or an option. They are read from a
-  configuration file — which may be the server's own, since a client with no
-  `[client]` table takes the address the server was told to listen on — and from
-  `PRINTOBSERVER_SERVER` and `PRINTOBSERVER_CREDENTIAL`, which win. A credential
-  has one accessor and no rendering that shows it.
+  command takes either as an argument or an option. They are read from
+  configuration files and from `PRINTOBSERVER_SERVER` and
+  `PRINTOBSERVER_CREDENTIAL`, which win; `crates/printobserver/AGENTS.md`
+  records which files, in what order. A credential has one accessor and no
+  rendering that shows it.
+- **Every request is the identity its credential authenticated**, and
+  `crates/printobserver-server/AGENTS.md` records how the server holds that.
 - **Five exits, each a different thing to do next**: success, an unreachable
   server, a program nothing configured, an action the policy refused, and an
   image path that names no file on the host the command ran on. That last one
@@ -942,6 +948,30 @@ On Windows:
 
 ```powershell
 gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
+```
+
+### Between the two commands, issue the operator's credential
+
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads this step's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
+The service keeps no credential an operator could authenticate with — only its
+verifier, so that nothing a supervision turn can read authenticates as the
+operator. So after the installer and before the command that starts the service,
+issue yourself a credential as yourself, unprivileged: this writes it into your
+own client configuration, readable by you alone, and prints one
+`api.credential_verifier` line. Put that line in the server's configuration,
+above its first table. Until it is there, the service supervises and refuses
+every operator request.
+
+On Linux and macOS:
+
+```console
+printobserver credential issue
+```
+
+On Windows, from a PowerShell that is not elevated:
+
+```powershell
+& 'C:\Program Files\printobserver\printobserver.exe' credential issue
 ```
 
 ### Between the two commands, sign in the agent's harness

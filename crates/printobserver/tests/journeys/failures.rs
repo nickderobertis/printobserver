@@ -10,6 +10,7 @@
 
 use printobserver::failure::Exit;
 
+use crate::machine::Reports;
 use crate::traced::Ran;
 use crate::walk::{self, Driven};
 use crate::world::World;
@@ -40,9 +41,11 @@ pub fn succeeding(one: &Driven) -> Vec<String> {
 /// The arguments one command is refused by the policy for.
 ///
 /// An adjustment asks for a value outside the range the envelope allows, so the
-/// rejection carries the value and the range. Every other action asks as the
-/// agent, whom this world's envelope grants nothing — which is the rejection an
-/// action with no value to rule on gets.
+/// rejection carries the value and the range. Every other action is asked
+/// against the print that ended before the walk began, which is the rejection
+/// an action with no value to rule on gets from the operator — whose
+/// credential every command here is configured with, and who is granted every
+/// action.
 pub fn rejected(world: &World, one: &Driven) -> Vec<String> {
     let mut given = vec![one.command.name.clone()];
     let mut out_of_bounds = false;
@@ -59,21 +62,28 @@ pub fn rejected(world: &World, one: &Driven) -> Vec<String> {
         given.push(value);
     }
     if !out_of_bounds {
-        let actor = given
+        let print = given
             .iter()
-            .position(|word| word == "--actor")
-            .expect("every action names who is asking");
-        given[actor + 1] = agent_actor(world);
+            .position(|word| word == "--print-id")
+            .expect("every action names the print it is about");
+        given[print + 1] = world.ended_print_id();
     }
     given
 }
 
-/// An actor of the class this world's envelope grants nothing.
-fn agent_actor(world: &World) -> String {
-    format!(
-        "{{\"agent\":{{\"session_name\":\"watch-{}\"}}}}",
-        world.print_id()
-    )
+/// What the machine is doing when one command's rejected request is asked.
+///
+/// The command's own state, except a start: asked while the machine is idle, a
+/// start chooses a print of its own rather than the one it names, and would be
+/// carried out — so it is asked while the machine is printing, where it is
+/// held to the print it names.
+#[must_use]
+pub fn rejected_from(one: &Driven) -> Reports {
+    if one.command.name == "start-print" {
+        Reports::Printing
+    } else {
+        one.reports
+    }
 }
 
 /// Every client command, driven to each failure the contract says it owes.
@@ -147,6 +157,7 @@ fn said_what_to_do(ran: &Ran, exit: Exit, next: &str) {
 
 /// The policy refuses this action, and the refusal says what may be asked for.
 fn the_policy_refuses_it(world: &World, one: &Driven) {
+    world.wants(rejected_from(one));
     let arguments = rejected(world, one);
     let asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
     let ran = running::command(world, &asked);
@@ -166,7 +177,7 @@ fn the_policy_refuses_it(world: &World, one: &Driven) {
     );
     let said = ran.said();
     assert!(
-        said.contains("out_of_bounds") || said.contains("actor_may_not_request"),
+        said.contains("out_of_bounds") || said.contains("no_active_print"),
         "`{}` was refused without the policy's own reason: {said}",
         one.command.name
     );

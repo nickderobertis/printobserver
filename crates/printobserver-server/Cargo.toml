@@ -36,8 +36,12 @@ printobserver-types.workspace = true
 printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.3.0" }
 serde.workspace = true
 serde_json.workspace = true
-# The one comparison of a presented API credential against the one in force,
-# which takes as long however much of it a caller guessed.
+# The operator's credential is checked against its SHA-256, which is all this
+# server keeps of it, and every supervision turn's credential is held by its
+# SHA-256 alone.
+sha2 = "0.10"
+# The one comparison of a presented credential's digest against the verifier
+# in force, which takes as long however much of it a caller guessed.
 subtle = "2.6"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
@@ -59,7 +63,6 @@ toml = { version = "0.9", default-features = false, features = ["display", "pars
 # being read rather than a second belief about it.
 rusqlite = { version = "0.37", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
-sha2 = "0.10"
 tempfile = "3"
 
 [[bin]]

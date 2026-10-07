@@ -92,7 +92,7 @@ fn until(client: &Client, print_id: &str, wanted: &[PrinterState]) -> PrinterSta
 #[test]
 fn the_same_nine_steps_are_answered_against_a_real_octoprint() {
     let root = tempfile::tempdir().expect("this journey's own root");
-    let mut standing = supervisor::standing(root.path());
+    let mut standing = supervisor::standing(root.path(), false);
     let world = standing.at.clone();
     let client = Client::new(&world.server, Actor::Operator).with_credential(&*world.credential);
 
@@ -428,7 +428,7 @@ fn digest(path: &std::path::Path) -> String {
 #[test]
 fn a_client_without_the_credential_in_force_is_refused_by_a_real_supervisor() {
     let root = tempfile::tempdir().expect("this journey's own root");
-    let mut standing = supervisor::standing(root.path());
+    let mut standing = supervisor::standing(root.path(), false);
     let world = standing.at.clone();
 
     for (what, client) in [

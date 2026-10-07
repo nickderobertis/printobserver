@@ -145,6 +145,11 @@ pub struct World {
     pub image_id: String,
     /// The event the acknowledgement command is about.
     pub event_id: String,
+    /// A print that has ended, which every action the policy is asked about
+    /// is refused against for there being no print to act on: made the first
+    /// time a journey asks for it, so a world nobody asks it of lists no print
+    /// beside its own.
+    ended: std::sync::OnceLock<String>,
     /// The camera a look takes its frame from.
     pub camera: Host,
     /// The skill the supervisor is configured with.
@@ -262,6 +267,7 @@ impl World {
             print: std::sync::Mutex::new(print_id),
             image_id,
             event_id,
+            ended: std::sync::OnceLock::new(),
             camera,
             skill: skill.to_path_buf(),
             server,
@@ -379,6 +385,39 @@ impl World {
         }
     }
 
+    /// A print that has ended, put in the record the first time this is asked.
+    #[must_use]
+    pub fn ended_print_id(&self) -> String {
+        self.ended
+            .get_or_init(|| {
+                with_the_store(self.root.path().join("state"), |store, runtime| {
+                    runtime.block_on(async {
+                        let earlier = store
+                            .open_print(Some(4199), Some("an-earlier-print.gcode".to_owned()))
+                            .await
+                            .expect("an earlier print opens");
+                        store
+                            .end_print(
+                                earlier.id,
+                                printobserver_core::records::PrinterState::Operational,
+                                printobserver_types::Timestamp::now(),
+                                "it finished before this journey asked about it".to_owned(),
+                            )
+                            .await
+                            .expect("the earlier print ends");
+                        earlier.id.to_string()
+                    })
+                })
+            })
+            .clone()
+    }
+
+    /// Whether one identifier is the ended print's, when one has been made.
+    #[must_use]
+    pub fn is_the_ended_print(&self, print_id: &str) -> bool {
+        self.ended.get().is_some_and(|ended| ended == print_id)
+    }
+
     /// The print every command in the walk is about now.
     #[must_use]
     pub fn print_id(&self) -> String {
@@ -462,13 +501,13 @@ impl World {
         path
     }
 
-    /// The configuration a supervisor that generates its own credential is
-    /// started under, and the state directory it generates it into.
+    /// The configuration a supervisor of a fresh install is started under, and
+    /// its state directory.
     ///
-    /// Its own state directory, named for the journey asking, and no
-    /// `api.credential` — so what it serves under is what it drew for itself,
-    /// which is what an installed service holds — listening where it is told.
-    pub fn generating_server_config(&self, name: &str, listen: &str) -> (PathBuf, PathBuf) {
+    /// Its own state directory, named for the journey asking, and no `[api]`
+    /// table — what a fresh install carries before its operator puts in the
+    /// verifier `credential issue` printed — listening where it is told.
+    pub fn unverified_server_config(&self, name: &str, listen: &str) -> (PathBuf, PathBuf) {
         let state = self.root.path().join(format!("{name}-state"));
         std::fs::create_dir_all(&state).expect("a state directory");
         let mut document = server_value(&state, &self.printer, &self.skill);
@@ -887,10 +926,14 @@ fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
         },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
         // The credential the walk's own commands are configured with is the
-        // one in force, chosen here so that a search for it in anything this
-        // program prints finds only a rendering of it. The control credential
-        // is therefore one the supervisor refuses.
-        "api": { "credential": CREDENTIAL },
+        // operator's, chosen here so that a search for it in anything this
+        // program prints finds only a rendering of it, and the supervisor is
+        // configured with its verifier alone, as an operator who issued one
+        // configures it. The control credential is therefore one it refuses.
+        "api": {
+            "credential_verifier": printobserver_server::CredentialVerifier::of(CREDENTIAL)
+                .to_string(),
+        },
         "safety": {
             "agent_min_interval_s": 0,
             "allowed": {
@@ -900,9 +943,9 @@ fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
                 "bed_target": { "min": 0.0, "max": 110.0 },
                 "tool_target:0": { "min": 0.0, "max": 260.0 },
             },
-            // The operator may ask for everything and the agent for nothing,
-            // which is what gives this walk both a success path and a policy
-            // rejection for every action of the vocabulary.
+            // The operator may ask for everything and the agent for nothing.
+            // The walk's commands are the operator's, so its policy rejections
+            // are of a value out of bounds and of a print that has ended.
             "actions": {
                 "operator": [
                     "pause", "resume", "cancel", "start_print", "set_feedrate_factor",

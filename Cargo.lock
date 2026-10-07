@@ -1426,6 +1426,7 @@ dependencies = [
 name = "printobserver"
 version = "0.3.0"
 dependencies = [
+ "base64 0.22.1",
  "jsonschema 0.34.0",
  "plist",
  "printobserver-core",
