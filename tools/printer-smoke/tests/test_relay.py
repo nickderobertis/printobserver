@@ -642,30 +642,52 @@ def test_an_argument_frame_that_is_not_utf8_is_refused_by_the_relay(world: World
     )
 
 
+@pytest.mark.parametrize("starting_s", [0.0, 1.5], ids=["promptly", "slowly"])
 @pytest.mark.parametrize(
     ("announcing", "announced"),
     [(None, "''"), ("a relay", "'a relay'"), ("192.0.2.1:9", "'192.0.2.1:9'")],
     ids=["silent", "unparsable", "elsewhere"],
 )
 def test_a_relay_that_does_not_say_where_it_listens_is_refused_and_stopped(
-    world: World, tmp_path: Path, announcing: str | None, announced: str
+    world: World, tmp_path: Path, announcing: str | None, announced: str, starting_s: float
 ) -> None:
-    """A relay silent past its bound, or announcing no loopback address, is killed and reported."""
+    """A relay silent past its bound, or announcing no loopback address, is killed and reported.
+
+    How long the stand-in's interpreter takes to start is the host's, so
+    nothing here may depend on it: `starting_s` makes the stand-in slower to
+    start than the shortest bound given it. One that announces a line is given
+    a bound it is refused well inside, so the refusal is over that line. One
+    that says nothing is given a bound that grows until it was refused having
+    started, which its heartbeat says — a stand-in killed before it ran proves
+    nothing about a relay that is running and silent.
+    """
     beating = tmp_path / "heartbeat"
     impostor = tmp_path / "impostor_relay.py"
     impostor.write_text(
+        f"import time\ntime.sleep({starting_s!r})\n"
         f"from pathlib import Path\nPath({str(beating)!r}).write_text('0')\n"
         + ("" if announcing is None else f"print({announcing!r}, flush=True)\n")
         + HEARTBEAT.replace("sys.argv[1]", repr(str(beating))),
         encoding="utf-8",
     )
-    started = time.monotonic()
+    within_s = 0.5 if announcing is None else SETTLE_S
 
-    with pytest.raises(RuntimeError, match=f"announced {re.escape(announced)} rather than"):
-        RelayProcess.start(world.environment(), within_s=0.5, relay=impostor)
+    while True:
+        beating.unlink(missing_ok=True)
+        started = time.monotonic()
+        with pytest.raises(RuntimeError, match=f"announced {re.escape(announced)} rather than"):
+            RelayProcess.start(world.environment(), within_s=within_s, relay=impostor)
+        if announcing is not None:
+            truth(
+                time.monotonic() - started < within_s,
+                describing="the refusal to come over the line announced, before the bound",
+            )
+        # The refusal waited the stand-in out, so what it wrote is all it ever will.
+        if beating.is_file() or within_s >= SETTLE_S:
+            break
+        within_s = min(within_s * 2, SETTLE_S)
 
-    truth(time.monotonic() - started < SETTLE_S, describing="the refusal to come inside the bound")
-    until(beating.is_file, describing="the refused relay to have been running")
+    truth(beating.is_file(), describing="the refused relay to have been running")
     last = beating.read_text(encoding="utf-8")
     time.sleep(1.0)
     equal(
