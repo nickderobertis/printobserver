@@ -17,6 +17,7 @@ import pytest
 from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
+from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
 from repo_checks.parsing import jobs_of, load_workflow, marker_block, run_commands, steps_of
 from repo_checks.shell import run
@@ -205,6 +206,18 @@ def test_an_unknown_tier_is_refused(tmp_path: Path) -> None:
     """A mistyped tier aborts rather than quietly buying a weaker one."""
     with pytest.raises(TierError, match="unknown tier 'everything'"):
         resolve(repository(tmp_path), "everything", {})
+
+
+@pytest.mark.parametrize("target", ["--parallel=64", "-t", "$(id)", "lint;id"])
+def test_a_target_that_is_not_a_target_name_is_refused_before_nx_runs(
+    target: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A value past `--` reaches Nx's own argument list, so one naming no target stops there."""
+    equal(gate_tier_main(["run", "all", "--root", str(REPO_ROOT), "--", "lint", target]), 2)
+
+    stderr = capsys.readouterr().err
+    contains(stderr, f"{target!r} is not a target name")
+    truth("bunx nx" not in stderr, describing=f"no Nx invocation announced, in {stderr!r}")
 
 
 def gate_tier(event: str, head: str = "") -> str:

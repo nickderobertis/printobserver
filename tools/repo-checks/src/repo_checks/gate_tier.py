@@ -67,6 +67,9 @@ HEAD_VARIABLE = "NX_HEAD"
 #: git's own ref-name rules a value interpolated nowhere but `git` and `nx` needs.
 SHA = re.compile(r"^[0-9a-f]{7,64}$")
 REF_NAME = re.compile(r"^(?![-./])(?!.*\.\.)(?!.*//)(?!.*/$)(?!.*\.lock$)[A-Za-z0-9._/-]+$")
+#: An Nx target name as every `project.json` here spells one: letters, digits
+#: and `- _ :`, starting with a letter, so nothing option-shaped reaches Nx.
+TARGET_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_:-]*$")
 
 #: The exit a refused tier or base answers with, apart from the exit of an Nx
 #: run, which is passed back as it is.
@@ -319,6 +322,26 @@ def select(repo: Repo, environ: Mapping[str, str] | None = None) -> Tier:
             return ALL
 
 
+def target_names(targets: Sequence[str]) -> tuple[str, ...]:
+    """`targets`, each one shaped like a target name.
+
+    They reach Nx's own argument list, so a value that is not a target name —
+    an option-shaped one among them — is refused rather than handed on to
+    change the invocation instead of naming what it runs.
+
+    Raises:
+        TierError: If a target is not shaped like a target name.
+    """
+    refused = [target for target in targets if not TARGET_NAME.match(target)]
+    if refused:
+        msg = (
+            f"{', '.join(repr(t) for t in refused)} is not a target name: a target is "
+            f"letters, digits and `- _ :`, starting with a letter"
+        )
+        raise TierError(msg)
+    return tuple(targets)
+
+
 def main(argv: list[str] | None = None) -> int:
     """`run` targets over a tier, or `select` the tier a CI run is for."""
     parser = argparse.ArgumentParser(prog="gate-tier", description=__doc__)
@@ -335,11 +358,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if parsed.tier is None or not parsed.targets:
             parser.error("run needs a tier and at least one target")
+        targets = target_names(parsed.targets)
         scope = resolve(repo, parsed.tier)
     except TierError as error:
         print(f"gate-tier: refused: {error}", file=sys.stderr)
         return REFUSED
-    command = scope.nx(*parsed.targets)
+    command = scope.nx(*targets)
     print(f"gate-tier: {parsed.tier}: {scope.reason}", file=sys.stderr)
     print(f"gate-tier: {' '.join(command)}", file=sys.stderr)
     return run([*command, "--output-style=stream"], cwd=repo.root, capture=False).returncode
