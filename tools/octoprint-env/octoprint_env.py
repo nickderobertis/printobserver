@@ -450,9 +450,8 @@ def managed_config(connection: Connection) -> dict[str, Any]:
                 # checksum mismatch at 115 — counted from the last `M110`, so
                 # every print the tier starts and adjusts past a hundred lines
                 # meets them. They exist to test OctoPrint's own serial
-                # recovery, which is not what the tier proves, and on a slow
-                # host a fault landing in a cancel-and-restart left the printer
-                # `Offline after error`. A real printer injects none.
+                # recovery, which is not what the tier proves, and a real
+                # printer injects none.
                 "simulated_errors": [],
             },
         },

@@ -120,13 +120,13 @@ def test_a_print_driven_past_a_hundred_lines_meets_no_injected_fault(
 
     The integration tier cancels, restarts and adjusts its prints many times,
     and every adjustment is a numbered line of the running print. OctoPrint's
-    virtual printer injects a fault at lines 100, 105, 110 and 115 by default;
-    on a slow host one of them, landing in a cancel and a restart, leaves the
-    printer `Offline after error` with the tier half walked. So the hold
-    print is restarted here — its `M110` starting the count again — and carried
-    past all four, and OctoPrint's own log is read for the resend requests a
-    fault answers with. One resend is then induced on purpose, so a log that
-    stopped saying it in these words fails here rather than reading as none.
+    virtual printer injects a fault at lines 100, 105, 110 and 115 by default,
+    to test OctoPrint's own serial recovery rather than anything this program
+    does, and the tier's walk reaches them. So the hold print is restarted
+    here — its `M110` starting the count again — and carried past all four,
+    and OctoPrint's own log is read for the resend requests a fault answers
+    with. One resend is then induced on purpose, so a log that stopped saying
+    it in these words fails here rather than reading as none.
     The print is left running, as the bring-up left it.
     """
     url = str(brought_up["url"])
