@@ -381,9 +381,6 @@ def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
 COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
 
 
-RUST = "lang:rust"
-
-
 @dataclass(frozen=True, slots=True)
 class Measured:
     """Whose code one coverage report is over.
@@ -435,7 +432,7 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     except checks_graph.ProjectFileError as malformed:
         raise gate_tier.TierError(str(malformed)) from malformed
     graph = [project for project in declared if project.name in reached]
-    rust = tuple(project.root for project in graph if RUST in project.tags)
+    rust = tuple(project.root for project in graph if checks_graph.RUST in project.tags)
     return Measured(rust=rust, python=measured_sources(repo, graph), reason=scope.reason)
 
 

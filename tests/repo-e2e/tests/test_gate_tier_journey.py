@@ -12,8 +12,11 @@ import json
 import re
 from collections.abc import Callable
 
+import pytest
 from journey import GateCopy, plain
+from repo_checks.commands import measured_for
 from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.model import Repo
 
 #: Every journey here runs Nx in a copy nobody will clean up after, so it runs
 #: without the daemon a local Nx would otherwise leave behind per copy.
@@ -168,6 +171,39 @@ def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     contains(output, "rust lines not measured: this run's tests reached no crate")
     contains(output, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
     truth("tools/repo-checks/src" not in output, describing=f"a report over the client:\n{output}")
+
+
+def test_the_affected_rust_report_is_over_the_crates_the_change_reaches(
+    gate_copy: Callable[..., GateCopy], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The crates whose tests a one-crate change runs are the ones its Rust floor rules on.
+
+    Read through the real graph — Nx's own affected answer and every project's
+    language tag — so a crate dropped from it by a tag or a root the selection
+    misreads is a crate whose floor nothing would rule on.
+    """
+    copy = as_a_clone(gate_copy())
+    branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
+    for name, value in QUIET.items():
+        monkeypatch.setenv(name, value)
+
+    measured = measured_for(Repo(copy.root), "affected")
+
+    reached = set(measured.rust or ())
+    for crate in ("printobserver-vision-api", "printobserver-core", "printobserver-server"):
+        contains(reached, f"crates/{crate}", describing="the crates the change's tests measure")
+    ignored = re.compile(measured.rust_ignored(Repo(copy.root)) or "(?!)")
+    for crate in ("printobserver-octoprint", "printobserver-types"):
+        truth(crate not in reached, describing=f"{crate} left out of {sorted(reached)}")
+        truth(
+            ignored.search(f"crates/{crate}/src/lib.rs") is not None,
+            describing=f"{crate}'s files left out of the report by {ignored.pattern!r}",
+        )
+    for crate in ("printobserver-vision-api", "printobserver"):
+        truth(
+            ignored.search(f"crates/{crate}/src/lib.rs") is None,
+            describing=f"{crate}'s files kept in the report by {ignored.pattern!r}",
+        )
 
 
 def test_a_named_head_leaves_out_what_landed_after_it(gate_copy: Callable[..., GateCopy]) -> None:
