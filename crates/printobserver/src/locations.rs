@@ -11,6 +11,16 @@
 //! and Windows installers' own paths, the real-printer smoke test's
 //! configuration defaults and the README's table of them among them — is held
 //! to [`LINUX`], [`MACOS`] or [`WINDOWS`] by this crate's tests.
+//!
+//! # The operator's own configuration
+//!
+//! A fourth answer is not the install's but the operator's: the client
+//! configuration `printobserver credential issue` writes and every command
+//! reads first, at [`OPERATOR_CLIENT_CONFIG`] under the operator's own
+//! configuration home. Where that home is is each platform's own convention,
+//! read from that platform's own variables by [`config_home_of`] — `XDG_CONFIG_HOME`,
+//! else `$HOME/.config`, on Linux and every other Unix;
+//! `$HOME/Library/Application Support` on macOS; `%APPDATA%` on Windows.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +61,85 @@ pub const WINDOWS: Locations = Locations {
     home: r"C:\Program Files\printobserver",
 };
 
+/// The family of platform a configuration home is resolved for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Family {
+    /// Linux, and every Unix that is not macOS: the XDG base directories.
+    Unix,
+    /// macOS: the user's `Library/Application Support`.
+    MacOs,
+    /// Windows: the roaming application data folder.
+    Windows,
+}
+
+/// The family this build resolves for.
+#[cfg(windows)]
+pub const FAMILY: Family = Family::Windows;
+
+/// The family this build resolves for.
+#[cfg(target_os = "macos")]
+pub const FAMILY: Family = Family::MacOs;
+
+/// The family this build resolves for.
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const FAMILY: Family = Family::Unix;
+
+/// The operator's own client configuration, relative to their configuration
+/// home.
+pub const OPERATOR_CLIENT_CONFIG: [&str; 2] = ["printobserver", "client.toml"];
+
+/// One variable's value, when it is set to anything but nothing.
+fn set_to_something(
+    read: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    name: &str,
+) -> Option<std::path::PathBuf> {
+    read(name)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
+/// Where one family keeps a user's configuration, read from that family's own
+/// variables through `read`.
+///
+/// On Unix, `XDG_CONFIG_HOME` when it names an absolute path — the base
+/// directory specification has a relative one ignored — and `$HOME/.config`
+/// otherwise. On macOS, `$HOME/Library/Application Support`. On Windows,
+/// `%APPDATA%`. Absent when the variable it needs is not set.
+#[must_use]
+pub fn config_home_of(
+    family: Family,
+    read: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Option<std::path::PathBuf> {
+    match family {
+        // Rooted rather than `is_absolute`, so that the Unix answer reads the
+        // same on a Windows host resolving it — where `/srv` has no drive.
+        Family::Unix => set_to_something(read, "XDG_CONFIG_HOME")
+            .filter(|home| home.has_root())
+            .or_else(|| set_to_something(read, "HOME").map(|home| home.join(".config"))),
+        Family::MacOs => set_to_something(read, "HOME")
+            .map(|home| home.join("Library").join("Application Support")),
+        Family::Windows => set_to_something(read, "APPDATA"),
+    }
+}
+
+/// This user's configuration home, on this platform, from this process's own
+/// environment.
+#[must_use]
+pub fn config_home() -> Option<std::path::PathBuf> {
+    config_home_of(FAMILY, &|name| std::env::var_os(name))
+}
+
+/// This user's own client configuration: [`OPERATOR_CLIENT_CONFIG`] under
+/// [`config_home`].
+#[must_use]
+pub fn operator_client_config() -> Option<std::path::PathBuf> {
+    config_home().map(|home| {
+        OPERATOR_CLIENT_CONFIG
+            .iter()
+            .fold(home, |path, segment| path.join(segment))
+    })
+}
+
 /// The answer this build gives: its own platform's.
 #[cfg(windows)]
 pub const HERE: Locations = WINDOWS;
@@ -66,7 +155,96 @@ pub const HERE: Locations = LINUX;
 
 #[cfg(test)]
 mod tests {
-    use super::{HERE, LINUX, Locations, MACOS, WINDOWS};
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    use super::{FAMILY, Family, HERE, LINUX, Locations, MACOS, WINDOWS, config_home_of};
+
+    /// An environment holding exactly these variables.
+    fn holding(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
+        let held: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect();
+        move |name| {
+            held.iter()
+                .find(|(named, _)| named == name)
+                .map(|(_, value)| OsString::from(value))
+        }
+    }
+
+    /// Linux and every other Unix read `XDG_CONFIG_HOME`, and `$HOME/.config`
+    /// when it is unset, empty or relative.
+    #[test]
+    fn unix_reads_xdg_config_home_and_falls_back_to_dot_config() {
+        let resolve = |pairs: &[(&str, &str)]| config_home_of(Family::Unix, &holding(pairs));
+
+        assert_eq!(
+            resolve(&[
+                ("XDG_CONFIG_HOME", "/srv/operator/config"),
+                ("HOME", "/home/op")
+            ]),
+            Some(PathBuf::from("/srv/operator/config"))
+        );
+        for unusable in ["", "relative/config"] {
+            assert_eq!(
+                resolve(&[("XDG_CONFIG_HOME", unusable), ("HOME", "/home/op")]),
+                Some(PathBuf::from("/home/op").join(".config")),
+                "XDG_CONFIG_HOME={unusable:?} was not passed over"
+            );
+        }
+        assert_eq!(
+            resolve(&[("HOME", "/home/op")]),
+            Some(PathBuf::from("/home/op").join(".config"))
+        );
+        assert_eq!(resolve(&[]), None);
+    }
+
+    /// macOS keeps a user's configuration under `Library/Application Support`.
+    #[test]
+    fn macos_reads_library_application_support() {
+        assert_eq!(
+            config_home_of(
+                Family::MacOs,
+                &holding(&[("HOME", "/Users/op"), ("XDG_CONFIG_HOME", "/elsewhere")])
+            ),
+            Some(
+                PathBuf::from("/Users/op")
+                    .join("Library")
+                    .join("Application Support")
+            )
+        );
+        assert_eq!(config_home_of(Family::MacOs, &holding(&[])), None);
+    }
+
+    /// Windows keeps it in the roaming application data folder.
+    #[test]
+    fn windows_reads_appdata() {
+        assert_eq!(
+            config_home_of(
+                Family::Windows,
+                &holding(&[
+                    ("APPDATA", r"C:\Users\op\AppData\Roaming"),
+                    ("HOME", "/home/op")
+                ])
+            ),
+            Some(PathBuf::from(r"C:\Users\op\AppData\Roaming"))
+        );
+        assert_eq!(config_home_of(Family::Windows, &holding(&[])), None);
+    }
+
+    /// This build resolves for its own platform's family.
+    #[test]
+    fn this_build_resolves_for_its_own_family() {
+        let expected = if cfg!(windows) {
+            Family::Windows
+        } else if cfg!(target_os = "macos") {
+            Family::MacOs
+        } else {
+            Family::Unix
+        };
+        assert_eq!(FAMILY, expected);
+    }
 
     /// The value one assignment in the Linux installer makes, as it writes it.
     fn installer_value(installer: &str, variable: &str) -> String {

@@ -4,9 +4,20 @@
 //! command line that could carry an address is one that could be pointed at
 //! something that is not the supervisor, and a command line that could carry a
 //! credential is one that lands in a shell history and a process table. They
-//! are read from a configuration file and from the environment, in that order,
-//! with the environment last so that a host may point one invocation somewhere
-//! without editing the file every other invocation reads.
+//! are read from configuration files and from the environment, with the
+//! environment last so that a host may point one invocation somewhere without
+//! editing the file every other invocation reads.
+//!
+//! # Which files, in which order
+//!
+//! `--config <path>` names the one file read. With none, the operator's own
+//! client configuration is read first — the file `printobserver credential
+//! issue` writes, under their configuration home
+//! ([`crate::locations::operator_client_config`]) — and the server's default
+//! file after it for whatever the first left unnamed. `PRINTOBSERVER_SERVER`
+//! and `PRINTOBSERVER_CREDENTIAL` win over both, and with both set and no
+//! `--config`, no file is read at all: that is how a supervision turn, whose
+//! environment carries both, reads nothing.
 //!
 //! # The file may be the server's own
 //!
@@ -170,8 +181,9 @@ impl core::fmt::Display for Unconfigured {
             ),
             Self::NoServer { path } => write!(
                 formatter,
-                "this program has no supervisor to talk to: nothing named one. Write \
-                 `[client]` with `server = \"{SCHEME}127.0.0.1:8420\"` into {}, or set \
+                "this program has no supervisor to talk to: nothing named one. Run \
+                 `printobserver credential issue` to write your own client configuration, \
+                 write `[client]` with `server = \"{SCHEME}127.0.0.1:8420\"` into {}, or set \
                  {SERVER_ENV} to that address",
                 path.display()
             ),
@@ -227,7 +239,11 @@ fn in_environment(name: &str) -> Option<String> {
 }
 
 /// The address one text names.
-fn address_of(offered: &str, from: &str) -> Result<SocketAddr, Unconfigured> {
+///
+/// # Errors
+///
+/// Returns [`Unconfigured::BadServer`] when it names none.
+pub(crate) fn address_of(offered: &str, from: &str) -> Result<SocketAddr, Unconfigured> {
     let bare = offered.strip_prefix(SCHEME).unwrap_or(offered);
     bare.trim_end_matches('/')
         .parse::<SocketAddr>()
@@ -237,78 +253,140 @@ fn address_of(offered: &str, from: &str) -> Result<SocketAddr, Unconfigured> {
         })
 }
 
+/// What one file named, and where, read as a document.
+struct Read {
+    /// The address it names, and the file's own name for where it said so.
+    server: Option<(String, String)>,
+    /// The credential it names, and where.
+    credential: Option<(String, String)>,
+}
+
+/// Read one file for an address and a credential.
+///
+/// A `[client]` table's `server` wins over a server's own `listen`, which is
+/// where the supervisor was told to listen and so where it is.
+///
+/// # Errors
+///
+/// Returns [`Unconfigured::Unparsable`] when the file is not a document.
+fn read_document(path: &Path, text: &str) -> Result<Read, Unconfigured> {
+    // Read as a document rather than as a value: a file beginning with a
+    // table header is a document, and a value parser meets that header as
+    // an array and everything after it as content it did not expect.
+    let document =
+        toml::from_str::<toml::Value>(text).map_err(|error| Unconfigured::Unparsable {
+            path: path.to_path_buf(),
+            detail: without_the_quoted_source(&error),
+        })?;
+    let named_by = format!("{}", path.display());
+    let server = in_file(&document, "client", "server")
+        .or_else(|| {
+            document
+                .get("listen")
+                .and_then(toml::Value::as_str)
+                .map(|value| value.trim().to_owned())
+        })
+        .map(|value| (value, named_by.clone()));
+    let credential = in_file(&document, "client", "credential").map(|value| (value, named_by));
+    Ok(Read { server, credential })
+}
+
+/// How one file this program looked for turned out.
+enum Looked {
+    /// It was read.
+    Found(Read),
+    /// Nothing is there.
+    Absent,
+    /// It is somebody else's, and this caller may not read it.
+    PassedOver(String),
+}
+
+/// Look for one file nobody named.
+///
+/// # Errors
+///
+/// Returns [`Unconfigured`] when it is there and cannot be read for any reason
+/// but belonging to somebody else, or is not a document.
+fn look_for(path: &Path) -> Result<Looked, Unconfigured> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => read_document(path, &text).map(Looked::Found),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Looked::Absent),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            Ok(Looked::PassedOver(error.to_string()))
+        }
+        Err(error) => Err(Unconfigured::Unreadable {
+            path: path.to_path_buf(),
+            detail: error.to_string(),
+        }),
+    }
+}
+
 /// Read what this program was configured with.
 ///
-/// The file is read when one is named or when the default is there; a default
-/// that is not there is a host that configures this program another way rather
-/// than a failure. The environment is read afterwards and wins, so one
-/// invocation can be pointed elsewhere without editing what every other
-/// invocation reads.
+/// With a file named, that file is read and nothing else is. With none, the
+/// operator's own client configuration is read first, and the server's default
+/// file after it for whatever the first left unnamed; either not being there
+/// is a host that configures this program another way rather than a failure.
+/// The environment is read afterwards and wins, so one invocation can be
+/// pointed elsewhere without editing what every other invocation reads.
 ///
 /// # The operator on their own account
 ///
 /// The default file is the service's own, and it is private to the service's
-/// user. So an operator on their own account supplies both values through the
-/// environment, and when nothing names a file and the environment names both,
-/// the default file is not opened at all: there is nothing it could add. A
-/// default file this program is not permitted to read is otherwise passed over
-/// the way a missing one is, and is named only when nothing else named a
-/// supervisor.
+/// user. So an operator on their own account keeps their credential in their
+/// own configuration, or supplies both values through the environment — and
+/// when nothing names a file and the environment names both, no file is opened
+/// at all: there is nothing either could add. A default file this program is
+/// not permitted to read is otherwise passed over the way a missing one is, and
+/// is named only when nothing else named a supervisor.
 ///
 /// # Errors
 ///
-/// Returns [`Unconfigured`] when a named file cannot be read or parsed, when
+/// Returns [`Unconfigured`] when a file that is there cannot be read or parsed
+/// (one the caller may not read, nobody having named it, excepted), when
 /// nothing anywhere names a server, when what names one is not an address, or
 /// when what names a credential names an empty one.
 pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
-    let path = named.map_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH), Path::to_path_buf);
+    let default = PathBuf::from(DEFAULT_CONFIG_PATH);
     let from_environment = (in_environment(SERVER_ENV), in_environment(CREDENTIAL_ENV));
-    let wanted = named.is_some() || from_environment.0.is_none() || from_environment.1.is_none();
-    let mut passed_over = None;
-    let document = match wanted.then(|| std::fs::read_to_string(&path)) {
-        None => None,
-        // Read as a document rather than as a value: a file beginning with a
-        // table header is a document, and a value parser meets that header as
-        // an array and everything after it as content it did not expect.
-        Some(Ok(text)) => Some(toml::from_str::<toml::Value>(&text).map_err(|error| {
-            Unconfigured::Unparsable {
-                path: path.clone(),
-                detail: without_the_quoted_source(&error),
-            }
-        })?),
-        // A file nobody named and nobody wrote is a host configured another
-        // way. A file somebody named and nothing wrote is a mistake, and is
-        // refused where it was named.
-        Some(Err(error)) if named.is_none() && error.kind() == std::io::ErrorKind::NotFound => None,
-        // A file nobody named that belongs to somebody else is the service's
-        // own, and this caller configures this program another way.
-        Some(Err(error))
-            if named.is_none() && error.kind() == std::io::ErrorKind::PermissionDenied =>
-        {
-            passed_over = Some(error.to_string());
-            None
-        }
-        Some(Err(error)) => {
-            return Err(Unconfigured::Unreadable {
-                path,
-                detail: error.to_string(),
-            });
-        }
-    };
-
     let mut server: Option<(String, String)> = None;
     let mut credential: Option<(String, String)> = None;
-    if let Some(document) = document.as_ref() {
-        let named_by = format!("{}", path.display());
-        if let Some(value) = in_file(document, "client", "server") {
-            server = Some((value, named_by.clone()));
-        } else if let Some(value) = document.get("listen").and_then(toml::Value::as_str) {
-            // The server's own file. It says where the supervisor was told to
-            // listen, which is where the supervisor is.
-            server = Some((value.trim().to_owned(), named_by.clone()));
-        }
-        if let Some(value) = in_file(document, "client", "credential") {
-            credential = Some((value, named_by));
+    let mut passed_over = None;
+    // What a caller with nothing configured is told to write into: their own
+    // client configuration, where there is a home to keep one in.
+    let mut reported =
+        crate::locations::operator_client_config().unwrap_or_else(|| default.clone());
+
+    if let Some(path) = named {
+        // A file somebody named and nothing wrote is a mistake, and is refused
+        // where it was named.
+        let text = std::fs::read_to_string(path).map_err(|error| Unconfigured::Unreadable {
+            path: path.to_path_buf(),
+            detail: error.to_string(),
+        })?;
+        let read = read_document(path, &text)?;
+        server = read.server;
+        credential = read.credential;
+        reported = path.to_path_buf();
+    } else if from_environment.0.is_none() || from_environment.1.is_none() {
+        let operator = crate::locations::operator_client_config();
+        for path in operator.iter().chain(std::iter::once(&default)) {
+            if server.is_some() && credential.is_some() {
+                break;
+            }
+            match look_for(path)? {
+                Looked::Found(read) => {
+                    server = server.or(read.server);
+                    credential = credential.or(read.credential);
+                }
+                Looked::Absent => {}
+                Looked::PassedOver(detail) => {
+                    if passed_over.is_none() {
+                        reported.clone_from(path);
+                        passed_over = Some(detail);
+                    }
+                }
+            }
         }
     }
     if let Some(value) = from_environment.0 {
@@ -320,8 +398,11 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
 
     let Some((offered, from)) = server else {
         return Err(match passed_over {
-            Some(detail) => Unconfigured::Unreadable { path, detail },
-            None => Unconfigured::NoServer { path },
+            Some(detail) => Unconfigured::Unreadable {
+                path: reported,
+                detail,
+            },
+            None => Unconfigured::NoServer { path: reported },
         });
     };
     Ok(ClientConfig {

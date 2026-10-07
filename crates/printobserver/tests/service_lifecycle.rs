@@ -22,10 +22,11 @@ use std::time::Duration;
 
 use printobserver::failure::Exit;
 use printobserver::service::{START_WAIT_HINT, STOP_WAIT_HINT, ServiceState};
-use printobserver_server::CLIENT_CONFIG_FILE;
+use printobserver_server::CredentialVerifier;
 use tempfile::TempDir;
 
-/// The credential the configuration below puts in force.
+/// The operator credential this tier presents: the configuration below names
+/// its verifier, as an operator who issued it configures one.
 const CREDENTIAL: &str = "a-credential-this-tier-configures-8c2f4e1d7a";
 
 /// What every report line the fixture prints begins with.
@@ -75,9 +76,22 @@ fn host_answering(response: &'static [u8]) -> SocketAddr {
     address
 }
 
+/// A loopback address nothing is listening on now: bound to learn a free port,
+/// then released for the server to take.
+fn free_address() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    listener
+        .local_addr()
+        .expect("the bound address")
+        .to_string()
+}
+
 /// A configuration the server starts under, over a state directory of the
-/// tier's own and a port the operating system chooses.
+/// tier's own and a free port it is told to listen on — which is how this tier
+/// knows where it serves, since the server writes that down nowhere.
 fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
+    let listen = free_address();
+    let verifier = CredentialVerifier::of(CREDENTIAL).to_string();
     let state = root.join("state");
     let path = root.join("config.toml");
     // The committed skill, which is what `gh skill install` puts on a host.
@@ -87,7 +101,7 @@ fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
         .to_string();
     let document = toml::toml! {
         state_dir = (state.display().to_string())
-        listen = "127.0.0.1:0"
+        listen = listen
         [octoprint]
         url = octoprint
         api_key = "a-provisioned-key"
@@ -98,7 +112,7 @@ fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
         [ingress]
         shared_secret = "a-shared-secret"
         [api]
-        credential = CREDENTIAL
+        credential_verifier = verifier
         [safety]
         agent_min_interval_s = 30
         [safety.allowed]
@@ -160,22 +174,24 @@ fn next_report(lines: &mut std::io::Lines<BufReader<ChildStdout>>) -> Option<Rep
     })
 }
 
-/// The address and credential the running server wrote for the clients beside it.
+/// Where the server under one state directory was told to listen, read off
+/// the configuration beside that directory, and the credential it admits.
 fn where_it_serves(state: &Path) -> (String, String) {
-    let written: toml::Value = toml::from_str(
-        &std::fs::read_to_string(state.join(CLIENT_CONFIG_FILE))
-            .expect("the running server wrote the configuration its clients read"),
+    let configured: toml::Value = toml::from_str(
+        &std::fs::read_to_string(
+            state
+                .parent()
+                .expect("the state directory is in the tier's root")
+                .join("config.toml"),
+        )
+        .expect("the configuration reads"),
     )
-    .expect("the configuration the server wrote is a document");
-    let server = written["client"]["server"]
+    .expect("the configuration is a document");
+    let listen = configured["listen"]
         .as_str()
-        .expect("the client configuration names the server")
+        .expect("the configuration names where to listen")
         .to_owned();
-    let credential = written["client"]["credential"]
-        .as_str()
-        .expect("the client configuration carries the credential")
-        .to_owned();
-    (server.trim_start_matches("http://").to_owned(), credential)
+    (listen, CREDENTIAL.to_owned())
 }
 
 /// One question to the API, written out over a socket, and the whole answer.
@@ -216,30 +232,19 @@ fn exits_within(child: &mut Child, within: Duration) -> std::process::ExitStatus
     }
 }
 
-/// The address and credential, once the server has written them whole: with
-/// the running report refused, nothing else says when it is serving, and the
-/// file is written in place rather than renamed into it.
+/// The address and credential, once the server is listening: with the running
+/// report refused, nothing else says when it is serving.
 fn once_serving(state: &Path) -> (String, String) {
+    let (address, credential) = where_it_serves(state);
     let started = std::time::Instant::now();
-    loop {
-        let written = std::fs::read_to_string(state.join(CLIENT_CONFIG_FILE))
-            .ok()
-            .and_then(|text| toml::from_str::<toml::Value>(&text).ok());
-        let field = |name: &str| {
-            written
-                .as_ref()
-                .and_then(|document| document.get("client")?.get(name)?.as_str())
-                .map(str::to_owned)
-        };
-        if let (Some(server), Some(credential)) = (field("server"), field("credential")) {
-            return (server.trim_start_matches("http://").to_owned(), credential);
-        }
+    while !still_listening(&address) {
         assert!(
             started.elapsed() < SETTLES_WITHIN,
-            "the service never wrote the configuration its clients read"
+            "the service never listened at {address}"
         );
         std::thread::sleep(Duration::from_millis(50));
     }
+    (address, credential)
 }
 
 /// Everything the fixture said on standard error.

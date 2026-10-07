@@ -1,10 +1,12 @@
 //! `printobserver`.
 //!
 //! Owns: the `printobserver` command — the single installable artifact of this
-//! repository. Its `server` subcommand runs the supervisor and its `sign-in`
-//! subcommand signs that supervisor's harness in; every other subcommand is one
-//! request to an already-running supervisor, and is the whole of the surface
-//! both the supervising agent and the operator work through.
+//! repository. Its `server` subcommand runs the supervisor, its `sign-in`
+//! subcommand signs that supervisor's harness in, and its two `credential`
+//! subcommands issue the operator's credential and print a credential's
+//! verifier; every other subcommand is one request to an already-running
+//! supervisor, and is the whole of the surface both the supervising agent and
+//! the operator work through.
 //!
 //! May depend on: `printobserver-server`, `printobserver-sdk` and
 //! `printobserver-types`. Never the `OctoPrint` adapter and never the `Obico`
@@ -50,6 +52,7 @@
 
 pub mod client;
 pub mod config;
+pub mod credential;
 pub mod failure;
 pub mod locations;
 pub mod parse;
@@ -71,8 +74,9 @@ pub use parse::{Call, Invocation, parse};
 pub use render::{Rendering, fields, render};
 pub use sign_in::sign_in;
 pub use surface::{
-    CONFIG_OPTION, Command, DURATION_FIELD, Field, Form, GLOBAL_OPTIONS, HELP_OPTION, JSON_OPTION,
-    LOCAL_COMMANDS, MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, SERVE_COMMAND, SIGN_IN_COMMAND,
-    Supply, VERSION, VERSION_OPTION, command, surface, usage, version,
+    CONFIG_OPTION, CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, Command, DURATION_FIELD,
+    Field, Form, GLOBAL_OPTIONS, HELP_OPTION, JSON_OPTION, LOCAL_COMMANDS, MAX_DURATION_SECONDS,
+    MIN_DURATION_SECONDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, VERSION, VERSION_OPTION, command,
+    surface, usage, version,
 };
 pub use transport::{Answered, Unreachable, send};

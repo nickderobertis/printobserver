@@ -202,8 +202,10 @@ mod tests {
         pass.environment()
             .into_iter()
             .find(|(named, _)| *named == name)
-            .map(|(_, value)| value.to_owned())
-            .unwrap_or_else(|| panic!("the pass carries no {name}"))
+            .map_or_else(
+                || panic!("the pass carries no {name}"),
+                |(_, value)| value.to_owned(),
+            )
     }
 
     /// A credential is admitted as the session and print it was issued for

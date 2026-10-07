@@ -112,15 +112,12 @@ fn assert_forbidden(answer: &(reqwest::StatusCode, Value), what: &str, naming: &
     }
 }
 
-/// A turn's credential is admitted during its turn for its own print — its
-/// reads, the listing beside them and an action its grants allow — and every
-/// claim that is not the turn, every other print and both operator-only writes
-/// are refused before anything is decided or recorded.
+/// A turn's credential is admitted during its turn for its own print: its
+/// reads, the listing beside them, and an action its grants allow, as itself.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_turn_credential_is_its_own_session_on_its_own_print_and_nothing_else() {
+async fn a_turn_credential_is_its_own_session_on_its_own_print() {
     let world = World::open().await;
     let (print_id, pass) = held_turn(&world).await;
-    let other = world.open_print().await;
     let turn = presenting(&pass.credential);
     let session = session_of(print_id);
     assert_eq!(pass.session_name, session);
@@ -141,6 +138,34 @@ async fn a_turn_credential_is_its_own_session_on_its_own_print_and_nothing_else(
         let (status, body) = sent(turn.get(world.url(&path))).await;
         assert_eq!(status, reqwest::StatusCode::OK, "{path}: {body}");
     }
+
+    // And an action its grants allow, as itself, on its own print.
+    let (status, body) = sent(
+        turn.post(action_url(&world, print_id, "pause"))
+            .json(&claiming(&agent(&session), &[])),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    assert_eq!(
+        body["record"]["request"]["actor"],
+        agent(&session),
+        "{body}"
+    );
+
+    world.agent.release_turns();
+    world.server.stop().await;
+}
+
+/// Every claim a turn's credential makes that is not its own session, every
+/// other print and both operator-only writes are refused before anything is
+/// decided or recorded.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_credential_reaching_past_its_own_session_and_print_is_refused() {
+    let world = World::open().await;
+    let (print_id, pass) = held_turn(&world).await;
+    let other = world.open_print().await;
+    let turn = presenting(&pass.credential);
+    let session = session_of(print_id);
     world.printer.forget();
     let before = record_of(&world.stores, print_id).await;
 
@@ -215,19 +240,6 @@ async fn a_turn_credential_is_its_own_session_on_its_own_print_and_nothing_else(
         record_of(&world.stores, print_id).await,
         before,
         "a refused request was decided on or recorded"
-    );
-
-    // And an action its grants allow, as itself, on its own print.
-    let (status, body) = sent(
-        turn.post(action_url(&world, print_id, "pause"))
-            .json(&claiming(&agent(&session), &[])),
-    )
-    .await;
-    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
-    assert_eq!(
-        body["record"]["request"]["actor"],
-        agent(&session),
-        "{body}"
     );
 
     world.agent.release_turns();

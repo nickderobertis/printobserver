@@ -50,6 +50,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{DefaultBodyLimit, Extension, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{Next, from_fn_with_state};
@@ -129,9 +130,8 @@ fn claimed(actor: &Actor) -> String {
 ///
 /// The system is claimed by nobody: its actions are the server's own, and no
 /// credential this server admits is the server.
-fn claim_held_to(caller: &Caller, actor: &Actor) -> Result<(), Response> {
+fn claim_refused(caller: &Caller, actor: &Actor) -> Option<Response> {
     let held = match (caller, actor) {
-        (_, Actor::System) => false,
         (Caller::Operator, Actor::Operator) => true,
         (Caller::Turn(binding), Actor::Agent { session_name }) => {
             *session_name == binding.session_name
@@ -139,14 +139,14 @@ fn claim_held_to(caller: &Caller, actor: &Actor) -> Result<(), Response> {
         _ => false,
     };
     if held {
-        return Ok(());
+        return None;
     }
     let why = if matches!(actor, Actor::System) {
         "no credential may claim the system, whose actions are the server's own"
     } else {
         "a request acts as the identity its credential authenticated, and no other"
     };
-    Err(refusal(
+    Some(refusal(
         StatusCode::FORBIDDEN,
         format!(
             "this request authenticated as {} and claims to be {}: {why}",
@@ -157,9 +157,9 @@ fn claim_held_to(caller: &Caller, actor: &Actor) -> Result<(), Response> {
 }
 
 /// Refuse a turn's request about any print but its own.
-fn scoped_to(caller: &Caller, print_id: PrintId) -> Result<(), Response> {
+fn scope_refused(caller: &Caller, print_id: PrintId) -> Option<Response> {
     match caller {
-        Caller::Turn(binding) if binding.print_id != print_id => Err(refusal(
+        Caller::Turn(binding) if binding.print_id != print_id => Some(refusal(
             StatusCode::FORBIDDEN,
             format!(
                 "this request authenticated as {} and names print {print_id}: a supervision \
@@ -167,15 +167,15 @@ fn scoped_to(caller: &Caller, print_id: PrintId) -> Result<(), Response> {
                 caller.named()
             ),
         )),
-        _ => Ok(()),
+        _ => None,
     }
 }
 
 /// Refuse a turn's request for a write that is not about its running print:
 /// starting a print, and replacing a manifest, are the operator's alone.
-fn operator_only(caller: &Caller, command: &str) -> Result<(), Response> {
+fn operator_refused(caller: &Caller, command: &str) -> Option<Response> {
     match caller {
-        Caller::Turn(_) => Err(refusal(
+        Caller::Turn(_) => Some(refusal(
             StatusCode::FORBIDDEN,
             format!(
                 "this request authenticated as {} and asks for `{command}`, which is the \
@@ -183,7 +183,7 @@ fn operator_only(caller: &Caller, command: &str) -> Result<(), Response> {
                 caller.named()
             ),
         )),
-        Caller::Operator => Ok(()),
+        Caller::Operator => None,
     }
 }
 
@@ -357,7 +357,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
             move |state: State<ApiState>,
                   caller: Extension<Caller>,
                   print_id: Path<PrintId>,
-                  body: Json<ActionBody>| async move {
+                  body: Result<Json<ActionBody>, JsonRejection>| async move {
                 act(kind, state, caller, print_id, body).await
             },
         );
@@ -426,25 +426,30 @@ fn core_status(error: &CoreError) -> StatusCode {
 /// Ask for one action of the vocabulary against one print.
 ///
 /// Who may ask is settled before the policy is: a turn's credential reaches
-/// no start and no print but its own, and the claimed actor is held to the
-/// caller. A request refused here is decided on by nothing and recorded
-/// nowhere.
+/// no start and no print but its own — whatever the body says, so those two are
+/// ruled on before it is read — and the claimed actor is held to the caller. A
+/// request refused here is decided on by nothing and recorded nowhere.
 async fn act(
     kind: ActionKind,
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
-    Json(body): Json<ActionBody>,
+    body: Result<Json<ActionBody>, JsonRejection>,
 ) -> Response {
     if kind == ActionKind::StartPrint
-        && let Err(refused) = operator_only(&caller, &crate::operations::command_for("start_print"))
+        && let Some(refused) =
+            operator_refused(&caller, &crate::operations::command_for("start_print"))
     {
         return refused;
     }
-    if let Err(refused) = scoped_to(&caller, print_id) {
+    if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
-    if let Err(refused) = claim_held_to(&caller, &body.actor) {
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
+    if let Some(refused) = claim_refused(&caller, &body.actor) {
         return refused;
     }
     let action = match body.into_action(kind) {
@@ -508,7 +513,7 @@ async fn status(
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
 ) -> Response {
-    if let Err(refused) = scoped_to(&caller, print_id) {
+    if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
     match state.prints.print(print_id).await {
@@ -553,7 +558,7 @@ async fn context(
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
 ) -> Response {
-    if let Err(refused) = scoped_to(&caller, print_id) {
+    if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
     let context = match state.supervisor.context(print_id).await {
@@ -589,7 +594,7 @@ async fn look(
     Path(print_id): Path<PrintId>,
     Query(params): Query<LookParams>,
 ) -> Response {
-    if let Err(refused) = scoped_to(&caller, print_id) {
+    if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
     let wait_s = params.wait_s.unwrap_or(0);
@@ -635,7 +640,7 @@ async fn image(
                 printobserver_core::ImageLookup::Found { record, .. }
                 | printobserver_core::ImageLookup::FileMissing { record } => record.print_id,
             };
-            if let Err(refused) = scoped_to(&caller, belongs_to) {
+            if let Some(refused) = scope_refused(&caller, belongs_to) {
                 return refused;
             }
             answer(StatusCode::OK, &ImageAnswer::from(lookup))
@@ -651,7 +656,7 @@ async fn history(
     Path(print_id): Path<PrintId>,
     Query(params): Query<HistoryParams>,
 ) -> Response {
-    if let Err(refused) = scoped_to(&caller, print_id) {
+    if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
     let query = HistoryQuery {
@@ -673,7 +678,7 @@ async fn manifest_get(
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
 ) -> Response {
-    if let Err(refused) = scoped_to(&caller, print_id) {
+    if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
     let manifest = match state.prints.manifest(print_id).await {
@@ -705,11 +710,17 @@ async fn manifest_set(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
-    Json(body): Json<ManifestBody>,
+    body: Result<Json<ManifestBody>, JsonRejection>,
 ) -> Response {
-    if let Err(refused) = operator_only(&caller, &crate::operations::command_for("manifest_set")) {
+    if let Some(refused) =
+        operator_refused(&caller, &crate::operations::command_for("manifest_set"))
+    {
         return refused;
     }
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
     if let Err(rejected) = body.reason() {
         return refusal(StatusCode::BAD_REQUEST, rejected);
     }

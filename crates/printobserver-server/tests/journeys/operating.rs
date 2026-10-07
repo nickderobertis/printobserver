@@ -64,7 +64,7 @@ fn operator_without(document: &mut toml::Value, withheld: ActionKind) {
         })
         .map(|kind| {
             toml::Value::String(
-                printobserver_types::serde_json::to_value(&kind)
+                printobserver_types::serde_json::to_value(kind)
                     .ok()
                     .and_then(|named| named.as_str().map(str::to_owned))
                     .expect("an action kind is named"),

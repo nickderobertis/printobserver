@@ -126,6 +126,34 @@ impl Ran {
     }
 }
 
+/// The variables every platform reads a user's configuration home from.
+pub const CONFIG_HOME_VARIABLES: [&str; 3] = ["XDG_CONFIG_HOME", "HOME", "APPDATA"];
+
+/// The environment one invocation runs under, with its configuration home a
+/// directory of its own holding nothing — unless the journey named one.
+///
+/// With no file named, the program reads its operator's own client
+/// configuration from that home first, so a run that inherited this host's
+/// would be configured by whatever this host's user last issued.
+#[must_use]
+pub fn with_its_own_config_home(
+    environment: &[(String, String)],
+    scratch: &Path,
+) -> Vec<(String, String)> {
+    let mut given = environment.to_vec();
+    if !given
+        .iter()
+        .any(|(name, _)| CONFIG_HOME_VARIABLES.contains(&name.as_str()))
+    {
+        let home = scratch.join("no-operator-configuration");
+        std::fs::create_dir_all(&home).expect("an empty configuration home");
+        for name in CONFIG_HOME_VARIABLES {
+            given.push((name.to_owned(), home.display().to_string()));
+        }
+    }
+    given
+}
+
 /// Run one invocation under this platform's observation, and answer what it did.
 ///
 /// # Panics
@@ -141,6 +169,7 @@ pub fn traced(
     environment: &[(String, String)],
     scratch: &Path,
 ) -> Ran {
+    let environment = &with_its_own_config_home(environment, scratch);
     let (output, recorded) = observed(program, arguments, environment, scratch);
     Ran {
         code: output.status.code(),
@@ -287,6 +316,7 @@ pub fn traced(
 ) -> Ran {
     use std::process::{Command, Stdio};
 
+    let environment = &with_its_own_config_home(environment, scratch);
     let _trace = KERNEL_TRACE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);

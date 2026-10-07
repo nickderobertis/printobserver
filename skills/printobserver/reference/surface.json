@@ -11,6 +11,24 @@
       "options": []
     },
     {
+      "command": "credential issue",
+      "operation": null,
+      "options": [
+        {
+          "field": "replace",
+          "located": "local",
+          "option": "--replace",
+          "required": false,
+          "supply": "flag"
+        }
+      ]
+    },
+    {
+      "command": "credential verifier",
+      "operation": null,
+      "options": []
+    },
+    {
       "answers": [
         "success"
       ],
