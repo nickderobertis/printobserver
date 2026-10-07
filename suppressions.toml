@@ -750,6 +750,12 @@ reason = "The operator's command is `gh skill install nickderobertis/printobserv
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
+site = "implicitDependencies"
+reason = "The same finding as the `test-e2e` entry below, read at the edge rather than the target: each edge is a project this suite's journeys drive or import — the built program, both clients, the release tooling, the checks, the OctoPrint environment and the smoke — so a change to any of them has to select the suite, and dropping one would let the affected tier skip journeys that change can break. Splitting the suite into per-component projects with narrower edges is the optional split this change was told is out of its scope; until that split happens, this edge set is the narrowest that is still correct."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/project.json"
 site = "test-e2e"
 reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. Its edges are what it drives — the release tooling, the checks, the built program, both clients, the OctoPrint environment and the smoke — and the affected tier selects it by exactly those, plus every change to a file no project owns, which runs the whole graph. A journey split into a project of its own would drive the same things and need the same edges, so no placement spares an unrelated change anything. If this repository grows per-project end-to-end targets with narrower edges, this suppression stops being right, and a reader can see that from this sentence."
 
