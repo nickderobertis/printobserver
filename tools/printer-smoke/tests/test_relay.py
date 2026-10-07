@@ -37,6 +37,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+import world as worlds
 from printer_smoke import PROGRAM_ENV
 from relay import (
     ADDRESS,
@@ -89,6 +90,10 @@ HEARTBEAT = (
 )
 
 SETTLE_S = 30.0
+
+#: How long a stand-in relay is given to be ready before its bound begins. It
+#: only fails a test whose host cannot start an interpreter at all.
+READY_S = 300.0
 
 
 def relayed(
@@ -642,30 +647,82 @@ def test_an_argument_frame_that_is_not_utf8_is_refused_by_the_relay(world: World
     )
 
 
+def launching_once_ready(ready: Path, readied: list[float]) -> Callable[..., subprocess.Popen[str]]:
+    """A launch that starts the real program and answers it only once `ready` exists.
+
+    It stands where `RelayProcess.start` starts its relay, so the bound that
+    method gives the relay to announce itself begins once the stand-in has
+    demonstrably started rather than when its interpreter was asked to. Its
+    output is left unread for that method to read. When it answered is
+    appended to `readied`.
+    """
+
+    def launch(
+        argv: list[str],
+        *,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+        own_group: bool = False,
+    ) -> subprocess.Popen[str]:
+        process = start(argv, cwd=cwd, env=env, own_group=own_group)
+        deadline = time.monotonic() + READY_S
+        while not ready.is_file() and process.poll() is None:
+            if time.monotonic() > deadline:
+                process.kill()
+                process.communicate()
+                truth(False, describing=f"the stand-in relay to be ready inside {READY_S}s")
+            time.sleep(0.05)
+        truth(ready.is_file(), describing="the stand-in relay to be ready before it exited")
+        readied.append(time.monotonic())
+        return process
+
+    return launch
+
+
+@pytest.mark.parametrize("starting_s", [0.0, 1.5], ids=["promptly", "slowly"])
 @pytest.mark.parametrize(
     ("announcing", "announced"),
     [(None, "''"), ("a relay", "'a relay'"), ("192.0.2.1:9", "'192.0.2.1:9'")],
     ids=["silent", "unparsable", "elsewhere"],
 )
 def test_a_relay_that_does_not_say_where_it_listens_is_refused_and_stopped(
-    world: World, tmp_path: Path, announcing: str | None, announced: str
+    world: World,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    announcing: str | None,
+    announced: str,
+    starting_s: float,
 ) -> None:
-    """A relay silent past its bound, or announcing no loopback address, is killed and reported."""
+    """A relay silent past its bound, or announcing no loopback address, is killed and reported.
+
+    How long the stand-in's interpreter takes to start is the host's, so the
+    bound it is given starts only once it is ready: its first heartbeat
+    written and, when it announces, that line flushed. `starting_s` makes it
+    slower to start than that bound, which then changes nothing.
+    """
     beating = tmp_path / "heartbeat"
+    ready = tmp_path / "ready"
     impostor = tmp_path / "impostor_relay.py"
     impostor.write_text(
+        f"import time\ntime.sleep({starting_s!r})\n"
         f"from pathlib import Path\nPath({str(beating)!r}).write_text('0')\n"
         + ("" if announcing is None else f"print({announcing!r}, flush=True)\n")
+        + f"Path({str(ready)!r}).touch()\n"
         + HEARTBEAT.replace("sys.argv[1]", repr(str(beating))),
         encoding="utf-8",
     )
-    started = time.monotonic()
+    readied: list[float] = []
 
-    with pytest.raises(RuntimeError, match=f"announced {re.escape(announced)} rather than"):
-        RelayProcess.start(world.environment(), within_s=0.5, relay=impostor)
+    with monkeypatch.context() as patching:
+        patching.setattr(worlds, "start", launching_once_ready(ready, readied))
+        with pytest.raises(RuntimeError, match=f"announced {re.escape(announced)} rather than"):
+            RelayProcess.start(world.environment(), within_s=0.5, relay=impostor)
 
-    truth(time.monotonic() - started < SETTLE_S, describing="the refusal to come inside the bound")
-    until(beating.is_file, describing="the refused relay to have been running")
+    truth(
+        time.monotonic() - readied[0] < SETTLE_S,
+        describing="the refusal to come inside the bound",
+    )
+    truth(beating.is_file(), describing="the refused relay to have been running")
     last = beating.read_text(encoding="utf-8")
     time.sleep(1.0)
     equal(
