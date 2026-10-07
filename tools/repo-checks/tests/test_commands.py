@@ -1154,8 +1154,9 @@ def test_an_affected_report_is_over_the_reached_projects_at_the_same_floor(
 
     equal(coverage(repo, Measured(rust=(), python=("alpha/src",), reason="alpha")), 0)
     out = capsys.readouterr().out
-    contains(out, "alpha/src/alpha.py")
-    absent(out, "beta/src/beta.py", describing="the affected report")
+    # coverage.py names a source with the host's own separator.
+    contains(out, str(Path("alpha", "src", "alpha.py")))
+    absent(out, str(Path("beta", "src", "beta.py")), describing="the affected report")
     equal(
         out.strip().splitlines()[-1],
         "coverage: rust lines not measured: this run's tests reached no crate (floor 95%), "
@@ -1163,7 +1164,11 @@ def test_an_affected_report_is_over_the_reached_projects_at_the_same_floor(
     )
 
     equal(coverage(repo, Measured(rust=(), python=None)), 1)
-    contains(capsys.readouterr().out, "beta/src/beta.py", describing="the whole report")
+    contains(
+        capsys.readouterr().out,
+        str(Path("beta", "src", "beta.py")),
+        describing="the whole report",
+    )
 
 
 def test_an_affected_run_reaching_no_measured_source_reports_nothing_measured(

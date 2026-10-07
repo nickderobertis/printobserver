@@ -10,6 +10,7 @@ can leave a required context unreported on a pull request.
 from __future__ import annotations
 
 import os
+import stat
 from collections.abc import Callable
 from pathlib import Path
 
@@ -184,7 +185,10 @@ def test_a_change_git_cannot_list_runs_the_whole_graph(tmp_path: Path) -> None:
     repo = repository(tmp_path)
     base = on_a_branch(repo, "alpha/source.txt")
     tree = git(repo.root, "rev-parse", f"{base}^{{tree}}")
-    (repo.root / ".git" / "objects" / tree[:2] / tree[2:]).unlink()
+    loose = repo.root / ".git" / "objects" / tree[:2] / tree[2:]
+    # git writes a loose object read-only, which Windows refuses to delete.
+    loose.chmod(stat.S_IWRITE | stat.S_IREAD)
+    loose.unlink()
 
     scope = resolve(repo, AFFECTED, {})
 
