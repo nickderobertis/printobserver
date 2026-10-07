@@ -1177,6 +1177,71 @@ def test_an_affected_run_reaching_no_measured_source_reports_nothing_measured(
     contains(capsys.readouterr().out, "python lines not measured: this run's tests reached no")
 
 
+def two_measured_crates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
+    """A Cargo workspace whose `alpha` crate is tested in full and whose `beta` never runs.
+
+    Measured by the real `cargo llvm-cov` on this repository's own toolchain, the
+    way every crate's `test` target measures one, so the report the floor rules
+    on is the one an affected run's filter is applied to.
+    """
+    root = tmp_path / "tree"
+    root.mkdir()
+    shutil.copy(REPO_ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nresolver = "2"\nmembers = ["crates/alpha", "crates/beta"]\n',
+        encoding="utf-8",
+    )
+    sources = {
+        "alpha": (
+            "pub fn alpha() -> u8 {\n    1\n}\n\n"
+            "#[test]\nfn runs() {\n    assert_eq!(alpha(), 1);\n}\n"
+        ),
+        "beta": "pub fn beta(x: u8) -> u8 {\n    let y = x + 1;\n    y * 2\n}\n",
+    }
+    for name, source in sources.items():
+        (root / "crates" / name / "src").mkdir(parents=True)
+        (root / "crates" / name / "Cargo.toml").write_text(
+            f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2021"\n',
+            encoding="utf-8",
+        )
+        (root / "crates" / name / "src" / "lib.rs").write_text(source, encoding="utf-8")
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+    for name in list(os.environ):
+        if name.startswith(("CARGO_LLVM_COV", "LLVM_PROFILE_FILE")) or name == "CARGO_TARGET_DIR":
+            monkeypatch.delenv(name)
+    run(["cargo", "llvm-cov", "--no-report", "--workspace"], cwd=root, check=True)
+    return Repo(root)
+
+
+@pytest.mark.skipif(
+    os.environ.get("PRINTOBSERVER_PLATFORM") == "windows-aarch64",
+    reason="that toolchain cannot read its own profiles; repo-policy.toml records the exemption",
+)
+def test_an_affected_run_rules_the_rust_floor_on_the_crates_it_reached_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A crate the run did not reach is left out of the real report, and counted in the sweep.
+
+    So an affected run is held to the floor over every file its tests reached
+    at the full sweep's figure, and an untested crate it did not reach is the
+    sweep's to rule on rather than this run's to pass or fail.
+    """
+    repo = two_measured_crates(tmp_path, monkeypatch)
+
+    equal(coverage(repo, Measured(rust=("crates/alpha",), python=(), reason="alpha")), 0)
+    out = capsys.readouterr().out
+    contains(out, "lib.rs", describing="the affected report's measured file")
+    truth(
+        all("beta" not in line for line in out.splitlines()),
+        describing=f"the affected report naming nothing of `beta`, in {out!r}",
+    )
+
+    equal(coverage(repo, Measured(rust=None, python=())), 1)
+    contains(capsys.readouterr().out, "beta", describing="the whole report")
+
+
 def test_the_rust_report_leaves_out_exactly_the_crates_the_run_did_not_reach() -> None:
     """On either separator, since the report names files the way the host does."""
     ignored = Measured(rust=("crates/printobserver-core",)).rust_ignored(Repo(REPO_ROOT))
