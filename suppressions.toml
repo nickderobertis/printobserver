@@ -346,22 +346,10 @@ site = "metadata"
 reason = "Proving regeneration from a missing or corrupted committed surface requires forbidden tree surgery. The existing reference test compares the committed manifest to the actual runtime surface serialized by write mode."
 
 [[suppression]]
-rule = "instruction_layer_localized"
-file = "AGENTS.md"
-site = "A device is named the way the host names one"
-reason = "The bullet joins the list that has always been the root's one description of the scripted OctoPrint environment — the section carrying the \"Virtual printer availability\" marker block `repo_checks.checks_integration` reads from AGENTS.md — so the script's device naming is stated beside its two modes and its failure classes rather than in a nested file that would split one script's description in two. It states the constraint and points at the table that owns the platform words."
-
-[[suppression]]
-rule = "instruction_layer_localized"
-file = "CLAUDE.md"
-site = "A device is named the way the host names one"
-reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
-
-[[suppression]]
 rule = "cli_output_contract"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "if not here.names(connection.device):"
-reason = "The judged tier asked for an exit code of its own for each of the two serial-device classes. The script's contract is one failure exit, `1`, with the failure named on stderr by its class and followed by what happened and the next action — the shape every one of its five pre-existing classes has had since `FAILURE_CLASSES` was declared closed, and what AGENTS.md's description of the scripted environment states. Its consumers are the `just octoprint-up` recipe and a person beside the printer, both of whom read the class by name. An exit of their own for two of seven classes would make the set's contract inconsistent, and one for all seven is a change to that contract, outside a change that adds two classes to it."
+reason = "The judged tier asked for an exit code of its own for each of the two serial-device classes. The script's contract is one failure exit, `1`, with the failure named on stderr by its class and followed by what happened and the next action — the shape every one of its five pre-existing classes has had since `FAILURE_CLASSES` was declared closed, and what `tools/octoprint-env/AGENTS.md` states of the script. Its consumers are the `just octoprint-up` recipe and a person beside the printer, both of whom read the class by name. An exit of their own for two of seven classes would make the set's contract inconsistent, and one for all seven is a change to that contract, outside a change that adds two classes to it."
 
 [[suppression]]
 rule = "cli_output_contract"
