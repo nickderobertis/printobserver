@@ -488,3 +488,44 @@ pub fn turn(print_id: PrintId, event: EventRecord, image: Option<PathBuf>) -> Tu
         situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }
+
+/// What one turn's runs were issued, in order: the session each run was in and
+/// the credential it was handed.
+#[derive(Debug, Default)]
+pub struct RecordingAccess {
+    /// Every pass issued, in order.
+    issued: std::sync::Mutex<Vec<(String, String)>>,
+}
+
+impl RecordingAccess {
+    /// Every pass issued, as `(session, credential)`, in order.
+    #[must_use]
+    pub fn issued(&self) -> Vec<(String, String)> {
+        self.issued.lock().expect("the access holds").clone()
+    }
+}
+
+/// The address every recorded pass names.
+pub const ISSUED_SERVER: &str = "http://127.0.0.1:8420";
+
+impl printobserver_supervisor_api::TurnAccess for RecordingAccess {
+    fn issue(
+        &self,
+        session_name: &str,
+    ) -> Result<printobserver_supervisor_api::TurnPass, printobserver_supervisor_api::SupervisorError>
+    {
+        let mut issued = self.issued.lock().expect("the access holds");
+        let credential = format!("a-turn-credential-{}", issued.len() + 1);
+        issued.push((session_name.to_owned(), credential.clone()));
+        Ok(printobserver_supervisor_api::TurnPass::new(
+            Some(ISSUED_SERVER.to_owned()),
+            credential,
+        ))
+    }
+}
+
+/// A fresh issuer for one turn, as the supervisor port is handed it.
+#[must_use]
+pub fn access() -> std::sync::Arc<dyn printobserver_supervisor_api::TurnAccess> {
+    std::sync::Arc::new(RecordingAccess::default())
+}

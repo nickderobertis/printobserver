@@ -72,6 +72,22 @@ fn a_turn() -> TurnRequest {
     }
 }
 
+/// Issues every run one pass, as the core's authority would.
+struct OnePass;
+
+impl printobserver_supervisor_api::TurnAccess for OnePass {
+    fn issue(
+        &self,
+        _session_name: &str,
+    ) -> Result<printobserver_supervisor_api::TurnPass, printobserver_supervisor_api::SupervisorError>
+    {
+        Ok(printobserver_supervisor_api::TurnPass::new(
+            Some("http://127.0.0.1:9".to_owned()),
+            "a-skilled-turns-credential".to_owned(),
+        ))
+    }
+}
+
 /// The same directory, however either side spells it.
 fn resolved(path: &Path) -> PathBuf {
     path.canonicalize()
@@ -133,7 +149,10 @@ async fn one_composed_turn(root: &Path) -> (Value, PathBuf, String) {
             .expect("an assignment"),
     ]);
     let agent = OneharnessSupervisor::open(composed).expect("the agent opens");
-    let outcome = agent.run_turn(a_turn()).await.expect("the turn runs");
+    let outcome = agent
+        .run_turn(a_turn(), std::sync::Arc::new(OnePass))
+        .await
+        .expect("the turn runs");
 
     let recorded: Value = printobserver_types::serde_json::from_str(
         &std::fs::read_to_string(&seen).expect("the harness wrote down what it was started with"),

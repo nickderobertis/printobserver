@@ -2,27 +2,29 @@
 //!
 //! The responder this crate's integration tier points `OneHarness` at issues its
 //! actions through the running API before it answers, and it finds where the
-//! server is and what authenticates to it in the client configuration the
-//! server wrote — the file a turn's context command names. That tier runs it
-//! against a real `OctoPrint`; here it runs against a real server over a
-//! recording machine, so that what the tier depends on is proven on every
-//! change: the credential it reads is the one in force and is served, a request
-//! under any other is refused before it reaches the machine, and a
-//! configuration naming nothing a header could carry sends no request at all.
+//! server is and what authenticates to it in the environment a turn is handed —
+//! the address the server bound and the credential minted for that turn. That
+//! tier runs it against a real `OctoPrint`; here it runs against a real server
+//! over a recording machine, with a real turn held open for the credential to
+//! be live, so that what the tier depends on is proven on every change: the
+//! turn's own credential is served, a request under any other is refused before
+//! it reaches the machine, and an environment naming nothing a header could
+//! carry sends no request at all.
 
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::TcpListener;
-use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use printobserver_server::{CLIENT_CONFIG_FILE, context_command};
+use printobserver_server::context_command;
+use printobserver_supervisor_api::{CREDENTIAL_ENV, SERVER_ENV};
 use printobserver_types::PrintId;
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
+use crate::agent::Pass;
 use crate::authenticating::history;
 use crate::printer::Call;
-use crate::world::World;
+use crate::world::{SECRET, World};
 
 /// The one action every run here is scripted with: an adjustment the agent is
 /// granted, inside the bounds the base configuration allows it.
@@ -33,44 +35,42 @@ fn slow_down() -> Value {
     }])
 }
 
-/// Written beside the server's own file rather than over it, so that every
-/// later run in a journey still reads what the server wrote.
-fn with_credential(written: &Path, credential: &str, beside: &Path) -> PathBuf {
-    with_client_value(written, "credential", credential, beside)
-}
-
-/// Copy the server-written client configuration with one value changed.
-fn with_client_value(written: &Path, key: &str, value: &str, beside: &Path) -> PathBuf {
-    let mut document: toml::Table =
-        toml::from_str(&std::fs::read_to_string(written).expect("the client configuration reads"))
-            .expect("the client configuration is a document");
-    document
-        .get_mut("client")
-        .and_then(toml::Value::as_table_mut)
-        .expect("the client configuration has a `[client]` table")
-        .insert(key.to_owned(), toml::Value::from(value));
-    let path = beside.join(CLIENT_CONFIG_FILE);
-    std::fs::write(
-        &path,
-        toml::to_string(&document).expect("the document renders"),
-    )
-    .expect("the copy is writable");
-    path
-}
-
 /// One action by operation name, with an empty request body.
 fn action(operation: &str) -> Value {
     json!([{ "operation": operation, "body": {} }])
 }
 
+/// What declines to act on a turn: no context command, or no server and
+/// credential in its environment.
+const DECLINED: &str = "this turn's prompt names no context command, or its environment carries \
+                        no server and credential";
+
+/// Hold one turn about one print open, and answer what it was issued.
+async fn a_live_turn(world: &World) -> (PrintId, Pass) {
+    let print_id = world.open_print().await;
+    world.agent.hold_turns();
+    let status = reqwest::Client::new()
+        .post(format!("{}?token={SECRET}", world.server.ingress_url()))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(crate::world::failure_alert(4211, "http://127.0.0.1:1/frame.jpg").to_string())
+        .send()
+        .await
+        .expect("the ingress answers")
+        .status();
+    assert_eq!(status, reqwest::StatusCode::ACCEPTED);
+    let pass = world.agent.issued(1).await[0].clone();
+    (print_id, pass)
+}
+
 /// Run the responder once, as `OneHarness` does, over a prompt naming the
-/// context command for one client configuration and one print — and answer
-/// every line it wrote about what it did.
-async fn respond(client_config: &Path, print_id: PrintId, actions: Value) -> Vec<Value> {
+/// context command for one print and an environment carrying one server and
+/// one credential — and answer every line it wrote about what it did.
+async fn respond(server: &str, credential: &str, print_id: PrintId, actions: Value) -> Vec<Value> {
     let prompt = format!(
         "Read this print's context by running {} and then act on it.",
-        context_command(client_config).replace("{print_id}", &print_id.to_string())
+        context_command().replace("{print_id}", &print_id.to_string())
     );
+    let (server, credential) = (server.to_owned(), credential.to_owned());
     tokio::task::spawn_blocking(move || {
         let scratch = TempDir::new().expect("a run's own directory");
         let log = scratch.path().join("responder.log");
@@ -79,6 +79,8 @@ async fn respond(client_config: &Path, print_id: PrintId, actions: Value) -> Vec
             .arg(&prompt)
             .env("PRINTOBSERVER_RESPONDER_LOG", &log)
             .env("PRINTOBSERVER_RESPONDER_ACTIONS", actions.to_string())
+            .env(SERVER_ENV, server)
+            .env(CREDENTIAL_ENV, credential)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -98,17 +100,20 @@ async fn respond(client_config: &Path, print_id: PrintId, actions: Value) -> Vec
     .expect("the responder's run completes")
 }
 
-/// Under the client configuration the server wrote, the responder's action is
-/// served and reaches the machine.
+/// Under the environment its turn was handed, the responder's action is served
+/// and reaches the machine.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_responder_acts_under_the_credential_the_server_wrote_for_it() {
+async fn the_responder_acts_under_the_credential_its_turn_was_issued() {
     let world = World::open().await;
-    let print_id = world.open_print().await;
+    let (print_id, pass) = a_live_turn(&world).await;
     let held = history(&world.stores, print_id).await;
     world.printer.forget();
 
     let did = respond(
-        &world.state_dir().join(CLIENT_CONFIG_FILE),
+        pass.server
+            .as_deref()
+            .expect("the turn was told the address"),
+        &pass.credential,
         print_id,
         slow_down(),
     )
@@ -122,7 +127,7 @@ async fn the_responder_acts_under_the_credential_the_server_wrote_for_it() {
     assert_eq!(
         did[0]["status"],
         json!(200),
-        "the responder's action under the credential in force was not served: {did:?}"
+        "the responder's action under its turn's credential was not served: {did:?}"
     );
     assert_eq!(did[0]["operation"], json!("set_feedrate_factor"));
     assert_eq!(
@@ -134,22 +139,23 @@ async fn the_responder_acts_under_the_credential_the_server_wrote_for_it() {
         history(&world.stores, print_id).await > held,
         "the responder's served action was not recorded"
     );
+    world.agent.release_turns();
 }
 
-/// Under a credential that is not the one in force the responder's action is
+/// Under a credential that is not a live turn's the responder's action is
 /// refused before it reaches anything, and under one no header could carry it
 /// sends nothing at all.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_responder_under_any_other_credential_reaches_nothing() {
     let world = World::open().await;
-    let print_id = world.open_print().await;
+    let (print_id, pass) = a_live_turn(&world).await;
+    let server = pass.server.clone().expect("the turn was told the address");
     let held = history(&world.stores, print_id).await;
     world.printer.forget();
-    let written = world.state_dir().join(CLIENT_CONFIG_FILE);
 
-    let wrong = TempDir::new().expect("a directory of the journey's own");
     let did = respond(
-        &with_credential(&written, "not-the-credential-in-force", wrong.path()),
+        &server,
+        "not-the-credential-in-force",
         print_id,
         slow_down(),
     )
@@ -174,33 +180,25 @@ async fn the_responder_under_any_other_credential_reaches_nothing() {
         ("   ", "a credential of spaces"),
         ("tab\tinside", "a credential carrying a control character"),
     ] {
-        let beside = TempDir::new().expect("a directory of the journey's own");
-        let did = respond(
-            &with_credential(&written, unpresentable, beside.path()),
-            print_id,
-            slow_down(),
-        )
-        .await;
+        let did = respond(&server, unpresentable, print_id, slow_down()).await;
         assert_eq!(
             did,
-            vec![json!({
-                "status": null,
-                "refused": "this turn's prompt names no context command",
-            })],
+            vec![json!({ "status": null, "refused": DECLINED })],
             "the responder under {named} did something other than decline to act"
         );
     }
 
     assert!(
         world.printer.calls().is_empty(),
-        "a responder that did not present the credential in force reached the machine: {:?}",
+        "a responder that did not present a live turn's credential reached the machine: {:?}",
         world.printer.calls()
     );
     assert_eq!(
         history(&world.stores, print_id).await,
         held,
-        "a responder that did not present the credential in force was recorded"
+        "a responder that did not present a live turn's credential was recorded"
     );
+    world.agent.release_turns();
 }
 
 /// Every failure before a server can answer is reported by the responder
@@ -208,18 +206,17 @@ async fn the_responder_under_any_other_credential_reaches_nothing() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
     let world = World::open().await;
-    let print_id = world.open_print().await;
-    let written = world.state_dir().join(CLIENT_CONFIG_FILE);
+    let (print_id, pass) = a_live_turn(&world).await;
+    let server = pass.server.clone().expect("the turn was told the address");
+    let credential = pass.credential.clone();
 
-    let unknown = respond(&written, print_id, action("not_an_operation")).await;
+    let unknown = respond(&server, &credential, print_id, action("not_an_operation")).await;
     assert_eq!(
         unknown[0]["refused"],
         json!("no such operation not_an_operation")
     );
 
-    let https = TempDir::new().expect("a directory of the journey's own");
-    let https_config = with_client_value(&written, "server", "https://127.0.0.1:9", https.path());
-    let unsupported = respond(&https_config, print_id, slow_down()).await;
+    let unsupported = respond("https://127.0.0.1:9", &credential, print_id, slow_down()).await;
     assert_eq!(
         unsupported[0]["refused"],
         json!("https://127.0.0.1:9 is no address this responder speaks to")
@@ -228,14 +225,13 @@ async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
     let unused = TcpListener::bind("127.0.0.1:0").expect("an unused address is reserved");
     let unused_address = unused.local_addr().expect("the unused address reads");
     drop(unused);
-    let unavailable = TempDir::new().expect("a directory of the journey's own");
-    let unavailable_config = with_client_value(
-        &written,
-        "server",
+    let refused = respond(
         &format!("http://{unused_address}"),
-        unavailable.path(),
-    );
-    let refused = respond(&unavailable_config, print_id, slow_down()).await;
+        &credential,
+        print_id,
+        slow_down(),
+    )
+    .await;
     assert_eq!(
         refused[0]["refused"],
         json!(format!("nothing is answering at {unused_address}"))
@@ -268,14 +264,13 @@ async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
             .write_all(b"not an HTTP answer")
             .expect("the malformed answer writes");
     });
-    let malformed = TempDir::new().expect("a directory of the journey's own");
-    let malformed_config = with_client_value(
-        &written,
-        "server",
+    let unreadable = respond(
         &format!("http://{address}"),
-        malformed.path(),
-    );
-    let unreadable = respond(&malformed_config, print_id, slow_down()).await;
+        &credential,
+        print_id,
+        slow_down(),
+    )
+    .await;
     server.join().expect("the malformed server finishes");
     assert!(
         unreadable[0]["refused"]
@@ -283,84 +278,5 @@ async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
             .is_some_and(|message| message.contains("answered something unreadable")),
         "the malformed answer was not diagnosed: {unreadable:?}"
     );
-}
-
-/// A directory name a shell would split, unescape or end a quote at: a space,
-/// a single quote and — where a file name may carry one — a backslash.
-fn awkward_directory(root: &Path) -> PathBuf {
-    let name = if cfg!(windows) {
-        "a turn's config"
-    } else {
-        r"a turn's \config\"
-    };
-    let directory = root.join(name);
-    std::fs::create_dir_all(&directory).expect("an awkwardly named directory");
-    directory
-}
-
-/// The context command names its configuration file so that a POSIX shell —
-/// what a turn's shell is on every host, Windows included — reads the path back
-/// unchanged, backslashes, spaces and a single quote of its own included.
-#[test]
-fn a_posix_shell_reads_the_context_commands_configuration_path_back_unchanged() {
-    let root = TempDir::new().expect("a directory of the journey's own");
-    let awkward = root
-        .path()
-        .join(r"it's a \windows\ path with spaces")
-        .join(CLIENT_CONFIG_FILE);
-    let command = context_command(&awkward).replace("{print_id}", "7");
-
-    // The program the command names is stood in for by a shell function that
-    // prints each word it was handed on a line of its own, which is exactly
-    // what the shell made of the command line.
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "printobserver() {{ for word in \"$@\"; do printf '%s\\n' \"$word\"; done; }}\n{command}"
-        ))
-        .output()
-        .expect("a POSIX shell runs");
-    assert!(
-        output.status.success(),
-        "the shell refused `{command}`: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let words: Vec<String> = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::to_owned)
-        .collect();
-    assert_eq!(
-        words,
-        [
-            "context".to_owned(),
-            "--config".to_owned(),
-            awkward.display().to_string(),
-            "--print-id".to_owned(),
-            "7".to_owned(),
-        ],
-        "the shell did not read `{command}` back as the path it names"
-    );
-}
-
-/// The configuration the server wrote, copied under a directory a shell would
-/// split or unescape, is still the one the responder's turn authenticates by.
-#[tokio::test(flavor = "multi_thread")]
-async fn the_responder_reads_a_configuration_path_a_shell_would_split() {
-    let world = World::open().await;
-    let print_id = world.open_print().await;
-    world.printer.forget();
-    let root = TempDir::new().expect("a directory of the journey's own");
-    let copied = awkward_directory(root.path()).join(CLIENT_CONFIG_FILE);
-    std::fs::copy(world.state_dir().join(CLIENT_CONFIG_FILE), &copied)
-        .expect("the client configuration is copied");
-
-    let did = respond(&copied, print_id, slow_down()).await;
-
-    assert_eq!(
-        did.first().map(|done| done["status"].clone()),
-        Some(json!(200)),
-        "the responder did not act under the configuration at {}: {did:?}",
-        copied.display()
-    );
-    assert_eq!(world.printer.calls(), vec![Call::Feedrate(0.9)]);
+    world.agent.release_turns();
 }

@@ -376,16 +376,24 @@ impl Supervisor {
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
         };
         self.hold_context(print.id, context);
+        // The turn's credentials are bound to it from here, and revoked the
+        // moment it returns — whatever it returned — and when this future is
+        // abandoned, because dropping what was opened revokes too.
+        let opened = self.open_turn(print.id);
         let turn = self
             .agent()
-            .run_turn(TurnRequest {
-                print_id: print.id,
-                event: event.clone(),
-                image_path,
-                context_command: self.config().context_command_for(print.id),
-                situation,
-            })
+            .run_turn(
+                TurnRequest {
+                    print_id: print.id,
+                    event: event.clone(),
+                    image_path,
+                    context_command: self.config().context_command_for(print.id),
+                    situation,
+                },
+                opened.access(),
+            )
             .await;
+        opened.revoke();
         self.drop_context(print.id);
         drop(guard);
         match turn {

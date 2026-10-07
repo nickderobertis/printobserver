@@ -68,9 +68,7 @@ async fn every_operation_answers_this_servers_own_failure_when_the_store_has() {
         .expect("a store that fails afterwards lets the server start");
     // The credential is presented, so what each operation answers is about the
     // store rather than about who asked.
-    let client = crate::world::presenting(&crate::world::generated_credential(
-        &server.config().state_dir,
-    ));
+    let client = crate::world::presenting(crate::world::OPERATOR);
     let print_id = PrintId::new();
 
     for operation in OPERATIONS {

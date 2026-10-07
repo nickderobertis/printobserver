@@ -25,6 +25,18 @@ pub const SECRET: &str = "a-shared-secret-nothing-else-knows";
 /// The file the configuration is written to under a journey's own root.
 pub const CONFIG_FILE: &str = "config.toml";
 
+/// The operator credential every journey's server admits: the base
+/// configuration names its verifier, as an operator who ran
+/// `printobserver credential issue` puts it there, and nothing the server
+/// writes carries the credential itself.
+pub const OPERATOR: &str = "a-journeys-own-operator-credential-K4m8Qz2Vx7wR";
+
+/// The `api.credential_verifier` line that admits [`OPERATOR`].
+#[must_use]
+pub fn operator_verifier() -> String {
+    printobserver_server::CredentialVerifier::of(OPERATOR).to_string()
+}
+
 /// The committed skill, `skills/printobserver/SKILL.md`: the Agent Skill an
 /// installed host takes from `gh skill install`, read here from the tree.
 #[must_use]
@@ -61,6 +73,9 @@ skill_path = {skill}
 shared_secret = "{SECRET}"
 answer_bound_ms = 1000
 
+[api]
+credential_verifier = "{verifier}"
+
 [safety]
 agent_min_interval_s = 0
 
@@ -83,6 +98,7 @@ system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
         // path's separators are escapes inside a basic string.
         state = toml::Value::String(root.join("state").display().to_string()),
         skill = toml::Value::String(committed_skill().display().to_string()),
+        verifier = operator_verifier(),
     );
     toml::from_str(&text).expect("the base configuration is a document")
 }
@@ -152,9 +168,9 @@ pub struct World {
     /// Durable state, as the server holds it.
     pub stores: Stores,
     /// The client a journey drives the real surface with, presenting the
-    /// credential the server generated for itself on every request.
+    /// operator's credential on every request.
     pub client: reqwest::Client,
-    /// That credential, read from where the server wrote it.
+    /// That credential: [`OPERATOR`], whose verifier the configuration names.
     pub credential: String,
 }
 
@@ -166,9 +182,9 @@ impl World {
 
     /// A server over a fresh root, over the machine and agent given.
     ///
-    /// The base configuration names no API credential, so the server generates
-    /// one into its state directory — which is the route an installed service
-    /// takes — and every journey's client presents it.
+    /// The base configuration names the verifier of [`OPERATOR`], which is
+    /// what an operator who issued a credential configures, and every
+    /// journey's client presents that credential.
     pub async fn open_with(printer: Arc<RecordingPrinter>, agent: Arc<StandInAgent>) -> Self {
         Self::configured(printer, agent, |_| {}).await
     }
@@ -186,7 +202,7 @@ impl World {
         let path = write(root.path(), &configured);
         let config = ServerConfig::load(&path).expect("the base configuration is accepted");
         let (server, stores) = start(&config, &printer, &agent).await;
-        let credential = generated_credential(&config.state_dir);
+        let credential = OPERATOR.to_owned();
         Self {
             root,
             server,
@@ -328,23 +344,6 @@ impl World {
     }
 }
 
-/// The credential a server generated into one state directory.
-///
-/// # Panics
-///
-/// Panics when the server wrote none there, which is a server that came up with
-/// nothing to check a caller against.
-#[must_use]
-pub fn generated_credential(state_dir: &Path) -> String {
-    let path = state_dir.join(printobserver_server::API_CREDENTIAL_FILE);
-    std::fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "the server wrote no credential at {}: {error}",
-            path.display()
-        )
-    })
-}
-
 /// A client presenting one credential on every request it makes.
 ///
 /// # Panics
@@ -442,4 +441,27 @@ pub fn failure_alert(obico_print_id: i64, image_url: &str) -> serde_json::Value 
 #[must_use]
 pub fn committed_sample() -> &'static str {
     include_str!("../../../printobserver-obico/samples/obico/failure-alert.json")
+}
+
+/// Every file under a directory whose bytes carry `needle`, for a journey about
+/// what is written nowhere.
+#[must_use]
+pub fn files_carrying(root: &Path, needle: &str) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(files_carrying(&path, needle));
+        } else if std::fs::read(&path).is_ok_and(|bytes| {
+            bytes
+                .windows(needle.len())
+                .any(|window| window == needle.as_bytes())
+        }) {
+            found.push(path);
+        }
+    }
+    found
 }

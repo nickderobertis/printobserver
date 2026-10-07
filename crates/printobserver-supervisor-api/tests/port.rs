@@ -14,7 +14,8 @@ use std::thread;
 
 use block_on::block_on;
 use printobserver_supervisor_api::{
-    AgentAssessment, BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
+    AgentAssessment, BoxFuture, SupervisorError, SupervisorPort, TurnAccess, TurnOutcome, TurnPass,
+    TurnRequest,
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::PrintId;
@@ -40,6 +41,20 @@ fn trivial_request() -> TurnRequest {
     }
 }
 
+/// Access that issues every run the same pass.
+struct TrivialAccess;
+
+impl TurnAccess for TrivialAccess {
+    fn issue(&self, session_name: &str) -> Result<TurnPass, SupervisorError> {
+        Ok(TurnPass::new(None, session_name.to_owned()))
+    }
+}
+
+/// The access the trivial implementation is driven with.
+fn trivial_access() -> Arc<dyn TurnAccess> {
+    Arc::new(TrivialAccess)
+}
+
 /// A supervisor that answers every method with the success type it declares.
 struct TrivialSupervisor;
 
@@ -47,8 +62,9 @@ impl SupervisorPort for TrivialSupervisor {
     fn run_turn(
         &self,
         request: TurnRequest,
+        access: Arc<dyn TurnAccess>,
     ) -> BoxFuture<'_, Result<TurnOutcome, SupervisorError>> {
-        let _ = request;
+        let _ = (request, access);
         Box::pin(async { Ok(trivial_outcome()) })
     }
 
@@ -67,7 +83,7 @@ impl SupervisorPort for TrivialSupervisor {
 fn every_method_answers_its_declared_success_type() {
     let port: Arc<dyn SupervisorPort> = Arc::new(TrivialSupervisor);
     assert_eq!(
-        block_on(port.run_turn(trivial_request())),
+        block_on(port.run_turn(trivial_request(), trivial_access())),
         Ok(trivial_outcome())
     );
     assert_eq!(
@@ -83,7 +99,7 @@ fn the_trait_object_is_shareable_across_threads() {
     let handles: Vec<_> = (0..4)
         .map(|_| {
             let shared = Arc::clone(&port);
-            thread::spawn(move || block_on(shared.run_turn(trivial_request())))
+            thread::spawn(move || block_on(shared.run_turn(trivial_request(), trivial_access())))
         })
         .collect();
     for handle in handles {

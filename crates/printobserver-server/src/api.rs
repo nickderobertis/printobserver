@@ -19,22 +19,38 @@
 //! the value asked for and the range allowed, and reaches no action method of
 //! the printer port at all.
 //!
-//! # Nothing is served to a caller that did not present the credential
+//! # Nothing is served to a caller that did not present a credential
 //!
 //! Every route beneath the versioned prefix — and the prefix's own fallback, so
 //! that a path nothing serves is refused the same way — sits behind
 //! [`authenticate`], which runs before any extractor reads a path, a query or a
 //! body. A request whose `Authorization` header is not exactly
-//! `Bearer <the credential in force>` is answered `401` there, so it reaches no
-//! handler, no store, no printer port and no record. There is no route that
-//! skips it and no configuration that turns it off: [`ApiState`] cannot be
-//! built without the credential it is checked against.
+//! `Bearer <credential>`, for the operator's credential or a live supervision
+//! turn's, is answered `401` there, so it reaches no handler, no store, no
+//! printer port and no record. There is no route that skips it and no
+//! configuration that turns it off: [`ApiState`] cannot be built without what
+//! a credential is checked against.
+//!
+//! # Every request is the identity its credential authenticated
+//!
+//! What [`authenticate`] admitted is a [`Caller`]: the operator, or one turn —
+//! the agent, in one session, on one print. Every handler is given it, and the
+//! body's `actor` is a claim held to it **before** the policy is asked
+//! anything: a claim that is not the caller — an operator credential claiming
+//! to be the agent, a turn claiming to be the operator or another session, and
+//! anybody claiming to be the system, whose actions are the server's own — is
+//! refused `403` naming both, and nothing is decided or recorded. A turn's
+//! credential reaches its own print alone, the listing of prints beside it,
+//! and neither of the two writes that are not about a running print: starting
+//! one and replacing a manifest. So the class the policy rules on, and the
+//! agent's minimum interval with it, is the one the credential authenticated
+//! rather than the one the request claimed.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
-use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
+use axum::extract::{DefaultBodyLimit, Extension, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
@@ -43,13 +59,14 @@ use axum::{Router, routing::MethodRouter};
 use printobserver_core::store::{
     EventStore, HistoryQuery, ImageStore, PrintStore, SessionStore, StoreError,
 };
-use printobserver_core::{ActionKind, ExecutionOutcome, PolicyDecision};
+use printobserver_core::{ActionKind, Actor, ExecutionOutcome, PolicyDecision};
 use printobserver_core::{CoreError, MAX_LOOK_WAIT_S, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::{ImageId, PrintId};
 
-use crate::config::ApiCredential;
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
+use crate::server::{CREDENTIAL_ISSUE, OperatorCredential};
+use crate::turns::{TurnBinding, TurnCredentials};
 use crate::wire::{
     ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
     ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer,
@@ -70,9 +87,123 @@ pub struct ApiState {
     pub images: Arc<dyn ImageStore>,
     /// The supervision sessions.
     pub sessions: Arc<dyn SessionStore>,
-    /// The credential every request must present before anything above is
-    /// reached.
-    pub credential: Arc<ApiCredential>,
+    /// What the operator's credential is checked against before anything
+    /// above is reached.
+    pub operator: Arc<OperatorCredential>,
+    /// The live supervision turns' credentials, checked the same way.
+    pub turns: TurnCredentials,
+}
+
+/// Who one request authenticated as.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Caller {
+    /// The operator, by the credential the operator's verifier admits.
+    Operator,
+    /// One supervision turn's run: the agent, in one session, on one print.
+    Turn(TurnBinding),
+}
+
+impl Caller {
+    /// This caller, as a refusal names it.
+    fn named(&self) -> String {
+        match self {
+            Self::Operator => "the operator".to_owned(),
+            Self::Turn(binding) => format!(
+                "the agent in session `{}` on print {}",
+                binding.session_name, binding.print_id
+            ),
+        }
+    }
+}
+
+/// One claimed actor, as a refusal names it.
+fn claimed(actor: &Actor) -> String {
+    match actor {
+        Actor::Operator => "the operator".to_owned(),
+        Actor::System => "the system".to_owned(),
+        Actor::Agent { session_name } => format!("the agent in session `{session_name}`"),
+    }
+}
+
+/// Refuse a claimed actor that is not the caller, before anything is decided.
+///
+/// The system is claimed by nobody: its actions are the server's own, and no
+/// credential this server admits is the server.
+fn claim_held_to(caller: &Caller, actor: &Actor) -> Result<(), Response> {
+    let held = match (caller, actor) {
+        (_, Actor::System) => false,
+        (Caller::Operator, Actor::Operator) => true,
+        (Caller::Turn(binding), Actor::Agent { session_name }) => {
+            *session_name == binding.session_name
+        }
+        _ => false,
+    };
+    if held {
+        return Ok(());
+    }
+    let why = if matches!(actor, Actor::System) {
+        "no credential may claim the system, whose actions are the server's own"
+    } else {
+        "a request acts as the identity its credential authenticated, and no other"
+    };
+    Err(refusal(
+        StatusCode::FORBIDDEN,
+        format!(
+            "this request authenticated as {} and claims to be {}: {why}",
+            caller.named(),
+            claimed(actor)
+        ),
+    ))
+}
+
+/// Refuse a turn's request about any print but its own.
+fn scoped_to(caller: &Caller, print_id: PrintId) -> Result<(), Response> {
+    match caller {
+        Caller::Turn(binding) if binding.print_id != print_id => Err(refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "this request authenticated as {} and names print {print_id}: a supervision \
+                 turn's credential reaches its own print alone",
+                caller.named()
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Refuse a turn's request for a write that is not about its running print:
+/// starting a print, and replacing a manifest, are the operator's alone.
+fn operator_only(caller: &Caller, command: &str) -> Result<(), Response> {
+    match caller {
+        Caller::Turn(_) => Err(refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "this request authenticated as {} and asks for `{command}`, which is the \
+                 operator's alone: a supervision turn's credential does not reach it",
+                caller.named()
+            ),
+        )),
+        Caller::Operator => Ok(()),
+    }
+}
+
+/// What [`authenticate`] checks a presented credential against.
+#[derive(Clone)]
+pub struct Admission {
+    /// The operator's.
+    operator: Arc<OperatorCredential>,
+    /// The live turns'.
+    turns: TurnCredentials,
+}
+
+impl Admission {
+    /// Who a presented credential authenticates as, when it is anybody.
+    fn caller(&self, presented: &[u8]) -> Option<Caller> {
+        if let Some(binding) = self.turns.admit(presented) {
+            return Some(Caller::Turn(binding));
+        }
+        self.operator.admits(presented).then_some(Caller::Operator)
+    }
 }
 
 impl core::fmt::Debug for ApiState {
@@ -116,7 +247,10 @@ pub fn router(state: ApiState) -> Router {
     let api = api
         .fallback(nothing_here)
         .layer(from_fn_with_state(
-            Arc::clone(&state.credential),
+            Admission {
+                operator: Arc::clone(&state.operator),
+                turns: state.turns.clone(),
+            },
             authenticate,
         ))
         .layer(DefaultBodyLimit::max(BODY_BOUND))
@@ -142,13 +276,15 @@ pub const BODY_BOUND: usize = 2 * 1024 * 1024;
 /// arrived, and the connection ends as it did before there was a drain.
 pub const DRAIN_BOUND: Duration = Duration::from_secs(2);
 
-/// Admit a request that presented the credential in force, and refuse every
-/// other before anything reads it.
+/// Admit a request that presented the operator's credential or a live turn's,
+/// hand every handler who it authenticated as, and refuse every other request
+/// before anything reads it.
 ///
 /// Exactly one `Authorization` header, spelled `Bearer ` and then the
 /// credential. Two headers, another scheme, another spelling of this one, and a
-/// credential that is not the one in force are all the same refusal, which says
-/// what to present and nothing about what was presented.
+/// credential that is nobody's are all the same refusal, which says what to
+/// present and nothing about what was presented — and, on a server that has no
+/// operator credential yet, names the command that issues one.
 ///
 /// The refusal is decided on the head alone, and the body is then drained, up
 /// to [`BODY_BOUND`], before it is answered. Nothing reads what is
@@ -158,8 +294,8 @@ pub const DRAIN_BOUND: Duration = Duration::from_secs(2);
 /// `401` that was already on its way. Linux hands over what was queued first,
 /// which is why the same race is only ever seen there.
 pub async fn authenticate(
-    State(credential): State<Arc<ApiCredential>>,
-    request: Request,
+    State(admission): State<Admission>,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let mut presented = request.headers().get_all(header::AUTHORIZATION).iter();
@@ -167,15 +303,29 @@ pub async fn authenticate(
         (Some(only), None) => only
             .as_bytes()
             .strip_prefix(BEARER)
-            .is_some_and(|offered| credential.admits(offered)),
-        _ => false,
+            .and_then(|offered| admission.caller(offered)),
+        _ => None,
     };
-    if !admitted {
-        let mut refused = refusal(
-            StatusCode::UNAUTHORIZED,
-            "this server's API requires the credential it is configured with, presented as \
-             `Authorization: Bearer <credential>`",
-        );
+    if let Some(caller) = admitted {
+        request.extensions_mut().insert(caller);
+        return next.run(request).await;
+    }
+    {
+        let said = if matches!(*admission.operator, OperatorCredential::Unconfigured) {
+            format!(
+                "this server's API requires a credential, presented as `Authorization: Bearer \
+                 <credential>`, and this server has no operator credential yet: run \
+                 `{CREDENTIAL_ISSUE}` as the operator, put the `api.credential_verifier` line it \
+                 prints into the server's configuration, and restart the service"
+            )
+        } else {
+            format!(
+                "this server's API requires the credential it is configured with, presented as \
+                 `Authorization: Bearer <credential>`. An operator without one runs \
+                 `{CREDENTIAL_ISSUE}`"
+            )
+        };
+        let mut refused = refusal(StatusCode::UNAUTHORIZED, said);
         refused.headers_mut().insert(
             header::WWW_AUTHENTICATE,
             header::HeaderValue::from_static("Bearer"),
@@ -188,9 +338,8 @@ pub async fn authenticate(
             axum::body::to_bytes(request.into_body(), BODY_BOUND),
         )
         .await;
-        return refused;
+        refused
     }
-    next.run(request).await
 }
 
 /// A path beneath the versioned prefix that no operation serves.
@@ -205,8 +354,11 @@ async fn nothing_here() -> Response {
 fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
     if let Effect::Mutating(kind) = operation.effect {
         return post(
-            move |state: State<ApiState>, print_id: Path<PrintId>, body: Json<ActionBody>| async move {
-                act(kind, state, print_id, body).await
+            move |state: State<ApiState>,
+                  caller: Extension<Caller>,
+                  print_id: Path<PrintId>,
+                  body: Json<ActionBody>| async move {
+                act(kind, state, caller, print_id, body).await
             },
         );
     }
@@ -272,12 +424,29 @@ fn core_status(error: &CoreError) -> StatusCode {
 }
 
 /// Ask for one action of the vocabulary against one print.
+///
+/// Who may ask is settled before the policy is: a turn's credential reaches
+/// no start and no print but its own, and the claimed actor is held to the
+/// caller. A request refused here is decided on by nothing and recorded
+/// nowhere.
 async fn act(
     kind: ActionKind,
     State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
     Json(body): Json<ActionBody>,
 ) -> Response {
+    if kind == ActionKind::StartPrint
+        && let Err(refused) = operator_only(&caller, &crate::operations::command_for("start_print"))
+    {
+        return refused;
+    }
+    if let Err(refused) = scoped_to(&caller, print_id) {
+        return refused;
+    }
+    if let Err(refused) = claim_held_to(&caller, &body.actor) {
+        return refused;
+    }
     let action = match body.into_action(kind) {
         Ok(action) => action,
         Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
@@ -334,7 +503,14 @@ async fn list_and_adopt_prints(State(state): State<ApiState>) -> Response {
 /// The print answered is the context's, read after the context read settled
 /// the open prints against the printer's job — so a status that finds the job
 /// over answers the print it closed rather than the one it found.
-async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
+async fn status(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    Path(print_id): Path<PrintId>,
+) -> Response {
+    if let Err(refused) = scoped_to(&caller, print_id) {
+        return refused;
+    }
     match state.prints.print(print_id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
@@ -372,7 +548,14 @@ async fn status(State(state): State<ApiState>, Path(print_id): Path<PrintId>) ->
 /// answers from, so the two operations cannot disagree about where an image
 /// is. An image whose record is intact and whose file is gone answers no path,
 /// which is what the caller's own missing-file failure is about.
-async fn context(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
+async fn context(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    Path(print_id): Path<PrintId>,
+) -> Response {
+    if let Err(refused) = scoped_to(&caller, print_id) {
+        return refused;
+    }
     let context = match state.supervisor.context(print_id).await {
         Ok(context) => context,
         Err(error) => return refusal(core_status(&error), error),
@@ -402,9 +585,13 @@ async fn context(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -
 /// are answered on.
 async fn look(
     State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
     Query(params): Query<LookParams>,
 ) -> Response {
+    if let Err(refused) = scoped_to(&caller, print_id) {
+        return refused;
+    }
     let wait_s = params.wait_s.unwrap_or(0);
     if wait_s > MAX_LOOK_WAIT_S {
         return refusal(
@@ -434,9 +621,25 @@ async fn look(
 }
 
 /// Materialize one image: its record, and the absolute path its bytes are at.
-async fn image(State(state): State<ApiState>, Path(image_id): Path<ImageId>) -> Response {
+///
+/// An image belongs to one print, so a turn's credential reaches the images of
+/// its own print alone.
+async fn image(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    Path(image_id): Path<ImageId>,
+) -> Response {
     match state.images.image(image_id).await {
-        Ok(lookup) => answer(StatusCode::OK, &ImageAnswer::from(lookup)),
+        Ok(lookup) => {
+            let belongs_to = match &lookup {
+                printobserver_core::ImageLookup::Found { record, .. }
+                | printobserver_core::ImageLookup::FileMissing { record } => record.print_id,
+            };
+            if let Err(refused) = scoped_to(&caller, belongs_to) {
+                return refused;
+            }
+            answer(StatusCode::OK, &ImageAnswer::from(lookup))
+        }
         Err(error) => refusal(store_status(&error), error),
     }
 }
@@ -444,9 +647,13 @@ async fn image(State(state): State<ApiState>, Path(image_id): Path<ImageId>) -> 
 /// Read one print's events, newest first.
 async fn history(
     State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
     Query(params): Query<HistoryParams>,
 ) -> Response {
+    if let Err(refused) = scoped_to(&caller, print_id) {
+        return refused;
+    }
     let query = HistoryQuery {
         print_id,
         kinds: Vec::new(),
@@ -461,7 +668,14 @@ async fn history(
 }
 
 /// Read one print's manifest.
-async fn manifest_get(State(state): State<ApiState>, Path(print_id): Path<PrintId>) -> Response {
+async fn manifest_get(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    Path(print_id): Path<PrintId>,
+) -> Response {
+    if let Err(refused) = scoped_to(&caller, print_id) {
+        return refused;
+    }
     let manifest = match state.prints.manifest(print_id).await {
         Ok(manifest) => manifest,
         Err(error) => return refusal(store_status(&error), error),
@@ -489,9 +703,13 @@ async fn manifest_get(State(state): State<ApiState>, Path(print_id): Path<PrintI
 /// on the print, exactly as it is when a start attaches one.
 async fn manifest_set(
     State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
     Json(body): Json<ManifestBody>,
 ) -> Response {
+    if let Err(refused) = operator_only(&caller, &crate::operations::command_for("manifest_set")) {
+        return refused;
+    }
     if let Err(rejected) = body.reason() {
         return refusal(StatusCode::BAD_REQUEST, rejected);
     }

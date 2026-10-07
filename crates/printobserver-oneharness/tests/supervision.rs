@@ -14,6 +14,8 @@ mod assessment_schema;
 mod closing;
 #[path = "supervision/configuration.rs"]
 mod configuration;
+#[path = "supervision/credentials.rs"]
+mod credentials;
 #[path = "supervision/failures.rs"]
 mod failures;
 #[path = "supervision/launching.rs"]

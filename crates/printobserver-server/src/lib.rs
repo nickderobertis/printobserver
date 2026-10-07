@@ -18,7 +18,9 @@
 //! cannot come apart. [`ingress`] is `Obico`'s own endpoint, which answers
 //! before its handling completes and inside a bound this repository declares,
 //! and admits a post by its shared secret alone; every route beneath the
-//! versioned prefix admits a request by the API credential alone.
+//! versioned prefix admits a request by the operator's credential or a live
+//! supervision turn's alone, and holds it to the identity that credential
+//! authenticated. [`turns`] is where each turn's credential is minted and held.
 //! [`server`] is the composition root: the one place an implementation crate is
 //! named, and the only file here that knows there is an `OctoPrint` at all.
 //!
@@ -40,14 +42,16 @@ pub mod ingress;
 pub mod operations;
 pub mod reconcile;
 pub mod server;
+pub mod turns;
 pub mod wire;
 
-pub use api::{ApiState, BODY_BOUND, DRAIN_BOUND, router};
+pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, router};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
-    DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection,
-    OBICO_POSTING_TIMEOUT_MS, OctoprintSection, REDACTED, SKILL_INSTALL, ServerConfig,
-    SharedSecret, SignInConfig, SupervisorSection, plainly_written,
+    CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY,
+    GENERATED_CREDENTIAL_BYTES, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection,
+    REDACTED, SKILL_INSTALL, ServerConfig, SharedSecret, SignInConfig, SupervisorSection,
+    VERIFIER_PREFIX, plainly_written,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
@@ -64,9 +68,12 @@ pub use reconcile::{
     reconcile,
 };
 pub use server::{
-    API_CREDENTIAL_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM, PROMPT_FILE, Ports, Running,
+    API_CREDENTIAL_FILE, API_CREDENTIAL_VERIFIER_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM,
+    CREDENTIAL_ISSUE, CREDENTIAL_VERIFIER, OperatorCredential, PROMPT_FILE, Ports, Running,
     SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, context_command,
+    operator_credential, plaintext_credential_warning,
 };
+pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
     IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer, reason_of,

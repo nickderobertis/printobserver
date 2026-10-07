@@ -82,8 +82,11 @@ fn a_retry_inside_one_request_recovers_the_turn() {
     );
 
     let print_id = PrintId::new();
-    let outcome = block_on(supervisor.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn recovered from the first invalid answer");
+    let outcome = block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn recovered from the first invalid answer");
     assert_eq!(outcome.assessment.summary, "the print is fine");
     assert_eq!(outcome.assessment.confidence, Confidence::Medium);
 
@@ -120,7 +123,10 @@ fn an_answer_that_never_conforms_is_a_failed_turn_the_loop_runs_past() {
         ),
         &watch,
     );
-    let refused = block_on(failing.run_turn(turn(print_id, event(print_id, payload()), None)));
+    let refused = block_on(failing.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ));
     assert!(
         matches!(refused, Err(SupervisorError::InvalidAnswer { .. })),
         "an answer that never conformed was accepted: {refused:?}"
@@ -152,8 +158,11 @@ fn an_answer_that_never_conforms_is_a_failed_turn_the_loop_runs_past() {
         ),
         &answering_watch,
     );
-    let outcome = block_on(answering.run_turn(turn(print_id, event(print_id, payload()), None)))
-        .expect("the turn after a failed one did not run");
+    let outcome = block_on(answering.run_turn(
+        turn(print_id, event(print_id, payload()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn after a failed one did not run");
     assert_eq!(outcome.assessment.summary, "the print recovered");
 
     let turns = answering

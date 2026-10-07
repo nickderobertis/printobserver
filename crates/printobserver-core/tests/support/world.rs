@@ -80,6 +80,8 @@ pub struct World {
     pub agent: Arc<FakeSupervisor>,
     /// The one time source.
     pub clock: Arc<FakeClock>,
+    /// Where each turn's runs take their credentials from.
+    pub turns: Arc<crate::fakes::FakeTurnAuthority>,
 }
 
 impl World {
@@ -118,6 +120,11 @@ impl World {
             Arc::clone(&clock) as Arc<dyn printobserver_core::Clock>,
         );
         agent.attach(&core);
+        let turns = Arc::new(crate::fakes::FakeTurnAuthority::default());
+        assert!(
+            core.install_turn_authority(Arc::new(crate::fakes::OpensTurns(Arc::clone(&turns))))
+        );
+        agent.reads_authority(&turns);
         Self {
             core,
             journal,
@@ -126,6 +133,7 @@ impl World {
             vision,
             agent,
             clock,
+            turns,
         }
     }
 

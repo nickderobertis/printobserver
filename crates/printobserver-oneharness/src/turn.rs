@@ -12,7 +12,7 @@ use oneharness_core::io::run::{RunControls, RunOutcome, RunRequest, run_supervis
 use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_supervisor_api::AgentAssessment;
 use printobserver_supervisor_api::{
-    BoxFuture, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
+    BoxFuture, SupervisorError, SupervisorPort, TurnAccess, TurnOutcome, TurnPass, TurnRequest,
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
@@ -222,8 +222,24 @@ impl OneharnessSupervisor {
     }
 
     /// The run request for one turn in one session.
-    fn build_request(&self, session: &SessionName, prompt: &str) -> RunRequest {
+    ///
+    /// The run's environment carries the configured assignments and then the
+    /// pass this run was issued: the server's address and the credential minted
+    /// for this run, which is the only way a turn is handed either. No file
+    /// holding the credential is written, and the context command names none.
+    fn build_request(&self, session: &SessionName, prompt: &str, pass: &TurnPass) -> RunRequest {
         let (mode, passthrough) = self.permissions();
+        let mut env: Vec<String> = self
+            .config
+            .harness_env
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        env.extend(
+            pass.environment()
+                .into_iter()
+                .map(|(name, value)| format!("{name}={value}")),
+        );
         RunRequest {
             harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
@@ -234,12 +250,7 @@ impl OneharnessSupervisor {
             schema: Some(self.config.assessment_schema.path().to_path_buf()),
             timeout: Some(self.config.turn_timeout.seconds()),
             cwd: Some(self.config.working_dir.clone()),
-            env: self
-                .config
-                .harness_env
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
+            env,
             mode: Some(mode),
             passthrough,
             // The supervisor's turns are decided here, not by whatever
@@ -255,9 +266,16 @@ impl OneharnessSupervisor {
         }
     }
 
-    /// Hand one run request to `OneHarness`, in this process.
-    fn drive(&self, session: &SessionName, prompt: &str) -> Result<RunOutcome, OneharnessError> {
-        let request = self.build_request(session, prompt);
+    /// Hand one run request to `OneHarness`, in this process, carrying the
+    /// pass `access` issues for the session it runs in.
+    fn drive(
+        &self,
+        session: &SessionName,
+        prompt: &str,
+        access: &dyn TurnAccess,
+    ) -> Result<Result<RunOutcome, OneharnessError>, SupervisorError> {
+        let pass = access.issue(session.as_str())?;
+        let request = self.build_request(session, prompt, &pass);
         if let Some(observer) = &self.seam.requests {
             observer.built(&request);
         }
@@ -266,20 +284,27 @@ impl OneharnessSupervisor {
             .processes
             .as_ref()
             .map(|processes| Arc::as_ref(processes) as &dyn ProcessSupervisor);
-        let outcome = run_supervised(&request, RunControls::default(), supervisor)?;
+        let outcome = match run_supervised(&request, RunControls::default(), supervisor) {
+            Ok(outcome) => outcome,
+            Err(error) => return Ok(Err(error)),
+        };
         if let Some(observer) = &self.seam.reports {
             observer.answered(&outcome.report);
         }
-        Ok(outcome)
+        Ok(Ok(outcome))
     }
 
     /// One supervision turn, from the ledger through the run and back.
-    fn take_turn(&self, request: &TurnRequest) -> Result<TurnOutcome, SupervisorError> {
+    fn take_turn(
+        &self,
+        request: &TurnRequest,
+        access: &dyn TurnAccess,
+    ) -> Result<TurnOutcome, SupervisorError> {
         let print_id = &request.print_id;
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
 
-        let outcome = match self.drive(&session, &self.prompt_for(request, &session)?) {
+        let outcome = match self.drive(&session, &self.prompt_for(request, &session)?, access)? {
             Ok(outcome) => outcome,
             // The harness binds a session to the identity that created it and
             // refuses to continue it on another. That is a session that has
@@ -294,8 +319,9 @@ impl OneharnessSupervisor {
                 session = ledger.name_after_current();
                 self.save(&ledger, print_id)?;
                 // The prompt is built again, because the actor it hands the
-                // agent names the session the turn now runs in.
-                self.drive(&session, &self.prompt_for(request, &session)?)
+                // agent names the session the turn now runs in — and so is the
+                // credential, which is bound to that session.
+                self.drive(&session, &self.prompt_for(request, &session)?, access)?
                     .map_err(|error| unavailable(&error))?
             }
             Err(error) => return Err(unavailable(&error)),
@@ -529,8 +555,9 @@ impl SupervisorPort for OneharnessSupervisor {
     fn run_turn(
         &self,
         request: TurnRequest,
+        access: Arc<dyn TurnAccess>,
     ) -> BoxFuture<'_, Result<TurnOutcome, SupervisorError>> {
-        Box::pin(async move { self.take_turn(&request) })
+        Box::pin(async move { self.take_turn(&request, access.as_ref()) })
     }
 
     fn close_session(
