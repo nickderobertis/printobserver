@@ -45,6 +45,14 @@ def report(output: str) -> str:
     return plain(output).replace("\\", "/")
 
 
+def over_the_client(output: str) -> None:
+    """Fail unless a report over a Python client change rules on that client alone."""
+    contains(output, "coverage: over the projects the change since")
+    contains(output, "rust lines not measured: this run's tests reached no crate")
+    contains(output, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
+    truth("tools/repo-checks/src" not in output, describing=f"a report over the client:\n{output}")
+
+
 def ran(output: str) -> set[str]:
     """The projects Nx ran `format-check` for, read off what it printed."""
     return {found["project"] for found in RAN.finditer(plain(output))}
@@ -174,11 +182,30 @@ def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     reported = copy.just("coverage", environment=QUIET)
 
     passing(reported, describing="`just coverage` over the client's own run")
-    output = report(reported.stdout)
-    contains(output, "coverage: over the projects the change since")
-    contains(output, "rust lines not measured: this run's tests reached no crate")
-    contains(output, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
-    truth("tools/repo-checks/src" not in output, describing=f"a report over the client:\n{output}")
+    over_the_client(report(reported.stdout))
+
+
+def test_a_windows_report_is_read_over_the_client_as_any_other_is() -> None:
+    """The report `gate (windows-aarch64)` printed, separators and all, rules on the client.
+
+    Its paths are the ones coverage.py wrote on that runner; read unnormalised,
+    the client's file is never found and the tool packages' never could be.
+    """
+    windows = (
+        "\x1b[1mcoverage: over the projects the change since a4676b396495"
+        " (the merge base of HEAD with main) reaches\x1b[0m\n"
+        "Name                                                         Stmts   Miss  Cover\n"
+        "python\\printobserver-sdk\\src\\printobserver_sdk\\__init__.py       5      0   100%\n"
+        "python\\printobserver-sdk\\src\\printobserver_sdk\\_client.py       80      5    94%\n"
+        "coverage: rust lines not measured: this run's tests reached no crate (floor 95%),"
+        " python lines 97% (floor 95%)\n"
+    )
+
+    over_the_client(report(windows))
+    with pytest.raises(AssertionError, match="tools/repo-checks/src"):
+        over_the_client(
+            report(windows + "tools\\repo-checks\\src\\repo_checks\\expect.py  10  0  100%\n")
+        )
 
 
 @pytest.mark.skipif(
