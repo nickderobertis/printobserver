@@ -15,6 +15,19 @@ from repo_checks.model import Repo
 from treecopy import REPO_ROOT, Tree, copy_tree
 
 
+@pytest.fixture(autouse=True)
+def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the base and head the gate job exports before any test starts.
+
+    `nx-set-shas` exports `NX_BASE` and `NX_HEAD` into the job, so every test of
+    a gate cell inherits commits of *that* checkout — which none of the trees a
+    test builds contains, and which the tier rightly refuses as naming no
+    commit. A test that means a base names it itself.
+    """
+    monkeypatch.delenv("NX_BASE", raising=False)
+    monkeypatch.delenv("NX_HEAD", raising=False)
+
+
 @pytest.fixture
 def committed() -> Repo:
     """The committed tree, exactly as this repository leaves it."""
