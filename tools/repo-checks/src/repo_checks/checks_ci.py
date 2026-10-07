@@ -145,6 +145,11 @@ def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
     return frozenset(kinds)
 
 
+def _runs_check(commands: list[str]) -> bool:
+    """Whether a job runs the gate recipe, at whichever tier it names."""
+    return any(command.split()[:2] == ["just", "check"] for command in commands)
+
+
 def _job_kind(
     job: dict[str, Any], path: ip.InstallPath, bring_up: str, artifact: tuple[str, ...] = ()
 ) -> JobKind:
@@ -156,7 +161,7 @@ def _job_kind(
     commands = run_commands(job)
     if bring_up and bring_up in commands:
         return JobKind.INTEGRATION
-    if "just check" in commands and "just bootstrap" in commands:
+    if _runs_check(commands) and "just bootstrap" in commands:
         return JobKind.GATE
     if any(command.startswith("just lint-llm-diff") for command in commands):
         return JobKind.LLMLINT
@@ -941,9 +946,8 @@ def continuous_integration(repo: Repo) -> list[str]:
                 f"{gate[0]}: the gate job runs `just {words[1]}`, which the recipe set "
                 f"does not declare"
             )
-    for required in ("just bootstrap", "just check"):
-        if required not in gate_commands:
-            findings.append(f"{gate[0]}: the gate job does not run `{required}`")
+    if "just bootstrap" not in gate_commands:
+        findings.append(f"{gate[0]}: the gate job does not run `just bootstrap`")
 
     if llmlint is None:
         findings.append(

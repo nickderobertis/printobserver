@@ -36,7 +36,11 @@ def test_a_gate_tier_naming_the_recipe_is_refused(tree: Callable[[], Tree]) -> N
 def test_the_check_recipe_invoking_it_is_refused(tree: Callable[[], Tree]) -> None:
     """`just check` is what every change runs, and it runs beside no printer."""
     copy = tree()
-    copy.edit("justfile", "    just test-e2e\n", f"    just test-e2e\n    just {RECIPE}\n")
+    copy.edit(
+        "justfile",
+        "    just test-e2e {{quote(tier)}}\n",
+        f"    just test-e2e {{{{quote(tier)}}}}\n    just {RECIPE}\n",
+    )
 
     refused_naming(smoke_selection(copy.repo), "the `check` recipe invokes", RECIPE)
 

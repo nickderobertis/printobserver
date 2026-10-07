@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from repo_checks import checks_graph, gate_tier
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
 from repo_checks.platforms import PlatformError, descriptor
 from repo_checks.shell import run
@@ -380,7 +381,66 @@ def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
 COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
 
 
-def coverage(repo: Repo) -> int:
+RUST = "lang:rust"
+
+
+@dataclass(frozen=True, slots=True)
+class Measured:
+    """Whose code one coverage report is over.
+
+    `None` is every project's — the full sweep, and what a report made by hand
+    is over. A tuple is the projects one affected run's tests reached: the crate
+    roots for Rust and the `[tool.coverage.run]` source directories for Python,
+    empty where that run reached none of either.
+    """
+
+    rust: tuple[str, ...] | None = None
+    python: tuple[str, ...] | None = None
+    #: Why the report is over what it is over, as a reader is told it.
+    reason: str = "every project"
+
+    def rust_ignored(self, repo: Repo) -> str | None:
+        """The filename pattern leaving every crate this run did not reach out of the report."""
+        if self.rust is None:
+            return None
+        left = [d.name for d in repo.crate_dirs if f"crates/{d.name}" not in self.rust]
+        if not left:
+            return None
+        names = "|".join(re.escape(name) for name in left)
+        return rf"(^|[/\\])crates[/\\]({names})[/\\]"
+
+    def python_included(self) -> str | None:
+        """The `--include` naming the source directories this run reached."""
+        return None if self.python is None else ",".join(f"{root}/*" for root in self.python)
+
+
+def measured_for(repo: Repo, tier: str) -> Measured:
+    """Whose code `tier`'s tests measured: every project's, or the affected ones'.
+
+    Each file's figure is the same as the full sweep's. A project's code is
+    covered by its own tests and by those of the projects depending on it, and
+    every one of those is affected whenever it is, so restricting the report to
+    the affected projects drops whole files and never a test that reached one.
+
+    Raises:
+        TierError: If the tier or the base it is resolved against is refused.
+    """
+    scope = gate_tier.resolve(repo, tier)
+    reached = gate_tier.affected_projects(repo, scope, "test")
+    if reached is None:
+        return Measured(reason=scope.reason)
+    graph = [project for project in checks_graph.projects(repo) if project.name in reached]
+    sources = repo.read_toml("pyproject.toml")["tool"]["coverage"]["run"]["source"]
+    python = tuple(
+        str(source)
+        for source in sources
+        if any(str(source).startswith(f"{project.root}/") for project in graph)
+    )
+    rust = tuple(project.root for project in graph if RUST in project.tags)
+    return Measured(rust=rust, python=python, reason=scope.reason)
+
+
+def coverage(repo: Repo, measured: Measured | None = None) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records.
 
     Pass or fail, each ecosystem's per-file table is printed before the floor is
@@ -389,55 +449,84 @@ def coverage(repo: Repo) -> int:
     read off the table rather than reproduced. A platform whose toolchain cannot
     read the profiles its own instrumentation writes states that as a distinct
     outcome, under an exemption `_exempt` holds to policy.
+
+    `measured` scopes the report to the projects an affected run's tests
+    reached, at the same floors; absent, it is over every project.
     """
+    scope = Measured() if measured is None else measured
     floors = repo.policy["gate"]["coverage"]
     failed = False
+    if measured is not None:
+        print(f"coverage: over {scope.reason}")
 
-    rust = run(
-        ["cargo", "llvm-cov", "report", "--summary-only", f"--fail-under-lines={floors['rust']}"],
-        cwd=repo.root,
-    )
-    print(rust.stdout, end="")
-    rust_total = _total_of(rust.stdout, 9)
-    if rust.returncode != 0:
-        exempt = _exempt(repo, floors, rust.stderr)
-        if exempt.applies:
-            rust_total = "no readable profile, exempt"
-            print(exempt.outcome)
-        else:
-            print(rust.stderr, file=sys.stderr)
-            for refusal in exempt.refusals:
-                print(refusal, file=sys.stderr)
+    rust_total = "not measured: this run's tests reached no crate"
+    if scope.rust != ():
+        ignored = scope.rust_ignored(repo)
+        rust = run(
+            [
+                "cargo",
+                "llvm-cov",
+                "report",
+                "--summary-only",
+                f"--fail-under-lines={floors['rust']}",
+                *([f"--ignore-filename-regex={ignored}"] if ignored else []),
+            ],
+            cwd=repo.root,
+        )
+        print(rust.stdout, end="")
+        rust_total = _total_of(rust.stdout, 9)
+        if rust.returncode != 0:
+            exempt = _exempt(repo, floors, rust.stderr)
+            if exempt.applies:
+                rust_total = "no readable profile, exempt"
+                print(exempt.outcome)
+            else:
+                print(rust.stderr, file=sys.stderr)
+                for refusal in exempt.refusals:
+                    print(refusal, file=sys.stderr)
+                print(
+                    f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
+                    f"drive the uncovered lines, or explain the floor change in AGENTS.md.",
+                    file=sys.stderr,
+                )
+                failed = True
+
+    python_total = "not measured: this run's tests reached no Python source"
+    if scope.python != ():
+        python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
+        if python.returncode not in (0, 1):
+            print(python.stderr, file=sys.stderr)
+            failed = True
+        # The report is made on the host the suites ran on, so a line this
+        # platform's hosts never reach — marked `# pragma: unreached on
+        # <platform>` — is not counted here, and stays counted on every platform
+        # whose hosts reach it.
+        included = scope.python_included()
+        report = run(
+            [
+                "uv",
+                "run",
+                "-q",
+                "coverage",
+                "report",
+                f"--fail-under={floors['python']}",
+                *([f"--include={included}"] if included else []),
+            ],
+            cwd=repo.root,
+            env={**os.environ, COVERAGE_HOST: sys.platform},
+        )
+        print(report.stdout, end="")
+        python_total = _total_of(report.stdout, -1)
+        if report.returncode != 0:
             print(
-                f"Rust line coverage is below the {floors['rust']}% floor. Add tests that "
-                f"drive the uncovered lines, or explain the floor change in AGENTS.md.",
+                f"Python line coverage is below the {floors['python']}% floor. Add tests "
+                f"that drive the uncovered lines.",
                 file=sys.stderr,
             )
             failed = True
 
-    python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
-    if python.returncode not in (0, 1):
-        print(python.stderr, file=sys.stderr)
-        failed = True
-    # The report is made on the host the suites ran on, so a line this platform's
-    # hosts never reach — marked `# pragma: unreached on <platform>` — is not
-    # counted here, and stays counted on every platform whose hosts reach it.
-    report = run(
-        ["uv", "run", "-q", "coverage", "report", f"--fail-under={floors['python']}"],
-        cwd=repo.root,
-        env={**os.environ, COVERAGE_HOST: sys.platform},
-    )
-    print(report.stdout, end="")
-    if report.returncode != 0:
-        print(
-            f"Python line coverage is below the {floors['python']}% floor. Add tests "
-            f"that drive the uncovered lines.",
-            file=sys.stderr,
-        )
-        failed = True
-
     print(
         f"coverage: rust lines {rust_total} (floor {floors['rust']}%), "
-        f"python lines {_total_of(report.stdout, -1)} (floor {floors['python']}%)"
+        f"python lines {python_total} (floor {floors['python']}%)"
     )
     return 1 if failed else 0

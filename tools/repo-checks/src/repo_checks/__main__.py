@@ -13,6 +13,7 @@ from typing import NamedTuple, Protocol
 
 from repo_checks import (
     commands,
+    gate_tier,
     gh_release,
     powershell_release,
     release_plz_release,
@@ -117,7 +118,17 @@ def main(argv: list[str] | None = None) -> int:
             "program in, its own default otherwise"
         ),
     )
+    parser.add_argument(
+        "--tier",
+        default=None,
+        help=(
+            "for coverage: the gate tier whose tests the report is over — `affected` scopes "
+            "it to the projects that run reached, `all` (the default) is every project"
+        ),
+    )
     parsed = parser.parse_args(argv)
+    if parsed.tier is not None and parsed.name != "coverage":
+        parser.error("--tier can only be used with coverage")
     for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
         if value is not None and not value.strip():
             parser.error(f"{option} needs a nonempty value")
@@ -147,7 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         case "docs-schemas-write":
             return commands.docs_schemas_write(repo)
         case "coverage":
-            return commands.coverage(repo)
+            if parsed.tier is None:
+                return commands.coverage(repo)
+            try:
+                measured = commands.measured_for(repo, parsed.tier)
+            except gate_tier.TierError as error:
+                print(f"coverage: refused: {error}", file=sys.stderr)
+                return gate_tier.REFUSED
+            return commands.coverage(repo, measured)
         case "lint-windows-target":
             return windows_lint.lint_windows_target(repo)
         case "pr-title":

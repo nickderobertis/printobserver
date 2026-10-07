@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 import tomllib
@@ -17,7 +18,13 @@ from pathlib import Path
 import pytest
 from held_toolchain import held_by_verb
 from repo_checks.__main__ import main
-from repo_checks.commands import COVERAGE_HOST, coverage, install_hooks, install_tools
+from repo_checks.commands import (
+    COVERAGE_HOST,
+    Measured,
+    coverage,
+    install_hooks,
+    install_tools,
+)
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
 from repo_checks.powershell_release import HASHES
@@ -86,6 +93,9 @@ else:
 
 POLICY = """
 schema_version = 1
+
+[repository]
+base_branch = "main"
 
 [gate.coverage]
 rust = 95
@@ -540,6 +550,10 @@ import sys
 
 sys.path[:0] = os.environ["STANDIN_IMPORT_PATH"].split(os.pathsep)
 verb = sys.argv[sys.argv.index("-m") + 2 :]
+if sys.argv[sys.argv.index("-m") + 1] == "repo_checks.gate_tier":
+    from repo_checks.gate_tier import main
+
+    raise SystemExit(main(verb))
 if verb[0] == "install-tools":
     from repo_checks.__main__ import main
 
@@ -1090,3 +1104,86 @@ def test_a_report_nothing_named_a_platform_for_excludes_no_marked_line(
     report = run([sys.executable, "-m", "coverage", "report"], cwd=repo.root)
 
     equal(_missed(report.stdout), "7, 11")
+
+
+def two_measured_projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
+    """A tree whose `alpha` source was run in full and whose `beta` source never ran.
+
+    Measured by the real coverage.py over both source directories, the way
+    `[tool.coverage.run]` names the four this repository measures, and reported
+    through the same stand-in `uv` as the tests above.
+    """
+    root = tmp_path / "tree"
+    for name in ("alpha", "beta"):
+        (root / name / "src").mkdir(parents=True)
+        (root / name / "src" / f"{name}.py").write_text(
+            f"def {name}():\n    return {name!r}\n", encoding="utf-8"
+        )
+    (root / "main.py").write_text(
+        "import sys\nsys.path.insert(0, 'alpha/src')\nimport alpha\nalpha.alpha()\n",
+        encoding="utf-8",
+    )
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+    (root / "pyproject.toml").write_text(
+        '[tool.coverage.run]\nrelative_files = true\nsource = ["alpha/src", "beta/src"]\n',
+        encoding="utf-8",
+    )
+    run([sys.executable, "-m", "coverage", "run", "main.py"], cwd=root, check=True)
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(programs, "cargo", "raise SystemExit('cargo ran over a run that reached no crate')\n")
+    program(programs, "uv", UV_COVERAGE)
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+    return Repo(root)
+
+
+def test_an_affected_report_is_over_the_reached_projects_at_the_same_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A source the run never reached is left out, not counted as uncovered.
+
+    The same report over every project fails, because `beta` never ran: that is
+    the full sweep's figure, and the affected one leaves it for the sweep.
+    """
+    repo = two_measured_projects(tmp_path, monkeypatch)
+
+    equal(coverage(repo, Measured(rust=(), python=("alpha/src",), reason="alpha")), 0)
+    out = capsys.readouterr().out
+    contains(out, "alpha/src/alpha.py")
+    absent(out, "beta/src/beta.py", describing="the affected report")
+    equal(
+        out.strip().splitlines()[-1],
+        "coverage: rust lines not measured: this run's tests reached no crate (floor 95%), "
+        "python lines 100% (floor 95%)",
+    )
+
+    equal(coverage(repo, Measured(rust=(), python=None)), 1)
+    contains(capsys.readouterr().out, "beta/src/beta.py", describing="the whole report")
+
+
+def test_an_affected_run_reaching_no_measured_source_reports_nothing_measured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Neither ecosystem is ruled on over code no test of this run reached."""
+    repo = two_measured_projects(tmp_path, monkeypatch)
+
+    equal(coverage(repo, Measured(rust=(), python=())), 0)
+
+    contains(capsys.readouterr().out, "python lines not measured: this run's tests reached no")
+
+
+def test_the_rust_report_leaves_out_exactly_the_crates_the_run_did_not_reach() -> None:
+    """On either separator, since the report names files the way the host does."""
+    ignored = Measured(rust=("crates/printobserver-core",)).rust_ignored(Repo(REPO_ROOT))
+    truth(ignored is not None, describing="the pattern over a run reaching one crate")
+    pattern = re.compile(ignored or "")
+
+    for left in ("/w/crates/printobserver-server/src/lib.rs", "C:\\w\\crates\\printobserver\\a.rs"):
+        truth(pattern.search(left) is not None, describing=f"{left} left out")
+    truth(
+        pattern.search("/w/crates/printobserver-core/src/lib.rs") is None,
+        describing="the reached crate's own file kept in",
+    )
+    equal(Measured().rust_ignored(Repo(REPO_ROOT)), None, describing="the full sweep's pattern")

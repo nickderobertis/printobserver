@@ -1,6 +1,13 @@
 # The gate, on the supported platform matrix, plus the judged-lint tier and the
 # pull-request-title lint as jobs of their own.
 #
+# The gate runs `just check` at the tier `just gate-tier` answers for the event:
+# the affected tier on an ordinary pull request and on a push to `main`, each
+# against an explicitly derived base, and the full sweep on the release pull
+# request `release-plz` opens — the one point every batched release passes
+# through before it ships. AGENTS.md's "Commits, releases, and merging" records
+# why the sweep sits there.
+#
 # The matrices below are derived from AGENTS.md's "Supported platforms" list and
 # `just check-repo` refuses one if the two disagree, so this file cannot be
 # narrowed independently of that list.
@@ -49,6 +56,11 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
     runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      # `nx-set-shas` reads this workflow's own runs on `main` to find the last
+      # commit the gate passed on, which is the base a push is diffed against.
+      actions: read
     # Git's own bash on the Windows runners rather than PowerShell, so that
     # every cell runs its steps, and `just` finds the bash its recipes name, the
     # same way.
@@ -58,9 +70,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # The end-to-end tier and the suppression check both diff against the
-          # base branch, which a shallow checkout omits.
+          # The affected tier, the end-to-end tier and the suppression check all
+          # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
+      # The base the affected tier is diffed against, derived explicitly and
+      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
+      # request, and the last commit this workflow passed on for a push to it.
+      - uses: nrwl/nx-set-shas@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       # `just` from the same action as the cargo tools: `extractions/setup-just`
       # has no build for the `windows-11-arm` runner.
@@ -70,7 +86,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
-      - run: just check
+      - run: just check "$(just gate-tier)"
 
   integration:
     # Named by platform id, not runner, so a new runner image renames no

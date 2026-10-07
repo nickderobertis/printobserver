@@ -51,6 +51,9 @@ ROUTE = "install-route-pypi"
 #: The `gate` job's own environment: its header and every line indented under it.
 JOB_ENV = re.compile(r"^  gate:\n    env:\n(?:      .*\n)+", re.MULTILINE)
 
+#: The gate job's step that runs the gate, as the committed workflow spells it.
+GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
     """The workflow hands its inputs to the script, and every source job is runnable."""
@@ -364,49 +367,49 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
     ("old", "new", "why"),
     [
         (
-            "      - run: just check\n",
-            "      - run: just check\n        shell: cmd\n",
+            GATE_STEP,
+            GATE_STEP + "        shell: cmd\n",
             "runs under `cmd`",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        if: runner.os == 'Windows' || always()\n",
+            GATE_STEP,
+            GATE_STEP + "        if: runner.os == 'Windows' || always()\n",
             "conditioned on `runner.os == 'Windows' || always()`",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        env:\n"
+            GATE_STEP,
+            GATE_STEP + "        env:\n"
             "          WHEN: ${{ runner.os == 'Linux' && steps.a.outcome || 'never' }}\n",
             "choice between outcomes",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        env:\n          WHEN: ${{ github.sha }}\n",
+            GATE_STEP,
+            GATE_STEP + "        env:\n          WHEN: ${{ github.sha }}\n",
             "reads a step's environment as a literal",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        continue-on-error: ${{ true }}\n",
+            GATE_STEP,
+            GATE_STEP + "        continue-on-error: ${{ true }}\n",
             "something other than a bool",
         ),
         (
-            "      - run: just check\n",
+            GATE_STEP,
             "      - name: nothing\n",
             "neither runs a command nor uses an action",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        if: [always]\n",
+            GATE_STEP,
+            GATE_STEP + "        if: [always]\n",
             "an `if` that is not a string",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        env: [A]\n",
+            GATE_STEP,
+            GATE_STEP + "        env: [A]\n",
             "an `env` that is not a mapping",
         ),
         (
-            "      - run: just check\n",
-            "      - run: just check\n        env:\n          WHEN: [now]\n",
+            GATE_STEP,
+            GATE_STEP + "        env:\n          WHEN: [now]\n",
             "sets `WHEN` to something other than a scalar",
         ),
         (
@@ -676,7 +679,14 @@ def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_pa
     code, said = _run(copy, "gate", "linux-aarch64", recording)
 
     equal(code, 0, describing=f"the exit of a gate whose commands all passed:\n{said}")
-    equal(recording.recorded(), ["just bootstrap", "just check"], describing="what ran")
+    # The stand-in `just` answers `gate-tier` with nothing, so the tier it hands
+    # `check` is empty: which tier a dispatch selects is the selector's own
+    # journey, in `test_gate_tier.py`, and the real `check` refuses an empty one.
+    equal(
+        recording.recorded(),
+        ["just bootstrap", "just gate-tier", "just check "],
+        describing="what ran",
+    )
 
 
 def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
@@ -958,8 +968,8 @@ def test_a_source_the_script_cannot_run_is_refused_by_run_too(
     copy = tree()
     copy.edit(
         CI,
-        "      - run: just check\n",
-        "      - run: just check\n        working-directory: crates\n",
+        GATE_STEP,
+        GATE_STEP + "        working-directory: crates\n",
     )
     recording = Recording(tmp_path)
     recording.program(JUST)

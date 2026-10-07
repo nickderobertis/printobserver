@@ -204,7 +204,9 @@ def test_a_gate_invoking_this_tier_quietly_is_refused(tree: Callable[[], Tree]) 
     """
     broken = tree()
     broken.edit(
-        JUSTFILE, "    just test-e2e\n", "    just test-e2e\n    @just test-install-proof\n"
+        JUSTFILE,
+        "    just test-e2e {{quote(tier)}}\n",
+        "    just test-e2e {{quote(tier)}}\n    @just test-install-proof\n",
     )
 
     refused(install_proof(broken.repo), "belongs to the registry install-path proof")
@@ -222,7 +224,9 @@ def test_the_check_recipe_invoking_this_tier_is_refused(tree: Callable[[], Tree]
     """The gate stays the tier a developer runs to know whether a change is ready."""
     broken = tree()
     broken.edit(
-        JUSTFILE, "    just test-e2e\n", "    just test-e2e\n    just prove-registry-pypi\n"
+        JUSTFILE,
+        "    just test-e2e {{quote(tier)}}\n",
+        "    just test-e2e {{quote(tier)}}\n    just prove-registry-pypi\n",
     )
 
     refused(install_proof(broken.repo), "belongs to the registry install-path proof")

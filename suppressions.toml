@@ -517,7 +517,7 @@ reason = "What stands in is crates.io, and for the one reason the install proof'
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tools/release-artifacts/tests/test_registries.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists anywhere for a narrower edge to hang from. A project of its own would carry the same `test-e2e` target name and be run by the same `nx run-many` the tier already is, so there is no placement that would spare an unrelated change this journey. A reader can confirm both from the tree: `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and the `test-e2e` recipe in the justfile runs the tier through `nx run-many`."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tools/release-artifacts/tests/test_registries.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists anywhere for a narrower edge to hang from. A project of its own would carry the same `test-e2e` target name and need the same edges — this journey drives the release tooling over the whole tree — so there is no placement that would spare an unrelated change it. A reader can confirm both from the tree: `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and its `implicitDependencies` name what the tier drives, which is what the affected tier selects it by."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -649,7 +649,7 @@ reason = "The same tier and the same reason as the jobs above it: the JavaScript
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program this project does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
@@ -661,7 +661,7 @@ reason = "The same ground as the entry for `test_registries.py`: this suite is t
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no edge to put it behind that the graph would honour — the gate's `test` tier is `nx run-many -t test`, so a project of its own would carry a `test` target and be run by the same tier, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program this project does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -763,7 +763,7 @@ reason = "The operator's command is `gh skill install nickderobertis/printobserv
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
 site = "test-e2e"
-reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. So there is no edge to put this behind that would spare an unrelated change anything: a project of its own would carry the same target name and be run by the same `nx run-many` the tier already is. If that ceases to be true — if this repository grows per-project end-to-end targets — this suppression stops being right, and a reader can see that from this sentence."
+reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. Its edges are what it drives — the release tooling, the checks, the built program, both clients, the OctoPrint environment and the smoke — and the affected tier selects it by exactly those, plus every change to a file no project owns, which runs the whole graph. A journey split into a project of its own would drive the same things and need the same edges, so no placement spares an unrelated change anything. If this repository grows per-project end-to-end targets with narrower edges, this suppression stops being right, and a reader can see that from this sentence."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -1655,7 +1655,7 @@ reason = "What this fixture builds is the tree a merged release pull request lea
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_release("
-reason = "The same ground as this file's entry at `llmlint: ignore[expensive_tests_stay_behind_their_own_edge]`: the end-to-end tier is one project by design, `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and a project of its own would carry the same target name and be run by the same `nx run-many`. The journey costs one run of the drafting computation, about eight seconds."
+reason = "The same ground as this file's entry at `llmlint: ignore[expensive_tests_stay_behind_their_own_edge]`: the end-to-end tier is one project by design, `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and a project of its own would carry the same target name and need the same edges to the release tooling it drives. The journey costs one run of the drafting computation, about eight seconds."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1739,7 +1739,7 @@ reason = "GitHub's own `404` for any request the stand-in does not recognise. If
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_armed("
-reason = "A drift gate for a third-party answer has to run the third-party program, and this repository's end-to-end tier is where the held `release-plz` is installed (`just test-e2e` runs `install-tools release-plz` first) and the only project with a `test-e2e` target. One run costs one drafting computation of about eight seconds plus a `just` recipe, and a project of its own would carry the same target name under the same `nx run-many`, so there is no narrower edge that would spare an unrelated change this journey."
+reason = "A drift gate for a third-party answer has to run the third-party program, and this repository's end-to-end tier is where the held `release-plz` is installed (`just test-e2e` runs `install-tools release-plz` first) and the only project with a `test-e2e` target. One run costs one drafting computation of about eight seconds plus a `just` recipe, and a project of its own would carry the same target name and need the same edges to the release tooling, so there is no narrower edge that would spare an unrelated change this journey."
 
 [[suppression]]
 rule = "e2e_not_mocked"

@@ -59,7 +59,7 @@ def test_a_check_recipe_omitting_a_declared_tier_is_refused(
 ) -> None:
     """A gate that skips the end-to-end tier is a gate that proves less than it says."""
     broken = tree()
-    broken.edit("justfile", "    just test-e2e\n", "")
+    broken.edit("justfile", "    just test-e2e {{quote(tier)}}\n", "")
 
     findings = recipe_set(broken.repo)
 
@@ -85,10 +85,47 @@ def test_an_empty_recipe_body_is_refused(tree: Callable[[], Tree]) -> None:
     broken = tree()
     broken.edit(
         "justfile",
-        "build:\n    just node-modules\n    bunx nx run-many -t build --output-style=stream\n",
-        "build:\n",
+        'build tier="affected":\n    just node-modules\n'
+        "    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} build\n",
+        'build tier="affected":\n',
     )
 
     findings = recipe_set(broken.repo)
 
     refused(findings, "runs nothing")
+
+
+def test_a_check_recipe_taking_no_tier_is_refused(tree: Callable[[], Tree]) -> None:
+    """The tier is a flag on the one gate command, never a second gate."""
+    broken = tree()
+    broken.edit("justfile", 'check tier="affected":\n', "check:\n")
+
+    refused(recipe_set(broken.repo), "the `check` recipe takes no `tier` parameter")
+
+
+def test_a_graph_tier_taking_no_tier_is_refused(tree: Callable[[], Tree]) -> None:
+    """A tier that cannot be told which projects to run over runs what it likes."""
+    broken = tree()
+    broken.edit("justfile", 'typecheck tier="affected":\n', "typecheck:\n")
+
+    refused(recipe_set(broken.repo), "the `typecheck` recipe reaches Nx and takes no `tier`")
+
+
+def test_a_graph_tier_running_nx_itself_is_refused(tree: Callable[[], Tree]) -> None:
+    """`nx run-many` in a tier would sweep every project whatever tier `check` was asked for."""
+    broken = tree()
+    broken.edit(
+        "justfile",
+        "    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} build\n",
+        "    bunx nx run-many -t build --output-style=stream\n",
+    )
+
+    refused(recipe_set(broken.repo), "reaches Nx without the gate-tier runner deciding")
+
+
+def test_a_check_not_handing_its_tier_down_is_refused(tree: Callable[[], Tree]) -> None:
+    """`just check all` that ran the affected lint would be a sweep in name only."""
+    broken = tree()
+    broken.edit("justfile", "    just lint {{quote(tier)}}\n", "    just lint\n")
+
+    refused(recipe_set(broken.repo), "runs `just lint` without handing it its own `tier`")

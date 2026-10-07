@@ -53,17 +53,29 @@ install-gh VERSION:
 tool-version TOOL:
     @uv run -q python -m repo_checks tool-version {{quote(TOOL)}}
 
-# The full gate: every tier `repo-policy.toml` declares, end-to-end included.
-check:
-    just format-check
-    just lint
-    just typecheck
-    just test
-    just coverage
-    just build
+# The full gate: every tier `repo-policy.toml` declares, end-to-end included,
+# at one tier. `affected`, the default, runs each graph tier over the projects
+# this change can reach, against an explicitly derived base commit; `all` is the
+# full sweep over every project. `repo_checks.gate_tier` decides which projects
+# a tier reaches and says why before it runs. The repository-level steps — the
+# coverage floors, the Windows-target lint, the workflow lint and the repository
+# checks — run whichever tier it is.
+check tier="affected":
+    just format-check {{quote(tier)}}
+    just lint {{quote(tier)}}
+    just typecheck {{quote(tier)}}
+    just test {{quote(tier)}}
+    just coverage {{quote(tier)}}
+    just build {{quote(tier)}}
     just lint-workflows
     just check-repo
-    just test-e2e
+    just test-e2e {{quote(tier)}}
+
+# The tier a continuous-integration run of the gate is for, off the event the
+# forge started it with: `all` on the release pull request, `affected` on any
+# other pull request and on a push to the base branch.
+gate-tier:
+    @uv run -q python -m repo_checks.gate_tier select
 
 # Install the workspace's JavaScript dependencies, exactly as `bun.lock` describes.
 #
@@ -86,41 +98,44 @@ format:
     bunx nx run-many -t format --output-style=stream
 
 # Refuse a source file that is not in its language's canonical format.
-format-check:
+format-check tier="affected":
     just node-modules
-    bunx nx run-many -t format-check --output-style=stream
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} format-check
 
 # Lint every project with its language's linter, failing on any finding — and
 # every crate once more for the Windows target on a Unix host, so a finding in
 # `cfg(windows)` code is reported here rather than by a Windows runner.
-lint:
+lint tier="affected":
     just node-modules
-    bunx nx run-many -t lint --output-style=stream
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} lint
     uv run -q python -m repo_checks lint-windows-target
 
 # Type-check every project with its language's type checker — every Python
 # project for this host and for each platform `repo-policy.toml` declares, so a
 # defect `sys.platform` hides from this host is reported here rather than by a
 # runner of that platform.
-typecheck:
+typecheck tier="affected":
     just node-modules
-    bunx nx run-many -t typecheck --output-style=stream
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} typecheck
 
-# Run every project's tests, recording coverage as they run.
-test:
+# Run the tier's projects' tests, recording coverage as they run.
+test tier="affected":
     just node-modules
     cargo llvm-cov clean --workspace
     uv run -q coverage erase
-    bunx nx run-many -t test --output-style=stream
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} test
 
-# Fail the build below the coverage floors `repo-policy.toml` records.
-coverage:
-    uv run -q python -m repo_checks coverage
-
-# Build every project that produces an artifact.
-build:
+# Fail the build below the coverage floors `repo-policy.toml` records: over every
+# project for `all`, and over the projects whose tests the `affected` tier ran,
+# at the same floors, for `affected`.
+coverage tier="affected":
     just node-modules
-    bunx nx run-many -t build --output-style=stream
+    uv run -q python -m repo_checks coverage --tier {{quote(tier)}}
+
+# Build the tier's projects that produce an artifact.
+build tier="affected":
+    just node-modules
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} build
 
 # Regenerate the three clients from the checked-in contract schemas.
 #
@@ -322,7 +337,9 @@ lint-workflows:
 check-repo:
     uv run -q python -m repo_checks all
 
-# The end-to-end tier: journeys that drive the real gate, checks and bootstrap.
+# The end-to-end tier: journeys that drive the real gate, checks and bootstrap,
+# over the tier's projects — which is `repo-e2e`, the one project carrying the
+# target, wherever its edges or a file no project owns reach it.
 #
 # release-plz first, by name: `repo-policy.toml` declares it `bootstrap = false`
 # — only this tier, `release-dry-run` and the release workflow run it — and the
@@ -330,10 +347,10 @@ check-repo:
 # from going silently skipped on a host, or a gate cell, that bootstrapped and
 # nothing more. The install downloads one verified prebuilt archive, and skips
 # even that where the held release is already on PATH.
-test-e2e:
+test-e2e tier="affected":
     uv run -q python -m repo_checks install-tools release-plz  # llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason.
     just node-modules
-    bunx nx run-many -t test-e2e --output-style=stream
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} test-e2e
 
 # A real `gh skill install` of this repository's Agent Skill, from a copy of this
 # tree and with no GitHub credentials, and `gh skill publish --dry-run` over it.
@@ -419,12 +436,13 @@ test-printer-smoke *flags:
 check-pr-title:
     uv run -q python -m repo_checks pr-title
 
-# Update every lockfile, then re-run the gate on the upgraded versions.
+# Update every lockfile, then re-run the gate on the upgraded versions — as the
+# full sweep, because an upgrade can reach any project.
 upgrade:
     cargo update
     uv lock --upgrade
     bun update
-    just check
+    just check all
 
 # Install llmlint and the harness it judges through.
 setup-llmlint:
