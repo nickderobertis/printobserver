@@ -1245,6 +1245,8 @@ pub struct FakeSupervisor {
     authority: Mutex<Option<Arc<FakeTurnAuthority>>>,
     /// Why each turn that asked for a credential was issued none.
     unissued: Mutex<Vec<String>>,
+    /// Whether a turn, once issued its credential, never returns.
+    stalls: Mutex<bool>,
 }
 
 impl FakeSupervisor {
@@ -1266,7 +1268,14 @@ impl FakeSupervisor {
             issued: Mutex::new(Vec::new()),
             authority: Mutex::new(None),
             unissued: Mutex::new(Vec::new()),
+            stalls: Mutex::new(false),
         }
+    }
+
+    /// Never return from a turn once it has been issued its credential, so
+    /// the only way it ends is by whoever is awaiting it giving up.
+    pub fn stalls(&self) {
+        *self.stalls.lock().expect("the harness holds") = true;
     }
 
     /// Why each turn that asked for a credential was issued none, in order.
@@ -1457,6 +1466,10 @@ impl SupervisorPort for FakeSupervisor {
                     .lock()
                     .expect("the harness holds")
                     .push((credential, admitted));
+            }
+            let stalls = *self.stalls.lock().expect("the harness holds");
+            if stalls {
+                std::future::pending::<()>().await;
             }
             if let Some(core) = core {
                 // What the turn's own context command does: read the print's

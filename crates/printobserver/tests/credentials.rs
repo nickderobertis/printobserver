@@ -182,7 +182,11 @@ fn credential_issue_writes_the_operators_own_configuration_and_prints_only_its_v
         said(&first)
     );
     #[cfg(unix)]
-    assert_eq!(mode_of(&issued_at(home.path())), 0o600);
+    {
+        let issued = issued_at(home.path());
+        assert_eq!(mode_of(&issued), 0o600);
+        assert_eq!(mode_of(issued.parent().expect("a directory")), 0o700);
+    }
 
     let again = run(home.path(), &["credential", "issue"], &[], b"");
     assert_eq!(

@@ -78,6 +78,18 @@ file = "crates/printobserver/src/parse.rs"
 site = "if name == SIGN_IN_COMMAND {"
 reason = "`--json` is one of the four global options every command takes, and `sign-in` has no answer document for it to select: what it produces is the harness's own interactive sign-in on the caller's terminal, which it hands its standard input, output and error, and its result is the exit status. A machine-readable rendering would have to be interleaved with a third-party program's prompts on the same stream, which no consumer could parse; refusing the flag instead would make `sign-in` the one command the global options do not apply to."
 
+[[suppression]]
+rule = "least_privilege_grants"
+file = "crates/printobserver/src/credential.rs"
+site = "let mut file = options.open(&staged)?;"
+reason = "The task that added `credential issue` requires mode 0600 on Unix only, which this site sets; on Windows the file takes the access of the folder it is created in, and the only folder this writes into is the operator's own `%APPDATA%`, under their profile, which Windows grants to that user, SYSTEM and Administrators — the last of whom can already read the server's state. Narrowing the access list explicitly is Windows security-API code (an explicit DACL through `windows-sys`'s `Win32_Security` bindings) beyond what the task asks, which no host this change was made on can run. `APPDATA` being the caller's to set is the operator choosing where their own credential goes, exactly as `XDG_CONFIG_HOME` is on Unix."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/credential.rs"
+site = "let mut file = options.open(&staged)?;"
+reason = "`tests/credentials.rs` drives this write through the real binary on every platform, and on Unix asserts the 0600 file in its 0700 directory. Windows sets no access list here — the file takes its folder's, as the `least_privilege_grants` entry for this site explains — so there is no behaviour of this program's on Windows for an access-list assertion to prove, only the operating system's inheritance."
+
 # --- the harness sign-in table ------------------------------------------------
 
 [[suppression]]

@@ -571,10 +571,10 @@ async fn a_turn_credential_reads_nothing_of_another_print() {
 
 /// What a turn's credential may never ask for is refused `403` whatever body
 /// it carries: a start, a manifest replacement and an action on another print
-/// with a body that is not one are refused for who asked before the body is
-/// read.
+/// with a body that is not one are refused for who asked rather than for the
+/// body.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_turn_credentials_forbidden_requests_are_refused_before_their_bodies() {
+async fn a_turn_credentials_forbidden_requests_are_refused_whatever_their_bodies() {
     let world = World::open().await;
     let (print_id, pass) = held_turn(&world).await;
     let other = world.open_print().await;

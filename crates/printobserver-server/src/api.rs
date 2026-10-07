@@ -427,8 +427,9 @@ fn core_status(error: &CoreError) -> StatusCode {
 /// Ask for one action of the vocabulary against one print.
 ///
 /// Who may ask is settled before the policy is: a turn's credential reaches
-/// no start and no print but its own — whatever the body says, so those two are
-/// ruled on before it is read — and the claimed actor is held to the caller. A
+/// no start and no print but its own — whatever the body says, so those two
+/// answer `403` ahead of any rejection of the body itself — and the claimed
+/// actor is held to the caller. A
 /// request refused here is decided on by nothing and recorded nowhere.
 async fn act(
     kind: ActionKind,

@@ -220,6 +220,7 @@ fn write_operators_own(path: &Path, contents: &str) -> std::io::Result<()> {
     options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE_FILE);
+    // llmlint: ignore[least_privilege_grants, changed_behavior_has_e2e] suppressions.toml has the reason.
     let mut file = options.open(&staged)?;
     let written = file
         .write_all(contents.as_bytes())

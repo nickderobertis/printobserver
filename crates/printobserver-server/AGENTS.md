@@ -11,6 +11,6 @@ its environment alone, bound to the agent, that turn's session and its print,
 and revoked when the turn returns.
 
 `api::Admission` resolves the caller before any handler runs, and each handler
-refuses `403` — before the body is parsed or the policy asked — a claim to
+refuses `403` — whatever the body, and before the policy is asked — a claim to
 another actor or print, any claim to `system`, and a turn starting a print or
 replacing a manifest. `tests/journeys/binding.rs` drives each refusal.
