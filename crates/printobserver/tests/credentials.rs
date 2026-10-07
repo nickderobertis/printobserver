@@ -1081,6 +1081,125 @@ fn racing_replacements_each_succeed_and_leave_one_whole_configuration() {
     }
 }
 
+/// A staged file another issue left behind is stepped past rather than
+/// written into or removed: the issue stages under the next free name,
+/// publishes, and leaves the stale file exactly as it was. With every name
+/// taken, it is refused saying so and writes nothing.
+#[test]
+fn credential_issue_steps_past_staged_files_it_does_not_own() {
+    let home = TempDir::new().expect("an operator's own home");
+    let directory = issued_at(home.path())
+        .parent()
+        .expect("a directory")
+        .to_path_buf();
+    std::fs::create_dir_all(&directory).expect("writable");
+    let stale = directory.join(".client.toml.0.new");
+    std::fs::write(&stale, b"another issue's staged credential").expect("writable");
+
+    let stepped = run(home.path(), &["credential", "issue"], &[], b"");
+
+    assert_eq!(stepped.status.code(), Some(0), "{}", said(&stepped));
+    assert_eq!(verifier_line(&stepped), stored_verifier_line(home.path()));
+    assert_eq!(
+        std::fs::read(&stale).expect("still there"),
+        b"another issue's staged credential",
+        "another issue's staged file was written into or removed"
+    );
+
+    let crowded = TempDir::new().expect("an operator's own home");
+    let directory = issued_at(crowded.path())
+        .parent()
+        .expect("a directory")
+        .to_path_buf();
+    std::fs::create_dir_all(&directory).expect("writable");
+    for name in 0..printobserver::credential::STAGING_NAMES {
+        std::fs::write(directory.join(format!(".client.toml.{name}.new")), b"taken")
+            .expect("writable");
+    }
+
+    let refused = run(crowded.path(), &["credential", "issue"], &[], b"");
+
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(
+        said(&refused).contains("is taken") && said(&refused).contains(".client.toml.*.new"),
+        "the refusal does not say the staging names are taken: {}",
+        said(&refused)
+    );
+    assert!(
+        !issued_at(crowded.path()).exists(),
+        "a configuration was written"
+    );
+    assert!(
+        !String::from_utf8_lossy(&refused.stdout).contains("api.credential_verifier"),
+        "a verifier was printed: {}",
+        said(&refused)
+    );
+}
+
+/// With `XDG_CONFIG_HOME` unset or relative, the operator's configuration is
+/// kept under `$HOME/.config`: `credential issue` writes it there, and every
+/// command after reads it from there and is admitted.
+#[cfg(all(unix, not(target_os = "macos")))]
+#[test]
+fn an_operator_with_no_rooted_xdg_config_home_is_kept_under_home() {
+    let root = TempDir::new().expect("a journey's own root");
+    let home = root.path().join("home");
+    std::fs::create_dir_all(&home).expect("the operator's own home");
+    let listen = free_address();
+    let url = format!("http://{listen}");
+    let under_home = |arguments: &[&str], xdg: Option<&str>, server: Option<&str>| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+        command
+            .args(arguments)
+            .current_dir(root.path())
+            .env_remove("PRINTOBSERVER_SERVER")
+            .env_remove("PRINTOBSERVER_CREDENTIAL")
+            .stdin(Stdio::null());
+        for name in HOME_VARIABLES {
+            command.env_remove(name);
+        }
+        command.env("HOME", &home);
+        if let Some(xdg) = xdg {
+            command.env("XDG_CONFIG_HOME", xdg);
+        }
+        if let Some(server) = server {
+            command.env("PRINTOBSERVER_SERVER", server);
+        }
+        command.output().expect("the program runs")
+    };
+
+    let issued_run = under_home(&["credential", "issue"], None, Some(&url));
+
+    assert_eq!(issued_run.status.code(), Some(0), "{}", said(&issued_run));
+    let kept = home
+        .join(".config")
+        .join("printobserver")
+        .join("client.toml");
+    assert!(
+        kept.is_file(),
+        "nothing was kept under $HOME/.config: {}",
+        said(&issued_run)
+    );
+    let _server = serving(root.path(), &listen, &verifier_line(&issued_run));
+    for xdg in [None, Some("relative/config")] {
+        let answered = under_home(&["prints", "--json"], xdg, None);
+        assert!(
+            admitted(&answered),
+            "with XDG_CONFIG_HOME {xdg:?} the configuration under $HOME was not read: {}",
+            said(&answered)
+        );
+    }
+    assert!(
+        !root.path().join("relative").exists(),
+        "a relative XDG_CONFIG_HOME was written to"
+    );
+}
+
 /// The credential commands read no configuration, so `--config` is refused
 /// by both rather than taken as a file to write; and a credential command
 /// named without its second word, with an unknown one, or with `--replace`

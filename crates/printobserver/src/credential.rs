@@ -37,6 +37,11 @@ pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8420";
 /// already there.
 pub const REPLACE_OPTION: &str = "--replace";
 
+/// How many names `credential issue` tries for the file it stages a
+/// configuration in — `.client.toml.<n>.new` for each `n` below this — before
+/// it refuses, saying the names are taken.
+pub const STAGING_NAMES: u32 = 64;
+
 /// The mode the operator's configuration, and the directory it is in, are
 /// created with: theirs alone.
 #[cfg(unix)]
@@ -248,7 +253,12 @@ fn write_operators_own(path: &Path, contents: &str, replace: bool) -> Result<(),
     drop(file);
     let published = match written {
         Err(error) => Err(Unwritten::Failed(error)),
-        Ok(()) if replace => std::fs::rename(&staged, path).map_err(Unwritten::Failed),
+        Ok(()) if replace => match std::fs::rename(&staged, path) {
+            // Renamed, the staged name is free again and may already be
+            // another issue's, so it is not this one's to remove.
+            Ok(()) => return Ok(()),
+            Err(error) => Err(Unwritten::Failed(error)),
+        },
         Ok(()) => std::fs::hard_link(&staged, path).map_err(|error| {
             if error.kind() == std::io::ErrorKind::AlreadyExists {
                 Unwritten::AlreadyThere
@@ -257,8 +267,8 @@ fn write_operators_own(path: &Path, contents: &str, replace: bool) -> Result<(),
             }
         }),
     };
-    // Renamed, the staged name is gone already; linked or refused, it is this
-    // invocation's own and nothing else's to remove.
+    // Linked, refused or failed, the staged name is still this invocation's
+    // own and nothing else's to remove.
     let _ = std::fs::remove_file(&staged);
     published
 }
@@ -266,35 +276,35 @@ fn write_operators_own(path: &Path, contents: &str, replace: bool) -> Result<(),
 /// A file of this invocation's own beside `path`, created exclusively, that the
 /// configuration is written into before it is published.
 ///
-/// Its name carries this process's id and a count, and creating it refuses one
-/// already there, so no other issue — concurrent, or one that crashed and left
-/// its staged file behind — is ever written into or removed by this one.
+/// Creating it refuses a name already there, and the next name is tried, so no
+/// other issue's staged file — a concurrent one's, or one a run that never
+/// finished left behind — is ever written into or removed by this one.
 fn staged_beside(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
-    /// How many names are tried before an issue gives up on staging.
-    const ATTEMPTS: u32 = 64;
-
     let target = path.file_name().map(ToOwned::to_owned).unwrap_or_default();
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE_FILE);
-    let mut attempt = 0;
-    loop {
+    for attempt in 0..STAGING_NAMES {
         let mut name = std::ffi::OsString::from(".");
         name.push(&target);
-        name.push(format!(".{}-{attempt}.new", std::process::id()));
+        name.push(format!(".{attempt}.new"));
         let staged = path.with_file_name(name);
         // llmlint: ignore[least_privilege_grants, changed_behavior_has_e2e] suppressions.toml has the reason.
         match options.open(&staged) {
             Ok(file) => return Ok((staged, file)),
-            Err(error)
-                if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < ATTEMPTS =>
-            {
-                attempt += 1;
-            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error),
         }
     }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        format!(
+            "every name it is staged under beside it is taken — remove the `.{}.*.new` files \
+             there that no issue still running is writing",
+            target.to_string_lossy()
+        ),
+    ))
 }
 
 /// The verifier of the one credential standard input carries.
