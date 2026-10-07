@@ -240,6 +240,11 @@ fn credential_issue_writes_the_operators_own_configuration_and_prints_only_its_v
             .to_string()
         )
     );
+    assert_eq!(
+        document["client_config"].as_str(),
+        Some(issued_at(home.path()).display().to_string().as_str()),
+        "the answer names a file other than the one the credential was written to"
+    );
 }
 
 /// `credential verifier` prints the verifier of the one credential standard
