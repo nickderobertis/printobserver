@@ -1242,27 +1242,21 @@ async fn a_legacy_client_configuration_that_cannot_be_removed_refuses_the_start(
     );
 }
 
-/// A legacy credential whose verifier cannot be written refuses the start,
-/// naming the file and quoting nothing, and leaves the plaintext where it was
-/// rather than losing the operator's one copy of their credential.
+/// Start the server over `rooted` with its state directory closed to writes
+/// once the store is open, as the composition root opens it — so what the
+/// closed directory refuses is the migration — and open it again after.
 #[cfg(unix)]
-#[tokio::test(flavor = "multi_thread")]
-async fn a_legacy_credential_that_cannot_be_converted_for_want_of_a_write_is_left() {
+async fn started_closed(rooted: &Rooted) -> Option<StartError> {
     use std::os::unix::fs::PermissionsExt as _;
 
-    let rooted = Rooted::unverified().await;
-    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
     let state = rooted.state();
-    // The store is opened over the directory first, as the composition root
-    // opens it, so what the closed directory refuses is the conversion.
     let config = ServerConfig::load(&rooted.path).expect("the configuration is accepted");
     let stores = Stores::of(Arc::new(
         printobserver_store_sqlite::SqliteStore::open(&state).expect("the store opens"),
     ));
     std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o500))
         .expect("the state directory is closed to writes");
-
-    let refused = Server::start_with(
+    let started = Server::start_with(
         config,
         Ports {
             printer: RecordingPrinter::printing()
@@ -1274,12 +1268,31 @@ async fn a_legacy_credential_that_cannot_be_converted_for_want_of_a_write_is_lef
             agent: StandInAgent::new() as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
         },
     )
-    .await
-    .err();
+    .await;
     std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700))
         .expect("the state directory is opened again");
+    match started {
+        Ok(running) => {
+            running.stop().await;
+            None
+        }
+        Err(refusal) => Some(refusal),
+    }
+}
 
-    let refusal = refused.unwrap_or_else(|| panic!("a start went on with nothing converted"));
+/// A legacy credential whose verifier cannot be written refuses the start,
+/// naming the file and quoting nothing, and leaves the plaintext where it was
+/// rather than losing the operator's one copy of their credential.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_that_cannot_be_converted_for_want_of_a_write_is_left() {
+    let rooted = Rooted::unverified().await;
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+
+    let refusal = started_closed(&rooted)
+        .await
+        .unwrap_or_else(|| panic!("a start went on with nothing converted"));
+
     assert_refused_naming(
         &refusal,
         &rooted.credential_file(),
@@ -1290,4 +1303,34 @@ async fn a_legacy_credential_that_cannot_be_converted_for_want_of_a_write_is_lef
         LEGACY
     );
     assert!(!rooted.verifier_file().exists());
+}
+
+/// A legacy credential that cannot be removed refuses the start, naming the
+/// file and quoting nothing, even when its verifier is already in place: a
+/// start that went on would leave a plaintext a turn can read.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_legacy_credential_that_cannot_be_removed_refuses_the_start() {
+    let rooted = Rooted::unverified().await;
+    let verifier = format!("{}\n", CredentialVerifier::of(LEGACY));
+    std::fs::write(rooted.verifier_file(), &verifier).expect("writable");
+    std::fs::write(rooted.credential_file(), LEGACY).expect("writable");
+
+    let refusal = started_closed(&rooted)
+        .await
+        .unwrap_or_else(|| panic!("a start went on over a plaintext it could not remove"));
+
+    assert_refused_naming(
+        &refusal,
+        &rooted.credential_file(),
+        "that cannot be removed",
+    );
+    assert!(
+        refusal.to_string().contains("could not be removed"),
+        "{refusal}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(rooted.verifier_file()).expect("still there"),
+        verifier
+    );
 }

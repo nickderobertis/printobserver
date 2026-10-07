@@ -818,6 +818,30 @@ fn credential_issue_that_cannot_write_leaves_what_was_there() {
         said(&refused)
     );
 
+    // A configuration that cannot be moved into place — a directory stands
+    // where it would go — is refused after the credential was staged, and the
+    // staged copy is removed rather than left holding a credential.
+    let home = TempDir::new().expect("an operator's own home");
+    let target = issued_at(home.path());
+    std::fs::create_dir_all(target.join("held")).expect("a directory where the file would be");
+    let unmoved = run(home.path(), &["credential", "issue", "--replace"], &[], b"");
+    assert_eq!(
+        unmoved.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&unmoved)
+    );
+    assert!(target.join("held").is_dir(), "what was there was changed");
+    let left: Vec<_> = std::fs::read_dir(target.parent().expect("a directory"))
+        .expect("readable")
+        .map(|entry| entry.expect("an entry").file_name())
+        .collect();
+    assert_eq!(
+        left,
+        vec![std::ffi::OsString::from("client.toml")],
+        "a staged credential was left"
+    );
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -877,6 +901,40 @@ fn credential_verifier_answers_a_document_and_refuses_what_is_not_text() {
         said(&refused)
     );
     assert!(said(&refused).contains("not text"), "{}", said(&refused));
+}
+
+/// Standard input that cannot be read — here a directory, which every Unix
+/// refuses a read of — is refused as usage, saying so and printing no verifier.
+#[cfg(unix)]
+#[test]
+fn credential_verifier_refuses_standard_input_it_cannot_read() {
+    let home = TempDir::new().expect("an operator's own home");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+    command
+        .args(["credential", "verifier"])
+        .env_remove("PRINTOBSERVER_SERVER")
+        .env_remove("PRINTOBSERVER_CREDENTIAL")
+        .env(HOME_VARIABLE, home.path())
+        .stdin(std::fs::File::open(home.path()).expect("the directory opens"));
+
+    let refused = command.output().expect("the program exits");
+
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Usage.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(
+        said(&refused).contains("could not be read"),
+        "{}",
+        said(&refused)
+    );
+    assert!(
+        !said(&refused).contains("sha256:"),
+        "a verifier was printed: {}",
+        said(&refused)
+    );
 }
 
 /// The credential commands read no configuration, so `--config` is refused

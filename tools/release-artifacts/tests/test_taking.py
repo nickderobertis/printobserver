@@ -30,6 +30,7 @@ from release_artifacts.world import (
     ACTION_KINDS,
     INGRESS_WORD,
     SERVING_ON,
+    Credential,
     Machine,
     Printer,
     World,
@@ -173,7 +174,9 @@ def test_the_operator_is_granted_every_action_the_contract_declares(repo: Repo) 
     contract = json.loads(repo.read("schemas/printobserver-core/ActionKind.json"))
     declared = [variant["const"] for variant in contract["oneOf"]]
     printer = Printer("http://127.0.0.1:1", "a-provisioned-key", scripted=False)
-    written = json.loads(_configuration(Path("/var/lib/printobserver"), printer, "a-credential"))
+    written = json.loads(
+        _configuration(Path("/var/lib/printobserver"), printer, Credential("a-credential"))
+    )
 
     equal(ACTION_KINDS, repo.path("schemas/printobserver-core/ActionKind.json"))
     equal(written["safety"]["actions"]["operator"], declared, describing="the operator's grant")
@@ -323,7 +326,7 @@ def test_the_configuration_names_the_verifier_of_the_credential_and_never_it(
     )
     absent(written, world.credential, describing="the configuration the world wrote")
     equal(
-        verifier_of("abc"),
+        verifier_of(Credential("abc")),
         "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         describing="the verifier of `abc`",
     )

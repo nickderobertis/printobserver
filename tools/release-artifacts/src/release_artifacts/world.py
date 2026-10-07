@@ -142,7 +142,7 @@ def _addressable(server: str) -> bool:
     return split.scheme == "http" and bool(split.hostname) and port is not None
 
 
-def verifier_of(credential: str) -> str:
+def verifier_of(credential: Credential) -> str:
     """The `api.credential_verifier` a supervisor admits one credential by.
 
     The SHA-256 of its UTF-8 bytes in lowercase hexadecimal, behind `sha256:`:
@@ -266,7 +266,7 @@ def every_action(contract: Path = ACTION_KINDS) -> list[str]:
 
 
 def _configuration(
-    state: Path, printer: Printer, credential: str, *, refusing: bool = False
+    state: Path, printer: Printer, credential: Credential, *, refusing: bool = False
 ) -> str:
     """The one configuration file the supervisor reads, as a document.
 
@@ -366,7 +366,7 @@ class World:
         root: Path,
         printer: Printer | None = None,
         *,
-        credential: str | None = None,
+        credential: Credential | None = None,
         refusing: bool = False,
     ) -> None:
         """Bring one up under `root`, running the program at `program`.
@@ -384,7 +384,7 @@ class World:
         """
         self.program = program
         self.root = root
-        self.credential = credential or secrets.token_urlsafe(CREDENTIAL_BYTES)
+        self.credential = credential or Credential(secrets.token_urlsafe(CREDENTIAL_BYTES))
         self.refusing = refusing
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
@@ -430,7 +430,7 @@ class World:
         print_id, image_id, event_id = self._open_a_print(server)
         return Running(
             server=server,
-            credential=Credential(self.credential),
+            credential=self.credential,
             print_id=print_id,
             image_id=image_id,
             event_id=event_id,

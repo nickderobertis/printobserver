@@ -69,7 +69,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePath, PurePosixPath
-from typing import Protocol
+from typing import NewType, Protocol
 
 import launchctl_standin
 import pytest
@@ -125,10 +125,13 @@ WITHIN_SECONDS = 120
 
 QUESTION = "/v1/prints"
 
+#: A credential that authenticates as the operator, as a request presents it.
+OperatorCredential = NewType("OperatorCredential", str)
+
 #: The operator credential the journey's operator issued themselves. The
 #: service is configured with its verifier alone, as `printobserver credential
 #: issue` prints it, so it holds nothing that authenticates as the operator.
-OPERATOR = "a-journeys-own-operator-credential-Qe7Lm2Vx9Rk4"
+OPERATOR = OperatorCredential("a-journeys-own-operator-credential-Qe7Lm2Vx9Rk4")
 
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
@@ -216,7 +219,7 @@ class Served:
     """Where the running service said it serves, and what authenticates to it."""
 
     address: str
-    credential: str
+    credential: OperatorCredential
 
 
 @dataclass(frozen=True, slots=True)
