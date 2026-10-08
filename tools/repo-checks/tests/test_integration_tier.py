@@ -25,6 +25,8 @@ from repo_checks.shell import run
 from treecopy import Tree
 
 CI = ".github/workflows/ci.yml"
+#: The pull-request trigger's activity types, as the committed workflow spells them.
+TYPES = "    types: [opened, synchronize, reopened, ready_for_review]\n"
 AARCH64_ENTRY = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 RISCV64 = (
     "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
@@ -275,11 +277,37 @@ def test_a_workflow_firing_on_a_subset_of_the_change_events_is_refused(
 ) -> None:
     """Both events the base branch receives, or the tier misses some changes."""
     broken = tree()
-    broken.edit(CI, "on:\n  pull_request:\n  push:\n    branches: [main]\n", "on:\n  push:\n")
+    broken.edit(
+        CI, f"on:\n  pull_request:\n{TYPES}  push:\n    branches: [main]\n", "on:\n  push:\n"
+    )
 
     findings = integration_tier(broken.repo)
 
     refused(findings, "does not fire on `pull_request`")
+
+
+def test_a_pull_request_trigger_on_the_default_activity_types_alone_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A pull request lifted out of draft gets no run, so its checks report nothing then."""
+    broken = tree()
+    broken.edit(CI, TYPES, "")
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, "does not run on `ready_for_review`")
+
+
+def test_a_pull_request_trigger_dropping_a_default_activity_type_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Naming the activity types replaces GitHub's defaults, so each has to be named."""
+    broken = tree()
+    broken.edit(CI, TYPES, "    types: [opened, reopened, ready_for_review]\n")
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, "does not run on `synchronize`")
 
 
 def test_a_job_carrying_a_condition_that_skips_it_is_refused(tree: Callable[[], Tree]) -> None:

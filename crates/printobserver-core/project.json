@@ -6,6 +6,12 @@
     "lang:rust",
     "type:core"
   ],
+  "implicitDependencies": [
+    "printobserver-printer-api",
+    "printobserver-supervisor-api",
+    "printobserver-types",
+    "printobserver-vision-api"
+  ],
   "targets": {
     "format": {
       "command": "cargo fmt -p printobserver-core"

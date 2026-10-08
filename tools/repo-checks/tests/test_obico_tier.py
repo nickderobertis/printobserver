@@ -18,6 +18,7 @@ import json
 from collections.abc import Callable
 
 from repo_checks.checks_obico import obico_tier
+from repo_checks.checks_repo import GATE_TIER_RUNNER
 from repo_checks.expect import accepted, contains, equal, refused, truth
 from repo_checks.model import Repo
 from repo_checks.parsing import recipes
@@ -154,7 +155,11 @@ def test_a_gate_that_declares_the_tier_is_refused(tree: Callable[[], Tree]) -> N
 def test_a_check_recipe_that_invokes_the_tier_is_refused(tree: Callable[[], Tree]) -> None:
     """Not in the declared tiers, and not smuggled into the `check` recipe either."""
     broken = tree()
-    broken.edit(JUSTFILE, "    just test-e2e\n", "    just test-e2e\n    just test-obico\n")
+    broken.edit(
+        JUSTFILE,
+        "    just test-e2e {{quote(tier)}}\n",
+        "    just test-e2e {{quote(tier)}}\n    just test-obico\n",
+    )
 
     findings = obico_tier(broken.repo)
 
@@ -210,6 +215,9 @@ def _gate_targets() -> list[str]:
         for line in parsed[tier].body:
             if line.startswith(NX_RUN_MANY):
                 targets.append(line[len(NX_RUN_MANY) :].split()[0])
+            elif line.startswith(GATE_TIER_RUNNER):
+                # `<runner> {{quote(tier)}} <target>...`: the tier, then the targets.
+                targets.extend(line[len(GATE_TIER_RUNNER) :].split()[1:])
     return targets
 
 

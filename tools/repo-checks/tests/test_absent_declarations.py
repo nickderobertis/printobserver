@@ -91,7 +91,7 @@ def test_a_missing_check_recipe_is_refused(tree: Callable[[], Tree]) -> None:
     """There is no gate without the recipe that is the gate."""
     broken = tree()
     text = broken.read("justfile")
-    start = text.index("check:\n")
+    start = text.index('check tier="affected":\n')
     end = text.index("# Rewrite every project's sources")
     broken.write("justfile", text[:start] + text[end:])
 

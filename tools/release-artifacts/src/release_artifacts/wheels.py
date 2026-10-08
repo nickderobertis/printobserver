@@ -63,6 +63,8 @@ class Distribution:
     license: str
     #: Where its sources are.
     homepage: str
+    #: The trove classifiers it declares, each one `Classifier:` line.
+    classifiers: tuple[str, ...] = ()
 
     @property
     def normalized(self) -> str:
@@ -89,6 +91,7 @@ class Distribution:
                 f"Summary: {self.summary}",
                 f"Home-page: {self.homepage}",
                 f"License: {self.license}",
+                *(f"Classifier: {classifier}" for classifier in self.classifiers),
                 f"Requires-Python: {self.requires_python}",
                 "",
                 self.summary,

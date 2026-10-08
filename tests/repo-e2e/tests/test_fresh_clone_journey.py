@@ -35,7 +35,9 @@ def test_a_gate_tier_runs_in_a_clone_that_never_bootstrapped(
         describing="a fresh clone to carry no installed dependencies",
     )
 
-    result = fresh.just("format-check")
+    # The full sweep, so that the clone's tier fans out over every project
+    # whatever its history says the change since the base branch reaches.
+    result = fresh.just("format-check", "all")
 
     passing(result)
     truth(

@@ -34,7 +34,6 @@ printobserver-store-sqlite = { path = "../printobserver-store-sqlite", version =
 printobserver-supervisor-api.workspace = true
 printobserver-types.workspace = true
 printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.3.0" }
-serde.workspace = true
 serde_json.workspace = true
 # The operator's credential is checked against its SHA-256, which is all this
 # server keeps of it, and every supervision turn's credential is held by its

@@ -12,7 +12,10 @@ from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
-BUILD = "build:\n    just node-modules\n    bunx nx run-many -t build --output-style=stream\n"
+#: The build tier's header and the line reaching Nx through the gate-tier runner.
+HEADER = 'build tier="affected":\n'
+REACHES_NX = "    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} build\n"
+BUILD = f"{HEADER}    just node-modules\n{REACHES_NX}"
 
 
 def test_the_committed_recipes_install_before_they_reach_nx(committed: Repo) -> None:
@@ -23,7 +26,11 @@ def test_the_committed_recipes_install_before_they_reach_nx(committed: Repo) -> 
 def test_a_tier_reaching_nx_without_installing_is_refused(tree: Callable[[], Tree]) -> None:
     """A tier that assumes an installed tree is a tier a fresh clone cannot run."""
     broken = tree()
-    broken.edit("justfile", "format-check:\n    just node-modules\n", "format-check:\n")
+    broken.edit(
+        "justfile",
+        'format-check tier="affected":\n    just node-modules\n',
+        'format-check tier="affected":\n',
+    )
 
     findings = node_install(broken.repo)
 
@@ -36,7 +43,7 @@ def test_an_install_after_the_nx_invocation_is_refused(tree: Callable[[], Tree])
     broken.edit(
         "justfile",
         BUILD,
-        "build:\n    bunx nx run-many -t build --output-style=stream\n    just node-modules\n",
+        f"{HEADER}{REACHES_NX}    just node-modules\n",
     )
 
     findings = node_install(broken.repo)

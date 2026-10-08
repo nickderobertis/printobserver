@@ -115,7 +115,9 @@ artifact are not optional and are not excluded with a rationale.
 ## Command surface
 
 Use the `just` recipes; do not hand-roll equivalents. `just --list` is the
-index, and `just check` is the whole gate.
+index, and `just check` is the whole gate — at the affected tier by default, and
+as the full sweep with `just check all`. "Commits, releases, and merging" says
+which tier runs where.
 
 `repo-policy.toml`'s `gate.tiers` declares every tier `just check` must invoke —
 `format-check`, `lint`, `typecheck`, `test`, `coverage`, `build`,
@@ -352,7 +354,7 @@ records a platform the tier cannot run on, and this one a cell whose bring-up is
 still owed, so either excuses a cell of that job and a matrix carrying a cell
 either records is refused.
 
-### The four jobs that carry no platform matrix
+### The five jobs that carry no platform matrix
 
 These run once per change rather than once per platform, and a matrix would say
 nothing about any of them. Each carries the reason it has none — the record is
@@ -363,6 +365,7 @@ what makes a job running once a decision rather than an omission.
 - `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
 - `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
+- `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
 [//]: # (END unmatrixed-jobs)
 
 ## The scripted OctoPrint environment
@@ -374,40 +377,10 @@ serial port, so a containerized OctoPrint would be a second, different
 installation beside the one that actually drives the machine — the same script
 serves the tier and the board beside the Prusa.
 
-- **Two modes, one flag apart.** `--mode virtual` enables OctoPrint's own
-  virtual printer and connects to it, which is what the tier drives.
-  `--mode serial --device /dev/ttyACM0 --baudrate 115200` connects to a real
-  USB device, which is what the printer uses. The two compose the same
-  configuration and differ in the connection alone; the script's
-  `CONNECTION_KEYS` names exactly which keys that is, and a journey asserts the
-  two configurations differ in those and in nothing else.
-<!-- llmlint: ignore[instruction_layer_localized] This list is the root's one description of the scripted environment, anchored here by the "Virtual printer availability" block `just check-repo` reads below it; a nested file would split one script's description in two. suppressions.toml has the full reason. -->
-- **A device is named the way the host names one.** The script's
-  `SERIAL_PLATFORMS` is the one table of what each platform calls a serial
-  device, where it lists the ones it has, and what lets a user open one. A name
-  the host cannot have at all is refused naming the shape it does use, and one
-  it can have is opened by the host's own means and refused if it cannot be —
-  both before anything is provisioned or started, with the next action in that
-  host's words. The Unix shape is deliberately no tighter than the platform's
-  own, because a `udev` rule may link a printer under any name.
-- **Provisioned, not assumed.** `install` is idempotent and unattended: a
-  pinned OctoPrint in a virtual environment of its own (this repository's Python
-  is newer than anything OctoPrint supports), the first-run wizard already
-  answered so nothing waits on a browser, API authentication left **enabled**,
-  and the provisioned key written to a path the script names on its own output.
-  Turning authentication off would prove a configuration nobody runs.
-- **Started, not raced.** `up` answers only once the instance answers its own
-  API *and* reports a connected printer, and `--port auto` takes a free port so
-  two runs on one host do not collide. In `--mode virtual` it also uploads
-  `tools/octoprint-env/gcode/hold.gcode`, selects it and starts it, and states
-  in `HOLD_SECONDS` the minimum that print keeps running for — which is what
-  gives the tier something to act on. It does **not** start a print in
-  `--mode serial` unless asked: a real printer moves.
-- **Diagnosed, not timed out.** Every way starting can fail is one of the
-  script's `FAILURE_CLASSES`, reported by name with a next action; anything
-  outside that closed set is reported with the underlying error's own text. One
-  diagnosed failure path and a bare timeout everywhere else is the shape that
-  reads as diagnostics without being any.
+`--mode virtual` drives OctoPrint's own virtual printer, which is what the tier
+uses, and `--mode serial` a real USB device, which is what the printer uses. How
+the script names a device, provisions OctoPrint, starts it and diagnoses a start
+that failed are the script's own rules, in `tools/octoprint-env/AGENTS.md`.
 
 `just octoprint-up` and `just octoprint-down` bracket `just test-integration`,
 which is deliberately **not** one of `just check`'s tiers: it installs
@@ -418,7 +391,10 @@ job runs it on every change, on every platform the supported-platform list above
 names except those excluded below. `repo-policy.toml`'s `[integration]` names
 the three recipes, and `just check-repo` refuses a job that runs a recipe the
 set does not declare, omits the bring-up or bring-down recipe, omits a platform
-with no exclusion recorded, or is narrowed below every change.
+with no exclusion recorded, or is narrowed below every change — a pull-request
+trigger that leaves out GitHub's three default activity types or
+`ready_for_review` included, because the merge path waits for a run on a pull
+request lifted out of draft.
 
 There is **one machine**, and every project's `test-integration` target drives
 it: `just test-integration` runs the adapter's tier and this environment's own
@@ -548,38 +524,11 @@ prior value back at expiry; a pause and a resume are each taken; the print is
 cancelled; and the history afterwards accounts for every action, decision and
 outcome the run produced.
 
-**It cleans up on every exit path it has** — a completed run as much as a failed
-or an interrupted one, since a run that finishes without restoring what it
-changed leaves the machine altered exactly as a crashed one does. The restore
-comes *before* the cancel, and that ordering is load-bearing: an adjustment is
-valid from a printing or a paused machine and from no other state, so a run that
-cancelled first could never put back what it changed. One adjustable that cannot
-be put back does not cost the ones after it: every one is attempted, and what
-could not be restored is collected rather than raised at the first.
-
-**And a run that could not put everything back says so and exits non-zero.**
-What the cleanup managed is not taken on trust: afterwards the machine is read
-once more, and every value still carrying this run's own — and a printer not
-left operational — is printed as `LEFT CHANGED` and makes the run fail, whether
-or not any verification point did. A green report over a machine still holding a
-modified feedrate is the worst answer this program can give, and it is worse
-than the failure it would be hiding. Where a verification point *did* fail, that
-failure is what is reported first and the cleanup is reported beneath it: a
-cleanup that could not finish never replaces the cause a reader needs.
-
-**A command that never answers is that command's failure and nothing more.** A
-run that hung, or one whose program could not be started at all, comes back as
-an exit no answer carries rather than as an exception out of the middle of the
-cleanup — because letting one out there would abandon the restorations after it
-and the cancellation with them, on a machine this run has already moved. So the
-bound one command is given (`PRINTOBSERVER_SMOKE_COMMAND_TIMEOUT_S`, two minutes
-by default) is enforced where the command is run, a restoration that never
-answers costs that adjustable and no other, and a cancellation is still asked
-for over a machine whose state could not be read — a print that is not running
-refuses it and nothing moves, while one that is running is this run's own and
-must not be left behind. And where the last look at the machine is the thing
-that did not answer, that is `UNVERIFIED` and it fails the run too: a machine
-nothing could see is not one this test may report green on.
+**It cleans up on every exit path it has**, restoring what it changed before it
+cancels the print, and a run that could not put everything back fails: every
+value still carrying this run's own is printed as `LEFT CHANGED`, and a machine
+the last look could not read as `UNVERIFIED`. The rules that cleanup is held to
+are the script's own, in `tools/printer-smoke/AGENTS.md`.
 
 **What to watch while it runs.** Stay next to the machine — this is not a test
 to start and walk away from. Watch the first layer go down after the print
@@ -646,25 +595,14 @@ verdict:
    `crates/printobserver-obico/samples/obico/failure-alert.json`,
 6. and it reports a verdict naming every field that moved.
 
-Nothing in it compares a body the capture did not produce — the alteration
-tests in `tools/obico-env/tests/test_reconciliation.py` run each alteration
-through the capture rather than past the comparator, which is what makes them
-proof of that. What is compared is the *shape*: the set of fields and the JSON
-type of each, because the ids, the file name and the instants differ on every
-run by design and are not what the sample claims. A field the producer added,
-renamed, removed or retyped moves the shape and fails the tier naming it.
+What is compared is the *shape* of the body that stack posted — the set of
+fields and the JSON type of each — and a field the producer added, renamed,
+removed or retyped fails the tier naming it. The rules the capture and the
+trigger are held to are the tier's own, in `tools/obico-env/AGENTS.md`.
 
 A divergence found here is a **finding to report** rather than a defect of this
 repository: the sample is the `contracts` node's file, and moving it is a
 deliberate change to a checked-in contract.
-
-One thing about step 2 a reader will otherwise meet as a mystery: Obico alerts on
-a print **once** and suppresses every alert after it, which is right — a printer
-that alerted on the same failed print every ten seconds would be unusable. So the
-trigger finishes an already-alerted print and starts a fresh one, which is what
-happens between two real failures anyway. A stack that has run this tier several
-times therefore carries several finished prints, and a tier that skipped this
-would capture nothing on its second run and blame the network.
 
 **Why it is not in every run.** The tier builds Obico's images from Obico's own
 sources — one of them carries a machine-learning model — starts four containers,
@@ -1110,6 +1048,35 @@ the swap and the merge of that change belong to one window.
 a record that disagrees with them. Applying the settings themselves to the
 repository is a person's action through GitHub.
 
+**The gate's two tiers, and where each runs.** The tier is a parameter of the
+same recipes, never a second gate: `just check` runs the **affected tier** —
+the projects a change reaches from an explicitly derived base, never Nx's
+implicit one — and `just check all` the **broader tier**, every project. Both
+run the graph targets `format-check`, `lint`, `typecheck`, `test`, `build` and
+`test-e2e`; no target is promoted out of the affected tier. The affected tier fails closed to the whole graph rather than to nothing: with no
+base to derive, or over a file no project owns, which the graph cannot trace to
+the suites that read it. Coverage holds the same 95% floors at both, over the
+code the run's tests reached; only the sweep is over every project's. The
+repository-level steps — the Windows-target lint, `lint-workflows` and
+`check-repo` — run whole at either tier.
+
+The release model decides where the sweep runs. release-plz opens a release pull
+request and updates it on every push to `main`, so one release can carry several
+merges: the commit that ships is not one any merge's run swept. So the release is
+**batched**, and the sweep runs on **the release pull request** — the `gate
+(<platform>)` jobs select it by the `release-plz-` head branch, through `just
+gate-tier` — while every other pull request and every push to `main` runs the
+affected tier, a push against the last commit that workflow passed on, which
+`nx-set-shas` derives. A run nothing there recognises, such as a cell dispatched
+by hand, takes the sweep, because the whole graph is the answer that cannot miss
+anything. The required check names are the same at either tier.
+
+Outside both tiers: the `integration (<platform>)` jobs run `just
+test-integration` on every pull request whatever the affected set reaches;
+`llmlint`, `pr-title`, `skill-install` and `supply-chain` are jobs of their own
+on every change; the Obico tier and the registry install-path proof run on their
+schedules; `just skilltest` and the real-printer smoke run only by hand.
+
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`
 raises the bump); `docs`, `test`, `chore`, `ci`, `refactor`, `build`, `style`
@@ -1227,16 +1194,9 @@ back, yank it or republish it: it is no crate of this workspace and stays on
 crates.io at `0.2.0`.
 
 The same rule holds one level down, over vocabulary rather than over edges:
-**`printobserver-octoprint` is the only crate that may construct an `OctoPrint`
-request.** Everything above it is written as though printers were normal, so the
-moment a second crate spells an OctoPrint path or its authentication header
-there are two places one vendor's own surface has to be kept right.
-`repo-policy.toml`'s `[octoprint]` names the permitted crate and what
-constructing such a request looks like in a Rust source; `just check-repo`
-refuses one of those markers on a line of any other crate, exempting a
-comment-only line so a crate may *say* `/api/job` while no crate but the adapter
-may *build* one — and refuses a tree in which the adapter itself constructs
-none, because a rule guarding a boundary nothing is on has stopped being a rule.
+`printobserver-octoprint` is the only crate that may construct an `OctoPrint`
+request, and `just check-repo` refuses one built anywhere else. Its own
+`AGENTS.md` states the rule and why it is drawn there.
 
 ## Tests are the only QA loop
 

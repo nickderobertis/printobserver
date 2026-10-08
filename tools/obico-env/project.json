@@ -3,6 +3,7 @@
   "root": "tools/obico-env",
   "projectType": "library",
   "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/obico-env" },
     "format-check": { "command": "uv run -q ruff format --check tools/obico-env" },

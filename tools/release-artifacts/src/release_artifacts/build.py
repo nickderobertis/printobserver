@@ -202,7 +202,10 @@ NODE_STATEMENT = "export const CONTRACT_VERSION = {version};"
 
 
 def _distribution(
-    repo: Repo, target: targets.Target, requires_python: str = REQUIRES_PYTHON
+    repo: Repo,
+    target: targets.Target,
+    requires_python: str = REQUIRES_PYTHON,
+    classifiers: tuple[str, ...] = (),
 ) -> wheels.Distribution:
     """What one Python distribution of this repository says about itself."""
     inherited = targets.workspace(repo.root)
@@ -213,7 +216,17 @@ def _distribution(
         requires_python=requires_python,
         license=inherited["license"],
         homepage=inherited["repository"],
+        classifiers=classifiers,
     )
+
+
+#: The classifier a distribution shipping its own inline types declares, and
+#: the PEP 561 marker that is what a type checker actually reads. The client
+#: declares the one only while it carries the other: a classifier over a
+#: package with no marker tells a consumer to expect types their checker will
+#: then not find.
+TYPED_CLASSIFIER = "Typing :: Typed"
+TYPED_MARKER = "py.typed"
 
 
 def _node(repo: Repo, target: targets.Target, name: str = "") -> packages.NodePackage:
@@ -235,9 +248,15 @@ def python_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     consumer can read that off the installed distribution rather than off this
     tree.
     """
-    distribution = _distribution(repo, target, CLIENT_REQUIRES_PYTHON)
-    wheel = wheels.Wheel(distribution, wheels.PURE_TAG)
     module = repo.path(computation.PYTHON_MODULE)
+    if not (module.parent / TYPED_MARKER).is_file():
+        msg = (
+            f"the Python client carries no {TYPED_MARKER} beside {computation.PYTHON_MODULE}, "
+            f"so a wheel declaring `{TYPED_CLASSIFIER}` would declare types no checker reads"
+        )
+        raise BuildError(msg)
+    distribution = _distribution(repo, target, CLIENT_REQUIRES_PYTHON, (TYPED_CLASSIFIER,))
+    wheel = wheels.Wheel(distribution, wheels.PURE_TAG)
     wheel.add_tree(module.parent, module.parent.name)
     version = contract_version(repo)
     # The tree's copy reads the version out of a workspace manifest, which an

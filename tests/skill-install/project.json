@@ -3,6 +3,7 @@
   "root": "tests/skill-install",
   "projectType": "library",
   "tags": ["lang:python", "type:e2e"],
+  "implicitDependencies": ["release-artifacts", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/skill-install" },
     "format-check": { "command": "uv run -q ruff format --check tests/skill-install" },

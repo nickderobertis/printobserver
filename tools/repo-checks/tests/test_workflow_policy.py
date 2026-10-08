@@ -14,6 +14,9 @@ from treecopy import Tree
 
 CI = ".github/workflows/ci.yml"
 
+#: The gate job's step that runs the gate, as the committed workflow spells it.
+GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+
 
 def test_the_committed_workflows_are_accepted(committed: Repo) -> None:
     """Every action is pinned and every command is one this repository runs."""
@@ -37,8 +40,8 @@ def test_a_command_the_allowlist_does_not_name_is_refused(
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just check\n",
-        "      - run: just check\n      - run: rm -rf /tmp/whatever\n",
+        GATE_STEP,
+        GATE_STEP + "      - run: rm -rf /tmp/whatever\n",
     )
 
     findings = workflow_policy(broken.repo)

@@ -238,14 +238,28 @@ class GateCopy:
             env=clean_environment(UV_PROJECT_ENVIRONMENT=str(self.shared_venv)),
         )
 
-    def just(self, recipe: str, *, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-        """Run one recipe of the copy's own command surface."""
+    def just(
+        self,
+        recipe: str,
+        *arguments: str,
+        timeout: int = 900,
+        environment: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run one recipe of the copy's own command surface, `environment` added to its own."""
         return capture(
-            ["just", recipe],
+            ["just", recipe, *arguments],
             self.root,
             timeout=timeout,
-            env=clean_environment(UV_PROJECT_ENVIRONMENT=str(self.shared_venv)),
+            env=clean_environment(
+                UV_PROJECT_ENVIRONMENT=str(self.shared_venv), **(environment or {})
+            ),
         )
+
+    def git(self, *arguments: str) -> str:
+        """Run git in the copy, as the identity its first commit was made under."""
+        return shell_run(
+            ["git", *COMMIT_IDENTITY, *arguments], cwd=self.root, check=True
+        ).stdout.strip()
 
 
 class CopiesTheTree(Protocol):

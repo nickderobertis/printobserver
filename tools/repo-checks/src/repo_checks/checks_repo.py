@@ -13,6 +13,7 @@ from typing import Any
 from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo, toolchain_tools
 from repo_checks.parsing import (
     MarkerBlockMissingError,
+    Recipe,
     marker_block,
     programs_in,
     recipes,
@@ -22,6 +23,13 @@ PLACEHOLDERS = ("TODO", "TBD", "FIXME", "...", "…", "<placeholder>", "XXX")
 # The Nx entry point every fan-out tier goes through, the recipe that installs
 # what it needs, and the locked install that recipe must run.
 NX_INVOCATION = "bunx nx"
+# The runner every gate tier reaches Nx through, which is what decides the
+# projects a tier runs over, and the parameter naming that tier.
+GATE_TIER_RUNNER = "uv run -q python -m repo_checks.gate_tier run"
+TIER_PARAMETER = "tier"
+# Everything that reaches Nx from a recipe line: Nx itself, the gate-tier
+# runner, and the coverage report, which asks Nx what an affected run reached.
+NX_RUNNERS = (NX_INVOCATION, GATE_TIER_RUNNER, "uv run -q python -m repo_checks coverage --tier")
 NODE_INSTALL_RECIPE = "node-modules"
 LOCKED_NODE_INSTALL = "bun install --frozen-lockfile"
 NO_OP_COMMANDS = ("echo", "true", ":", "printf")
@@ -390,6 +398,7 @@ def recipe_set(repo: Repo) -> list[str]:
         for tier in tiers
         if tier not in invoked
     )
+    findings.extend(_tier_parameter_findings(parsed, tiers))
 
     for name in [*tiers, "check", "bootstrap"]:
         recipe = parsed.get(name)
@@ -442,7 +451,41 @@ def recipe_set(repo: Repo) -> list[str]:
     return findings
 
 
-def _first_index(body: tuple[str, ...], *, startswith: str) -> int | None:
+def _tier_parameter_findings(parsed: dict[str, Recipe], tiers: list[str]) -> list[str]:
+    """`check` and every tier reaching the graph take a tier, and `check` hands its own down.
+
+    A tier that ran `nx` itself would run whatever it named regardless of the
+    tier `check` was asked for, so the only way a graph tier reaches Nx is
+    through the gate-tier runner, handed the tier it was given.
+    """
+    check = parsed["check"]
+    findings: list[str] = []
+    if TIER_PARAMETER not in check.parameters:
+        findings.append(f"the `check` recipe takes no `{TIER_PARAMETER}` parameter")
+    handed = (f"{{{{quote({TIER_PARAMETER})}}}}", f"{{{{{TIER_PARAMETER}}}}}")
+    for name in tiers:
+        recipe = parsed.get(name)
+        if recipe is None or not any(line.startswith(NX_RUNNERS) for line in recipe.body):
+            continue
+        if TIER_PARAMETER not in recipe.parameters:
+            findings.append(
+                f"the `{name}` recipe reaches Nx and takes no `{TIER_PARAMETER}` parameter"
+            )
+        findings.extend(
+            f"the `{name}` recipe runs `{line}`, which reaches Nx without the gate-tier runner "
+            f"deciding which projects it runs over"
+            for line in recipe.body
+            if line.startswith(NX_INVOCATION)
+        )
+        findings.extend(
+            f"the `check` recipe runs `{line}` without handing it its own `{TIER_PARAMETER}`"
+            for line in check.body
+            if line.split()[:2] == ["just", name] and not any(h in line for h in handed)
+        )
+    return findings
+
+
+def _first_index(body: tuple[str, ...], *, startswith: str | tuple[str, ...]) -> int | None:
     """The position of the first body line starting with `startswith`."""
     return next((index for index, line in enumerate(body) if line.startswith(startswith)), None)
 
@@ -473,7 +516,7 @@ def node_install(repo: Repo) -> list[str]:
 
     invocation = f"just {NODE_INSTALL_RECIPE}"
     for recipe in parsed.values():
-        reaches_nx = _first_index(recipe.body, startswith=NX_INVOCATION)
+        reaches_nx = _first_index(recipe.body, startswith=NX_RUNNERS)
         if reaches_nx is None:
             continue
         installs = _first_index(recipe.body, startswith=invocation)

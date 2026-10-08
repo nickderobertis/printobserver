@@ -3,6 +3,7 @@
   "root": "tools/printer-smoke",
   "projectType": "library",
   "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["octoprint-env", "printobserver", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/printer-smoke" },
     "format-check": { "command": "uv run -q ruff format --check tools/printer-smoke" },

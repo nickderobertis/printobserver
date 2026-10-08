@@ -94,21 +94,33 @@ def section(text: str, heading: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Recipe:
-    """One `just` recipe: its name, its dependencies and its body lines."""
+    """One `just` recipe: its name, its dependencies, its body lines and its parameters."""
 
     name: str
     dependencies: tuple[str, ...]
     body: tuple[str, ...]
+    #: Each parameter's name, without its `*`/`+`/`$` sigil or its default.
+    parameters: tuple[str, ...] = ()
 
 
 # `just` puts a recipe's parameters before the colon and its dependencies after
-# it: `check: lint test`, and `test-printer-smoke *flags:`. A recipe taking a
-# parameter is still a recipe, and one this reader passed over would be one no
-# check could see — including the check that its command is on the allowlist.
+# it: `check: lint test`, `test-printer-smoke *flags:` and `check tier="affected":`.
+# A recipe taking a parameter is still a recipe, and one this reader passed over
+# would be one no check could see — including the check that its command is on
+# the allowlist. A default is a quoted string or a bare word.
+PARAMETER = re.compile(
+    r"[*+$]?(?P<parameter>[a-zA-Z0-9_-]+)(?:=(?:\"[^\"]*\"|'[^']*'|[a-zA-Z0-9_-]+))?"
+)
 RECIPE_HEADER = re.compile(
-    r"^(?P<name>[a-zA-Z0-9_-]+)(?P<params>(?: +[*+$]?[a-zA-Z0-9_-]+)*)\s*:"
+    r"^(?P<name>[a-zA-Z0-9_-]+)"
+    r"(?P<params>(?: +[*+$]?[a-zA-Z0-9_-]+(?:=(?:\"[^\"]*\"|'[^']*'|[a-zA-Z0-9_-]+))?)*)\s*:"
     r"(?P<deps>(?: +[a-zA-Z0-9_-]+)*)\s*$"
 )
+
+
+def _parameters(declared: str) -> tuple[str, ...]:
+    """The parameter names a recipe header declares, in order."""
+    return tuple(found["parameter"] for found in PARAMETER.finditer(declared.strip()))
 
 
 def recipes(justfile: str) -> dict[str, Recipe]:
@@ -116,6 +128,7 @@ def recipes(justfile: str) -> dict[str, Recipe]:
     found: dict[str, Recipe] = {}
     current: str | None = None
     deps: tuple[str, ...] = ()
+    parameters: tuple[str, ...] = ()
     body: list[str] = []
     for raw in justfile.splitlines():
         if raw.startswith((" ", "\t")) and current is not None:
@@ -124,15 +137,16 @@ def recipes(justfile: str) -> dict[str, Recipe]:
                 body.append(stripped)
             continue
         if current is not None:
-            found[current] = Recipe(current, deps, tuple(body))
-            current, deps, body = None, (), []
+            found[current] = Recipe(current, deps, tuple(body), parameters)
+            current, deps, parameters, body = None, (), (), []
         match = RECIPE_HEADER.match(raw)
         if match:
             current = match.group("name")
             deps = tuple(match.group("deps").split())
+            parameters = _parameters(match.group("params"))
             body = []
     if current is not None:
-        found[current] = Recipe(current, deps, tuple(body))
+        found[current] = Recipe(current, deps, tuple(body), parameters)
     return found
 
 

@@ -6,6 +6,17 @@
     "lang:rust",
     "type:composition-root"
   ],
+  "implicitDependencies": [
+    "printobserver-core",
+    "printobserver-obico",
+    "printobserver-octoprint",
+    "printobserver-oneharness",
+    "printobserver-printer-api",
+    "printobserver-store-sqlite",
+    "printobserver-supervisor-api",
+    "printobserver-types",
+    "printobserver-vision-api"
+  ],
   "targets": {
     "format": {
       "command": "cargo fmt -p printobserver-server"

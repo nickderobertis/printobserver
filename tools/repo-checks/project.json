@@ -3,6 +3,7 @@
   "root": "tools/repo-checks",
   "projectType": "library",
   "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["contract-codegen"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/repo-checks" },
     "format-check": { "command": "uv run -q ruff format --check tools/repo-checks" },

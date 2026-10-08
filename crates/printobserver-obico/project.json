@@ -6,6 +6,11 @@
     "lang:rust",
     "type:implementation"
   ],
+  "implicitDependencies": [
+    "printobserver-core",
+    "printobserver-types",
+    "printobserver-vision-api"
+  ],
   "targets": {
     "format": {
       "command": "cargo fmt -p printobserver-obico"

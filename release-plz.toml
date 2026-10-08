@@ -25,6 +25,12 @@
 # request and the two auto-merge each other in a loop.
 release_commits = "(?s)^(feat|fix|perf)(\\([^)]+\\))?!?:|BREAKING CHANGE:"
 
+# The head-branch prefix of the release pull request, stated here although it
+# is release-plz's own default: `just gate-tier` reads it to tell the release
+# pull request — where the gate's full sweep runs — from every other, so this is
+# the one statement of it both read.
+pr_branch_prefix = "release-plz-"
+
 # Publish on every push to `main`, not only on the release pull request's merge
 # commit, so a publish that fails partway is recoverable: the fix lands as an
 # ordinary commit and the next push completes the pending release. A normal

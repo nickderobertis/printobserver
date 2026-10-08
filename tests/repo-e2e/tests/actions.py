@@ -44,7 +44,11 @@ where a rule modelled here wrongly would show up.
     or `workflow_run` with the triggering run's `event`, `id` and `head_sha`.
   * A `run:` step is `bash -e` over the step's text, in the checkout, with the
     job's `env` and then the step's on top of the caller's, `GITHUB_OUTPUT` a
-    file of its own and `RUNNER_TEMP` the job's one directory; `name=value`
+    file of its own and `RUNNER_TEMP` the job's one directory. The forge's own
+    `GITHUB_EVENT_NAME` and `GITHUB_REF` are this run's event's, and
+    `GITHUB_HEAD_REF` and `GITHUB_BASE_REF` are empty, as the forge leaves them
+    on every event but a pull request's, which is not modelled — so a runner
+    started inside a real job never hands its steps that job's event; `name=value`
     lines it appends to `GITHUB_OUTPUT` become `steps.<id>.outputs.<name>`. An
     expression inside the step's text is refused: that is the injection the
     forge documents, and no workflow here writes one.
@@ -878,6 +882,10 @@ class Runner:
             )
             env["GITHUB_OUTPUT"] = str(output_file)
             env["RUNNER_TEMP"] = str(runner_temp)
+            env["GITHUB_EVENT_NAME"] = self.event.name
+            env["GITHUB_REF"] = self.event.ref
+            env["GITHUB_HEAD_REF"] = ""
+            env["GITHUB_BASE_REF"] = ""
             env.update(_environment(job.get("env"), step.get("env"), contexts=contexts))
             completed = shell_run(
                 [*_shell("", job), "-c", command],

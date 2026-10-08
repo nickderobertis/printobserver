@@ -3,6 +3,8 @@
   "root": "tests/repo-e2e",
   "projectType": "library",
   "tags": ["lang:python", "type:e2e"],
+  "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason." },
+  "implicitDependencies": ["octoprint-env", "printer-smoke", "printobserver", "printobserver-sdk-node", "printobserver-sdk-python", "release-artifacts", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/repo-e2e" },
     "format-check": { "command": "uv run -q ruff format --check tests/repo-e2e" },

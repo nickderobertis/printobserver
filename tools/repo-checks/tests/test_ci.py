@@ -68,6 +68,9 @@ brew install printobserver
 ```
 """
 
+#: The gate job's step that runs the gate, as the committed workflow spells it.
+GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+
 
 def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
     """The jobs this repository ships agree with the recipes and the section."""
@@ -77,7 +80,7 @@ def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
 def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
     """A configuration with no complete-gate job proves nothing."""
     broken = tree()
-    broken.edit(CI, "      - run: just check\n", "")
+    broken.edit(CI, GATE_STEP, "")
 
     findings = continuous_integration(broken.repo)
 
@@ -101,9 +104,7 @@ def test_a_gate_step_naming_an_undeclared_recipe_is_refused(
 ) -> None:
     """A gate job cannot invoke a recipe the set does not declare."""
     broken = tree()
-    broken.edit(
-        CI, "      - run: just check\n", "      - run: just check\n      - run: just verify\n"
-    )
+    broken.edit(CI, GATE_STEP, GATE_STEP + "      - run: just verify\n")
 
     findings = continuous_integration(broken.repo)
 
@@ -117,8 +118,8 @@ def test_a_gate_step_running_something_that_is_not_a_recipe_is_refused(
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just check\n",
-        "      - run: just check\n      - run: cargo test --workspace\n",
+        GATE_STEP,
+        GATE_STEP + "      - run: cargo test --workspace\n",
     )
 
     findings = continuous_integration(broken.repo)
@@ -143,8 +144,8 @@ def test_the_judged_tier_as_a_step_of_the_gate_job_is_refused(
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just check\n",
-        "      - run: just check\n      - run: just lint-llm-diff\n",
+        GATE_STEP,
+        GATE_STEP + "      - run: just lint-llm-diff\n",
     )
 
     findings = continuous_integration(broken.repo)

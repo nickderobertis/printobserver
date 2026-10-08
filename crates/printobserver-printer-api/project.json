@@ -6,6 +6,9 @@
     "lang:rust",
     "type:contract"
   ],
+  "implicitDependencies": [
+    "printobserver-types"
+  ],
   "targets": {
     "format": {
       "command": "cargo fmt -p printobserver-printer-api"

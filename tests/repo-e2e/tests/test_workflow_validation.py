@@ -61,8 +61,8 @@ def test_a_step_running_a_command_the_allowlist_does_not_name_is_refused(
     broken = gate_copy()
     broken.edit(
         CI,
-        "      - run: just check\n",
-        "      - run: just check\n      - run: rm -rf /tmp/whatever\n",
+        '      - run: just check "$(just gate-tier)"\n',
+        '      - run: just check "$(just gate-tier)"\n      - run: rm -rf /tmp/whatever\n',
     )
 
     result = broken.just("lint-workflows")
