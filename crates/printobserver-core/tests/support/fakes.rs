@@ -33,7 +33,9 @@ use printobserver_supervisor_api::{
     AgentAssessment, Confidence, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
-use printobserver_types::{EventId, EventRecord, FileName, ImageId, PrintId, RawBytes, Timestamp};
+use printobserver_types::{
+    EventId, EventKind, EventRecord, FileName, ImageId, PrintId, RawBytes, Timestamp,
+};
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
 use crate::journal::{Call, Journal};
@@ -302,6 +304,8 @@ pub enum StoreMethod {
     AppendEvent,
     /// `put_image`.
     PutImage,
+    /// `open_prints`, which settling and observing read.
+    OpenPrints,
 }
 
 /// Everything the fake store holds.
@@ -366,6 +370,39 @@ impl Meeting {
     }
 }
 
+/// Where appends of one kind wait until they are let through, for a journey
+/// about what arrives while one is in flight.
+///
+/// Unarmed, it holds nothing. A held append waits at most as long as a journey
+/// waits for anything, so a journey that failed before letting it through does
+/// not hold its thread for ever.
+#[derive(Debug, Default)]
+pub struct AppendGate {
+    /// The kind held, and how many appends of it are waiting.
+    state: Mutex<(Option<EventKind>, usize)>,
+    /// Signalled whenever the gate opens or an append arrives at it.
+    changed: Condvar,
+}
+
+impl AppendGate {
+    /// Wait here when appends of this kind are held.
+    fn pass(&self, kind: &EventKind) {
+        let mut state = self.state.lock().expect("the gate holds");
+        if state.0.as_ref() != Some(kind) {
+            return;
+        }
+        state.1 += 1;
+        self.changed.notify_all();
+        let (mut state, _) = self
+            .changed
+            .wait_timeout_while(state, Duration::from_secs(10), |(held, _)| {
+                held.as_ref() == Some(kind)
+            })
+            .expect("the gate holds");
+        state.1 -= 1;
+    }
+}
+
 /// An in-memory store, which is what a fake of this port is.
 pub struct FakeStore {
     /// The shared ordered record of port calls.
@@ -380,6 +417,10 @@ pub struct FakeStore {
     root: PathBuf,
     /// Where the reads of the prints wait for one another, when armed.
     reads_of_the_prints: Meeting,
+    /// Where appends of one kind wait to be let through, when armed.
+    appends: AppendGate,
+    /// The one print whose appends are refused, and how, when one is.
+    refused_print: Mutex<Option<(PrintId, StoreError)>>,
 }
 
 impl FakeStore {
@@ -399,6 +440,8 @@ impl FakeStore {
             failures: Mutex::new(BTreeMap::new()),
             root,
             reads_of_the_prints: Meeting::default(),
+            appends: AppendGate::default(),
+            refused_print: Mutex::new(None),
         }
     }
 
@@ -406,6 +449,32 @@ impl FakeStore {
     /// wait for one another before any of them answers.
     pub fn reads_of_the_prints_meet(&self, callers: usize) {
         self.reads_of_the_prints.expect(callers);
+    }
+
+    /// Hold every append of this kind until [`FakeStore::lets_appends_through`].
+    pub fn holds_appends_of(&self, kind: EventKind) {
+        self.appends.state.lock().expect("the gate holds").0 = Some(kind);
+    }
+
+    /// Wait until an append is held at the gate, or give up.
+    ///
+    /// # Panics
+    ///
+    /// Panics when none has arrived inside the deadline.
+    pub fn await_a_held_append(&self) {
+        let state = self.appends.state.lock().expect("the gate holds");
+        let (state, _) = self
+            .appends
+            .changed
+            .wait_timeout_while(state, Duration::from_secs(10), |(_, waiting)| *waiting == 0)
+            .expect("the gate holds");
+        assert!(state.1 > 0, "no append arrived at the gate");
+    }
+
+    /// Let every held append through, and hold none after it.
+    pub fn lets_appends_through(&self) {
+        self.appends.state.lock().expect("the gate holds").0 = None;
+        self.appends.changed.notify_all();
     }
 
     /// Fail one method with one error from now on.
@@ -416,9 +485,16 @@ impl FakeStore {
             .insert(method, error);
     }
 
+    /// Refuse every append for one print with one error from now on, and
+    /// write every other print's.
+    pub fn refuses_appends_for(&self, print_id: PrintId, error: StoreError) {
+        *self.refused_print.lock().expect("the store holds") = Some((print_id, error));
+    }
+
     /// Stop failing every method.
     pub fn heals(&self) {
         self.failures.lock().expect("the store holds").clear();
+        *self.refused_print.lock().expect("the store holds") = None;
     }
 
     /// The failure induced at one method, if one is.
@@ -585,6 +661,9 @@ impl PrintStore for FakeStore {
         &self,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
+        if let Some(error) = self.induced(StoreMethod::OpenPrints) {
+            return Box::pin(async move { Err(error) });
+        }
         let found: Vec<PrintRecord> = self
             .newest_first()
             .into_iter()
@@ -739,8 +818,18 @@ impl EventStore for FakeStore {
         draft: EventDraft,
     ) -> printobserver_core::store::BoxFuture<'_, Result<EventRecord, StoreError>> {
         self.journal.record(Call::AppendEvent(draft.kind().clone()));
+        self.appends.pass(draft.kind());
         if let Some(error) = self.induced(StoreMethod::AppendEvent) {
             return ready(Err(error));
+        }
+        if let Some((_, error)) = self
+            .refused_print
+            .lock()
+            .expect("the store holds")
+            .as_ref()
+            .filter(|(refused, _)| draft.print_id == Some(*refused))
+        {
+            return ready(Err(error.clone()));
         }
         let record = EventRecord {
             id: EventId::new(),

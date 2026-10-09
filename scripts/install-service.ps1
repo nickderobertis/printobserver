@@ -234,6 +234,10 @@ harness = "claude-code"
 # an elevated PowerShell, before starting the service:
 #   gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills
 skill_path = '$InstalledSkill'
+# How often every active print is looked in on, and its agent given a turn,
+# whether or not the detector has alerted. Left out, every 120 seconds: an
+# eight-hour print is 240 turns. Raise it to spend less; zero is refused.
+# observation_interval_s = 120
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.

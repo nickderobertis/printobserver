@@ -2064,3 +2064,21 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "let written = file.write_all(contents).and_then(|()| file.sync_all());"
 reason = "A write or sync failing into the verifier file this start just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The conversion it serves, and the start after it, are driven by `a_legacy_installation_keeps_its_operators_credential_through_every_route` against the real server."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "payload = {"
+reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "return {"
+reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "record: dict[str, Any] = {"
+reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."

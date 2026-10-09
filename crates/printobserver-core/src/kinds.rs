@@ -15,7 +15,7 @@ use crate::records::{
     AcknowledgementDisposition, ActionId, Actor, InterventionId, InterventionOutcome,
     PolicyDecision, PrintAction,
 };
-use printobserver_printer_api::Adjustable;
+use printobserver_printer_api::{Adjustable, JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
@@ -252,6 +252,53 @@ impl Sample for CameraLookPayload {
     }
 }
 
+/// The supervisor looked in on an active print on its own schedule, with no
+/// detector having said anything about it.
+///
+/// What a failure detector never alerts on — a progress that stopped moving, a
+/// heater whose target fell to nothing mid-print, a fan cut at a bridge, a wall
+/// going thin — is still on the machine and in the camera's frame, so every
+/// active print is given one of these each interval and a turn on it. It
+/// carries what the printer reported as it was taken; the frame the camera gave
+/// at the same moment, untagged by any detector, is this event's image.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PeriodicObservationPayload {
+    /// How often these are taken, in whole seconds.
+    pub interval_s: u64,
+    /// The printer's state as the observation was taken, absent when it could
+    /// not be read — which the history records as a port failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer: Option<PrinterSnapshot>,
+    /// The job the printer reported as the observation was taken, absent when
+    /// it could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<JobSnapshot>,
+}
+
+impl EventPayload for PeriodicObservationPayload {
+    const KIND: &'static str = "periodic_observation";
+}
+
+impl Sample for PeriodicObservationPayload {
+    fn sample_full() -> Self {
+        Self {
+            interval_s: 120,
+            printer: Some(PrinterSnapshot::sample_full()),
+            job: Some(JobSnapshot::sample_full()),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            interval_s: 120,
+            printer: None,
+            job: None,
+        }
+    }
+}
+
 /// Where a port failed while an event was being handled.
 ///
 /// A closed set of exactly the sites at which a failure has nowhere else to be
@@ -276,7 +323,8 @@ pub enum PortFailureSite {
     ImageWrite,
     /// Running the supervision turn the event prompted.
     SupervisionTurn,
-    /// Taking a fresh frame from the camera for a look at the print.
+    /// Taking a fresh frame from the camera, for a look at the print or for a
+    /// periodic observation of it.
     CameraLook,
     /// Telling the detector that paused the print its detection was handled.
     DetectorAcknowledgement,

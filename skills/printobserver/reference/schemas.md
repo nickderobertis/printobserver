@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-88 types. The set is every type any crate declares under
+89 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -8298,6 +8298,328 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PeriodicObservationPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "HeaterSnapshot": {
+      "additionalProperties": false,
+      "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
+      "properties": {
+        "actual_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is at."
+        },
+        "offset_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The offset applied to this heater's target."
+        },
+        "target_c": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The temperature the heater is driving towards."
+        }
+      },
+      "type": "object"
+    },
+    "JobSnapshot": {
+      "additionalProperties": false,
+      "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
+      "properties": {
+        "completion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
+        },
+        "error": {
+          "description": "The error the source reports, when it reports one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "estimated_print_time_s": {
+          "description": "The whole print's estimated duration, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "file_name": {
+          "description": "The name of the file being printed, as the source reported it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_origin": {
+          "description": "Where the file lives, in the source's own vocabulary.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "print_time_left_s": {
+          "description": "How long the print has left, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "print_time_s": {
+          "description": "How long the print has been running, in whole seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the source reports the job to be in."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "PrinterSnapshot": {
+      "additionalProperties": false,
+      "description": "A printer, as a source reported it at one instant.",
+      "properties": {
+        "bed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaterSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bed heater, when the printer reports one."
+        },
+        "chamber": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaterSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The chamber heater, when the printer reports one."
+        },
+        "connection": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "The state the printer is in."
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan, in percent."
+        },
+        "feedrate_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The feedrate multiplier, where one means one hundred percent."
+        },
+        "flowrate_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flowrate multiplier, where one means one hundred percent."
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The instant this observation was taken."
+        },
+        "tools": {
+          "description": "The tool heaters, indexed by tool number.",
+          "items": {
+            "$ref": "#/$defs/HeaterSnapshot"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connection",
+        "tools",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Reported": {
+      "additionalProperties": false,
+      "description": "A value as a source reported it, flagged when it is outside the plausibility range this crate declares for its field.",
+      "properties": {
+        "out_of_range": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "out_of_range"
+      ],
+      "title": "Reported",
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The supervisor looked in on an active print on its own schedule, with no\ndetector having said anything about it.\n\nWhat a failure detector never alerts on \u2014 a progress that stopped moving, a\nheater whose target fell to nothing mid-print, a fan cut at a bridge, a wall\ngoing thin \u2014 is still on the machine and in the camera's frame, so every\nactive print is given one of these each interval and a turn on it. It\ncarries what the printer reported as it was taken; the frame the camera gave\nat the same moment, untagged by any detector, is this event's image.",
+  "properties": {
+    "interval_s": {
+      "description": "How often these are taken, in whole seconds.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "job": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The job the printer reported as the observation was taken, absent when\nit could not be read."
+    },
+    "printer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrinterSnapshot"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The printer's state as the observation was taken, absent when it could\nnot be read \u2014 which the history records as a port failure."
+    }
+  },
+  "required": [
+    "interval_s"
+  ],
+  "title": "PeriodicObservationPayload",
+  "type": "object",
+  "x-event-kind": "periodic_observation"
+}
+```
+
 ### PolicyDecision
 
 Declared by `printobserver-core`.
@@ -8669,7 +8991,7 @@ Declared by `printobserver-core`.
         },
         {
           "const": "camera_look",
-          "description": "Taking a fresh frame from the camera for a look at the print.",
+          "description": "Taking a fresh frame from the camera, for a look at the print or for a\nperiodic observation of it.",
           "type": "string"
         },
         {
@@ -8739,7 +9061,7 @@ Declared by `printobserver-core`.
     },
     {
       "const": "camera_look",
-      "description": "Taking a fresh frame from the camera for a look at the print.",
+      "description": "Taking a fresh frame from the camera, for a look at the print or for a\nperiodic observation of it.",
       "type": "string"
     },
     {

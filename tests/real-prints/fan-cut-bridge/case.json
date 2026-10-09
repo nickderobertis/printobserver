@@ -43,12 +43,12 @@
     "scenarios": [
       {
         "id": "bridge-sagging-uncooled",
-        "summary": "A synthetic alert shows bridge strands tangling with the part-cooling fan off, and the look shows the bridge sagging; the agent should set the fan to 100 percent.",
-        "trigger": "synthetic_alert",
+        "summary": "A periodic observation, with no detector alert, shows bridge strands tangling with the part-cooling fan off, and the look shows the bridge sagging; the agent should set the fan to 100 percent.",
+        "trigger": "periodic_observation",
         "event_image": "02-bridge-strands-tangled-p49.jpg",
         "printer_state": "printing",
-        "detector_warned": true,
-        "detector_paused_the_print": false,
+        "detector_warned": null,
+        "detector_paused_the_print": null,
         "looks": [
           {"image": "03-bridge-sagging-p51.jpg"}
         ],

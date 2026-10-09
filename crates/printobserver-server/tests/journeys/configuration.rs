@@ -51,23 +51,25 @@ fn unreadable(root: &std::path::Path) -> PathBuf {
     root.join("nothing-is-here.md")
 }
 
+/// A path that cannot be created: this one names a directory under a file,
+/// which no `mkdir -p` can make.
+fn uncreatable(root: &std::path::Path) -> PathBuf {
+    let occupied = root.join("occupied");
+    std::fs::write(&occupied, b"not a directory").expect("a file is writable");
+    occupied.join("state")
+}
+
 /// One configuration in which exactly `field` is unacceptable.
 ///
 /// Answers the document, and the path of anything it had to put on disk first.
 async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &str) -> toml::Value {
     let mut document = document(root, reachable);
     match field {
-        // A path that cannot be created: this one names a directory under a
-        // file, which no `mkdir -p` can make.
-        ConfigField::StateDir => {
-            let occupied = root.join("occupied");
-            std::fs::write(&occupied, b"not a directory").expect("a file is writable");
-            set(
-                &mut document,
-                "state_dir",
-                toml::Value::String(occupied.join("state").display().to_string()),
-            );
-        }
+        ConfigField::StateDir => set(
+            &mut document,
+            "state_dir",
+            toml::Value::String(uncreatable(root).display().to_string()),
+        ),
         ConfigField::Listen => set(
             &mut document,
             "listen",
@@ -111,6 +113,12 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             &mut document,
             "supervisor.prompt_template_path",
             toml::Value::String(unreadable(root).display().to_string()),
+        ),
+        // An interval of nothing, which would observe a print without pause.
+        ConfigField::ObservationIntervalS => set(
+            &mut document,
+            "supervisor.observation_interval_s",
+            toml::Value::Integer(0),
         ),
         ConfigField::IngressAnswerBoundMs => set(
             &mut document,

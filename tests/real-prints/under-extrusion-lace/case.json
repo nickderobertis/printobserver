@@ -45,12 +45,12 @@
     "scenarios": [
       {
         "id": "porous-walls",
-        "summary": "A synthetic alert shows the walls turning porous with the flow cut to 30 percent, and the look shows the same; the agent should set the flowrate factor back to 1.0.",
-        "trigger": "synthetic_alert",
+        "summary": "A periodic observation, with no detector alert, shows the walls turning porous with the flow cut to 30 percent, and the look shows the same; the agent should set the flowrate factor back to 1.0.",
+        "trigger": "periodic_observation",
         "event_image": "03-flow-30pct-porous-p61.jpg",
         "printer_state": "printing",
-        "detector_warned": true,
-        "detector_paused_the_print": false,
+        "detector_warned": null,
+        "detector_paused_the_print": null,
         "looks": [
           {"image": "04-flow-30pct-porous-p71.jpg"}
         ],

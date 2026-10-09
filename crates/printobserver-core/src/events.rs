@@ -77,6 +77,20 @@ pub struct PendingTurn {
     print: PrintRecord,
     /// The event that claimed it.
     arrival: Arrival,
+    /// What was handed to the print before that event and never taken,
+    /// oldest first.
+    earlier: Vec<Arrival>,
+}
+
+impl PendingTurn {
+    /// The turn one arrival claimed, after what was handed over before it.
+    pub(crate) const fn new(print: PrintRecord, arrival: Arrival, earlier: Vec<Arrival>) -> Self {
+        Self {
+            print,
+            arrival,
+            earlier,
+        }
+    }
 }
 
 /// One printer state in the printer contract's own spelling.
@@ -166,7 +180,7 @@ impl Supervisor {
         let turn = self
             .inboxes()
             .claim_or_hand_over(print.id, arrival.clone())
-            .then_some(PendingTurn { print, arrival });
+            .then(|| PendingTurn::new(print, arrival, Vec::new()));
         Ok(Received { event, turn })
     }
 
@@ -181,8 +195,12 @@ impl Supervisor {
     /// Returns the store's own error when a turn's outcome could not be
     /// recorded; a turn that fails is recorded rather than answered.
     pub async fn run_supervision(&self, turn: PendingTurn) -> Result<(), CoreError> {
-        let PendingTurn { print, arrival } = turn;
-        let mut next = Some((arrival, Vec::new()));
+        let PendingTurn {
+            print,
+            arrival,
+            earlier,
+        } = turn;
+        let mut next = Some((arrival, earlier));
         while let Some((arrival, earlier)) = next {
             let supervised = self.supervise(&print, &arrival, earlier).await;
             if !matches!(supervised, Ok(Supervised::Ended)) {

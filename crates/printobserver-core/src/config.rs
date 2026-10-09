@@ -23,6 +23,17 @@ pub const DEFAULT_RECENT_EVENTS: u32 = 20;
 /// again; short enough that a paused hot end is not left sitting.
 pub const DEFAULT_DETECTOR_RESUME_GRACE: Duration = Duration::from_secs(20);
 
+/// How often every active print is observed when no detector has said
+/// anything about it.
+///
+/// A frozen progress, a heater that went cold mid-print, a fan cut at a bridge
+/// and an under-extruding wall all stay below what a failure detector alerts
+/// on, so a print whose only trigger was the detector would never be looked at
+/// for any of them. Two minutes is the rate the user chose: often enough to
+/// catch a stall before it has printed far into the air, and an eight-hour
+/// print is 240 turns.
+pub const DEFAULT_OBSERVATION_INTERVAL: Duration = Duration::from_secs(120);
+
 /// The longest one look may wait for something to happen, in seconds.
 ///
 /// Below the two minutes a supervising agent's own shell gives one command, so
@@ -50,6 +61,8 @@ pub struct CoreConfig {
     /// How long after the agent's last adjustment a print the detector paused
     /// is resumed.
     pub detector_resume_grace: Duration,
+    /// How often every active print is given a periodic observation.
+    pub observation_interval: Duration,
 }
 
 impl CoreConfig {
@@ -63,6 +76,7 @@ impl CoreConfig {
             expiry_poll: DEFAULT_EXPIRY_POLL,
             camera_snapshot_url: None,
             detector_resume_grace: DEFAULT_DETECTOR_RESUME_GRACE,
+            observation_interval: DEFAULT_OBSERVATION_INTERVAL,
         }
     }
 

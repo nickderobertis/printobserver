@@ -9,12 +9,16 @@
 mod agent;
 #[path = "support/failing_store.rs"]
 mod failing_store;
+#[path = "support/held_events.rs"]
+mod held_events;
 #[path = "support/http_host.rs"]
 mod http_host;
 #[path = "support/printer.rs"]
 mod printer;
 #[path = "support/probes.rs"]
 mod probes;
+#[path = "support/refusing_prints.rs"]
+mod refusing_prints;
 #[path = "support/world.rs"]
 mod world;
 
@@ -34,6 +38,8 @@ mod images;
 mod ingress;
 #[path = "journeys/looking.rs"]
 mod looking;
+#[path = "journeys/observing.rs"]
+mod observing;
 #[path = "journeys/operating.rs"]
 mod operating;
 #[path = "journeys/reconciling.rs"]

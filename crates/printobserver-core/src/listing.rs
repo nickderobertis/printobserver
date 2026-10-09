@@ -252,17 +252,29 @@ impl Supervisor {
                 active: None,
             });
         };
-        let settled = self.settle_open_prints(&observed).await?;
-        let active = match (settled.running, &observed.job.file_name) {
-            (Some(running), _) => Some(running.id),
-            (None, Some(file_name)) if observed.is_active() => {
-                Some(self.open_running_print(&observed, file_name).await?.id)
-            }
-            (None, _) => None,
-        };
+        let active = self.settle_and_adopt(&observed).await?;
         Ok(PrintListing {
             prints: self.stores().prints.prints().await?,
             active,
+        })
+    }
+
+    /// Settle the open prints against one observation of the printer's job,
+    /// adopt that job when it is active and no open print is it, and answer
+    /// the print it is.
+    ///
+    /// The caller holds resolution from before it read that job.
+    pub(crate) async fn settle_and_adopt(
+        &self,
+        observed: &ObservedJob,
+    ) -> Result<Option<PrintId>, CoreError> {
+        let settled = self.settle_open_prints(observed).await?;
+        Ok(match (settled.running, &observed.job.file_name) {
+            (Some(running), _) => Some(running.id),
+            (None, Some(file_name)) if observed.is_active() => {
+                Some(self.open_running_print(observed, file_name).await?.id)
+            }
+            (None, _) => None,
         })
     }
 

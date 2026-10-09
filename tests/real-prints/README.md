@@ -114,9 +114,12 @@ scenario has:
 - `id`, kebab-case and unique within the case, and a one-sentence `summary`;
 - `trigger`: `recorded_alert` (an Obico alert this case's history recorded,
   named by `event_id`), `synthetic_alert` (an alert a test raises because
-  Obico never did) or `start_request` (a request to start a print);
-- `event_image`, the picture handed with the event, or for `start_request`
-  the camera's current frame;
+  Obico never did), `periodic_observation` (the supervisor's own scheduled
+  observation of an active print, carrying the printer's telemetry, with no
+  detector involved) or `start_request` (a request to start a print);
+- `event_image`, the picture handed with the event — for
+  `periodic_observation` the camera's frame the observation took — or for
+  `start_request` the camera's current frame;
 - `printer_state`, in the printer contract's `PrinterState` spelling, and
   `detector_warned` and `detector_paused_the_print`, `null` when the trigger
   is not a detection;

@@ -87,15 +87,15 @@
           "minLength": 1
         },
         "trigger": {
-          "description": "What starts the turn: an Obico alert this case's history recorded, an alert a test synthesises because none was raised, or a request to start a print.",
-          "enum": ["recorded_alert", "synthetic_alert", "start_request"]
+          "description": "What starts the turn: an Obico alert this case's history recorded, an alert a test synthesises because none was raised, the supervisor's periodic observation of an active print, or a request to start a print.",
+          "enum": ["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
         },
         "event_id": {
           "description": "Present exactly when the trigger is recorded_alert: the id of an obico_failure_alert event in this case's printobserver-history.json.",
           "type": "string"
         },
         "event_image": {
-          "description": "A file in this case's directory: the picture handed with the event, or for start_request the camera's current frame.",
+          "description": "A file in this case's directory: the picture handed with the event (for periodic_observation, the camera's frame the observation took), or for start_request the camera's current frame.",
           "type": "string"
         },
         "printer_state": {
@@ -137,7 +137,9 @@
           "else": { "not": { "required": ["event_id"] } }
         },
         {
-          "if": { "properties": { "trigger": { "const": "start_request" } } },
+          "if": {
+            "properties": { "trigger": { "enum": ["start_request", "periodic_observation"] } }
+          },
           "then": {
             "properties": {
               "detector_warned": { "type": "null" },

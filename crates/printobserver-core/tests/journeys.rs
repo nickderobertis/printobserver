@@ -65,6 +65,9 @@ mod turn_credentials;
 #[path = "journeys/detector_pause.rs"]
 mod detector_pause;
 
+#[path = "journeys/observation.rs"]
+mod observation;
+
 #[path = "journeys/one_agent_per_print.rs"]
 mod one_agent_per_print;
 

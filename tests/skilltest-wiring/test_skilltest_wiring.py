@@ -227,6 +227,45 @@ def test_the_triggers_are_the_case_schemas() -> None:
     expect.equal(sorted(get_args(Trigger)), sorted(allowed), describing="the triggers")
 
 
+OBSERVED = [scenario for scenario in SCENARIOS if scenario.trigger == "periodic_observation"]
+
+
+def test_the_faults_no_detector_alerts_on_are_replayed_as_periodic_observations() -> None:
+    """The three faults Obico never alerted on start their turn as the supervisor's observation."""
+    for case in ("fan-cut-bridge", "filament-stall-air-print", "under-extrusion-lace"):
+        expect.contains(
+            {scenario.case for scenario in OBSERVED}, case, describing="the observed cases"
+        )
+
+
+@pytest.mark.parametrize("scenario", OBSERVED, ids=[scenario.test_id for scenario in OBSERVED])
+def test_a_periodic_observation_is_handed_as_core_writes_one(
+    scenario: Scenario, built: dict[str, Built]
+) -> None:
+    """The turn is handed core's observation, carrying the printer and the job, and no detection."""
+    case = built[scenario.test_id]
+    event, situation = case.event, case.situation
+    if event is None or situation is None:
+        pytest.fail(f"{scenario.test_id} hands the agent no observation")
+    path = SCHEMAS / "printobserver-core" / "PeriodicObservationPayload.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    expect.equal(event["kind"], schema["x-event-kind"], describing="the event's kind")
+    expect.equal(event["source"], "system", describing="who raised it")
+    problems = [
+        error.message for error in Draft202012Validator(schema).iter_errors(event["payload"])
+    ]
+    expect.equal(problems, [], describing="the observation's payload")
+    expect.equal(
+        sorted(event["payload"]), ["interval_s", "job", "printer"], describing="its telemetry"
+    )
+    expect.equal(
+        (situation["detector_warned"], situation["detector_paused_the_print"]),
+        (None, None),
+        describing="the detector's part in it",
+    )
+    expect.contains(case.prompt, event["id"], describing="the turn's input")
+
+
 def _spec(case: Built, name: str) -> StubSpec:
     return next(spec for spec in case.stubs if spec.name == name)
 
@@ -750,6 +789,56 @@ def test_bounds_that_are_not_a_range_are_refused(monkeypatch: pytest.MonkeyPatch
         with pytest.raises(ValueError, match=re.escape("[safety.allowed]")):
             bounds()
         shutil.rmtree(config.parent)
+
+
+def test_the_observation_interval_is_the_configurations_or_the_cores_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An observation says the interval the configuration sets, and otherwise the core's default."""
+    core = (REPO / "crates/printobserver-core/src/config.rs").read_text(encoding="utf-8")
+    declared = re.search(
+        r"DEFAULT_OBSERVATION_INTERVAL: Duration = Duration::from_secs\((\d+)\)", core
+    )
+    expect.truth(declared is not None, describing="the core's declared default")
+    expect.equal(
+        real_prints.observation_interval_s(),
+        int(declared[1]) if declared else None,
+        describing="the shipped configuration's interval, which sets none",
+    )
+    shipped = real_prints.SERVICE_CONFIG.read_text(encoding="utf-8")
+    configured = tmp_path / "service-config.toml"
+    configured.write_text(
+        shipped.replace("[supervisor]\n", "[supervisor]\nobservation_interval_s = 45\n", 1),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(real_prints, "SERVICE_CONFIG", configured)
+    expect.equal(real_prints.observation_interval_s(), 45, describing="a configured interval")
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "1.5", "true", '"120"'])
+def test_an_observation_interval_that_is_not_a_positive_whole_number_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, value: str
+) -> None:
+    """A configured interval that is not a positive whole number of seconds is refused, not used."""
+    configured = tmp_path / "service-config.toml"
+    configured.write_text(f"[supervisor]\nobservation_interval_s = {value}\n", encoding="utf-8")
+    monkeypatch.setattr(real_prints, "SERVICE_CONFIG", configured)
+    with pytest.raises(ValueError, match="not a positive whole number"):
+        real_prints.observation_interval_s()
+
+
+def test_a_core_default_that_cannot_be_read_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With no interval configured, a core that no longer declares its default is refused."""
+    configured = tmp_path / "service-config.toml"
+    configured.write_text("[supervisor]\n", encoding="utf-8")
+    core = tmp_path / "config.rs"
+    core.write_text("pub const DEFAULT_OBSERVATION_INTERVAL: Duration = TWO_MINUTES;\n")
+    monkeypatch.setattr(real_prints, "SERVICE_CONFIG", configured)
+    monkeypatch.setattr(real_prints, "CORE_CONFIG", core)
+    with pytest.raises(ValueError, match="DEFAULT_OBSERVATION_INTERVAL"):
+        real_prints.observation_interval_s()
 
 
 def test_a_command_on_a_later_line_is_still_read() -> None:
