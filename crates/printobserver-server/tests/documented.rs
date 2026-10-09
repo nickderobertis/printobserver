@@ -8,11 +8,17 @@
 //! `HANDLED_OVERWRITE` — and every passage stating one is read here and held to
 //! it, so a constant that moves without its documents fails this rather than
 //! leaving the agent working to a number the program no longer keeps.
+//!
+//! The service configurations an operator edits — the two installers' and the
+//! real-print cases' — state the periodic observation's default interval
+//! beside its key, and are held to the server's
+//! `DEFAULT_OBSERVATION_INTERVAL_S` the same way.
 
 use std::path::PathBuf;
 
 use printobserver_core::{DEFAULT_DETECTOR_RESUME_GRACE, MAX_LOOK_WAIT_S};
 use printobserver_obico::HANDLED_OVERWRITE;
+use printobserver_server::DEFAULT_OBSERVATION_INTERVAL_S;
 
 /// One document of the skill, its whitespace folded so that a passage reads
 /// the same wherever it wraps.
@@ -97,4 +103,37 @@ fn the_stated_overwrite_is_the_one_obico_is_sent() {
         document("reference/intervention-policy.md").contains(&passage),
         "the intervention policy no longer says `{passage}`, which is what the adapter sends"
     );
+}
+
+/// Every service configuration an operator edits states the default
+/// observation interval, and what it costs over an eight-hour print, as the
+/// interval the server runs under when the key is left out.
+#[test]
+fn every_stated_observation_interval_is_the_servers_default() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let turns = 8 * 60 * 60 / DEFAULT_OBSERVATION_INTERVAL_S;
+    for relative in [
+        "scripts/install-service.sh",
+        "scripts/install-service.ps1",
+        "tests/real-prints/service-config.toml",
+    ] {
+        let path = root.join(relative);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} reads: {error}", path.display()));
+        let folded = text
+            .lines()
+            .map(|line| line.trim_start_matches('#').trim())
+            .collect::<Vec<_>>()
+            .join(" ");
+        for passage in [
+            format!("observation_interval_s = {DEFAULT_OBSERVATION_INTERVAL_S}"),
+            format!("Left out, every {DEFAULT_OBSERVATION_INTERVAL_S} seconds"),
+            format!("an eight-hour print is {turns} turns"),
+        ] {
+            assert!(
+                folded.contains(&passage),
+                "{relative} does not say `{passage}`"
+            );
+        }
+    }
 }
