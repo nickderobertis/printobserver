@@ -238,6 +238,79 @@ async fn no_observation_piles_up_behind_a_running_turn() {
     world.server.stop().await;
 }
 
+/// The first observation comes one interval after the server starts, not at
+/// the start: a restart is not itself a reason to look.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_first_observation_waits_one_interval() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let world = World::configured(
+        RecordingPrinter::printing(),
+        Arc::clone(&agent),
+        |document| {
+            set(
+                document,
+                "supervisor.observation_interval_s",
+                toml::Value::Integer(3),
+            );
+            let mut table = toml::Table::new();
+            table.insert("snapshot_url".to_owned(), toml::Value::String(camera.url()));
+            set(document, "camera", toml::Value::Table(table));
+        },
+    )
+    .await;
+    let print_id = world.open_print().await;
+
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert!(
+        observation_turns(&agent, print_id).is_empty(),
+        "an observation was taken before one interval had passed"
+    );
+    observed(&agent, print_id, 1).await;
+    world.server.stop().await;
+}
+
+/// A server that has stopped observes nothing more.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stopped_server_observes_nothing_more() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let world = observing(RecordingPrinter::printing(), Arc::clone(&agent), &camera).await;
+    let print_id = world.open_print().await;
+    observed(&agent, print_id, 1).await;
+
+    let World { server, stores, .. } = world;
+    server.stop().await;
+    // An observation already being written as the server stopped finishes.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let count = |stores: &printobserver_core::Stores| {
+        let stores = stores.clone();
+        async move {
+            stores
+                .events
+                .history(HistoryQuery {
+                    print_id,
+                    kinds: Vec::new(),
+                    since: None,
+                    until: None,
+                    limit: Some(500),
+                })
+                .await
+                .expect("the history reads")
+                .iter()
+                .filter(|event| event.payload_as::<PeriodicObservationPayload>().is_some())
+                .count()
+        }
+    };
+    let stopped_at = count(&stores).await;
+    tokio::time::sleep(SEVERAL_INTERVALS).await;
+    assert_eq!(
+        count(&stores).await,
+        stopped_at,
+        "a stopped server went on observing"
+    );
+}
+
 /// A camera that gives no frame is recorded against the observation, and the
 /// turn still runs on the printer's telemetry.
 #[tokio::test(flavor = "multi_thread")]

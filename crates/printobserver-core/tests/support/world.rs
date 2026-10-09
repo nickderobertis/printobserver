@@ -15,10 +15,15 @@ use printobserver_types::{
     EventBody, EventKind, EventPayload, EventRecord, EventSource, PrintId, Range, RawBytes,
     Timestamp,
 };
-use printobserver_vision_api::{MalformedExternalEventPayload, NormalizedAlert, ProviderPrint};
+use printobserver_vision_api::{
+    MalformedExternalEventPayload, NormalizedAlert, ProviderPrint, WebAddress,
+};
 
 use crate::fakes::{FakeClock, FakePrinter, FakeStore, FakeSupervisor, FakeVision};
 use crate::journal::Journal;
+
+/// Where the camera of [`World::with_camera`] answers.
+pub const CAMERA_URL: &str = "http://camera.local/frame.jpeg";
 
 /// The instant the fake clock starts at.
 pub const EPOCH_SECONDS: i64 = 1_700_000_000;
@@ -104,8 +109,27 @@ impl World {
         Self::built(permissive_envelope(), false)
     }
 
+    /// A world under the permissive envelope whose camera answers at a fixed
+    /// address, served by the vision port.
+    #[must_use]
+    pub fn with_camera() -> Self {
+        Self::configured(permissive_envelope(), true, |config| {
+            config.camera_snapshot_url =
+                Some(WebAddress::new(CAMERA_URL).expect("the camera's address is one"));
+        })
+    }
+
     /// A world under one envelope, its turn authority installed or not.
     fn built(envelope: SafetyEnvelope, authority: bool) -> Self {
+        Self::configured(envelope, authority, |_| {})
+    }
+
+    /// A world under one envelope and a configuration one journey edits.
+    fn configured(
+        envelope: SafetyEnvelope,
+        authority: bool,
+        edit: impl FnOnce(&mut CoreConfig),
+    ) -> Self {
         let journal = Arc::new(Journal::default());
         let clock = Arc::new(FakeClock::new(EPOCH_SECONDS));
         let store = Arc::new(FakeStore::new(Arc::clone(&journal), Arc::clone(&clock)));
@@ -123,6 +147,7 @@ impl World {
             ),
         );
         config.expiry_poll = Duration::from_millis(5);
+        edit(&mut config);
         let core = Supervisor::new(
             config,
             Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,

@@ -791,6 +791,56 @@ def test_bounds_that_are_not_a_range_are_refused(monkeypatch: pytest.MonkeyPatch
         shutil.rmtree(config.parent)
 
 
+def test_the_observation_interval_is_the_configurations_or_the_cores_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An observation says the interval the configuration sets, and otherwise the core's default."""
+    core = (REPO / "crates/printobserver-core/src/config.rs").read_text(encoding="utf-8")
+    declared = re.search(
+        r"DEFAULT_OBSERVATION_INTERVAL: Duration = Duration::from_secs\((\d+)\)", core
+    )
+    expect.truth(declared is not None, describing="the core's declared default")
+    expect.equal(
+        real_prints.observation_interval_s(),
+        int(declared[1]) if declared else None,
+        describing="the shipped configuration's interval, which sets none",
+    )
+    shipped = real_prints.SERVICE_CONFIG.read_text(encoding="utf-8")
+    configured = tmp_path / "service-config.toml"
+    configured.write_text(
+        shipped.replace("[supervisor]\n", "[supervisor]\nobservation_interval_s = 45\n", 1),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(real_prints, "SERVICE_CONFIG", configured)
+    expect.equal(real_prints.observation_interval_s(), 45, describing="a configured interval")
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "1.5", "true", '"120"'])
+def test_an_observation_interval_that_is_not_a_positive_whole_number_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, value: str
+) -> None:
+    """A configured interval that is not a positive whole number of seconds is refused, not used."""
+    configured = tmp_path / "service-config.toml"
+    configured.write_text(f"[supervisor]\nobservation_interval_s = {value}\n", encoding="utf-8")
+    monkeypatch.setattr(real_prints, "SERVICE_CONFIG", configured)
+    with pytest.raises(ValueError, match="not a positive whole number"):
+        real_prints.observation_interval_s()
+
+
+def test_a_core_default_that_cannot_be_read_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With no interval configured, a core that no longer declares its default is refused."""
+    configured = tmp_path / "service-config.toml"
+    configured.write_text("[supervisor]\n", encoding="utf-8")
+    core = tmp_path / "config.rs"
+    core.write_text("pub const DEFAULT_OBSERVATION_INTERVAL: Duration = TWO_MINUTES;\n")
+    monkeypatch.setattr(real_prints, "SERVICE_CONFIG", configured)
+    monkeypatch.setattr(real_prints, "CORE_CONFIG", core)
+    with pytest.raises(ValueError, match="DEFAULT_OBSERVATION_INTERVAL"):
+        real_prints.observation_interval_s()
+
+
 def test_a_command_on_a_later_line_is_still_read() -> None:
     """A line break ends a command as a separator does; quoted or escaped, it does not."""
     ran = commands_in(

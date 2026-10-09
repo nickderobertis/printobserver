@@ -568,11 +568,13 @@ class _Composer:
         """
         received = self.now - timedelta(seconds=20)
         reading = _reading(self.scenario, self.scenario.event_image, paused_by_detector=False)
+        # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
         payload = {
             "interval_s": observation_interval_s(),
             "job": _job(reading, self.file_name),
             "printer": _printer(reading, _instant(received)),
         }
+        # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
         return {
             "id": _id(),
             "image": {"id": image.id, "sha256": image.sha256},
@@ -643,6 +645,7 @@ class _Composer:
         return [*reversed(recorded[position + 1 :]), event]
 
     def print_record(self) -> dict[str, Any]:
+        # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
         record: dict[str, Any] = {
             "file_name": self.file_name,
             "id": self.print_id,
