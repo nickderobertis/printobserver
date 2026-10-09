@@ -99,6 +99,9 @@ def test_the_suppression_check_takes_a_base_revision(tree: Callable[[], Tree]) -
     allowed = tree()
     for args in (
         ["init", "-q", "-b", "main"],
+        # The scan walks `.git` too: no detached repack may empty it meanwhile.
+        ["config", "maintenance.auto", "false"],
+        ["config", "gc.auto", "0"],
         ["config", "user.email", "test@example.com"],
         ["config", "user.name", "test"],
         ["add", "-A"],
