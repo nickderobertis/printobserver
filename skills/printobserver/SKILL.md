@@ -49,8 +49,8 @@ of each to follow as written.
    bounds, the rejections and what happens when a bounded change expires. If
    nothing should change, ask for nothing. After acting, look again to see
    whether it helped.
-6. **Record what you saw.** Acknowledge the event you were handed, with
-   a reason that says what you saw and what you made of it: disposition
+6. **Record what you saw.** Acknowledge this turn's failure or observation,
+   with a reason that says what you saw and what you made of it: disposition
    continue when nothing is wrong, a false alarm included; watch when something
    may be going wrong; stop when the print should stop. It asks nothing of the
    machine.
