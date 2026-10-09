@@ -19,6 +19,7 @@ use crate::agent::StandInAgent;
 use crate::http_host::{Host, image_host};
 use crate::ingress::snapshot_bytes;
 use crate::printer::RecordingPrinter;
+use crate::refusing_prints::RefusingPrints;
 use crate::world::{World, set};
 
 /// The interval every journey here observes at, in seconds.
@@ -330,6 +331,87 @@ async fn a_server_that_has_gone_observes_nothing_more() {
         );
         drop(root);
     }
+}
+
+/// The interval journeys here observe at, as a configuration edit, with the
+/// camera at `camera`.
+fn every(seconds: i64, camera: &Host) -> impl FnOnce(&mut toml::Value) {
+    let url = camera.url();
+    move |document| {
+        set(
+            document,
+            "supervisor.observation_interval_s",
+            toml::Value::Integer(seconds),
+        );
+        let mut table = toml::Table::new();
+        table.insert("snapshot_url".to_owned(), toml::Value::String(url));
+        set(document, "camera", toml::Value::Table(table));
+    }
+}
+
+/// A round slower than the interval is followed by a whole interval, not by
+/// rounds making up for the ones it overran: each observation is written at
+/// least the camera's delay and one interval after the one before it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_round_is_followed_by_a_whole_interval() {
+    let dwell = Duration::from_millis(1_500);
+    let camera = Host::dwelling(dwell, "200 OK", "image/jpeg", snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let world = World::configured(
+        RecordingPrinter::printing(),
+        Arc::clone(&agent),
+        every(1, &camera),
+    )
+    .await;
+    let print_id = world.open_print().await;
+
+    let turns = observed(&agent, print_id, 3).await;
+
+    let interval = Duration::from_secs(1);
+    for pair in turns.windows(2) {
+        let apart = *pair[1].event.received_at.as_utc() - *pair[0].event.received_at.as_utc();
+        let apart = apart.to_std().expect("observations are written in order");
+        assert!(
+            apart + Duration::from_millis(100) >= dwell + interval,
+            "two observations were written {apart:?} apart, under a slow round and an interval"
+        );
+    }
+    world.server.stop().await;
+}
+
+/// A round the store refuses claims nothing, and the running server observes
+/// again on a later interval once the store answers.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_round_the_store_refused_is_followed_by_one_that_observes() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let mut refusing = None;
+    let world = World::configured_over(
+        RecordingPrinter::printing(),
+        Arc::clone(&agent),
+        every(1, &camera),
+        |mut stores| {
+            let prints = RefusingPrints::over(Arc::clone(&stores.prints));
+            stores.prints = Arc::clone(&prints) as Arc<dyn printobserver_core::store::PrintStore>;
+            refusing = Some(prints);
+            stores
+        },
+    )
+    .await;
+    let refusing = refusing.expect("the stores were composed");
+    let print_id = world.open_print().await;
+    // Refused once the server is up, because its start reads the open prints
+    // too, and a start the store refuses is a server that never came up.
+    refusing.refusing(true);
+
+    tokio::time::sleep(SEVERAL_INTERVALS).await;
+    assert!(
+        observation_turns(&agent, print_id).is_empty(),
+        "a round the store refused observed"
+    );
+    refusing.refusing(false);
+    observed(&agent, print_id, 1).await;
+    world.server.stop().await;
 }
 
 /// A camera that gives no frame is recorded against the observation, and the

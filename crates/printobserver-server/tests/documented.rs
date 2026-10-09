@@ -9,11 +9,17 @@
 //! it, so a constant that moves without its documents fails this rather than
 //! leaving the agent working to a number the program no longer keeps.
 //!
+//! The architecture reference's inventory of the event kinds and the crate
+//! declaring each is held to the checked-in schemas, whose `x-event-kind`
+//! markers are written from each payload's own `KIND` and gated against the
+//! types by the contracts' generation target.
+//!
 //! The service configurations an operator edits — the two installers' and the
 //! real-print cases' — state the periodic observation's default interval
 //! beside its key, and are held to the server's
 //! `DEFAULT_OBSERVATION_INTERVAL_S` the same way.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use printobserver_core::{DEFAULT_DETECTOR_RESUME_GRACE, MAX_LOOK_WAIT_S};
@@ -136,4 +142,107 @@ fn every_stated_observation_interval_is_the_servers_default() {
             );
         }
     }
+}
+
+/// One count the way the architecture reference writes it, as a word.
+fn counted(count: usize) -> &'static str {
+    const WORDS: [&str; 21] = [
+        "Zero",
+        "One",
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "Seven",
+        "Eight",
+        "Nine",
+        "Ten",
+        "Eleven",
+        "Twelve",
+        "Thirteen",
+        "Fourteen",
+        "Fifteen",
+        "Sixteen",
+        "Seventeen",
+        "Eighteen",
+        "Nineteen",
+        "Twenty",
+    ];
+    WORDS.get(count).copied().unwrap_or_else(|| {
+        panic!("{count} kinds: spell the count here and in the architecture reference")
+    })
+}
+
+/// Every event kind the checked-in schemas declare, by the crate declaring it.
+fn declared_kinds() -> BTreeMap<String, BTreeSet<String>> {
+    let schemas = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
+    let mut found: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for crate_dir in std::fs::read_dir(&schemas).expect("the schemas read") {
+        let crate_dir = crate_dir.expect("a schema directory").path();
+        let Some(owner) = crate_dir.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Ok(files) = std::fs::read_dir(&crate_dir) else {
+            continue;
+        };
+        for file in files {
+            let path = file.expect("a schema file").path();
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{} reads: {error}", path.display()));
+            let Ok(schema) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            if let Some(kind) = schema[printobserver_types::EVENT_KIND_MARKER].as_str() {
+                found
+                    .entry(owner.to_owned())
+                    .or_default()
+                    .insert(kind.to_owned());
+            }
+        }
+    }
+    found
+}
+
+/// Every name between backticks in one clause, in order.
+fn quoted(clause: &str) -> Vec<String> {
+    clause
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The architecture reference's inventory of the event kinds — how many, and
+/// which crate declares each — is the one the checked-in schemas declare.
+#[test]
+fn the_stated_event_kinds_are_the_ones_the_schemas_declare() {
+    let declared = declared_kinds();
+    let total: usize = declared.values().map(BTreeSet::len).sum();
+    let text = document("reference/architecture.md");
+    let opening = format!(
+        "{} kinds are declared today, each by its owner: ",
+        counted(total)
+    );
+    let start = text
+        .find(&opening)
+        .unwrap_or_else(|| panic!("the architecture reference no longer says `{opening}`"))
+        + opening.len();
+    let passage = &text[start..];
+    let passage = &passage[..passage
+        .find(". ")
+        .expect("the inventory ends with its sentence")];
+    let stated: BTreeMap<String, BTreeSet<String>> = passage
+        .split(';')
+        .filter_map(|clause| {
+            let mut names = quoted(clause).into_iter();
+            let owner = names.next()?;
+            Some((owner, names.collect()))
+        })
+        .collect();
+    assert_eq!(
+        stated, declared,
+        "the architecture reference's event kinds are not the ones the schemas declare"
+    );
 }

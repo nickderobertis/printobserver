@@ -15,6 +15,8 @@ mod http_host;
 mod printer;
 #[path = "support/probes.rs"]
 mod probes;
+#[path = "support/refusing_prints.rs"]
+mod refusing_prints;
 #[path = "support/world.rs"]
 mod world;
 

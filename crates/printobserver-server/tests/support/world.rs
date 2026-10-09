@@ -196,12 +196,23 @@ impl World {
         agent: Arc<StandInAgent>,
         edit: impl FnOnce(&mut toml::Value),
     ) -> Self {
+        Self::configured_over(printer, agent, edit, |stores| stores).await
+    }
+
+    /// The same, with the durable stores as one journey stands something
+    /// between them and the server.
+    pub async fn configured_over(
+        printer: Arc<RecordingPrinter>,
+        agent: Arc<StandInAgent>,
+        edit: impl FnOnce(&mut toml::Value),
+        between: impl FnOnce(Stores) -> Stores,
+    ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let mut configured = document(root.path(), "http://127.0.0.1:1");
         edit(&mut configured);
         let path = write(root.path(), &configured);
         let config = ServerConfig::load(&path).expect("the base configuration is accepted");
-        let (server, stores) = start(&config, &printer, &agent).await;
+        let (server, stores) = start(&config, &printer, &agent, between).await;
         let credential = OPERATOR.to_owned();
         Self {
             root,
@@ -230,7 +241,7 @@ impl World {
         } = self;
         let config = server.config().clone();
         server.stop().await;
-        let (server, stores) = start(&config, &printer, &agent).await;
+        let (server, stores) = start(&config, &printer, &agent, |stores| stores).await;
         Self {
             root,
             server,
@@ -383,15 +394,17 @@ async fn read(response: reqwest::Response) -> (reqwest::StatusCode, serde_json::
     (status, value)
 }
 
-/// Start one server over the ports a journey supplies.
+/// Start one server over the ports a journey supplies, with whatever it
+/// stands between the durable stores and the server.
 async fn start(
     config: &ServerConfig,
     printer: &Arc<RecordingPrinter>,
     agent: &Arc<StandInAgent>,
+    between: impl FnOnce(Stores) -> Stores,
 ) -> (Running, Stores) {
-    let stores = Stores::of(Arc::new(
+    let stores = between(Stores::of(Arc::new(
         SqliteStore::open(&config.state_dir).expect("the store opens on the state directory"),
-    ));
+    )));
     let vision = Arc::new(
         ObicoVision::new(ObicoVisionConfig::default())
             .expect("the adapter is built")
