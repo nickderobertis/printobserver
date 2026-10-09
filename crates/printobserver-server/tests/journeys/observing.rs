@@ -270,45 +270,66 @@ async fn the_first_observation_waits_one_interval() {
     world.server.stop().await;
 }
 
-/// A server that has stopped observes nothing more.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_stopped_server_observes_nothing_more() {
-    let camera = image_host(snapshot_bytes()).await;
-    let agent = StandInAgent::new();
-    let world = observing(RecordingPrinter::printing(), Arc::clone(&agent), &camera).await;
-    let print_id = world.open_print().await;
-    observed(&agent, print_id, 1).await;
+/// How many observations one print's history holds, read from the stores
+/// alone, so that it can be read after the server has gone.
+async fn observations_held(stores: &printobserver_core::Stores, print_id: PrintId) -> usize {
+    stores
+        .events
+        .history(HistoryQuery {
+            print_id,
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            limit: Some(500),
+        })
+        .await
+        .expect("the history reads")
+        .iter()
+        .filter(|event| event.payload_as::<PeriodicObservationPayload>().is_some())
+        .count()
+}
 
-    let World { server, stores, .. } = world;
-    server.stop().await;
-    // An observation already being written as the server stopped finishes.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let count = |stores: &printobserver_core::Stores| {
-        let stores = stores.clone();
-        async move {
-            stores
-                .events
-                .history(HistoryQuery {
-                    print_id,
-                    kinds: Vec::new(),
-                    since: None,
-                    until: None,
-                    limit: Some(500),
-                })
-                .await
-                .expect("the history reads")
-                .iter()
-                .filter(|event| event.payload_as::<PeriodicObservationPayload>().is_some())
-                .count()
+/// Whether the server goes by being stopped or by its handle being dropped.
+#[derive(Debug, Clone, Copy)]
+enum Going {
+    /// `Running::stop`, which the service's own shutdown takes.
+    Stopped,
+    /// The last handle dropped, with nobody stopping it.
+    Dropped,
+}
+
+/// A server that has gone — stopped, or its last handle dropped with nobody
+/// stopping it — observes nothing more.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_that_has_gone_observes_nothing_more() {
+    for going in [Going::Stopped, Going::Dropped] {
+        let camera = image_host(snapshot_bytes()).await;
+        let agent = StandInAgent::new();
+        let world = observing(RecordingPrinter::printing(), Arc::clone(&agent), &camera).await;
+        let print_id = world.open_print().await;
+        observed(&agent, print_id, 1).await;
+
+        let World {
+            server,
+            stores,
+            root,
+            ..
+        } = world;
+        match going {
+            Going::Stopped => server.stop().await,
+            Going::Dropped => drop(server),
         }
-    };
-    let stopped_at = count(&stores).await;
-    tokio::time::sleep(SEVERAL_INTERVALS).await;
-    assert_eq!(
-        count(&stores).await,
-        stopped_at,
-        "a stopped server went on observing"
-    );
+        // An observation already being written as the server went finishes.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let gone_at = observations_held(&stores, print_id).await;
+        tokio::time::sleep(SEVERAL_INTERVALS).await;
+        assert_eq!(
+            observations_held(&stores, print_id).await,
+            gone_at,
+            "a server that was {going:?} went on observing"
+        );
+        drop(root);
+    }
 }
 
 /// A camera that gives no frame is recorded against the observation, and the

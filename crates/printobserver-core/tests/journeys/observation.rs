@@ -21,9 +21,23 @@ use crate::fakes::{PrinterMethod, StoreMethod};
 use crate::journal::Call;
 use crate::world::{World, failure_alert};
 
-/// Observe every active print once, as one tick of the driver does.
+/// Observe every active print once, as one round of the driver does, and
+/// answer the turns it claimed.
 fn observe(world: &World) -> Vec<PendingTurn> {
-    block_on(world.core.observe_active_prints()).expect("the observation is written down")
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(
+        observed.refused.is_empty(),
+        "an observation was refused: {:?}",
+        observed.refused
+    );
+    observed.turns
+}
+
+/// What the store says when it has failed.
+fn disk_full() -> StoreError {
+    StoreError::Io {
+        detail: "the disk is full".to_owned(),
+    }
 }
 
 /// Observe once and run every turn it claimed.
@@ -258,12 +272,7 @@ fn a_frame_that_is_not_had_is_recorded_against_the_observation() {
         if failing == "camera" {
             world.vision.fails(VisionError::TimedOut);
         } else {
-            world.store.fails(
-                StoreMethod::PutImage,
-                StoreError::Io {
-                    detail: "the disk is full".to_owned(),
-                },
-            );
+            world.store.fails(StoreMethod::PutImage, disk_full());
         }
 
         assert_eq!(observe_and_supervise(&world), 1, "{failing}");
@@ -278,27 +287,22 @@ fn a_frame_that_is_not_had_is_recorded_against_the_observation() {
     }
 }
 
-/// An observation the store will not write down claims no turn and answers
-/// the store's own error; the print is released, so the next interval
-/// observes it once the store has recovered.
+/// An observation the store will not write down claims no turn and is
+/// answered with the store's own error; the print is released, so the next
+/// round observes it once the store has recovered.
 #[test]
 fn an_observation_that_cannot_be_written_down_claims_nothing() {
     let world = World::new();
     let print = world.open_print(7);
-    world.store.fails(
-        StoreMethod::AppendEvent,
-        StoreError::Io {
-            detail: "the disk is full".to_owned(),
-        },
-    );
+    world.store.fails(StoreMethod::AppendEvent, disk_full());
 
-    let refused = block_on(world.core.observe_active_prints());
+    let observed = block_on(world.core.observe_active_prints()).expect("the prints are read");
 
-    assert!(
-        refused.is_err(),
-        "a lost observation was answered as written"
+    assert!(observed.turns.is_empty());
+    assert_eq!(
+        observed.refused,
+        [(print.id, printobserver_core::CoreError::Store(disk_full()))]
     );
-    assert!(world.agent.turns().is_empty());
     world.store.heals();
     assert_eq!(
         observe_and_supervise(&world),
@@ -308,42 +312,111 @@ fn an_observation_that_cannot_be_written_down_claims_nothing() {
     assert_eq!(observations(&world, print.id).len(), 1);
 }
 
-/// An alert handed to the print while its observation was being written, and
-/// lost with that observation, is not lost with it: it is answered as a turn
-/// of its own.
+/// One print's observation refused stops no other: the round answers the turn
+/// it claimed for the print it could write down, and leaves neither print
+/// claimed once that turn has run.
 #[test]
-fn an_alert_handed_over_while_an_observation_failed_is_given_its_turn() {
+fn one_refused_observation_stops_no_other() {
+    let world = World::new();
+    let written = world.open_print(7);
+    let refused = block_on(printobserver_core::store::PrintStore::open_print(
+        world.store.as_ref(),
+        Some(8),
+        Some("other.gcode".to_owned()),
+    ))
+    .expect("a print opens");
+    // An unreadable job leaves both open prints candidates.
+    world.printer.fails(
+        PrinterMethod::Job,
+        PrinterError::Unreachable {
+            detail: "the machine is switched off".to_owned(),
+        },
+    );
+    world.store.refuses_appends_for(refused.id, disk_full());
+
+    let observed = block_on(world.core.observe_active_prints()).expect("the prints are read");
+
+    assert_eq!(
+        observed.refused,
+        [(
+            refused.id,
+            printobserver_core::CoreError::Store(disk_full())
+        )]
+    );
+    assert_eq!(observed.turns.len(), 1);
+    for turn in observed.turns {
+        block_on(world.core.run_supervision(turn)).expect("the turn is supervised");
+    }
+    assert_eq!(world.agent.turns()[0].print_id, written.id);
+    world.store.heals();
+    assert_eq!(observe_and_supervise(&world), 2, "a print was left claimed");
+}
+
+/// Open prints the store will not read are a round that claims nothing and
+/// answers the store's own error; the next round, once it has recovered,
+/// observes them.
+#[test]
+fn a_round_whose_prints_cannot_be_read_claims_nothing() {
+    let world = World::new();
+    let print = world.open_print(7);
+    world.store.fails(StoreMethod::OpenPrints, disk_full());
+
+    let refused = block_on(world.core.observe_active_prints());
+
+    assert_eq!(
+        refused.err(),
+        Some(printobserver_core::CoreError::Store(disk_full()))
+    );
+    assert!(observations(&world, print.id).is_empty());
+    world.store.heals();
+    assert_eq!(
+        observe_and_supervise(&world),
+        1,
+        "the print was left claimed"
+    );
+}
+
+/// Alerts handed to the print while its observation was being written, and
+/// lost with that observation, are not lost with it: the newest is answered as
+/// a turn of its own, carrying the earlier one as what arrived while busy.
+#[test]
+fn alerts_handed_over_while_an_observation_failed_are_given_their_turn() {
     let world = World::new();
     let print = world.open_print(7);
     world.store.holds_appends_of(observation_kind());
-    let turns = std::thread::scope(|scope| {
+    let (alerts, observed) = std::thread::scope(|scope| {
         let observing = scope.spawn(|| block_on(world.core.observe_active_prints()));
         world.store.await_a_held_append();
-        let received = block_on(world.core.receive_event(failure_alert(7)))
-            .expect("the alert is written down");
-        assert!(received.turn.is_none(), "the alert claimed a claimed print");
-        world.store.fails(
-            StoreMethod::AppendEvent,
-            StoreError::Io {
-                detail: "the disk is full".to_owned(),
-            },
-        );
+        let mut alerts = Vec::new();
+        for _ in 0..2 {
+            let received = block_on(world.core.receive_event(failure_alert(7)))
+                .expect("the alert is written down");
+            assert!(received.turn.is_none(), "the alert claimed a claimed print");
+            alerts.push(received.event.id);
+        }
+        world.store.fails(StoreMethod::AppendEvent, disk_full());
         world.store.lets_appends_through();
-        let turns = observing.join().expect("the observation ends");
+        let observed = observing.join().expect("the observation ends");
         world.store.heals();
-        (
-            received.event.id,
-            turns.expect("the alert is answered as a turn"),
-        )
+        (alerts, observed.expect("the prints are read"))
     });
-    let (alert, claimed) = turns;
-    assert_eq!(claimed.len(), 1);
-    for turn in claimed {
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    assert_eq!(observed.turns.len(), 1);
+    for turn in observed.turns {
         block_on(world.core.run_supervision(turn)).expect("the turn is supervised");
     }
 
     let handed = world.agent.turns();
     assert_eq!(handed.len(), 1);
-    assert_eq!(handed[0].event.id, alert);
+    assert_eq!(handed[0].event.id, alerts[1]);
+    assert_eq!(
+        handed[0]
+            .situation
+            .arrived_while_busy
+            .iter()
+            .map(|event| event.id)
+            .collect::<Vec<_>>(),
+        [alerts[0]]
+    );
     assert!(observations(&world, print.id).is_empty());
 }

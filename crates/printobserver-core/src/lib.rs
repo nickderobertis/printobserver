@@ -90,6 +90,7 @@ pub use kinds::{
     system_source,
 };
 pub use look::Look;
+pub use observation::Observed;
 pub use records::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
     ActorClass, EffectiveBounds, ExecutionOutcome, ImageRecord, Intervention, InterventionId,

@@ -3,9 +3,11 @@
 //! Core decides which prints are owed an observation and writes each one down
 //! ([`Supervisor::observe_active_prints`]); this is what asks it to, once per
 //! [`CoreConfig::observation_interval`](printobserver_core::CoreConfig), and
-//! runs each turn an observation claimed. The first observation is one
-//! interval after the server starts rather than at the start, so a restart is
-//! not itself a reason to look.
+//! runs each turn an observation claimed. Each round waits one interval after
+//! the last one finished, as the expiry driver sleeps between its sweeps: the
+//! first is one interval after the server starts rather than at the start, so a
+//! restart is not itself a reason to look, and a slow round is followed by an
+//! interval rather than by a burst of rounds making up for it.
 //!
 //! # Why it lives in the server rather than beside the expiry driver
 //!
@@ -26,19 +28,14 @@ use std::sync::{Arc, Weak};
 
 use printobserver_core::Supervisor;
 use tokio::task::JoinHandle;
-use tokio::time::{Instant, MissedTickBehavior};
 
 /// Start observing every active print once per the supervisor's interval.
 pub fn start(supervisor: &Arc<Supervisor>) -> JoinHandle<()> {
     let interval = supervisor.config().observation_interval;
     let weak: Weak<Supervisor> = Arc::downgrade(supervisor);
     tokio::spawn(async move {
-        let mut ticks = tokio::time::interval_at(Instant::now() + interval, interval);
-        // An observation that took longer than the interval is followed by the
-        // next one an interval later, not by a burst making up the ones missed.
-        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
-            ticks.tick().await;
+            tokio::time::sleep(interval).await;
             let Some(supervisor) = weak.upgrade() else {
                 return;
             };
@@ -48,10 +45,13 @@ pub fn start(supervisor: &Arc<Supervisor>) -> JoinHandle<()> {
             })
             .await;
             debug_assert!(observed.is_ok(), "one periodic observation panicked");
-            let Ok(Ok(turns)) = observed else {
+            // A round the store refused claimed nothing, and a print whose
+            // observation it refused claimed no turn: the next round tries
+            // again, and there is nobody to answer either to here.
+            let Ok(Ok(observed)) = observed else {
                 continue;
             };
-            for turn in turns {
+            for turn in observed.turns {
                 let runner = Arc::clone(&supervisor);
                 tokio::spawn(async move {
                     let supervised = tokio::task::spawn_blocking(move || {

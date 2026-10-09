@@ -42,7 +42,7 @@
 //! for its frame only once the event is there to record a refusal against.
 
 use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterSnapshot};
-use printobserver_types::EventBody;
+use printobserver_types::{EventBody, PrintId};
 
 use crate::error::CoreError;
 use crate::events::{PendingTurn, TERMINAL_STATES};
@@ -51,24 +51,43 @@ use crate::kinds::{PeriodicObservationPayload, PortFailureSite};
 use crate::records::PrintRecord;
 use crate::supervisor::Supervisor;
 
+/// What one round of observations claimed, and what it could not write down.
+#[derive(Debug, Default)]
+pub struct Observed {
+    /// The turns the observations claimed, each to be run by
+    /// [`Supervisor::run_supervision`]: a turn claimed and never run leaves its
+    /// print claimed.
+    pub turns: Vec<PendingTurn>,
+    /// Each print whose observation the store would not write down, with the
+    /// store's own error. Such a print claimed no turn, and the next round
+    /// observes it again.
+    pub refused: Vec<(PrintId, CoreError)>,
+}
+
 impl Supervisor {
     /// Observe every active print nobody is watching, and answer the turns
-    /// those observations claimed, to be run by
-    /// [`Supervisor::run_supervision`].
+    /// those observations claimed.
+    ///
+    /// One print's observation that could not be written down is answered in
+    /// [`Observed::refused`] and stops no other: every turn the round claimed
+    /// is answered, because a claimed turn nobody runs is a print no later
+    /// event could reach.
     ///
     /// # Errors
     ///
     /// Returns the store's own error when the open prints could not be read or
-    /// settled, or an observation could not be written down. An observation
-    /// that could not be written down claims no turn.
-    pub async fn observe_active_prints(&self) -> Result<Vec<PendingTurn>, CoreError> {
-        let mut turns = Vec::new();
+    /// settled, before any print was claimed.
+    pub async fn observe_active_prints(&self) -> Result<Observed, CoreError> {
+        let mut observed = Observed::default();
         for print in self.prints_to_observe().await? {
-            if let Some(turn) = self.observe(print).await? {
-                turns.push(turn);
+            let print_id = print.id;
+            match self.observe(print).await {
+                Ok(Some(turn)) => observed.turns.push(turn),
+                Ok(None) => {}
+                Err(error) => observed.refused.push((print_id, error)),
             }
         }
-        Ok(turns)
+        Ok(observed)
     }
 
     /// The open prints an observation is owed to, once the printer's job has

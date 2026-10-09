@@ -304,6 +304,8 @@ pub enum StoreMethod {
     AppendEvent,
     /// `put_image`.
     PutImage,
+    /// `open_prints`, which settling and observing read.
+    OpenPrints,
 }
 
 /// Everything the fake store holds.
@@ -417,6 +419,8 @@ pub struct FakeStore {
     reads_of_the_prints: Meeting,
     /// Where appends of one kind wait to be let through, when armed.
     appends: AppendGate,
+    /// The one print whose appends are refused, and how, when one is.
+    refused_print: Mutex<Option<(PrintId, StoreError)>>,
 }
 
 impl FakeStore {
@@ -437,6 +441,7 @@ impl FakeStore {
             root,
             reads_of_the_prints: Meeting::default(),
             appends: AppendGate::default(),
+            refused_print: Mutex::new(None),
         }
     }
 
@@ -480,9 +485,16 @@ impl FakeStore {
             .insert(method, error);
     }
 
+    /// Refuse every append for one print with one error from now on, and
+    /// write every other print's.
+    pub fn refuses_appends_for(&self, print_id: PrintId, error: StoreError) {
+        *self.refused_print.lock().expect("the store holds") = Some((print_id, error));
+    }
+
     /// Stop failing every method.
     pub fn heals(&self) {
         self.failures.lock().expect("the store holds").clear();
+        *self.refused_print.lock().expect("the store holds") = None;
     }
 
     /// The failure induced at one method, if one is.
@@ -649,6 +661,9 @@ impl PrintStore for FakeStore {
         &self,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {
         self.journal.record(Call::ReadOpenPrints);
+        if let Some(error) = self.induced(StoreMethod::OpenPrints) {
+            return Box::pin(async move { Err(error) });
+        }
         let found: Vec<PrintRecord> = self
             .newest_first()
             .into_iter()
@@ -806,6 +821,15 @@ impl EventStore for FakeStore {
         self.appends.pass(draft.kind());
         if let Some(error) = self.induced(StoreMethod::AppendEvent) {
             return ready(Err(error));
+        }
+        if let Some((_, error)) = self
+            .refused_print
+            .lock()
+            .expect("the store holds")
+            .as_ref()
+            .filter(|(refused, _)| draft.print_id == Some(*refused))
+        {
+            return ready(Err(error.clone()));
         }
         let record = EventRecord {
             id: EventId::new(),
