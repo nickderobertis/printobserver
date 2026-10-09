@@ -232,6 +232,17 @@ impl RecordingPrinter {
         held.job.state = state;
     }
 
+    /// Report `state` as the printer's own while its job goes on reporting
+    /// what it did, as a firmware that faulted under a host still reporting
+    /// the job does.
+    pub fn reports_connection(&self, state: PrinterState) {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .snapshot
+            .connection = state;
+    }
+
     /// Run `file` in `state`, reporting `print_time_s` as its running time.
     ///
     /// The running time is what tells one job of a file from another, so this

@@ -16,11 +16,12 @@ use printobserver_supervisor_api::TurnRequest;
 use printobserver_types::{EventRecord, PrintId, Timestamp};
 
 use crate::agent::StandInAgent;
+use crate::held_events::{self, HeldEvents};
 use crate::http_host::{Host, image_host};
 use crate::ingress::snapshot_bytes;
 use crate::printer::RecordingPrinter;
 use crate::refusing_prints::RefusingPrints;
-use crate::world::{World, set};
+use crate::world::{SECRET, World, failure_alert, set};
 
 /// The interval every journey here observes at, in seconds.
 const INTERVAL_S: i64 = 1;
@@ -470,4 +471,288 @@ async fn the_interval_defaults_to_two_minutes_and_a_configured_one_is_honoured()
         Duration::from_secs(7)
     );
     configured.server.stop().await;
+}
+
+/// A world observing every second over `printer`, with the camera at
+/// `camera` when there is one, whose event log and image store refuse what a
+/// journey tells them to.
+async fn observing_held(
+    printer: Arc<RecordingPrinter>,
+    agent: Arc<StandInAgent>,
+    camera: Option<&Host>,
+) -> (World, Arc<HeldEvents>) {
+    let url = camera.map(Host::url);
+    let mut held = None;
+    let world = World::configured_over(
+        printer,
+        agent,
+        |document| {
+            set(
+                document,
+                "supervisor.observation_interval_s",
+                toml::Value::Integer(INTERVAL_S),
+            );
+            if let Some(url) = url {
+                let mut table = toml::Table::new();
+                table.insert("snapshot_url".to_owned(), toml::Value::String(url));
+                set(document, "camera", toml::Value::Table(table));
+            }
+        },
+        |stores| {
+            let (stores, between) = HeldEvents::over(stores);
+            held = Some(between);
+            stores
+        },
+    )
+    .await;
+    (world, held.expect("the stores were composed"))
+}
+
+/// The port failures one print's history records against one event.
+async fn failures_against(
+    world: &World,
+    print_id: PrintId,
+    event: printobserver_types::EventId,
+) -> Vec<PortFailurePayload> {
+    history(world, print_id)
+        .await
+        .iter()
+        .filter_map(EventRecord::payload_as::<PortFailurePayload>)
+        .map(|payload| payload.expect("of its own type"))
+        .filter(|failure| failure.event_id == event)
+        .collect()
+}
+
+/// A second print open beside the one [`World::open_print`] opens.
+async fn open_another(world: &World) -> PrintId {
+    world
+        .stores
+        .prints
+        .open_print(Some(4300), Some("bracket.gcode".to_owned()))
+        .await
+        .expect("a print opens")
+        .id
+}
+
+/// A printer that answers no read says nothing about which print stopped, so
+/// every open print is observed, each observation carrying no telemetry and
+/// recording both reads that failed against itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_printer_nothing_can_read_leaves_every_open_print_observed() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let printer = RecordingPrinter::printing();
+    let world = observing(Arc::clone(&printer), Arc::clone(&agent), &camera).await;
+    let first = world.open_print().await;
+    let second = open_another(&world).await;
+    printer.unreadable(true);
+
+    for print_id in [first, second] {
+        let turn = observed(&agent, print_id, 1).await.remove(0);
+        let payload = turn
+            .event
+            .payload_as::<PeriodicObservationPayload>()
+            .expect("the turn is on an observation")
+            .expect("of its own type");
+        assert_eq!(payload.printer, None, "telemetry nobody read was carried");
+        assert_eq!(payload.job, None, "a job nobody read was carried");
+        let sites: Vec<PortFailureSite> = failures_against(&world, print_id, turn.event.id)
+            .await
+            .into_iter()
+            .map(|failure| failure.site)
+            .collect();
+        assert!(
+            sites.contains(&PortFailureSite::PrinterSnapshot)
+                && sites.contains(&PortFailureSite::PrinterJob),
+            "the reads that failed were not recorded against the observation: {sites:?}"
+        );
+    }
+    world.server.stop().await;
+}
+
+/// A printer reporting a state no print carries on from is printing nothing,
+/// even while its job still reports itself running: the print is left open and
+/// not observed, and is observed again once the printer reports it printing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_printer_in_a_terminal_state_under_a_running_job_is_not_observed() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let printer = RecordingPrinter::printing();
+    let world = observing(Arc::clone(&printer), Arc::clone(&agent), &camera).await;
+    let print_id = world.open_print().await;
+    printer.reports_connection(PrinterState::Error);
+
+    tokio::time::sleep(SEVERAL_INTERVALS).await;
+    assert!(
+        observations(&world, print_id).await.is_empty(),
+        "a printer in error was observed"
+    );
+    assert!(agent.turns().is_empty(), "{:?}", agent.turns());
+    let held = world
+        .stores
+        .prints
+        .print(print_id)
+        .await
+        .expect("the print reads")
+        .expect("the print is held");
+    assert_eq!(held.ended_at, None, "a print whose job runs was closed");
+
+    printer.reports_connection(PrinterState::Printing);
+    observed(&agent, print_id, 1).await;
+    world.server.stop().await;
+}
+
+/// One print whose observation the store refuses stops no other print's, holds
+/// no claim on its own print, and is observed once the store answers again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_observation_stops_no_other_print_and_is_taken_once_the_store_answers() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let printer = RecordingPrinter::printing();
+    let (world, held) =
+        observing_held(Arc::clone(&printer), Arc::clone(&agent), Some(&camera)).await;
+    let refused = world.open_print().await;
+    let other = open_another(&world).await;
+    // Unread, the printer names neither print the active one, so both are owed
+    // an observation every round.
+    printer.unreadable(true);
+    held.refusing_observations_of(refused, true);
+
+    observed(&agent, other, 2).await;
+    assert!(
+        observation_turns(&agent, refused).is_empty(),
+        "a refused observation was handed to the agent"
+    );
+    assert!(
+        observations(&world, refused).await.is_empty(),
+        "a refused observation was written down"
+    );
+
+    held.refusing_observations_of(refused, false);
+    observed(&agent, refused, 1).await;
+    world.server.stop().await;
+}
+
+/// An alert that arrives for a print while its observation is being written
+/// is handed to the claim that observation holds; when the store then refuses
+/// the observation, the alert is given the turn rather than dropped.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_alert_handed_to_a_refused_observation_is_given_its_turn() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let (world, held) = observing_held(
+        RecordingPrinter::printing(),
+        Arc::clone(&agent),
+        Some(&camera),
+    )
+    .await;
+    let print_id = world.open_print().await;
+    let mut completions = world.server.completions();
+
+    held.hold_the_next_observation().await;
+    let accepted = world
+        .client
+        .post(format!("{}?token={SECRET}", world.server.ingress_url()))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(failure_alert(4211, &camera.url()).to_string())
+        .send()
+        .await
+        .expect("the ingress answers")
+        .status();
+    assert_eq!(accepted, reqwest::StatusCode::ACCEPTED);
+    completions.changed().await.expect("the handling finishes");
+    assert!(
+        agent.turns().is_empty(),
+        "the alert took a turn of its own while the observation held the print"
+    );
+    held.release();
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    let first = loop {
+        if let Some(turn) = agent
+            .turns()
+            .into_iter()
+            .find(|turn| turn.print_id == print_id)
+        {
+            break turn;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the alert handed to the refused observation was never given a turn"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert_eq!(
+        first.event.kind().as_str(),
+        "obico_failure_alert",
+        "the first turn was not the alert's"
+    );
+    world.server.stop().await;
+}
+
+/// With no camera configured, an observation runs on the printer's telemetry
+/// alone, and no camera's failure is recorded against it.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_observation_with_no_camera_runs_on_telemetry_alone() {
+    let agent = StandInAgent::new();
+    let (world, _held) =
+        observing_held(RecordingPrinter::printing(), Arc::clone(&agent), None).await;
+    let print_id = world.open_print().await;
+
+    let turn = observed(&agent, print_id, 1).await.remove(0);
+
+    assert!(
+        turn.event.image.is_none(),
+        "a frame nobody took was carried"
+    );
+    assert!(turn.image_path.is_none());
+    let payload = turn
+        .event
+        .payload_as::<PeriodicObservationPayload>()
+        .expect("the turn is on an observation")
+        .expect("of its own type");
+    assert!(
+        payload.printer.is_some(),
+        "the printer's telemetry is carried"
+    );
+    assert!(
+        failures_against(&world, print_id, turn.event.id)
+            .await
+            .is_empty(),
+        "a failure was recorded against an observation with no camera"
+    );
+    world.server.stop().await;
+}
+
+/// A frame the image store refuses is recorded against the observation, in the
+/// store's own words, and the turn still runs on the printer's telemetry.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_frame_the_store_refuses_is_recorded_against_the_observation() {
+    let camera = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    let (world, held) = observing_held(
+        RecordingPrinter::printing(),
+        Arc::clone(&agent),
+        Some(&camera),
+    )
+    .await;
+    held.refusing_images(true);
+    let print_id = world.open_print().await;
+
+    let turn = observed(&agent, print_id, 1).await.remove(0);
+
+    assert!(
+        turn.event.image.is_none(),
+        "a frame the store refused was carried"
+    );
+    assert!(turn.image_path.is_none());
+    let failures = failures_against(&world, print_id, turn.event.id).await;
+    assert!(
+        failures
+            .iter()
+            .any(|failure| failure.site == PortFailureSite::CameraLook
+                && failure.detail.contains(held_events::DETAIL)),
+        "the refused frame was not recorded against the observation: {failures:?}"
+    );
+    world.server.stop().await;
 }

@@ -9,6 +9,8 @@
 mod agent;
 #[path = "support/failing_store.rs"]
 mod failing_store;
+#[path = "support/held_events.rs"]
+mod held_events;
 #[path = "support/http_host.rs"]
 mod http_host;
 #[path = "support/printer.rs"]
