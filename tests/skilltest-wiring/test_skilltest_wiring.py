@@ -227,6 +227,45 @@ def test_the_triggers_are_the_case_schemas() -> None:
     expect.equal(sorted(get_args(Trigger)), sorted(allowed), describing="the triggers")
 
 
+OBSERVED = [scenario for scenario in SCENARIOS if scenario.trigger == "periodic_observation"]
+
+
+def test_the_faults_no_detector_alerts_on_are_replayed_as_periodic_observations() -> None:
+    """The three faults Obico never alerted on start their turn as the supervisor's observation."""
+    for case in ("fan-cut-bridge", "filament-stall-air-print", "under-extrusion-lace"):
+        expect.contains(
+            {scenario.case for scenario in OBSERVED}, case, describing="the observed cases"
+        )
+
+
+@pytest.mark.parametrize("scenario", OBSERVED, ids=[scenario.test_id for scenario in OBSERVED])
+def test_a_periodic_observation_is_handed_as_core_writes_one(
+    scenario: Scenario, built: dict[str, Built]
+) -> None:
+    """The turn is handed core's observation, carrying the printer and the job, and no detection."""
+    case = built[scenario.test_id]
+    event, situation = case.event, case.situation
+    if event is None or situation is None:
+        pytest.fail(f"{scenario.test_id} hands the agent no observation")
+    path = SCHEMAS / "printobserver-core" / "PeriodicObservationPayload.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    expect.equal(event["kind"], schema["x-event-kind"], describing="the event's kind")
+    expect.equal(event["source"], "system", describing="who raised it")
+    problems = [
+        error.message for error in Draft202012Validator(schema).iter_errors(event["payload"])
+    ]
+    expect.equal(problems, [], describing="the observation's payload")
+    expect.equal(
+        sorted(event["payload"]), ["interval_s", "job", "printer"], describing="its telemetry"
+    )
+    expect.equal(
+        (situation["detector_warned"], situation["detector_paused_the_print"]),
+        (None, None),
+        describing="the detector's part in it",
+    )
+    expect.contains(case.prompt, event["id"], describing="the turn's input")
+
+
 def _spec(case: Built, name: str) -> StubSpec:
     return next(spec for spec in case.stubs if spec.name == name)
 

@@ -370,6 +370,9 @@ def test_a_recorded_alert_in_a_case_with_no_history_is_refused(
     scenario = data["assertions"]["scenarios"][0]
     scenario["trigger"] = "recorded_alert"
     scenario["event_id"] = "01a0e5f7-7e0d-7bd0-b2a9-6cfdfbdf9ce0"
+    # An alert is a detection, which says whether it warned and whether it paused.
+    scenario["detector_warned"] = True
+    scenario["detector_paused_the_print"] = False
     data["assertions"]["scenarios"].append(dict(scenario))
     write_case(copy, "fan-cut-bridge", data)
     result = check("real-prints-scenarios", copy)

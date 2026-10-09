@@ -48,6 +48,7 @@ OBICO_SAMPLE = REPO / "crates" / "printobserver-obico" / "samples" / "obico" / "
 SCHEMAS = REPO / "schemas"
 DECISION = REPO / "crates" / "printobserver-core" / "src" / "decision.rs"
 ADJUSTABLE = REPO / "crates" / "printobserver-printer-api" / "src" / "adjustable.rs"
+CORE_CONFIG = REPO / "crates" / "printobserver-core" / "src" / "config.rs"
 
 LOCK = REPO / "uv.lock"
 #: The locked distribution each upstream program a run drives arrives in.
@@ -108,7 +109,7 @@ def published(program: str) -> bool:
 CaseName = NewType("CaseName", str)
 ScenarioId = NewType("ScenarioId", str)
 EventId = NewType("EventId", str)
-Trigger = Literal["recorded_alert", "synthetic_alert", "start_request"]
+Trigger = Literal["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
 
 
 @dataclass(frozen=True)
@@ -359,6 +360,33 @@ def bounds() -> dict[str, Bound]:
             raise ValueError(msg)
         found[name] = Bound(min=float(low), max=float(high))
     return found
+
+
+def observation_interval_s() -> int:
+    """How often the configuration these prints ran under observes an active print, in seconds.
+
+    The configuration's own `[supervisor] observation_interval_s` when it sets
+    one, and otherwise the core's default, read from the constant that holds it.
+
+    Raises:
+        ValueError: If the configuration sets one that is not a positive whole
+            number, or the core no longer declares its default that way.
+    """
+    config = tomllib.loads(SERVICE_CONFIG.read_text(encoding="utf-8"))
+    configured = config.get("supervisor", {}).get("observation_interval_s")
+    if configured is not None:
+        if isinstance(configured, bool) or not isinstance(configured, int) or configured <= 0:
+            msg = f"{SERVICE_CONFIG}'s observation_interval_s is not a positive whole number"
+            raise ValueError(msg)
+        return configured
+    default = re.search(
+        r"pub const DEFAULT_OBSERVATION_INTERVAL: Duration = Duration::from_secs\((\d+)\);",
+        CORE_CONFIG.read_text(encoding="utf-8"),
+    )
+    if default is None:
+        msg = f"{CORE_CONFIG} no longer declares DEFAULT_OBSERVATION_INTERVAL in whole seconds"
+        raise ValueError(msg)
+    return int(default[1])
 
 
 def shipped_model() -> str | None:

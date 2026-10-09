@@ -55,6 +55,7 @@ from real_prints import (
     commands_in,
     conforming,
     history,
+    observation_interval_s,
     read_case,
     required_steps,
     step_pattern,
@@ -88,6 +89,8 @@ ImageId = NewType("ImageId", str)
 # The detector's alert kind and the look's own, as their crates declare them.
 ALERT = event_kind("ObicoFailureAlertPayload")
 LOOK = event_kind("CameraLookPayload")
+# The supervisor's own scheduled look at an active print, as core declares it.
+OBSERVATION = event_kind("PeriodicObservationPayload")
 
 # What the printer reads when a case records no telemetry of its own: the PLA
 # profile every one of these prints ran at, as both recorded contexts read it
@@ -553,7 +556,34 @@ class _Composer:
         image = self.image(self.scenario.event_image)
         if self.trigger is not None:
             return {**self.trigger, "image": {"id": image.id, "sha256": image.sha256}}
+        if self.scenario.trigger == "periodic_observation":
+            return self._periodic_observation(image)
         return self._synthetic_alert(image)
+
+    def _periodic_observation(self, image: Image) -> dict[str, Any]:
+        """The supervisor's periodic observation, as core writes one: no detector behind it.
+
+        It carries the printer and the job as they read when the frame was
+        taken, and the frame is its image.
+        """
+        received = self.now - timedelta(seconds=20)
+        reading = _reading(self.scenario, self.scenario.event_image, paused_by_detector=False)
+        payload = {
+            "interval_s": observation_interval_s(),
+            "job": _job(reading, self.file_name),
+            "printer": _printer(reading, _instant(received)),
+        }
+        return {
+            "id": _id(),
+            "image": {"id": image.id, "sha256": image.sha256},
+            "kind": OBSERVATION,
+            "payload": conforming(
+                payload, _schema_path("PeriodicObservationPayload"), "an observation"
+            ),
+            "print_id": self.print_id,
+            "received_at": _instant(received),
+            "source": "system",
+        }
 
     def _synthetic_alert(self, image: Image) -> dict[str, Any]:
         """An Obico alert in the recorded alerts' exact shape, for a print Obico never alerted on.
@@ -613,15 +643,18 @@ class _Composer:
         return [*reversed(recorded[position + 1 :]), event]
 
     def print_record(self) -> dict[str, Any]:
-        provider = (self.trigger or {}).get("payload", {}).get("obico_print_id", 1)
-        return {
+        record: dict[str, Any] = {
             "file_name": self.file_name,
             "id": self.print_id,
             "narrowings": [],
             "opened_at": self.opened_at,
-            "provider_print_id": provider,
             "state": "printing",
         }
+        # A print no detector ever reported on carries no provider's identifier.
+        if self.scenario.trigger != "periodic_observation":
+            provider = (self.trigger or {}).get("payload", {}).get("obico_print_id", 1)
+            record["provider_print_id"] = provider
+        return record
 
     def bounds(self) -> dict[str, Any]:
         """The configured bounds, as an answer's `allowed` carries them."""
