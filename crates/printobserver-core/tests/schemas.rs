@@ -25,8 +25,8 @@ use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     CameraLookPayload, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
-    PortFailurePayload, PortFailureSite, PrintContext, agent_source, operator_source,
-    system_source,
+    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PrintContext, agent_source,
+    operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -91,6 +91,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<OperatorAcknowledgementPayload>("OperatorAcknowledgementPayload"),
         kind_of::<PortFailurePayload>("PortFailurePayload"),
         kind_of::<CameraLookPayload>("CameraLookPayload"),
+        kind_of::<PeriodicObservationPayload>("PeriodicObservationPayload"),
     ]
 }
 
@@ -148,6 +149,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("OperatorAcknowledgementPayload", "operator_acknowledgement"),
             ("PortFailurePayload", "port_failure"),
             ("CameraLookPayload", "camera_look"),
+            ("PeriodicObservationPayload", "periodic_observation"),
         ]
     );
     for declared in declared_kinds() {

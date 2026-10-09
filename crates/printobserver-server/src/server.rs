@@ -487,6 +487,7 @@ impl Server {
         core_config
             .camera_snapshot_url
             .clone_from(&config.camera_snapshot_url);
+        core_config.observation_interval = config.observation_interval;
         let supervisor = Supervisor::new(
             core_config,
             Arc::clone(&ports.printer),
@@ -521,6 +522,7 @@ impl Server {
             config.ingress_answer_bound,
         );
         let completions = ingress.completions();
+        let observing = crate::observation::start(&supervisor);
         let application = router(ApiState {
             supervisor: Arc::clone(&supervisor),
             prints: Arc::clone(&ports.stores.prints),
@@ -554,6 +556,7 @@ impl Server {
             completions,
             stop: Some(stop),
             serving,
+            observing,
         })
     }
 }
@@ -818,6 +821,8 @@ pub struct Running {
     stop: Option<oneshot::Sender<()>>,
     /// The task serving requests.
     serving: JoinHandle<()>,
+    /// The task giving every active print its periodic observation.
+    observing: JoinHandle<()>,
 }
 
 impl core::fmt::Debug for Running {
@@ -897,6 +902,7 @@ impl Running {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
+        self.observing.abort();
         let _ = (&mut self.serving).await;
     }
 

@@ -39,6 +39,7 @@
 pub mod api;
 pub mod config;
 pub mod ingress;
+pub mod observation;
 pub mod operations;
 pub mod reconcile;
 pub mod server;
@@ -48,10 +49,10 @@ pub mod wire;
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, router};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
-    CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, FAN_VOCABULARY,
-    GENERATED_CREDENTIAL_BYTES, IngressSection, OBICO_POSTING_TIMEOUT_MS, OctoprintSection,
-    REDACTED, SKILL_INSTALL, ServerConfig, SharedSecret, SignInConfig, SupervisorSection,
-    VERIFIER_PREFIX, plainly_written,
+    CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, DEFAULT_OBSERVATION_INTERVAL_S,
+    FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection, OBICO_POSTING_TIMEOUT_MS,
+    OctoprintSection, REDACTED, SKILL_INSTALL, ServerConfig, SharedSecret, SignInConfig,
+    SupervisorSection, VERIFIER_PREFIX, plainly_written,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{

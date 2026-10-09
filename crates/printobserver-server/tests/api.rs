@@ -34,6 +34,8 @@ mod images;
 mod ingress;
 #[path = "journeys/looking.rs"]
 mod looking;
+#[path = "journeys/observing.rs"]
+mod observing;
 #[path = "journeys/operating.rs"]
 mod operating;
 #[path = "journeys/reconciling.rs"]

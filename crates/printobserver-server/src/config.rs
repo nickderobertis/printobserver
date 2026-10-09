@@ -44,6 +44,15 @@
 //! on every start that it is there. Either way a credential is held in a type
 //! neither rendering of which shows it, and is compared in constant time.
 //!
+//! # The periodic observation
+//!
+//! `supervisor.observation_interval_s` is how often every active print is given
+//! a periodic observation and its agent a turn on it, whether or not the
+//! detector has alerted. Left out it is
+//! [`DEFAULT_OBSERVATION_INTERVAL_S`] — two minutes — and zero is refused,
+//! because an interval of nothing is a turn started the moment the last one
+//! returns.
+//!
 //! # The camera and `Obico`'s own API
 //!
 //! Both are optional. `camera.snapshot_url` is where a look fetches a fresh
@@ -72,6 +81,11 @@ use printobserver_vision_api::WebAddress;
 /// under the producer's timeout would be exceeded by the first slow moment on
 /// it — after which `Obico` drops the alert, because its posting does not retry.
 pub const DEFAULT_INGRESS_ANSWER_BOUND_MS: u64 = 1_000;
+
+/// How often every active print is observed, in seconds, when the
+/// configuration names no interval: the core's own default.
+pub const DEFAULT_OBSERVATION_INTERVAL_S: u64 =
+    printobserver_core::DEFAULT_OBSERVATION_INTERVAL.as_secs();
 
 /// The timeout `Obico`'s own webhook notification plugin posts under.
 ///
@@ -127,6 +141,8 @@ pub enum ConfigField {
     SkillPath,
     /// The prompt template one turn fills.
     PromptTemplatePath,
+    /// How often every active print is observed, in seconds.
+    ObservationIntervalS,
     /// How long the ingress may take to answer, in milliseconds.
     IngressAnswerBoundMs,
     /// The shared secret the ingress requires of every post.
@@ -147,7 +163,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -158,6 +174,7 @@ impl ConfigField {
         Self::Model,
         Self::SkillPath,
         Self::PromptTemplatePath,
+        Self::ObservationIntervalS,
         Self::IngressAnswerBoundMs,
         Self::IngressSharedSecret,
         Self::ApiCredential,
@@ -181,6 +198,7 @@ impl ConfigField {
             Self::Model => "supervisor.model",
             Self::SkillPath => "supervisor.skill_path",
             Self::PromptTemplatePath => "supervisor.prompt_template_path",
+            Self::ObservationIntervalS => "supervisor.observation_interval_s",
             Self::IngressAnswerBoundMs => "ingress.answer_bound_ms",
             Self::IngressSharedSecret => "ingress.shared_secret",
             Self::ApiCredential => "api.credential",
@@ -320,7 +338,6 @@ impl Default for OctoprintSection {
     rename_all = "snake_case"
 )]
 #[schemars(crate = "printobserver_types::schemars")]
-#[derive(Default)]
 pub struct SupervisorSection {
     /// The harness identity turns run on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -337,6 +354,27 @@ pub struct SupervisorSection {
     /// instead of the committed template this program carries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_template_path: Option<PathBuf>,
+    /// How often every active print is given a periodic observation, and its
+    /// agent a turn on it, in seconds. Left out, two minutes.
+    #[serde(default = "default_observation_interval_s")]
+    pub observation_interval_s: u64,
+}
+
+/// The observation interval a configuration naming none takes.
+const fn default_observation_interval_s() -> u64 {
+    DEFAULT_OBSERVATION_INTERVAL_S
+}
+
+impl Default for SupervisorSection {
+    fn default() -> Self {
+        Self {
+            harness: None,
+            model: None,
+            skill_path: None,
+            prompt_template_path: None,
+            observation_interval_s: DEFAULT_OBSERVATION_INTERVAL_S,
+        }
+    }
 }
 
 /// What the `Obico` ingress requires and how fast it answers, as written down.
@@ -780,6 +818,8 @@ pub struct ServerConfig {
     pub skill_path: PathBuf,
     /// The prompt template one turn fills, when the operator supplied one.
     pub prompt_template_path: Option<PathBuf>,
+    /// How often every active print is given a periodic observation.
+    pub observation_interval: core::time::Duration,
     /// How long the ingress may take to answer.
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
@@ -853,6 +893,7 @@ impl ServerConfig {
             ConfigField::PromptTemplatePath,
             file.supervisor.prompt_template_path.as_deref(),
         )?;
+        let observation_interval = observation_interval(file.supervisor.observation_interval_s)?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
         let ingress_shared_secret = SharedSecret::new(&required(
             ConfigField::IngressSharedSecret,
@@ -891,6 +932,7 @@ impl ServerConfig {
             model,
             skill_path,
             prompt_template_path,
+            observation_interval,
             ingress_answer_bound,
             ingress_shared_secret,
             api_credential,
@@ -1191,6 +1233,18 @@ fn skill(named: Option<&Path>) -> Result<PathBuf, ConfigError> {
                 ),
             )
         })
+}
+
+/// The observation interval, refused at zero.
+fn observation_interval(seconds: u64) -> Result<core::time::Duration, ConfigError> {
+    if seconds == 0 {
+        return Err(ConfigError::about(
+            ConfigField::ObservationIntervalS,
+            "an interval of zero seconds observes a print again the moment its last turn \
+             returns, which is a turn that never ends",
+        ));
+    }
+    Ok(core::time::Duration::from_secs(seconds))
 }
 
 /// The answer bound, refused when it is not one this program admits.

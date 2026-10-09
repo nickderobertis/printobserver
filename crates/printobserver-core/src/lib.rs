@@ -62,6 +62,7 @@ pub mod inbox;
 pub mod kinds;
 pub mod listing;
 pub mod look;
+pub mod observation;
 pub mod records;
 pub mod store;
 pub mod supervisor;
@@ -73,8 +74,8 @@ pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{
-    CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_RECENT_EVENTS,
-    MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER,
+    CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_OBSERVATION_INTERVAL,
+    DEFAULT_RECENT_EVENTS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER,
 };
 pub use context::PrintContext;
 pub use decision::{DecisionInput, adjustment, changes_the_machine, decide, valid_from};
@@ -85,7 +86,8 @@ pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     CameraLookPayload, InterventionExpiredPayload, OperatorAcknowledgementPayload,
-    PortFailurePayload, PortFailureSite, agent_source, operator_source, system_source,
+    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, agent_source, operator_source,
+    system_source,
 };
 pub use look::Look;
 pub use records::{

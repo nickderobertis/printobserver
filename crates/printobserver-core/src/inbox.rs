@@ -72,6 +72,23 @@ impl Inboxes {
         true
     }
 
+    /// Claim the print's turn only when nothing holds it.
+    ///
+    /// Answers `true` when the caller now holds the print's turn and must run
+    /// it, and `false` — handing nothing over — when a turn is already running
+    /// for it. What the periodic observation claims with: an observation is
+    /// owed to a print nobody is watching, and one queued behind a running turn
+    /// would only pile up beside what that turn is already looking at.
+    pub fn claim_if_idle(&self, print_id: PrintId) -> bool {
+        let mut state = self.held();
+        let inbox = state.entry(print_id).or_default();
+        if inbox.busy {
+            return false;
+        }
+        inbox.busy = true;
+        true
+    }
+
     /// What the turn that just returned never took, oldest first, or — when it
     /// took everything — nothing, with the print's turn released.
     pub fn next_or_release(&self, print_id: PrintId) -> Option<Vec<Arrival>> {
@@ -208,6 +225,23 @@ mod tests {
         inboxes.release(print);
         assert!(inboxes.wait_and_take(print, Duration::ZERO).is_empty());
         assert!(inboxes.claim_or_hand_over(print, arrival()));
+    }
+
+    /// An idle claim takes a print nobody holds and is refused one a turn
+    /// holds, handing nothing to that turn; an event that arrives after it is
+    /// handed to the turn it claimed.
+    #[test]
+    fn an_idle_claim_hands_nothing_to_a_running_turn() {
+        let inboxes = Inboxes::default();
+        let print = PrintId::new();
+        assert!(inboxes.claim_or_hand_over(print, arrival()));
+        assert!(!inboxes.claim_if_idle(print));
+        assert!(inboxes.wait_and_take(print, Duration::ZERO).is_empty());
+        assert_eq!(inboxes.next_or_release(print), None);
+        assert!(inboxes.claim_if_idle(print));
+        assert!(!inboxes.claim_if_idle(print));
+        assert!(!inboxes.claim_or_hand_over(print, arrival()));
+        assert_eq!(inboxes.wait_and_take(print, Duration::ZERO).len(), 1);
     }
 
     /// What a look took and could not deliver goes back ahead of what arrived

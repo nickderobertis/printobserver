@@ -736,6 +736,32 @@ pub struct OperatorAcknowledgementPayload {
     pub disposition: AcknowledgementDisposition,
 }
 
+/// The supervisor looked in on an active print on its own schedule, with no
+/// detector having said anything about it.
+///
+/// What a failure detector never alerts on — a progress that stopped moving,
+/// a
+/// heater whose target fell to nothing mid-print, a fan cut at a bridge, a
+/// wall
+/// going thin — is still on the machine and in the camera's frame, so every
+/// active print is given one of these each interval and a turn on it. It
+/// carries what the printer reported as it was taken; the frame the camera
+/// gave
+/// at the same moment, untagged by any detector, is this event's image.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PeriodicObservationPayload {
+    /// How often these are taken, in whole seconds.
+    pub interval_s: i64,
+    /// The job the printer reported as the observation was taken, absent when
+    /// it could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<JobSnapshot>,
+    /// The printer's state as the observation was taken, absent when it could
+    /// not be read — which the history records as a port failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer: Option<PrinterSnapshot>,
+}
+
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyDecision {
@@ -790,7 +816,8 @@ pub enum PortFailureSite {
     /// Running the supervision turn the event prompted.
     #[serde(rename = "supervision_turn")]
     SupervisionTurn,
-    /// Taking a fresh frame from the camera for a look at the print.
+    /// Taking a fresh frame from the camera, for a look at the print or for a
+    /// periodic observation of it.
     #[serde(rename = "camera_look")]
     CameraLook,
     /// Telling the detector that paused the print its detection was handled.
@@ -1301,6 +1328,10 @@ impl EventPayloadKind for OperatorAcknowledgementPayload {
     const KIND: &'static str = "operator_acknowledgement";
 }
 
+impl EventPayloadKind for PeriodicObservationPayload {
+    const KIND: &'static str = "periodic_observation";
+}
+
 impl EventPayloadKind for PortFailurePayload {
     const KIND: &'static str = "port_failure";
 }
@@ -1318,7 +1349,7 @@ impl EventPayloadKind for SupervisionSessionOpenedPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 14] = [
+pub const EVENT_KINDS: [&str; 15] = [
     "action_executed",
     "action_rejected",
     "action_requested",
@@ -1329,6 +1360,7 @@ pub const EVENT_KINDS: [&str; 14] = [
     "obico_failure_alert",
     "obico_printer_notification",
     "operator_acknowledgement",
+    "periodic_observation",
     "port_failure",
     "startup_reconciliation",
     "supervision_session_closed",

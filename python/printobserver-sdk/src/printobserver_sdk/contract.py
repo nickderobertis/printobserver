@@ -827,6 +827,35 @@ class OperatorAcknowledgementPayload(TypedDict):
     disposition: AcknowledgementDisposition
 
 
+class PeriodicObservationPayload(TypedDict):
+    """`PeriodicObservationPayload`, as the contracts declare it.
+
+    The supervisor looked in on an active print on its own schedule, with
+    no
+    detector having said anything about it.
+
+    What a failure detector never alerts on — a progress that stopped
+    moving, a
+    heater whose target fell to nothing mid-print, a fan cut at a bridge,
+    a wall
+    going thin — is still on the machine and in the camera's frame, so
+    every
+    active print is given one of these each interval and a turn on it. It
+    carries what the printer reported as it was taken; the frame the
+    camera gave
+    at the same moment, untagged by any detector, is this event's image.
+    """
+
+    # How often these are taken, in whole seconds.
+    interval_s: int
+    # The job the printer reported as the observation was taken, absent when
+    # it could not be read.
+    job: NotRequired[JobSnapshot | None]
+    # The printer's state as the observation was taken, absent when it could
+    # not be read — which the history records as a port failure.
+    printer: NotRequired[PrinterSnapshot | None]
+
+
 class PolicyDecisionRejected(TypedDict):
     """The `rejected` arm of `PolicyDecision`.
 
@@ -1500,6 +1529,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "obico_failure_alert": ObicoFailureAlertPayload,
     "obico_printer_notification": ObicoPrinterNotificationPayload,
     "operator_acknowledgement": OperatorAcknowledgementPayload,
+    "periodic_observation": PeriodicObservationPayload,
     "port_failure": PortFailurePayload,
     "startup_reconciliation": StartupReconciliationPayload,
     "supervision_session_closed": SupervisionSessionClosedPayload,
@@ -1563,6 +1593,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["operator_acknowledgement"]
 ) -> OperatorAcknowledgementPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["periodic_observation"]
+) -> PeriodicObservationPayload | None: ...
 
 
 @overload

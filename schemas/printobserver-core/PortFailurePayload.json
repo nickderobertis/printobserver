@@ -32,7 +32,7 @@
         },
         {
           "const": "camera_look",
-          "description": "Taking a fresh frame from the camera for a look at the print.",
+          "description": "Taking a fresh frame from the camera, for a look at the print or for a\nperiodic observation of it.",
           "type": "string"
         },
         {

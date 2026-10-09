@@ -191,7 +191,7 @@ impl Supervisor {
 
     /// Fetch one frame from the camera and store it as a look's image,
     /// recording either failure against the look.
-    async fn take_frame(
+    pub(crate) async fn take_frame(
         &self,
         print_id: PrintId,
         event: &EventRecord,
