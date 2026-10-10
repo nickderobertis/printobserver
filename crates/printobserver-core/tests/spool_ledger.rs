@@ -15,7 +15,7 @@ mod records;
 use printobserver_core::{
     ActionKind, ChargeKey, CoreConfig, PreflightMode, PreflightTool, PreflightVerdict, PrintAction,
     RejectionReason, SpoolCommand, SpoolId, SpoolPolicy, SpoolRecord, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, changes_the_machine, valid_from,
+    UnverifiedReason, changes_the_machine, rejection_detail, valid_from,
 };
 use printobserver_printer_api::PrinterState;
 use printobserver_types::contract::{Sample, schema_of};
@@ -421,4 +421,27 @@ fn an_unverified_spool_with_no_mark_is_refused() {
     .expect("a trust writes");
     assert!(validator.is_valid(&one), "the schema refused {one}");
     assert!(serde_json::from_value::<SpoolTrust>(one).is_ok());
+}
+
+/// Each of the ledger's four rejections reads back in words naming what a
+/// caller acts on, and no two read the same.
+#[test]
+fn every_ledger_rejection_reads_back_in_words_a_caller_can_act_on() {
+    let rejections: Vec<RejectionReason> = RejectionReason::sample_alternates();
+    let said: Vec<String> = rejections.iter().map(rejection_detail).collect();
+    let insufficient = &said[0];
+    for fact in ["Galaxy black", "tool 0", "80g", "120g", "12g"] {
+        assert!(insufficient.contains(fact), "{insufficient} omits {fact}");
+    }
+    assert!(said[2].contains("Galaxy black") && said[2].contains("unverified"));
+    assert!(said[3].contains("benchy.gcode") && said[3].contains("300s"));
+    assert!(said[4].contains("retired"), "{}", said[4]);
+    let mut distinct: Vec<&String> = said.iter().skip(1).collect();
+    distinct.sort();
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        said.len() - 1,
+        "two ledger rejections read the same"
+    );
 }

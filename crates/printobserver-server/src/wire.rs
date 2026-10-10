@@ -486,6 +486,27 @@ mod tests {
         }
     }
 
+    /// A spool command is no print action, so no print-action body is read as
+    /// one, whatever it carries.
+    #[test]
+    fn a_spool_command_kind_is_refused_as_a_print_action() {
+        for kind in [
+            ActionKind::RegisterSpool,
+            ActionKind::LoadSpool,
+            ActionKind::UnloadSpool,
+            ActionKind::AdjustSpool,
+            ActionKind::RetireSpool,
+        ] {
+            let refusal = bare()
+                .into_action(kind)
+                .expect_err("a spool command is not a print action");
+            assert!(
+                refusal.to_string().contains("spool command"),
+                "{kind:?} was refused without saying why: {refusal}"
+            );
+        }
+    }
+
     /// The second value each two-valued action needs is named in its turn.
     #[test]
     fn the_second_value_a_two_valued_action_needs_is_named_in_its_turn() {
