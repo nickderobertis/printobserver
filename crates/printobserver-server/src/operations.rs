@@ -510,6 +510,14 @@ fn action_parameters(kind: ActionKind) -> Vec<Parameter> {
             located: Located::Body,
             kind: kind_of(&resolve(&schema, field)),
         })
+        // SPIKE (spike-visual): the planned `override_filament_check` field, as
+        // the contract's derivation would add it to `start_print`.
+        .chain((kind == ActionKind::StartPrint).then(|| Parameter {
+            name: "override_filament_check".to_owned(),
+            required: false,
+            located: Located::Body,
+            kind: ValueKind::Boolean,
+        }))
         .collect()
 }
 
@@ -617,7 +625,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 18] = [
+pub const OPERATIONS: [Operation; 27] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -727,7 +735,91 @@ pub const OPERATIONS: [Operation; 18] = [
         "acknowledge_failure",
         "/prints/{print_id}/actions/acknowledge_failure",
         ActionKind::AcknowledgeFailure,
-    ),
+    ),    // SPIKE (spike-visual): a mock declaration of a planned read.
+    Operation {
+        query: &[Declared { name: "include_retired", required: false, kind: ValueKind::Boolean, shape: None }],
+        ..read("spools", "/spools")
+    },
+    // SPIKE (spike-visual): a mock declaration of a planned read.
+    Operation {
+        query: &[],
+        ..read("spool", "/spools/{spool_id}")
+    },
+    // SPIKE (spike-visual): a mock declaration of a planned read.
+    Operation {
+        query: &[Declared { name: "kinds", required: false, kind: ValueKind::Text, shape: None }, Declared { name: "since", required: false, kind: ValueKind::Text, shape: None }, Declared { name: "until", required: false, kind: ValueKind::Text, shape: None }, Declared { name: "spool_id", required: false, kind: ValueKind::Text, shape: None }, Declared { name: "before", required: false, kind: ValueKind::Text, shape: None }, Declared { name: "limit", required: false, kind: ValueKind::Integer, shape: None }],
+        ..read("printer_history", "/history")
+    },
+    // SPIKE (spike-visual): a mock declaration of a planned read.
+    Operation {
+        query: &[Declared { name: "file_name", required: true, kind: ValueKind::Text, shape: None }],
+        ..read("preflight", "/preflight")
+    },
+    // SPIKE (spike-visual): a mock declaration, so the command line derives
+    // this planned command; nothing serves it.
+    Operation {
+        name: "register_spool",
+        method: Method::Post,
+        path: "/spools/actions/register_spool",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[Declared { name: "actor", required: true, kind: ValueKind::Structured, shape: Some("Actor") }, Declared { name: "color", required: false, kind: ValueKind::Text, shape: None }, Declared { name: "density_g_cm3", required: false, kind: ValueKind::Number, shape: None }, Declared { name: "diameter_mm", required: false, kind: ValueKind::Number, shape: None }, Declared { name: "initial_g", required: true, kind: ValueKind::Number, shape: None }, Declared { name: "material", required: true, kind: ValueKind::Text, shape: None }, Declared { name: "name", required: true, kind: ValueKind::Text, shape: None }, Declared { name: "reason", required: true, kind: ValueKind::Text, shape: None }, Declared { name: "remaining_g", required: false, kind: ValueKind::Number, shape: None }, Declared { name: "tare_g", required: false, kind: ValueKind::Number, shape: None }],
+        image_path_field: None,
+    },
+    // SPIKE (spike-visual): a mock declaration, so the command line derives
+    // this planned command; nothing serves it.
+    Operation {
+        name: "load_spool",
+        method: Method::Post,
+        path: "/spools/{spool_id}/actions/load_spool",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[Declared { name: "actor", required: true, kind: ValueKind::Structured, shape: Some("Actor") }, Declared { name: "reason", required: true, kind: ValueKind::Text, shape: None }, Declared { name: "tool", required: true, kind: ValueKind::Integer, shape: None }],
+        image_path_field: None,
+    },
+    // SPIKE (spike-visual): a mock declaration, so the command line derives
+    // this planned command; nothing serves it.
+    Operation {
+        name: "unload_spool",
+        method: Method::Post,
+        path: "/spools/{spool_id}/actions/unload_spool",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[Declared { name: "actor", required: true, kind: ValueKind::Structured, shape: Some("Actor") }, Declared { name: "reason", required: true, kind: ValueKind::Text, shape: None }],
+        image_path_field: None,
+    },
+    // SPIKE (spike-visual): a mock declaration, so the command line derives
+    // this planned command; nothing serves it.
+    Operation {
+        name: "adjust_spool",
+        method: Method::Post,
+        path: "/spools/{spool_id}/actions/adjust_spool",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[Declared { name: "actor", required: true, kind: ValueKind::Structured, shape: Some("Actor") }, Declared { name: "gross_g", required: false, kind: ValueKind::Number, shape: None }, Declared { name: "reason", required: true, kind: ValueKind::Text, shape: None }, Declared { name: "remaining_g", required: false, kind: ValueKind::Number, shape: None }],
+        image_path_field: None,
+    },
+    // SPIKE (spike-visual): a mock declaration, so the command line derives
+    // this planned command; nothing serves it.
+    Operation {
+        name: "retire_spool",
+        method: Method::Post,
+        path: "/spools/{spool_id}/actions/retire_spool",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[Declared { name: "actor", required: true, kind: ValueKind::Structured, shape: Some("Actor") }, Declared { name: "reason", required: true, kind: ValueKind::Text, shape: None }],
+        image_path_field: None,
+    },
 ];
 
 /// The eight operations this server serves beside the action vocabulary.
