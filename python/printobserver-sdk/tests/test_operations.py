@@ -505,8 +505,8 @@ def test_pause_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.pause("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking")
         except RejectedError as refused:
             equal(refused.requested, 1.5)
@@ -614,8 +614,8 @@ def test_resume_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.resume("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking")
         except RejectedError as refused:
             equal(refused.requested, 1.5)
@@ -723,8 +723,8 @@ def test_cancel_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.cancel("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking")
         except RejectedError as refused:
             equal(refused.requested, 1.5)
@@ -853,8 +853,8 @@ def test_start_print_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.start_print(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc",
                 cast(FileName, json.loads('"0198f0a1-2b3c-7d4e-8f90-123456789abc"')),
@@ -1014,8 +1014,8 @@ def test_set_feedrate_factor_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.set_feedrate_factor(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc", 1.5, "a generated walk is asking", 7
             )
@@ -1129,8 +1129,8 @@ def test_set_flowrate_factor_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.set_flowrate_factor(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc", 1.5, "a generated walk is asking", 7
             )
@@ -1243,8 +1243,8 @@ def test_set_tool_target_c_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.set_tool_target_c(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 1.5, 7, 7
             )
@@ -1357,8 +1357,8 @@ def test_set_bed_target_c_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.set_bed_target_c(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 1.5, 7
             )
@@ -1471,8 +1471,8 @@ def test_set_fan_percent_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.set_fan_percent(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc", 1.5, "a generated walk is asking", 7
             )
@@ -1590,8 +1590,8 @@ def test_acknowledge_failure_surfaces_the_policys_own_refusal() -> None:
 
     with Host(409, refusal) as host:
         client = Client(host.address, ACTOR)
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.acknowledge_failure(
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc",
                 cast(AcknowledgementDisposition, json.loads('"continue"')),

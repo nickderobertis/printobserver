@@ -129,6 +129,7 @@ pub enum RejectionReason {
         waited_s: u64,
     },
     /// A spool command could not be carried out.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     SpoolRefused {
         /// Why, in a sentence naming what to do instead.
         detail: String,

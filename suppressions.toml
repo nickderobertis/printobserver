@@ -123,6 +123,12 @@ site = "pub position_read_at_signal: bool,"
 reason = "The plan states this payload as `position: Option<FilePosition>` beside `position_read_at_signal: bool`, and the domain that writes it, the store that keeps it and the clients that read it are being built against that shape at the same time; nothing writes the event yet. Folding the flag into the position's own type would be a different wire form, so it is proposed as a follow-up rather than made unilaterally here, and the field's documentation states that it is never set with no position."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/policy.rs"
+site = "SpoolRefused {"
+reason = "The plan states this rejection as `spool_refused { detail: String }`, one variant for every spool command the domain cannot carry out — an unknown or retired spool, a tool that already holds the spool with nothing to confirm, an adjust naming both or neither figure, a gross weight with no tare, a material with no known density — and the domain, the command surface and the three clients are being built against that one variant at the same time. A variant per cause would be a different wire form each of them would have to change to, so it is proposed as a follow-up rather than made here; every other rejection stays a distinct variant carrying what a second request is composed from."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/vision.rs"
 site = "pub const HANDLED_OVERWRITE: &str = \"FAILED\";"
