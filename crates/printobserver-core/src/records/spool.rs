@@ -43,6 +43,7 @@ pub struct SpoolRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tare_g: Option<f64>,
     /// The tool the spool is loaded on, when it is loaded.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loaded_on_tool: Option<i64>,
     /// How far the remaining figure can be trusted.
@@ -52,6 +53,7 @@ pub struct SpoolRecord {
     /// When anything about the spool last changed.
     pub updated_at: Timestamp,
     /// When the spool was retired, if it has been.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retired_at: Option<Timestamp>,
 }

@@ -47,12 +47,15 @@ pub struct PreflightTool {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spool_name: Option<String>,
     /// What the print needs from it, in grams, when the file's analysis says.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub required_g: Option<f64>,
     /// The margin asked for beyond that, in grams.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub buffer_g: Option<f64>,
     /// What the spool holds, in grams.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remaining_g: Option<f64>,
     /// The loaded spool's marks at the check, oldest first, whatever the

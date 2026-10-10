@@ -171,6 +171,36 @@ site = "pub spool_name: Option<String>,"
 reason = "`PreflightTool.spool_name` is an option independent of `spool_id`, present exactly when it is. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/spool.rs"
+site = "pub loaded_on_tool: Option<i64>,"
+reason = "`SpoolRecord.loaded_on_tool` and `retired_at` are independent options, so a retired spool still loaded is representable; the domain unloads a spool as it retires it, and the canonical values carry a loaded spool and a retired one apart. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/spool.rs"
+site = "pub retired_at: Option<Timestamp>,"
+reason = "`SpoolRecord.retired_at` is an option independent of `loaded_on_tool`, for the same reason as that field's entry. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub required_g: Option<f64>,"
+reason = "`PreflightTool.required_g`, `buffer_g` and `remaining_g` are independent options whose valid combinations follow the verdict and whether a spool is loaded. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub buffer_g: Option<f64>,"
+reason = "`PreflightTool.buffer_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub remaining_g: Option<f64>,"
+reason = "`PreflightTool.remaining_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/vision.rs"
 site = "pub const HANDLED_OVERWRITE: &str = \"FAILED\";"

@@ -498,7 +498,7 @@ impl Sample for SpoolRecord {
             trust: SpoolTrust::sample_full(),
             registered_at: Timestamp::sample_full(),
             updated_at: later_instant(),
-            retired_at: Some(later_instant()),
+            retired_at: None,
         }
     }
 
@@ -511,6 +511,15 @@ impl Sample for SpoolRecord {
             retired_at: None,
             ..Self::sample_full()
         }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            remaining_g: 12.5,
+            loaded_on_tool: None,
+            retired_at: Some(later_instant()),
+            ..Self::sample_full()
+        }]
     }
 }
 
