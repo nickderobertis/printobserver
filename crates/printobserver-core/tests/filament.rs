@@ -299,3 +299,73 @@ fn the_oldest_mark_is_the_earliest_given() {
     );
     assert_eq!(SpoolTrust::Verified.oldest_mark(), None);
 }
+
+/// Marks given out of time order are still held oldest first: the wire lists
+/// them by `since`, the oldest mark is the earliest instant rather than the
+/// first given, and a clearing answers what it removed in that same order. A
+/// reason already held is still not added again, whatever its instant.
+#[test]
+fn marks_given_out_of_order_are_held_oldest_first() {
+    let print_id = PrintId::sample_full();
+    let tally_reset = UnverifiedReason::TallyReset {
+        file_name: "benchy.gcode".to_owned(),
+        origin: "local".to_owned(),
+    };
+    let trust = SpoolTrust::Verified
+        .marked(UnverifiedMark {
+            reason: UnverifiedReason::FilamentChangeUnconfirmed { print_id },
+            since: at(120),
+        })
+        .marked(UnverifiedMark {
+            reason: tally_reset.clone(),
+            since: at(60),
+        })
+        .marked(UnverifiedMark {
+            reason: UnverifiedReason::UnchargedPrint { print_id },
+            since: at(0),
+        })
+        .marked(UnverifiedMark {
+            reason: tally_reset.clone(),
+            since: at(-60),
+        });
+
+    let written = printobserver_types::serde_json::to_value(&trust).expect("a trust writes");
+    let order: Vec<&str> = written["marks"]
+        .as_array()
+        .expect("an unverified spool lists its marks")
+        .iter()
+        .map(|mark| mark["reason"]["reason"].as_str().expect("a tagged reason"))
+        .collect();
+    assert_eq!(
+        order,
+        [
+            "uncharged_print",
+            "tally_reset",
+            "filament_change_unconfirmed"
+        ],
+        "{written}"
+    );
+    assert_eq!(
+        written["marks"][1]["since"],
+        printobserver_types::serde_json::to_value(at(60)).expect("an instant writes"),
+        "a held reason given again moved its mark"
+    );
+
+    assert_eq!(
+        trust.oldest_mark(),
+        Some(&UnverifiedMark {
+            reason: UnverifiedReason::UnchargedPrint { print_id },
+            since: at(0),
+        })
+    );
+
+    let (_, removed) = trust.cleared(marks_cleared_by(MarkClearing::Adjusted));
+    assert_eq!(
+        removed,
+        vec![
+            UnverifiedReason::UnchargedPrint { print_id },
+            tally_reset,
+            UnverifiedReason::FilamentChangeUnconfirmed { print_id },
+        ]
+    );
+}

@@ -84,13 +84,15 @@ pub const fn marks_cleared_by(clearing: MarkClearing) -> &'static [UnverifiedRea
 }
 
 impl SpoolTrust {
-    /// This trust with one more mark, unless a mark for that same reason is
-    /// already held.
+    /// This trust with one more mark, held in its place oldest first — after
+    /// every mark given at or before its instant — unless a mark for that same
+    /// reason is already held, which stays as it is.
     #[must_use]
     pub fn marked(self, mark: UnverifiedMark) -> Self {
         let mut marks = self.into_marks();
         if !marks.iter().any(|held| held.reason == mark.reason) {
-            marks.push(mark);
+            let place = marks.partition_point(|held| held.since <= mark.since);
+            marks.insert(place, mark);
         }
         Self::Unverified { marks }
     }
