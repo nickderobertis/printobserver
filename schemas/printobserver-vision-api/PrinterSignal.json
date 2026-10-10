@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Something an alert says the printer itself signalled, beside what the\ndetector saw.\n\nNamed for what the printer did rather than for the provider that relayed\nit, like [`Detection`], so the supervision domain acts on it without knowing\nwhose alert carried it.",
+  "oneOf": [
+    {
+      "const": "filament_change",
+      "description": "The printer asked for its filament to be changed.",
+      "type": "string"
+    }
+  ],
+  "title": "PrinterSignal"
+}

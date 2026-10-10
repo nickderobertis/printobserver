@@ -35,6 +35,7 @@ fn trivial_alert() -> NormalizedAlert {
             started_at: None,
         }),
         detection: Some(trivial_detection()),
+        signal: None,
     }
 }
 
