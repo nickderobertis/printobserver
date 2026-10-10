@@ -458,7 +458,7 @@ pub struct FilamentChangeSignalledPayload {
     pub position: Option<FilePosition>,
     /// Whether that position was read when the signal was handled, rather
     /// than
-    /// being the last one recorded.
+    /// being the last one recorded; never with no position at all.
     pub position_read_at_signal: bool,
     /// The kind of the alert that carried the signal.
     pub source_kind: EventKind,
@@ -1714,7 +1714,8 @@ pub enum SpoolCommand {
         /// The spool to unload.
         spool_id: SpoolId,
     },
-    /// Correct a spool's remaining figure, from exactly one of the two.
+    /// Correct a spool's remaining figure, from exactly one of the two; a
+    /// command naming both or neither is refused as `spool_refused`.
     #[serde(rename = "adjust_spool")]
     AdjustSpool {
         /// Who is asking.

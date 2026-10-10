@@ -381,7 +381,7 @@ export interface FilamentChangeSignalledPayload {
   position?: FilePosition | null;
   /**
    * Whether that position was read when the signal was handled, rather than
-   * being the last one recorded.
+   * being the last one recorded; never with no position at all.
    */
   position_read_at_signal: boolean;
   /** The kind of the alert that carried the signal. */

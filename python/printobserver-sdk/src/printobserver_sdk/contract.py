@@ -501,7 +501,7 @@ class FilamentChangeSignalledPayload(TypedDict):
     position: NotRequired[FilePosition | None]
     # Whether that position was read when the signal was handled, rather
     # than
-    # being the last one recorded.
+    # being the last one recorded; never with no position at all.
     position_read_at_signal: bool
     # The kind of the alert that carried the signal.
     source_kind: EventKind
@@ -1942,7 +1942,8 @@ class SpoolCommandUnloadSpool(TypedDict):
 class SpoolCommandAdjustSpool(TypedDict):
     """The `adjust_spool` arm of `SpoolCommand`.
 
-    Correct a spool's remaining figure, from exactly one of the two.
+    Correct a spool's remaining figure, from exactly one of the two; a
+    command naming both or neither is refused as `spool_refused`.
     """
 
     command: Literal["adjust_spool"]

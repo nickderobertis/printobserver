@@ -399,3 +399,26 @@ fn the_spool_commands_are_kinds_no_printer_state_gates() {
         ])
     );
 }
+
+/// An unverified spool with no mark is not a state the ledger has: the type
+/// and the generated schema both refuse it, and a spool with one reads.
+#[test]
+fn an_unverified_spool_with_no_mark_is_refused() {
+    let validator =
+        jsonschema::validator_for(&schema_of::<SpoolTrust>()).expect("the schema compiles");
+    let empty = json!({ "state": "unverified", "marks": [] });
+    assert!(!validator.is_valid(&empty), "the schema admitted {empty}");
+    let refused = serde_json::from_value::<SpoolTrust>(empty).expect_err("an empty mark list");
+    assert!(
+        refused.to_string().contains("at least one mark"),
+        "{refused}"
+    );
+
+    let one = serde_json::to_value(SpoolTrust::Verified.marked(UnverifiedMark {
+        reason: UnverifiedReason::sample_full(),
+        since: at(0),
+    }))
+    .expect("a trust writes");
+    assert!(validator.is_valid(&one), "the schema refused {one}");
+    assert!(serde_json::from_value::<SpoolTrust>(one).is_ok());
+}

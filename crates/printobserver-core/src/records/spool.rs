@@ -8,7 +8,8 @@
 //! [`marks_cleared_by`](crate::filament::marks_cleared_by).
 
 use printobserver_types::schemars::JsonSchema;
-use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::serde::de::Error as _;
+use printobserver_types::serde::{Deserialize, Deserializer, Serialize};
 use printobserver_types::{PrintId, Timestamp};
 
 use super::ids::SpoolId;
@@ -71,8 +72,26 @@ pub enum SpoolTrust {
     Unverified {
         /// Every reason the figure is in doubt, oldest first, at most one per
         /// distinct reason; never empty.
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
+        #[serde(deserialize_with = "at_least_one_mark")]
+        #[schemars(length(min = 1))]
         marks: Vec<UnverifiedMark>,
     },
+}
+
+/// Read an unverified spool's marks, refusing none: a spool holding no mark is
+/// `verified`, and one written as unverified with nothing to say why is not a
+/// state this ledger has.
+fn at_least_one_mark<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<UnverifiedMark>, D::Error> {
+    let marks = Vec::<UnverifiedMark>::deserialize(deserializer)?;
+    if marks.is_empty() {
+        return Err(D::Error::custom(
+            "an unverified spool carries at least one mark; one with none is verified",
+        ));
+    }
+    Ok(marks)
 }
 
 /// One reason a spool's figure is in doubt, and since when.

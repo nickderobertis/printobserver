@@ -6883,7 +6883,7 @@ Declared by `printobserver-core`.
       "description": "The position the spool was charged up to, when one was known."
     },
     "position_read_at_signal": {
-      "description": "Whether that position was read when the signal was handled, rather than\nbeing the last one recorded.",
+      "description": "Whether that position was read when the signal was handled, rather than\nbeing the last one recorded; never with no position at all.",
       "type": "boolean"
     },
     "source_kind": {
@@ -17254,7 +17254,7 @@ Declared by `printobserver-core`.
     },
     {
       "additionalProperties": false,
-      "description": "Correct a spool's remaining figure, from exactly one of the two.",
+      "description": "Correct a spool's remaining figure, from exactly one of the two; a\ncommand naming both or neither is refused as `spool_refused`.",
       "properties": {
         "actor": {
           "$ref": "#/$defs/Actor",
@@ -18032,7 +18032,7 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
-          "description": "Correct a spool's remaining figure, from exactly one of the two.",
+          "description": "Correct a spool's remaining figure, from exactly one of the two; a\ncommand naming both or neither is refused as `spool_refused`.",
           "properties": {
             "actor": {
               "$ref": "#/$defs/Actor",
@@ -18668,6 +18668,7 @@ Declared by `printobserver-core`.
               "items": {
                 "$ref": "#/$defs/UnverifiedMark"
               },
+              "minItems": 1,
               "type": "array"
             },
             "state": {
@@ -19101,6 +19102,7 @@ Declared by `printobserver-core`.
               "items": {
                 "$ref": "#/$defs/UnverifiedMark"
               },
+              "minItems": 1,
               "type": "array"
             },
             "state": {
@@ -19543,6 +19545,7 @@ Declared by `printobserver-core`.
           "items": {
             "$ref": "#/$defs/UnverifiedMark"
           },
+          "minItems": 1,
           "type": "array"
         },
         "state": {

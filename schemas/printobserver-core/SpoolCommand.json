@@ -194,7 +194,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Correct a spool's remaining figure, from exactly one of the two.",
+      "description": "Correct a spool's remaining figure, from exactly one of the two; a\ncommand naming both or neither is refused as `spool_refused`.",
       "properties": {
         "actor": {
           "$ref": "#/$defs/Actor",

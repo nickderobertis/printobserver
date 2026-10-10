@@ -75,7 +75,9 @@ pub enum SpoolCommand {
         /// Who is asking.
         actor: Actor,
     },
-    /// Correct a spool's remaining figure, from exactly one of the two.
+    /// Correct a spool's remaining figure, from exactly one of the two; a
+    /// command naming both or neither is refused as `spool_refused`.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     AdjustSpool {
         /// The spool to correct.
         spool_id: SpoolId,

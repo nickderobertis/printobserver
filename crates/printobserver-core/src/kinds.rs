@@ -856,7 +856,8 @@ pub struct FilamentChangeSignalledPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<FilePosition>,
     /// Whether that position was read when the signal was handled, rather than
-    /// being the last one recorded.
+    /// being the last one recorded; never with no position at all.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub position_read_at_signal: bool,
 }
 

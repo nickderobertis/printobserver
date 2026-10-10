@@ -175,6 +175,7 @@
               "items": {
                 "$ref": "#/$defs/UnverifiedMark"
               },
+              "minItems": 1,
               "type": "array"
             },
             "state": {
