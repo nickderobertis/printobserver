@@ -337,7 +337,7 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
         )
         filters = triggers["pull_request"] or {}
         equal(set(filters) - {"types"}, set(), describing=f"{context.file}'s pull_request filters")
-        for kind in ("opened", "synchronize", "reopened", "ready_for_review"):
+        for kind in ("opened", "synchronize", "reopened"):
             contains(
                 filters.get("types", ["opened", "synchronize", "reopened"]),
                 kind,

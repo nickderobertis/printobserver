@@ -26,7 +26,7 @@ from treecopy import Tree
 
 CI = ".github/workflows/ci.yml"
 #: The pull-request trigger's activity types, as the committed workflow spells them.
-TYPES = "    types: [opened, synchronize, reopened, ready_for_review]\n"
+TYPES = "    types: [opened, synchronize, reopened]\n"
 AARCH64_ENTRY = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 RISCV64 = (
     "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
@@ -286,16 +286,14 @@ def test_a_workflow_firing_on_a_subset_of_the_change_events_is_refused(
     refused(findings, "does not fire on `pull_request`")
 
 
-def test_a_pull_request_trigger_on_the_default_activity_types_alone_is_refused(
+def test_a_pull_request_trigger_on_the_default_activity_types_alone_is_accepted(
     tree: Callable[[], Tree],
 ) -> None:
-    """A pull request lifted out of draft gets no run, so its checks report nothing then."""
-    broken = tree()
-    broken.edit(CI, TYPES, "")
+    """A lift out of draft changes no commit, so the draft's run already answers for it."""
+    defaults = tree()
+    defaults.edit(CI, TYPES, "")
 
-    findings = integration_tier(broken.repo)
-
-    refused(findings, "does not run on `ready_for_review`")
+    accepted(integration_tier(defaults.repo))
 
 
 def test_a_pull_request_trigger_dropping_a_default_activity_type_is_refused(
@@ -303,7 +301,7 @@ def test_a_pull_request_trigger_dropping_a_default_activity_type_is_refused(
 ) -> None:
     """Naming the activity types replaces GitHub's defaults, so each has to be named."""
     broken = tree()
-    broken.edit(CI, TYPES, "    types: [opened, reopened, ready_for_review]\n")
+    broken.edit(CI, TYPES, "    types: [opened, reopened]\n")
 
     findings = integration_tier(broken.repo)
 

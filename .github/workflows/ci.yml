@@ -16,13 +16,15 @@
 
 name: ci
 
-# The pull-request trigger names GitHub's three default activity types plus
-# `ready_for_review`: a pull request lifted out of draft gets a run of its own,
-# so its required checks report on the commit as it stands when it becomes
-# ready rather than leaving only the runs it had while it was a draft.
+# The pull-request trigger names GitHub's three default activity types and not
+# `ready_for_review`: a pull request opened as a draft has already run every
+# check on its commit, and lifting it out of draft changes no commit, so a run
+# on the lift would repeat the draft's run on the same commit (the macOS and
+# Windows gates take about two hours) while the merge waits on it. The draft's
+# results stand, because a check reports on the commit.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
 
