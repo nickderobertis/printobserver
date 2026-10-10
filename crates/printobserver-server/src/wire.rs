@@ -74,6 +74,7 @@ pub struct ActionBody {
     pub manifest: Option<JobManifest>,
     /// Whether a start goes ahead despite the filament check; absent, it does
     /// not.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default)]
     pub override_filament_check: bool,
     /// The event an acknowledgement is about.

@@ -175,6 +175,7 @@ pub enum PrintAction {
         /// Start despite an insufficient or unverified spool, or a file
         /// `OctoPrint` has not analysed; the start's own reason is the
         /// override's reason.
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         override_filament_check: bool,
         /// Why the actor is asking for this.

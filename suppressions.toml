@@ -201,6 +201,18 @@ site = "pub remaining_g: Option<f64>,"
 reason = "`PreflightTool.remaining_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/action.rs"
+site = "override_filament_check: bool,"
+reason = "The plan states `PrintAction::StartPrint` gains `override_filament_check: bool`, defaulted and left off the wire when false so every stored start reads as before, and the domain, the command surface and the three clients are built against it concurrently; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/wire.rs"
+site = "pub override_filament_check: bool,"
+reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_filament_check`, read so the option the derived surface declares is one the server accepts (the manager's ruling), and it carries exactly the action's own type; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/vision.rs"
 site = "pub const HANDLED_OVERWRITE: &str = \"FAILED\";"
