@@ -392,9 +392,10 @@ names except those excluded below. `repo-policy.toml`'s `[integration]` names
 the three recipes, and `just check-repo` refuses a job that runs a recipe the
 set does not declare, omits the bring-up or bring-down recipe, omits a platform
 with no exclusion recorded, or is narrowed below every change — a pull-request
-trigger that leaves out GitHub's three default activity types or
-`ready_for_review` included, because the merge path waits for a run on a pull
-request lifted out of draft.
+trigger that leaves out one of GitHub's three default activity types. It does
+not run on `ready_for_review`: a draft has already run every check on its
+commit, and the lift changes no commit, so a second run would only repeat the
+first while the merge waits on it.
 
 There is **one machine**, and every project's `test-integration` target drives
 it: `just test-integration` runs the adapter's tier and this environment's own
