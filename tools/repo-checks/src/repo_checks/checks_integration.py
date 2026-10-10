@@ -57,9 +57,9 @@ EXCLUSION_SHAPE = "- `<platform>` — <why the virtual printer is unavailable th
 CHANGE_EVENTS = ("pull_request", "push")
 PATH_FILTERS = ("paths", "paths-ignore")
 # The pull-request activity types the job has to run on: GitHub's three
-# defaults, and the lift out of draft, after which the merge path waits for a
-# run on the commit as it stands when it became ready.
-PULL_REQUEST_TYPES = ("opened", "synchronize", "reopened", "ready_for_review")
+# defaults. The lift out of draft is not one, because it changes no commit and a
+# check reports on the commit, so the draft's run already answers for it.
+PULL_REQUEST_TYPES = ("opened", "synchronize", "reopened")
 BRANCH_FILTERS = ("branches", "branches-ignore")
 
 
