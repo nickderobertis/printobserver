@@ -136,6 +136,8 @@ impl RecordingPrinter {
                     print_time_left_s: Some(2700),
                     state: PrinterState::Printing,
                     error: None,
+                    file_position_bytes: None,
+                    filament: Vec::new(),
                 },
                 calls: Vec::new(),
                 unreadable: false,

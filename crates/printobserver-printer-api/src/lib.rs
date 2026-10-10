@@ -5,7 +5,8 @@
 //! things the action vocabulary names, plus that port's own error type — and
 //! the printer domain's vocabulary: the state a printer reports ([`state`]),
 //! the closed set of things an adjustment may change ([`adjustable`]), the
-//! snapshots those reads answer ([`snapshot`]) and the plausibility ranges
+//! snapshots those reads answer ([`snapshot`]), what the printer knows of the
+//! files it holds and the filament they use ([`file`]) and the plausibility ranges
 //! their reported numbers are read against ([`ranges`]). A change to what a
 //! printer reports edits this crate and the adapters behind it, and nothing
 //! central.
@@ -18,8 +19,9 @@
 //! There is no method that accepts a command string, and that absence is the
 //! contract rather than an omission: no method here admits a byte sequence at
 //! all, and the only string anywhere in the closure reachable from a method's
-//! parameters is the one [`FileName`] wraps, which exactly one method —
-//! [`PrinterPort::start`] — takes. Every value a method takes is already
+//! parameters is the one [`FileName`] wraps, which only
+//! [`PrinterPort::start`] and the two reads of one file —
+//! [`PrinterPort::file_facts`] and [`PrinterPort::extruded_to`] — take. Every value a method takes is already
 //! bounded by the time it arrives: policy has ruled on it before it gets here.
 //!
 //! # Why the methods answer a boxed future
@@ -31,6 +33,7 @@
 //! shape a trait object can carry.
 
 pub mod adjustable;
+pub mod file;
 pub mod ranges;
 pub mod snapshot;
 pub mod state;
@@ -41,6 +44,7 @@ use core::pin::Pin;
 use printobserver_types::FileName;
 
 pub use adjustable::{Adjustable, AdjustableError};
+pub use file::{FileFacts, FilePrint, ToolFilament};
 pub use ranges::{
     COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
     HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, RANGED_FIELDS,
@@ -168,4 +172,43 @@ pub trait PrinterPort: Send + Sync {
 
     /// Set the part-cooling fan, in percent.
     fn set_fan_percent(&self, percent: f64) -> BoxFuture<'_, Result<(), PrinterError>>;
+
+    /// Read what the printer knows of one file it holds.
+    ///
+    /// A printer that cannot answer is refused with status 501, which is what
+    /// an implementation that does not override this answers.
+    fn file_facts(&self, file_name: FileName) -> BoxFuture<'_, Result<FileFacts, PrinterError>> {
+        let _ = file_name;
+        Box::pin(async { Err(not_supported("file_facts")) })
+    }
+
+    /// Read every file the printer holds that carries a print tally.
+    ///
+    /// A printer that cannot answer is refused with status 501, which is what
+    /// an implementation that does not override this answers.
+    fn printed_files(&self) -> BoxFuture<'_, Result<Vec<FileFacts>, PrinterError>> {
+        Box::pin(async { Err(not_supported("printed_files")) })
+    }
+
+    /// Read the filament each tool is fed by one file's own moves, from its
+    /// start up to a byte position in it.
+    ///
+    /// A printer that cannot answer is refused with status 501, which is what
+    /// an implementation that does not override this answers.
+    fn extruded_to(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> BoxFuture<'_, Result<Vec<ToolFilament>, PrinterError>> {
+        let _ = (file_name, position_bytes);
+        Box::pin(async { Err(not_supported("extruded_to")) })
+    }
+}
+
+/// What a printer that does not implement one of the file reads answers.
+fn not_supported(method: &str) -> PrinterError {
+    PrinterError::Refused {
+        status: 501,
+        detail: format!("{method} is not supported by this printer"),
+    }
 }

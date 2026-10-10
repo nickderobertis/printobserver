@@ -14,6 +14,7 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Deserializer, Serialize};
 use printobserver_types::{Reported, Timestamp};
 
+use crate::file::ToolFilament;
 use crate::state::PrinterState;
 
 use crate::ranges::{
@@ -133,6 +134,14 @@ pub struct JobSnapshot {
     /// The error the source reports, when it reports one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// How far into the file the printer has read, in bytes, when the source
+    /// reported it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
+    /// The filament the source's analysis of the file says each tool uses;
+    /// empty when the source reported none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub filament: Vec<ToolFilament>,
 }
 
 /// Read `PrinterSnapshot::feedrate_factor` against its declared range.
@@ -242,6 +251,8 @@ impl Sample for JobSnapshot {
             print_time_left_s: Some(4176),
             state: PrinterState::Printing,
             error: Some("none".to_owned()),
+            file_position_bytes: Some(1_761_607),
+            filament: vec![ToolFilament::sample_full()],
         }
     }
 
@@ -256,6 +267,8 @@ impl Sample for JobSnapshot {
             print_time_left_s: None,
             state: PrinterState::Printing,
             error: None,
+            file_position_bytes: None,
+            filament: Vec::new(),
         }
     }
 }

@@ -1664,6 +1664,8 @@ pub fn job_snapshot() -> JobSnapshot {
         print_time_left_s: Some(4176),
         state: PrinterState::Printing,
         error: None,
+        file_position_bytes: None,
+        filament: Vec::new(),
     }
 }
 

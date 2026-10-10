@@ -179,6 +179,13 @@
             "null"
           ]
         },
+        "filament": {
+          "description": "The filament the source's analysis of the file says each tool uses;\nempty when the source reported none.",
+          "items": {
+            "$ref": "#/$defs/ToolFilament"
+          },
+          "type": "array"
+        },
         "file_name": {
           "description": "The name of the file being printed, as the source reported it.",
           "type": [
@@ -190,6 +197,14 @@
           "description": "Where the file lives, in the source's own vocabulary.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "file_position_bytes": {
+          "description": "How far into the file the printer has read, in bytes, when the source\nreported it.",
+          "format": "int64",
+          "type": [
+            "integer",
             "null"
           ]
         },
@@ -393,6 +408,35 @@
       "format": "date-time",
       "title": "Timestamp",
       "type": "string"
+    },
+    "ToolFilament": {
+      "additionalProperties": false,
+      "description": "The filament one tool feeds, as a length and, when it is known, a volume.",
+      "properties": {
+        "length_mm": {
+          "description": "The length of filament fed, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "volume_cm3": {
+          "description": "The volume of filament fed, in cubic centimetres, when the source\nreported one.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "tool",
+        "length_mm"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

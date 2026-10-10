@@ -65,6 +65,22 @@ type StatedField = (&'static str, &'static str, bool);
 const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
     ("Adjustable", &[]),
     (
+        "FileFacts",
+        &[
+            ("failures", "integer", true),
+            ("filament", "array:ToolFilament", false),
+            ("file_name", "string", true),
+            ("last_print", "FilePrint", false),
+            ("origin", "string", true),
+            ("size_bytes", "integer", false),
+            ("successes", "integer", true),
+        ],
+    ),
+    (
+        "FilePrint",
+        &[("at", "Timestamp", true), ("success", "boolean", true)],
+    ),
+    (
         "HeaterSnapshot",
         &[
             ("actual_c", "Reported", false),
@@ -78,8 +94,10 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
             ("completion", "Reported", false),
             ("error", "string", false),
             ("estimated_print_time_s", "integer", false),
+            ("filament", "array:ToolFilament", false),
             ("file_name", "string", false),
             ("file_origin", "string", false),
+            ("file_position_bytes", "integer", false),
             ("print_time_left_s", "integer", false),
             ("print_time_s", "integer", false),
             ("size_bytes", "integer", false),
@@ -100,6 +118,14 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
         ],
     ),
     ("PrinterState", &[("unknown", "string", true)]),
+    (
+        "ToolFilament",
+        &[
+            ("length_mm", "number", true),
+            ("tool", "integer", true),
+            ("volume_cm3", "number", false),
+        ],
+    ),
 ];
 
 /// Every declared type carries exactly the fields the contract states, under
@@ -175,8 +201,8 @@ fn an_absent_optional_is_absent_from_the_serialized_object() {
         }
     }
     assert_eq!(
-        checked, 16,
-        "the sixteen optional fields were not all checked"
+        checked, 22,
+        "the twenty-two optional fields were not all checked"
     );
 }
 
@@ -252,4 +278,48 @@ fn nothing_parses_a_value_of_no_declared_type() {
             entry.name
         );
     }
+}
+
+/// A job as a periodic observation stored it before a job carried a file
+/// position or the filament per tool.
+const STORED_JOB: &str = concat!(
+    r#"{"file_name":"benchy.gcode","file_origin":"local","size_bytes":4194304,"#,
+    r#""estimated_print_time_s":7200,"completion":{"value":0.42,"out_of_range":false},"#,
+    r#""print_time_s":3024,"print_time_left_s":4176,"state":"printing"}"#
+);
+
+/// A job stored before the two filament fields existed reads with neither, and
+/// writes back byte for byte as it was stored.
+#[test]
+fn a_job_stored_without_the_filament_fields_reads_without_them_and_writes_back_unchanged() {
+    use printobserver_printer_api::JobSnapshot;
+    use printobserver_types::serde_json;
+    let job: JobSnapshot = serde_json::from_str(STORED_JOB).expect("a stored job reads");
+    assert_eq!(job.file_position_bytes, None);
+    assert!(job.filament.is_empty());
+    assert_eq!(serde_json::to_string(&job).expect("a job writes"), STORED_JOB);
+}
+
+/// Every canonical value of the job and of the three file shapes is one its
+/// own generated schema admits, and a file's facts missing its tally are not.
+#[test]
+fn the_file_shapes_validate_against_their_generated_schemas() {
+    for name in ["JobSnapshot", "FileFacts", "FilePrint", "ToolFilament"] {
+        let entry = contract(name);
+        let validator =
+            jsonschema::validator_for(&entry.schema()).expect("the generated schema compiles");
+        for value in entry.samples() {
+            assert!(validator.is_valid(&value), "{name}'s schema refused {value}");
+        }
+    }
+    let entry = contract("FileFacts");
+    let validator =
+        jsonschema::validator_for(&entry.schema()).expect("the generated schema compiles");
+    let mut untallied = entry.full();
+    untallied
+        .as_object_mut()
+        .expect("an object")
+        .remove("successes");
+    assert!(!validator.is_valid(&untallied));
+    assert!(entry.round_trip(untallied).is_err());
 }

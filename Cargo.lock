@@ -1500,6 +1500,7 @@ dependencies = [
 name = "printobserver-printer-api"
 version = "0.3.0"
 dependencies = [
+ "jsonschema 0.34.0",
  "printobserver-types",
  "quote",
  "syn 3.0.5",
