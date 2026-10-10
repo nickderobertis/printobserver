@@ -494,6 +494,7 @@ impl Sample for PrintEndedPayload {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
+// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub struct FilamentConsumedPayload {
     /// The durable identity of this debit.
     pub charge_key: ChargeKey,
@@ -898,8 +899,10 @@ pub struct UnaccountedPrintPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printed_at: Option<Timestamp>,
     /// Whether it completed.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub success: bool,
     /// Whether it was charged against a spool.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub charged: bool,
 }
 

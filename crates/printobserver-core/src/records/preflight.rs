@@ -43,6 +43,7 @@ pub struct PreflightTool {
     pub spool_id: Option<SpoolId>,
     /// That spool's name, beside its identifier, so a reader need not look it
     /// up.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spool_name: Option<String>,
     /// What the print needs from it, in grams, when the file's analysis says.

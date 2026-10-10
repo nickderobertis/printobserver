@@ -34,6 +34,7 @@ pub struct FilePrint {
     /// When it was printed.
     pub at: Timestamp,
     /// Whether that print completed.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub success: bool,
 }
 

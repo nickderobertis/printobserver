@@ -130,8 +130,10 @@ pub struct PendingCharge {
     /// The key of the print segment the filament was fed in.
     pub charge_key: ChargeKey,
     /// The print it was fed in.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub print_id: PrintId,
     /// The tool that fed it.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub tool: i64,
     /// How much was fed, in millimetres.
     pub length_mm: f64,

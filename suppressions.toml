@@ -129,6 +129,48 @@ site = "SpoolRefused {"
 reason = "The plan states this rejection as `spool_refused { detail: String }`, one variant for every spool command the domain cannot carry out — an unknown or retired spool, a tool that already holds the spool with nothing to confirm, an adjust naming both or neither figure, a gross weight with no tare, a material with no known density — and the domain, the command surface and the three clients are being built against that one variant at the same time. A variant per cause would be a different wire form each of them would have to change to, so it is proposed as a follow-up rather than made here; every other rejection stays a distinct variant carrying what a second request is composed from."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub success: bool,"
+reason = "`UnaccountedPrintPayload.success` is a bare flag beside `PrintOutcome`. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub charged: bool,"
+reason = "`UnaccountedPrintPayload.charged` is a bare flag for whether the print was charged. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub struct FilamentConsumedPayload {"
+reason = "`FilamentConsumedPayload` carries its grams, diameter, density and before and after figures as independent options, each present exactly when a spool was charged. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-printer-api/src/file.rs"
+site = "pub success: bool,"
+reason = "`FilePrint.success` is the printer's own completed-or-not flag for a file's last print, as `OctoPrint` reports it. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/charge.rs"
+site = "pub print_id: PrintId,"
+reason = "`PendingCharge.print_id` repeats what its `print` charge key names, so a reader of a pending charge need not unpack the key. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/charge.rs"
+site = "pub tool: i64,"
+reason = "`PendingCharge.tool` repeats what its `print` charge key names, so a reader of a pending charge need not unpack the key. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub spool_name: Option<String>,"
+reason = "`PreflightTool.spool_name` is an option independent of `spool_id`, present exactly when it is. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/vision.rs"
 site = "pub const HANDLED_OVERWRITE: &str = \"FAILED\";"
