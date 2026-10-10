@@ -133,7 +133,12 @@ export type ActionKind =
   | "set_tool_target_c"
   | "set_bed_target_c"
   | "set_fan_percent"
-  | "acknowledge_failure";
+  | "acknowledge_failure"
+  | "register_spool"
+  | "load_spool"
+  | "unload_spool"
+  | "adjust_spool"
+  | "retire_spool";
 
 /**
  * One request, the decision taken on it, and what became of it.
@@ -243,6 +248,42 @@ export interface CameraLookPayload {
   waited_s: number;
 }
 
+/** The durable identity of one debit, so that a replay can never debit twice. */
+export type ChargeKey =
+  | { key: "print"; print_id: PrintId; segment: number; tool: number }
+  | {
+      key: "unobserved";
+      file_name: string;
+      generation: number;
+      origin: string;
+      print_number: number;
+      tool: number;
+    };
+
+/** How the length a charge debits was worked out. */
+export type ChargeMethod =
+  | "slicer_estimate"
+  | "gcode_extrusion"
+  | "file_fraction"
+  | "unobserved_estimate";
+
+/**
+ * Filament a tool fed after an unconfirmed filament change was held for the
+ * next spool loaded onto that tool, or confirmed on it.
+ */
+export interface ChargePendedPayload {
+  /** What was held. */
+  pending: PendingCharge;
+}
+
+/** One mark a spool command cleared, and the spool it was cleared from. */
+export interface ClearedMark {
+  /** The reason that no longer stands. */
+  reason: UnverifiedReason;
+  /** The spool the mark was cleared from. */
+  spool_id: SpoolId;
+}
+
 /**
  * How sure the agent is.
  *
@@ -334,11 +375,110 @@ export type EventSource = string;
 /** What happened when an accepted action reached the printer. */
 export type ExecutionOutcome = "succeeded" | { failed: { reason: string } };
 
+/** A filament change was signalled during a print. */
+export interface FilamentChangeSignalledPayload {
+  /** The position the spool was charged up to, when one was known. */
+  position?: FilePosition | null;
+  /**
+   * Whether that position was read when the signal was handled, rather than
+   * being the last one recorded.
+   */
+  position_read_at_signal: boolean;
+  /** The kind of the alert that carried the signal. */
+  source_kind: EventKind;
+  /** The spool that was on it, when one was tracked. */
+  spool_id?: SpoolId | null;
+  /** The tool the change was signalled for, when it is known. */
+  tool?: number | null;
+}
+
+/** Filament was charged against a spool, or recorded uncharged. */
+export interface FilamentConsumedPayload {
+  /**
+   * The file's analysed length for the tool, in millimetres, when it had
+   * one.
+   */
+  analysed_length_mm?: number | null;
+  /** The durable identity of this debit. */
+  charge_key: ChargeKey;
+  /**
+   * The density the grams were worked out with, in grams per cubic
+   * centimetre.
+   */
+  density_g_cm3?: number | null;
+  /** The diameter the grams were worked out with, in millimetres. */
+  diameter_mm?: number | null;
+  /**
+   * What that length weighs, in grams, when a spool gave its diameter and
+   * density.
+   */
+  grams?: number | null;
+  /** How much was fed, in millimetres. */
+  length_mm: number;
+  /** How the length was worked out. */
+  method: ChargeMethod;
+  /** Anything a reader needs to make sense of the figure. */
+  note?: string | null;
+  /** How far into the file the charge runs, when that was read. */
+  position?: FilePosition | null;
+  /** The spool's figure after it, in grams. */
+  remaining_after_g?: number | null;
+  /** The spool's figure before the charge, in grams. */
+  remaining_before_g?: number | null;
+  /**
+   * The spool charged; absent when nothing was tracked on the tool, and the
+   * filament was recorded uncharged.
+   */
+  spool_id?: SpoolId | null;
+  /** The tool that fed it. */
+  tool: number;
+}
+
 /**
  * A file name a printer's own file API can be asked for: no path separator,
  * no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.
  */
 export type FileName = string;
+
+/** How far into its file a print had got, and when that was read. */
+export interface FilePosition {
+  /** The byte the printer had read the file up to. */
+  bytes: number;
+  /** When the position was read. */
+  observed_at: Timestamp;
+  /** The file's size in bytes, when it was known. */
+  size_bytes?: number | null;
+}
+
+/**
+ * The printer's tally for a file went down — the file was deleted and
+ * uploaded again — so the file's tally generation advanced, and the new
+ * count
+ * is that generation's growth from zero.
+ *
+ * The rebaseline itself marks no spool; only an `unverified` disposition
+ * does.
+ */
+export interface FileTallyRebaselinedPayload {
+  /** What became of the prints the new generation counts. */
+  disposition: RebaselineDisposition;
+  /** The file whose tally went down. */
+  file_name: string;
+  /** The failed prints the new tally counts. */
+  new_failures: number;
+  /** The generation it is in now. */
+  new_generation: number;
+  /** The completed prints the new tally counts. */
+  new_successes: number;
+  /** The failed prints the old tally counted. */
+  old_failures: number;
+  /** The generation the tally was in. */
+  old_generation: number;
+  /** The completed prints the old tally counted. */
+  old_successes: number;
+  /** Where it lives, in the printer's own vocabulary. */
+  origin: string;
+}
 
 /**
  * One heater, as a source reported it.
@@ -511,10 +651,20 @@ export interface JobSnapshot {
   error?: string | null;
   /** The whole print's estimated duration, in whole seconds. */
   estimated_print_time_s?: number | null;
+  /**
+   * The filament the source's analysis of the file says each tool uses;
+   * empty when the source reported none.
+   */
+  filament?: Array<ToolFilament>;
   /** The name of the file being printed, as the source reported it. */
   file_name?: string | null;
   /** Where the file lives, in the source's own vocabulary. */
   file_origin?: string | null;
+  /**
+   * How far into the file the printer has read, in bytes, when the source
+   * reported it.
+   */
+  file_position_bytes?: number | null;
   /** How long the print has left, in whole seconds. */
   print_time_left_s?: number | null;
   /** How long the print has been running, in whole seconds. */
@@ -523,6 +673,14 @@ export interface JobSnapshot {
   size_bytes?: number | null;
   /** The state the source reports the job to be in. */
   state: PrinterState;
+}
+
+/** One spool loaded on one tool, as a print started. */
+export interface LoadedSpool {
+  /** The spool loaded on it. */
+  spool_id: SpoolId;
+  /** The tool, in the printer's own numbering. */
+  tool: number;
 }
 
 /**
@@ -661,6 +819,46 @@ export interface OperatorAcknowledgementPayload {
 }
 
 /**
+ * Filament a tool fed after a filament change nobody has confirmed, held
+ * until
+ * somebody says which spool fed it.
+ *
+ * A length rather than grams, because the grams follow the spool that takes
+ * it.
+ */
+export interface PendingCharge {
+  /**
+   * The file's analysed length for the tool, in millimetres, when it had
+   * one.
+   */
+  analysed_length_mm?: number | null;
+  /** The key of the print segment the filament was fed in. */
+  charge_key: ChargeKey;
+  /** How much was fed, in millimetres. */
+  length_mm: number;
+  /** How that length was worked out. */
+  method: ChargeMethod;
+  /** Anything a reader needs to make sense of the figure. */
+  note?: string | null;
+  /** When it was held. */
+  pended_at: Timestamp;
+  /** How far into the file the segment ran, when that was read. */
+  position?: FilePosition | null;
+  /** The print it was fed in. */
+  print_id: PrintId;
+  /** The tool that fed it. */
+  tool: number;
+}
+
+/** One pending charge a spool command took. */
+export interface PendingTaken {
+  /** The key it is charged under. */
+  charge_key: ChargeKey;
+  /** The print it was fed in. */
+  print_id: PrintId;
+}
+
+/**
  * The supervisor looked in on an active print on its own schedule, with no
  * detector having said anything about it.
  *
@@ -732,6 +930,65 @@ export type PortFailureSite =
   | "camera_look"
   | "detector_acknowledgement";
 
+/** What a filament check found for one print. */
+export interface Preflight {
+  /** When the check was made. */
+  checked_at: Timestamp;
+  /** The file the print is of. */
+  file_name: string;
+  /** What it found for each tool. */
+  tools: Array<PreflightTool>;
+  /**
+   * The worst of the tools' verdicts, in the order insufficient,
+   * unverified spool, no analysis, warned, overridden, unchecked, passed.
+   */
+  verdict: PreflightVerdict;
+}
+
+/** The filament check before a start was made. */
+export interface PreflightCheckedPayload {
+  /** The start it was made for, when it was made for one. */
+  action_id?: ActionId | null;
+  /** What the check found. */
+  preflight: Preflight;
+}
+
+/** What a filament check found for one tool. */
+export interface PreflightTool {
+  /** The margin asked for beyond that, in grams. */
+  buffer_g?: number | null;
+  /**
+   * The loaded spool's marks at the check, oldest first, whatever the
+   * verdict, so a spool both short and unverified says both.
+   */
+  marks?: Array<UnverifiedMark>;
+  /** What the spool holds, in grams. */
+  remaining_g?: number | null;
+  /** What the print needs from it, in grams, when the file's analysis says. */
+  required_g?: number | null;
+  /** The spool loaded on it, when one is. */
+  spool_id?: SpoolId | null;
+  /**
+   * That spool's name, beside its identifier, so a reader need not look it
+   * up.
+   */
+  spool_name?: string | null;
+  /** The tool, in the printer's own numbering. */
+  tool: number;
+  /** What the check found for this tool. */
+  verdict: PreflightVerdict;
+}
+
+/** What a filament check found, for one tool or for a whole print. */
+export type PreflightVerdict =
+  | "passed"
+  | "unchecked"
+  | "insufficient"
+  | "unverified_spool"
+  | "no_analysis"
+  | "overridden"
+  | "warned";
+
 /** The whole vocabulary an actor may ask for, and there is no other. */
 export type PrintAction =
   | { action: "pause"; actor: Actor; reason: string }
@@ -742,6 +999,7 @@ export type PrintAction =
       actor: Actor;
       file_name: FileName;
       manifest: JobManifest;
+      override_filament_check?: boolean;
       reason: string;
     }
   | {
@@ -808,8 +1066,23 @@ export interface PrintContext {
   recent_events: Array<EventRecord>;
 }
 
+/** A print ended. */
+export interface PrintEndedPayload {
+  /** How far into its file it last read, when that was read. */
+  last_position?: FilePosition | null;
+  /** How it ended. */
+  outcome: PrintOutcome;
+  /** Why it ended, in the words the end was recorded with. */
+  reason: string;
+  /** The state the printer was in as it ended. */
+  state: PrinterState;
+}
+
 /** A lowercase hyphenated version 7 UUID identifying one print. */
 export type PrintId = string;
+
+/** How a print ended. */
+export type PrintOutcome = "completed" | "cancelled" | "failed";
 
 /**
  * One print, and the record supervision keys from.
@@ -863,6 +1136,30 @@ export interface PrintRecord {
   provider_print_id?: number | null;
   /** The state the print is in. */
   state: PrinterState;
+}
+
+/** A print started. */
+export interface PrintStartedPayload {
+  /** The file being printed, when it is known. */
+  file_name?: string | null;
+  /** The spool loaded on each tool as it started. */
+  loaded: Array<LoadedSpool>;
+  /** The filament check made before it started, when one was. */
+  preflight?: Preflight | null;
+  /**
+   * The action that started it; absent when the print was observed rather
+   * than started through this system.
+   */
+  started_by?: ActionId | null;
+}
+
+/**
+ * A print that was already open when spool tracking was installed: it is
+ * never charged, and this says why it carries no charge.
+ */
+export interface PrintUntrackedPayload {
+  /** Why the print carries no charge. */
+  reason: string;
 }
 
 /** A printer, as a source reported it at one instant. */
@@ -930,6 +1227,9 @@ export interface Range {
 /** Bytes exactly as received, base64-encoded. */
 export type RawBytes = string;
 
+/** What became of the prints a file's new tally generation counts. */
+export type RebaselineDisposition = "accounted" | "unverified";
+
 /**
  * Why a request was refused.
  *
@@ -942,7 +1242,28 @@ export type RejectionReason =
   | "no_active_print"
   | { invalid_from_state: { state: PrinterState } }
   | { min_interval_not_elapsed: { interval_s: number; since_last_s: number } }
-  | { unsupported_adjustable: { adjustable: Adjustable } };
+  | { unsupported_adjustable: { adjustable: Adjustable } }
+  | {
+      insufficient_filament: {
+        buffer_g: number;
+        remaining_g: number;
+        required_g: number;
+        spool_id: SpoolId;
+        spool_name: string;
+        tool: number;
+        unverified?: UnverifiedReason | null;
+      };
+    }
+  | {
+      unverified_spool: {
+        reason: UnverifiedReason;
+        spool_id: SpoolId;
+        spool_name: string;
+        tool: number;
+      };
+    }
+  | { analysis_unavailable: { file_name: string; waited_s: number } }
+  | { spool_refused: { detail: string } };
 
 /**
  * A value as a source reported it, flagged when it is outside the
@@ -953,6 +1274,175 @@ export interface Reported {
   out_of_range: boolean;
   /** One shape of the contracts, which say nothing more about it. */
   value: number;
+}
+
+/** A spool's remaining figure was corrected. */
+export interface SpoolAdjustedPayload {
+  /** Who corrected it. */
+  actor: Actor;
+  /** Every mark the correction cleared. */
+  cleared_marks?: Array<ClearedMark>;
+  /**
+   * The scale reading the figure was worked out from, when it was given as
+   * one.
+   */
+  gross_g?: number | null;
+  /** Why. */
+  reason: string;
+  /** Its figure after, in grams. */
+  remaining_after_g: number;
+  /** Its figure before, in grams, after any pending charge it took. */
+  remaining_before_g: number;
+  /** The spool corrected. */
+  spool_id: SpoolId;
+  /**
+   * The pending charges the correction took first, each also its own
+   * `filament_consumed` event under its key.
+   */
+  took_pending?: Array<PendingTaken>;
+}
+
+/** The whole vocabulary of the spool ledger, and there is no other. */
+export type SpoolCommand =
+  | {
+      command: "register_spool";
+      actor: Actor;
+      color?: string | null;
+      density_g_cm3?: number | null;
+      diameter_mm?: number | null;
+      initial_g: number;
+      material: string;
+      name: string;
+      reason: string;
+      remaining_g?: number | null;
+      tare_g?: number | null;
+    }
+  | { command: "load_spool"; actor: Actor; reason: string; spool_id: SpoolId; tool: number }
+  | { command: "unload_spool"; actor: Actor; reason: string; spool_id: SpoolId }
+  | {
+      command: "adjust_spool";
+      actor: Actor;
+      gross_g?: number | null;
+      reason: string;
+      remaining_g?: number | null;
+      spool_id: SpoolId;
+    }
+  | { command: "retire_spool"; actor: Actor; reason: string; spool_id: SpoolId };
+
+/** A spool command was refused. */
+export interface SpoolCommandRejectedPayload {
+  /** The command, as it was asked for. */
+  command: SpoolCommand;
+  /** The whole decision, carrying which refusal it was. */
+  decision: PolicyDecision;
+}
+
+/** A lowercase hyphenated version 7 UUID identifying one registered spool. */
+export type SpoolId = string;
+
+/** A spool was loaded onto a tool, or confirmed as never having left it. */
+export interface SpoolLoadedPayload {
+  /** Who loaded it. */
+  actor: Actor;
+  /** Every mark the load cleared, on either spool. */
+  cleared_marks?: Array<ClearedMark>;
+  /** Why. */
+  reason: string;
+  /** The spool the load swapped off the tool, when it was occupied. */
+  replaced?: SpoolId | null;
+  /** The spool loaded. */
+  spool_id: SpoolId;
+  /**
+   * The pending charges the load took, each also its own
+   * `filament_consumed` event under its key.
+   */
+  took_pending?: Array<PendingTaken>;
+  /** The tool, in the printer's own numbering. */
+  tool: number;
+}
+
+/** One spool the operator registered, and what is known of it now. */
+export interface SpoolRecord {
+  /** The filament's colour, when the operator gave one. */
+  color?: string | null;
+  /** The material's density, in grams per cubic centimetre; above zero. */
+  density_g_cm3: number;
+  /** The filament's diameter, in millimetres; above zero. */
+  diameter_mm: number;
+  /** This spool's identifier, minted when it was registered. */
+  id: SpoolId;
+  /** The net filament on the spool when it was full, in grams; above zero. */
+  initial_g: number;
+  /** The tool the spool is loaded on, when it is loaded. */
+  loaded_on_tool?: number | null;
+  /** The material, as given and trimmed, such as `PLA`; never empty. */
+  material: string;
+  /** The operator's own label for the spool; never empty. */
+  name: string;
+  /** When the spool was registered. */
+  registered_at: Timestamp;
+  /**
+   * The filament left, in grams.
+   *
+   * Always the initial figure less every charge plus every correction. A
+   * charge is never refused or clamped, so this may go below zero.
+   */
+  remaining_g: number;
+  /** When the spool was retired, if it has been. */
+  retired_at?: Timestamp | null;
+  /** The empty spool's own weight, in grams, when the operator gave it. */
+  tare_g?: number | null;
+  /** How far the remaining figure can be trusted. */
+  trust: SpoolTrust;
+  /** When anything about the spool last changed. */
+  updated_at: Timestamp;
+}
+
+/** A spool was registered. */
+export interface SpoolRegisteredPayload {
+  /** Who registered it. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+  /** The spool, as it was registered. */
+  spool: SpoolRecord;
+}
+
+/** A spool was retired. */
+export interface SpoolRetiredPayload {
+  /** Who retired it. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+  /** Its figure as it was retired, in grams. */
+  remaining_g: number;
+  /** The spool retired. */
+  spool_id: SpoolId;
+}
+
+/** How far a spool's remaining figure can be trusted. */
+export type SpoolTrust =
+  | { state: "verified" }
+  | { state: "unverified"; marks: Array<UnverifiedMark> };
+
+/** A spool was unloaded from its tool. */
+export interface SpoolUnloadedPayload {
+  /** Who unloaded it. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+  /** The spool unloaded. */
+  spool_id: SpoolId;
+  /** The tool it left. */
+  tool: number;
+}
+
+/** A spool was marked as one whose figure is in doubt. */
+export interface SpoolUnverifiedPayload {
+  /** Why its figure is in doubt. */
+  reason: UnverifiedReason;
+  /** The spool marked. */
+  spool_id: SpoolId;
 }
 
 /**
@@ -1036,6 +1526,47 @@ export interface SupervisionSessionOpenedPayload {
 /** An instant in UTC, as an RFC 3339 string with a zero offset. */
 export type Timestamp = string;
 
+/** The filament one tool feeds, as a length and, when it is known, a volume. */
+export interface ToolFilament {
+  /** The length of filament fed, in millimetres. */
+  length_mm: number;
+  /** The tool, in the printer's own numbering. */
+  tool: number;
+  /**
+   * The volume of filament fed, in cubic centimetres, when the source
+   * reported one.
+   */
+  volume_cm3?: number | null;
+}
+
+/** A print this system never saw was found in the printer's own tally. */
+export interface UnaccountedPrintPayload {
+  /** Whether it was charged against a spool. */
+  charged: boolean;
+  /** The file that was printed. */
+  file_name: string;
+  /** When it was printed, when the printer says. */
+  printed_at?: Timestamp | null;
+  /** Whether it completed. */
+  success: boolean;
+}
+
+/** One reason a spool's figure is in doubt, and since when. */
+export interface UnverifiedMark {
+  /** Why the figure is in doubt. */
+  reason: UnverifiedReason;
+  /** When the spool was marked for it. */
+  since: Timestamp;
+}
+
+/** Why a spool's figure is in doubt. */
+export type UnverifiedReason =
+  | { reason: "uncharged_print"; print_id: PrintId }
+  | { reason: "unaccounted_print"; file_name: string; printed_at: Timestamp }
+  | { reason: "filament_change_unconfirmed"; print_id: PrintId }
+  | { reason: "filament_change_unconfirmed_position"; print_id: PrintId }
+  | { reason: "tally_reset"; file_name: string; origin: string };
+
 /**
  * Every kind the server declares a payload type for, keyed by the kind's
  * name, and the type each payload has. A kind this client does not know
@@ -1047,6 +1578,10 @@ export interface EventPayloads {
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
   camera_look: CameraLookPayload;
+  charge_pended: ChargePendedPayload;
+  filament_change_signalled: FilamentChangeSignalledPayload;
+  filament_consumed: FilamentConsumedPayload;
+  file_tally_rebaselined: FileTallyRebaselinedPayload;
   intervention_expired: InterventionExpiredPayload;
   malformed_external_event: MalformedExternalEventPayload;
   obico_failure_alert: ObicoFailureAlertPayload;
@@ -1054,9 +1589,21 @@ export interface EventPayloads {
   operator_acknowledgement: OperatorAcknowledgementPayload;
   periodic_observation: PeriodicObservationPayload;
   port_failure: PortFailurePayload;
+  preflight_checked: PreflightCheckedPayload;
+  print_ended: PrintEndedPayload;
+  print_started: PrintStartedPayload;
+  print_untracked: PrintUntrackedPayload;
+  spool_adjusted: SpoolAdjustedPayload;
+  spool_command_rejected: SpoolCommandRejectedPayload;
+  spool_loaded: SpoolLoadedPayload;
+  spool_registered: SpoolRegisteredPayload;
+  spool_retired: SpoolRetiredPayload;
+  spool_unloaded: SpoolUnloadedPayload;
+  spool_unverified: SpoolUnverifiedPayload;
   startup_reconciliation: StartupReconciliationPayload;
   supervision_session_closed: SupervisionSessionClosedPayload;
   supervision_session_opened: SupervisionSessionOpenedPayload;
+  unaccounted_print: UnaccountedPrintPayload;
 }
 
 /** Every kind the server declares a payload type for, in name order. */
@@ -1066,6 +1613,10 @@ export const EVENT_KINDS = [
   "action_requested",
   "agent_assessment",
   "camera_look",
+  "charge_pended",
+  "filament_change_signalled",
+  "filament_consumed",
+  "file_tally_rebaselined",
   "intervention_expired",
   "malformed_external_event",
   "obico_failure_alert",
@@ -1073,9 +1624,21 @@ export const EVENT_KINDS = [
   "operator_acknowledgement",
   "periodic_observation",
   "port_failure",
+  "preflight_checked",
+  "print_ended",
+  "print_started",
+  "print_untracked",
+  "spool_adjusted",
+  "spool_command_rejected",
+  "spool_loaded",
+  "spool_registered",
+  "spool_retired",
+  "spool_unloaded",
+  "spool_unverified",
   "startup_reconciliation",
   "supervision_session_closed",
   "supervision_session_opened",
+  "unaccounted_print",
 ] as const satisfies ReadonlyArray<keyof EventPayloads>;
 
 /**
@@ -1312,6 +1875,7 @@ export class GeneratedClient extends GeneratedSurface {
     fileName: FileName,
     manifest: JobManifest,
     reason: string,
+    overrideFilamentCheck?: boolean,
   ): Promise<ActionAnswer> {
     reasonGiven(reason);
     const target = `/v1/prints/${printId}/actions/start_print`;
@@ -1320,6 +1884,9 @@ export class GeneratedClient extends GeneratedSurface {
     sending.actor = this.actor;
     sending.file_name = fileName;
     sending.manifest = manifest;
+    if (overrideFilamentCheck !== undefined) {
+      sending.override_filament_check = overrideFilamentCheck;
+    }
     sending.reason = reason;
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);

@@ -5,10 +5,10 @@
 mod schema_files;
 
 use printobserver_types::contract::{Sample as _, schema_of};
+use printobserver_types::serde_json::{self, Value};
 use printobserver_types::{
     EVENT_KIND_MARKER, EventBody, EventPayload, WireField, event_schema_of, wire_fields,
 };
-use printobserver_types::serde_json::{self, Value};
 use printobserver_vision_api::{
     Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, PrinterSignal,
     ProviderPrint,

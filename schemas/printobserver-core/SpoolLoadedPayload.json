@@ -1,0 +1,346 @@
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "ChargeKey": {
+      "description": "The durable identity of one debit, so that a replay can never debit twice.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "One segment of a print this system watched, on one tool.",
+          "properties": {
+            "key": {
+              "const": "print",
+              "type": "string"
+            },
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print."
+            },
+            "segment": {
+              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "print_id",
+            "tool",
+            "segment"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One print this system never saw, on one tool.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "generation": {
+              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "key": {
+              "const": "unobserved",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "print_number": {
+              "description": "The print's ordinal in the file's tally — completed and failed\nprints counted up to and including this one — within that\ngeneration.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "origin",
+            "file_name",
+            "generation",
+            "print_number",
+            "tool"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ClearedMark": {
+      "additionalProperties": false,
+      "description": "One mark a spool command cleared, and the spool it was cleared from.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/UnverifiedReason",
+          "description": "The reason that no longer stands."
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool the mark was cleared from."
+        }
+      },
+      "required": [
+        "spool_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "PendingTaken": {
+      "additionalProperties": false,
+      "description": "One pending charge a spool command took.",
+      "properties": {
+        "charge_key": {
+          "$ref": "#/$defs/ChargeKey",
+          "description": "The key it is charged under."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print it was fed in."
+        }
+      },
+      "required": [
+        "charge_key",
+        "print_id"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis — an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A spool was loaded onto a tool, or confirmed as never having left it.",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who loaded it."
+    },
+    "cleared_marks": {
+      "description": "Every mark the load cleared, on either spool.",
+      "items": {
+        "$ref": "#/$defs/ClearedMark"
+      },
+      "type": "array"
+    },
+    "reason": {
+      "description": "Why.",
+      "type": "string"
+    },
+    "replaced": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool the load swapped off the tool, when it was occupied."
+    },
+    "spool_id": {
+      "$ref": "#/$defs/SpoolId",
+      "description": "The spool loaded."
+    },
+    "took_pending": {
+      "description": "The pending charges the load took, each also its own\n`filament_consumed` event under its key.",
+      "items": {
+        "$ref": "#/$defs/PendingTaken"
+      },
+      "type": "array"
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "spool_id",
+    "tool",
+    "actor",
+    "reason"
+  ],
+  "title": "SpoolLoadedPayload",
+  "type": "object",
+  "x-event-kind": "spool_loaded"
+}

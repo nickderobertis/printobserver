@@ -31,7 +31,11 @@ use crate::world::{World, alert_kind, assert_same, failure_alert, failure_alert_
 /// The action one printer method is reached by, for the methods that are actions.
 const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
     match method {
-        PrinterMethod::Snapshot | PrinterMethod::Job => None,
+        PrinterMethod::Snapshot
+        | PrinterMethod::Job
+        | PrinterMethod::FileFacts
+        | PrinterMethod::PrintedFiles
+        | PrinterMethod::ExtrudedTo => None,
         PrinterMethod::Start => Some(ActionKind::StartPrint),
         PrinterMethod::Pause => Some(ActionKind::Pause),
         PrinterMethod::Resume => Some(ActionKind::Resume),
@@ -43,6 +47,15 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
         PrinterMethod::SetFanPercent => Some(ActionKind::SetFanPercent),
     }
 }
+
+/// The port's file reads, which nothing in this crate calls yet: the filament
+/// ledger that reads them lands after the port declares them, and each joins
+/// this walk in the change that first calls it, which removes it from here.
+const NOT_YET_CALLED: [PrinterMethod; 3] = [
+    PrinterMethod::FileFacts,
+    PrinterMethod::PrintedFiles,
+    PrinterMethod::ExtrudedTo,
+];
 
 /// The failure induced at every site of this walk.
 fn induced(method: PrinterMethod) -> PrinterError {
@@ -100,6 +113,9 @@ fn a_further_event_is_handled_to_completion(world: &World, print_id: PrintId) {
 fn every_printer_method_fails_where_this_crate_calls_it_and_is_recorded() {
     let mut walked = 0_usize;
     for method in PrinterMethod::ALL {
+        if NOT_YET_CALLED.contains(&method) {
+            continue;
+        }
         let error = induced(method);
         let world = World::new();
         let print = world.open_print(7);
@@ -155,7 +171,7 @@ fn every_printer_method_fails_where_this_crate_calls_it_and_is_recorded() {
         walked += 1;
     }
     assert_eq!(
-        walked,
+        walked + NOT_YET_CALLED.len(),
         PrinterMethod::ALL.len(),
         "the walk has fallen behind the printer port"
     );

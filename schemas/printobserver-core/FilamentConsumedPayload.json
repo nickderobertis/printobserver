@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "ChargeKey": {
+      "description": "The durable identity of one debit, so that a replay can never debit twice.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "One segment of a print this system watched, on one tool.",
+          "properties": {
+            "key": {
+              "const": "print",
+              "type": "string"
+            },
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print."
+            },
+            "segment": {
+              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "print_id",
+            "tool",
+            "segment"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One print this system never saw, on one tool.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "generation": {
+              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "key": {
+              "const": "unobserved",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "print_number": {
+              "description": "The print's ordinal in the file's tally — completed and failed\nprints counted up to and including this one — within that\ngeneration.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "origin",
+            "file_name",
+            "generation",
+            "print_number",
+            "tool"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ChargeMethod": {
+      "description": "How the length a charge debits was worked out.",
+      "oneOf": [
+        {
+          "const": "slicer_estimate",
+          "description": "A completed print: the length the file's analysis gives.",
+          "type": "string"
+        },
+        {
+          "const": "gcode_extrusion",
+          "description": "The extrusion the file's own moves add up to, up to a position in it.",
+          "type": "string"
+        },
+        {
+          "const": "file_fraction",
+          "description": "The analysed length scaled by how far into the file the print got; the\nfallback used only when the file itself could not be read.",
+          "type": "string"
+        },
+        {
+          "const": "unobserved_estimate",
+          "description": "A completed print this system never saw: the file's analysed length.",
+          "type": "string"
+        }
+      ]
+    },
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Filament was charged against a spool, or recorded uncharged.",
+  "properties": {
+    "analysed_length_mm": {
+      "description": "The file's analysed length for the tool, in millimetres, when it had one.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "charge_key": {
+      "$ref": "#/$defs/ChargeKey",
+      "description": "The durable identity of this debit."
+    },
+    "density_g_cm3": {
+      "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "diameter_mm": {
+      "description": "The diameter the grams were worked out with, in millimetres.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "grams": {
+      "description": "What that length weighs, in grams, when a spool gave its diameter and\ndensity.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "length_mm": {
+      "description": "How much was fed, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "method": {
+      "$ref": "#/$defs/ChargeMethod",
+      "description": "How the length was worked out."
+    },
+    "note": {
+      "description": "Anything a reader needs to make sense of the figure.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "position": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FilePosition"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "How far into the file the charge runs, when that was read."
+    },
+    "remaining_after_g": {
+      "description": "The spool's figure after it, in grams.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "remaining_before_g": {
+      "description": "The spool's figure before the charge, in grams.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool charged; absent when nothing was tracked on the tool, and the\nfilament was recorded uncharged."
+    },
+    "tool": {
+      "description": "The tool that fed it.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "charge_key",
+    "tool",
+    "method",
+    "length_mm"
+  ],
+  "title": "FilamentConsumedPayload",
+  "type": "object",
+  "x-event-kind": "filament_consumed"
+}

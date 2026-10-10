@@ -71,9 +71,9 @@ pub fn adjustment(action: &PrintAction) -> Option<(Adjustable, f64)> {
 
 /// Whether one action is valid from the state the printer is in.
 ///
-/// Acknowledging a failure is valid from every state, because it changes
-/// nothing at the machine; everything else names the states it makes sense
-/// from.
+/// Acknowledging a failure and every spool command are valid from every
+/// state, because none of them changes anything at the machine; everything
+/// else names the states it makes sense from.
 #[must_use]
 pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
     match kind {
@@ -88,22 +88,35 @@ pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
         | ActionKind::SetFanPercent => {
             matches!(state, PrinterState::Printing | PrinterState::Paused)
         }
-        ActionKind::AcknowledgeFailure => true,
+        ActionKind::AcknowledgeFailure
+        | ActionKind::RegisterSpool
+        | ActionKind::LoadSpool
+        | ActionKind::UnloadSpool
+        | ActionKind::AdjustSpool
+        | ActionKind::RetireSpool => true,
     }
 }
 
 /// Whether one action changes something at the machine.
 ///
-/// Acknowledging a failure is the one action that does not: it writes a
-/// decision into the print's record and asks nothing of the printer, whatever
-/// its disposition. The agent's minimum interval spaces out changes to the
+/// Acknowledging a failure does not: it writes a decision into the print's
+/// record and asks nothing of the printer, whatever its disposition. Nor does
+/// any spool command, which writes the spool ledger and nothing else. The agent's minimum interval spaces out changes to the
 /// machine, so that each one's effect can show before the next is asked for;
 /// an acknowledgement neither waits on it nor restarts it. An adjustment asked
 /// for while the print is paused does not wait on it either: nothing it does
 /// can show until the print moves again.
 #[must_use]
 pub const fn changes_the_machine(kind: ActionKind) -> bool {
-    !matches!(kind, ActionKind::AcknowledgeFailure)
+    !matches!(
+        kind,
+        ActionKind::AcknowledgeFailure
+            | ActionKind::RegisterSpool
+            | ActionKind::LoadSpool
+            | ActionKind::UnloadSpool
+            | ActionKind::AdjustSpool
+            | ActionKind::RetireSpool
+    )
 }
 
 /// Whether a print is one an action may still be taken against.

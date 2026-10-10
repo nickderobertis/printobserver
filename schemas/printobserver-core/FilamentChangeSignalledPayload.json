@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A filament change was signalled during a print.",
+  "properties": {
+    "position": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FilePosition"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The position the spool was charged up to, when one was known."
+    },
+    "position_read_at_signal": {
+      "description": "Whether that position was read when the signal was handled, rather than\nbeing the last one recorded.",
+      "type": "boolean"
+    },
+    "source_kind": {
+      "$ref": "#/$defs/EventKind",
+      "description": "The kind of the alert that carried the signal."
+    },
+    "spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool that was on it, when one was tracked."
+    },
+    "tool": {
+      "description": "The tool the change was signalled for, when it is known.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "source_kind",
+    "position_read_at_signal"
+  ],
+  "title": "FilamentChangeSignalledPayload",
+  "type": "object",
+  "x-event-kind": "filament_change_signalled"
+}

@@ -78,8 +78,37 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ),
     ("Actor", &[("agent", "object", true)]),
     ("ActorClass", &[]),
+    (
+        "ChargeKey",
+        &[
+            ("file_name", "string", true),
+            ("generation", "integer", true),
+            ("key", "string", true),
+            ("origin", "string", true),
+            ("print_id", "PrintId", true),
+            ("print_number", "integer", true),
+            ("segment", "integer", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    ("ChargeMethod", &[]),
+    (
+        "ClearedMark",
+        &[
+            ("reason", "UnverifiedReason", true),
+            ("spool_id", "SpoolId", true),
+        ],
+    ),
     ("EffectiveBounds", &[("allowed", "map:Range", true)]),
     ("ExecutionOutcome", &[("failed", "object", true)]),
+    (
+        "FilePosition",
+        &[
+            ("bytes", "integer", true),
+            ("observed_at", "Timestamp", true),
+            ("size_bytes", "integer", false),
+        ],
+    ),
     (
         "ImageRecord",
         &[
@@ -129,6 +158,10 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     (
+        "LoadedSpool",
+        &[("spool_id", "SpoolId", true), ("tool", "integer", true)],
+    ),
+    (
         "ManifestNarrowing",
         &[
             ("adjustable", "Adjustable", true),
@@ -136,7 +169,51 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("requested", "Range", true),
         ],
     ),
+    (
+        "PendingCharge",
+        &[
+            ("analysed_length_mm", "number", false),
+            ("charge_key", "ChargeKey", true),
+            ("length_mm", "number", true),
+            ("method", "ChargeMethod", true),
+            ("note", "string", false),
+            ("pended_at", "Timestamp", true),
+            ("position", "FilePosition", false),
+            ("print_id", "PrintId", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
+        "PendingTaken",
+        &[
+            ("charge_key", "ChargeKey", true),
+            ("print_id", "PrintId", true),
+        ],
+    ),
     ("PolicyDecision", &[("rejected", "RejectionReason", true)]),
+    (
+        "Preflight",
+        &[
+            ("checked_at", "Timestamp", true),
+            ("file_name", "string", true),
+            ("tools", "array:PreflightTool", true),
+            ("verdict", "PreflightVerdict", true),
+        ],
+    ),
+    (
+        "PreflightTool",
+        &[
+            ("buffer_g", "number", false),
+            ("marks", "array:UnverifiedMark", false),
+            ("remaining_g", "number", false),
+            ("required_g", "number", false),
+            ("spool_id", "SpoolId", false),
+            ("spool_name", "string", false),
+            ("tool", "integer", true),
+            ("verdict", "PreflightVerdict", true),
+        ],
+    ),
+    ("PreflightVerdict", &[]),
     (
         "PrintAction",
         &[
@@ -148,12 +225,14 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("factor", "number", true),
             ("file_name", "FileName", true),
             ("manifest", "JobManifest", true),
+            ("override_filament_check", "boolean", false),
             ("percent", "number", true),
             ("reason", "string", true),
             ("target_c", "number", true),
             ("tool", "integer", true),
         ],
     ),
+    ("PrintOutcome", &[]),
     (
         "PrintRecord",
         &[
@@ -173,10 +252,14 @@ const DECLARED_FIELDS: &[StatedType] = &[
         "RejectionReason",
         &[
             ("actor_may_not_request", "object", true),
+            ("analysis_unavailable", "object", true),
+            ("insufficient_filament", "object", true),
             ("invalid_from_state", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
+            ("spool_refused", "object", true),
             ("unsupported_adjustable", "object", true),
+            ("unverified_spool", "object", true),
         ],
     ),
     (
@@ -185,6 +268,69 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("actions", "map:array:ActionKind", true),
             ("agent_min_interval_s", "integer", true),
             ("allowed", "map:Range", true),
+        ],
+    ),
+    (
+        "SpoolCommand",
+        &[
+            ("actor", "Actor", true),
+            ("color", "string", false),
+            ("command", "string", true),
+            ("density_g_cm3", "number", false),
+            ("diameter_mm", "number", false),
+            ("gross_g", "number", false),
+            ("initial_g", "number", true),
+            ("material", "string", true),
+            ("name", "string", true),
+            ("reason", "string", true),
+            ("remaining_g", "number", false),
+            ("spool_id", "SpoolId", true),
+            ("tare_g", "number", false),
+            ("tool", "integer", true),
+        ],
+    ),
+    ("SpoolId", &[]),
+    (
+        "SpoolRecord",
+        &[
+            ("color", "string", false),
+            ("density_g_cm3", "number", true),
+            ("diameter_mm", "number", true),
+            ("id", "SpoolId", true),
+            ("initial_g", "number", true),
+            ("loaded_on_tool", "integer", false),
+            ("material", "string", true),
+            ("name", "string", true),
+            ("registered_at", "Timestamp", true),
+            ("remaining_g", "number", true),
+            ("retired_at", "Timestamp", false),
+            ("tare_g", "number", false),
+            ("trust", "SpoolTrust", true),
+            ("updated_at", "Timestamp", true),
+        ],
+    ),
+    (
+        "SpoolTrust",
+        &[
+            ("marks", "array:UnverifiedMark", true),
+            ("state", "string", true),
+        ],
+    ),
+    (
+        "UnverifiedMark",
+        &[
+            ("reason", "UnverifiedReason", true),
+            ("since", "Timestamp", true),
+        ],
+    ),
+    (
+        "UnverifiedReason",
+        &[
+            ("file_name", "string", true),
+            ("origin", "string", true),
+            ("print_id", "PrintId", true),
+            ("printed_at", "Timestamp", true),
+            ("reason", "string", true),
         ],
     ),
 ];

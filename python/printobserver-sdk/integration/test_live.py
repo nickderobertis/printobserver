@@ -229,7 +229,7 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervi
     ready(client, world.print_id, "operational")
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    answered = client.start_print(world.print_id, world.file_name, manifest(world), REASON)
+    answered = client.start_print(world.print_id, world.file_name, manifest(world), REASON, False)
 
     seen = proxy.last()
     equal(seen.method, "POST", describing="`start_print`")
@@ -248,6 +248,11 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervi
         sent["manifest"],
         manifest(world),
         describing="the `manifest` `start_print` sent",
+    )
+    equal(
+        sent["override_filament_check"],
+        False,
+        describing="the `override_filament_check` `start_print` sent",
     )
     equal(
         sent["reason"],
@@ -594,7 +599,7 @@ def refused_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
 def refused_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`start_print`, refused by a real supervisor's own policy."""
     try:
-        client.start_print(world.print_id, world.file_name, manifest(world), REASON)
+        client.start_print(world.print_id, world.file_name, manifest(world), REASON, False)
     except RejectedError as refused:
         truth(
             isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,

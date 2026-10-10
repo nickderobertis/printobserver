@@ -58,6 +58,7 @@ pub mod detector;
 pub mod error;
 pub mod events;
 pub mod expiry;
+pub mod filament;
 pub mod inbox;
 pub mod kinds;
 pub mod listing;
@@ -75,27 +76,39 @@ pub use bounds::{Bounds, effective_bounds};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{
     CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_OBSERVATION_INTERVAL,
-    DEFAULT_RECENT_EVENTS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER,
+    DEFAULT_RECENT_EVENTS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER, PreflightMode, SpoolPolicy,
 };
 pub use context::PrintContext;
 pub use decision::{DecisionInput, adjustment, changes_the_machine, decide, valid_from};
 pub use error::CoreError;
 pub use events::{PendingTurn, Received, TERMINAL_STATES};
 pub use expiry::{rejection_detail, restoring_action};
+pub use filament::{
+    DEFAULT_DIAMETER_MM, MATERIAL_DENSITIES, MarkClearing, buffer_g, density_for, grams_for_length,
+    marks_cleared_by,
+};
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraLookPayload, InterventionExpiredPayload, OperatorAcknowledgementPayload,
-    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, agent_source, operator_source,
-    system_source,
+    CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
+    FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload,
+    PrintUntrackedPayload, RebaselineDisposition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    agent_source, operator_source, system_source,
 };
 pub use look::Look;
 pub use observation::Observed;
 pub use records::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
-    ActorClass, EffectiveBounds, ExecutionOutcome, ImageRecord, Intervention, InterventionId,
-    InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision, PrintAction, PrintRecord,
-    RejectionReason, SafetyEnvelope,
+    ActorClass, ChargeKey, ChargeMethod, ClearedMark, EffectiveBounds, ExecutionOutcome,
+    FilePosition, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
+    LoadedSpool, ManifestNarrowing, PendingCharge, PendingTaken, PolicyDecision, Preflight,
+    PreflightTool, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, RejectionReason,
+    SafetyEnvelope, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust, UnverifiedMark,
+    UnverifiedReason, UnverifiedReasonKind,
 };
 pub use store::{
     ActionStore, AuditPage, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore, HistoryQuery,

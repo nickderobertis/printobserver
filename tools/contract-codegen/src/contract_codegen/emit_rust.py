@@ -624,6 +624,7 @@ LIVE_TOKENS = {
     "manifest": "manifest",
     "reason": "REASON",
     "disposition:continue": "&printobserver_sdk::AcknowledgementDisposition::Continue",
+    "bool:false": "false",
 }
 
 #: The same tokens as the value a body field must have carried, where that is

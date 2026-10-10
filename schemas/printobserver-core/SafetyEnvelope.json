@@ -52,6 +52,31 @@
           "const": "acknowledge_failure",
           "description": "Acknowledge a failure event.",
           "type": "string"
+        },
+        {
+          "const": "register_spool",
+          "description": "Register a spool.",
+          "type": "string"
+        },
+        {
+          "const": "load_spool",
+          "description": "Load a spool onto a tool.",
+          "type": "string"
+        },
+        {
+          "const": "unload_spool",
+          "description": "Unload a spool from its tool.",
+          "type": "string"
+        },
+        {
+          "const": "adjust_spool",
+          "description": "Correct a spool's remaining figure.",
+          "type": "string"
+        },
+        {
+          "const": "retire_spool",
+          "description": "Retire a spool.",
+          "type": "string"
         }
       ]
     },

@@ -273,6 +273,7 @@ fn actions(world: &World) -> Vec<Entry> {
                     "manifest".to_owned(),
                     manifest_of("start-print", 1.3, &world.printable_file()).to_string(),
                 ),
+                ("override_filament_check".to_owned(), "true".to_owned()),
             ],
         ),
     ]

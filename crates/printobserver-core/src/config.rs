@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::records::SafetyEnvelope;
 use printobserver_types::PrintId;
+use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_vision_api::WebAddress;
 
 /// The placeholder [`CoreConfig::context_command`] substitutes the print for.
@@ -41,6 +42,47 @@ pub const DEFAULT_OBSERVATION_INTERVAL: Duration = Duration::from_secs(120);
 /// refused rather than shortened.
 pub const MAX_LOOK_WAIT_S: u32 = 90;
 
+/// What a start does when the filament check finds a spool short, unverified,
+/// or a file with no analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+pub enum PreflightMode {
+    /// Refuse the start, unless the actor overrides the check.
+    #[default]
+    Refuse,
+    /// Let the start go ahead, and record that the check warned.
+    Warn,
+    /// Make no check at all.
+    Off,
+}
+
+/// How spools are checked before a print, and the margin asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "printobserver_types::serde", default, deny_unknown_fields)]
+pub struct SpoolPolicy {
+    /// What a start does when the check finds a problem.
+    pub preflight: PreflightMode,
+    /// The margin asked for beyond a print's requirement, as a percentage of
+    /// it.
+    pub buffer_percent: f64,
+    /// The least margin asked for, in grams, however small the print.
+    pub buffer_min_g: f64,
+    /// How long a start waits for `OctoPrint`'s analysis of a file that has
+    /// none yet, in whole seconds; zero waits not at all.
+    pub analysis_wait_s: u64,
+}
+
+impl Default for SpoolPolicy {
+    fn default() -> Self {
+        Self {
+            preflight: PreflightMode::Refuse,
+            buffer_percent: 10.0,
+            buffer_min_g: 5.0,
+            analysis_wait_s: 300,
+        }
+    }
+}
+
 /// The server configuration supervision reads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreConfig {
@@ -63,6 +105,8 @@ pub struct CoreConfig {
     pub detector_resume_grace: Duration,
     /// How often every active print is given a periodic observation.
     pub observation_interval: Duration,
+    /// How spools are checked before a print, and the margin asked for.
+    pub spools: SpoolPolicy,
 }
 
 impl CoreConfig {
@@ -77,6 +121,7 @@ impl CoreConfig {
             camera_snapshot_url: None,
             detector_resume_grace: DEFAULT_DETECTOR_RESUME_GRACE,
             observation_interval: DEFAULT_OBSERVATION_INTERVAL,
+            spools: SpoolPolicy::default(),
         }
     }
 

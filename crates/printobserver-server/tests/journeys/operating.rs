@@ -910,6 +910,40 @@ async fn a_start_opens_its_own_print_and_writes_everything_against_it() {
     world.server.stop().await;
 }
 
+/// A start carries the filament-check override through to the action it
+/// records when it is asked for, and records none when it is not: the request
+/// the start operation declares is the one the server reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_records_the_filament_check_override_only_when_asked_for() {
+    for overriding in [false, true] {
+        let world = World::open().await;
+        let asked_against = world.open_print().await;
+        world.printer.in_state(PrinterState::Operational);
+        let mut extra = vec![("file_name", json!("hold.gcode")), ("manifest", manifest())];
+        if overriding {
+            extra.push(("override_filament_check", json!(true)));
+        }
+        let start = body(&json!("operator"), &extra);
+
+        let (status, answer) = world
+            .post(
+                &world.operation_url(&path("start_print"), asked_against),
+                &start,
+            )
+            .await;
+
+        assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+        let action = &answer["record"]["request"]["action"];
+        assert_eq!(action["action"], json!("start_print"), "{answer}");
+        assert_eq!(
+            action.get("override_filament_check"),
+            overriding.then_some(json!(true)).as_ref(),
+            "{answer}"
+        );
+        world.server.stop().await;
+    }
+}
+
 /// A start the policy refuses, over a machine whose print is over, still makes
 /// the read that chooses its print first: the print it was asked against is
 /// closed by that read, and the refusal is recorded against a print opened for

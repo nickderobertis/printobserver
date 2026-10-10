@@ -16,12 +16,20 @@ use super::action::{
     AcknowledgementDisposition, ActionKind, ActionRecord, ActionRequest, Actor, ActorClass,
     ExecutionOutcome, PrintAction,
 };
-use super::ids::{ActionId, InterventionId};
+use super::charge::{
+    ChargeKey, ChargeMethod, FilePosition, PendingCharge, PendingTaken, PrintOutcome,
+};
+use super::ids::{ActionId, InterventionId, SpoolId};
 use super::image::ImageRecord;
 use super::intervention::{Intervention, InterventionOutcome};
 use super::manifest::JobManifest;
 use super::policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
+use super::preflight::{Preflight, PreflightTool, PreflightVerdict};
 use super::print::{ManifestNarrowing, PrintRecord};
+use super::spool::{
+    ClearedMark, LoadedSpool, SpoolRecord, SpoolTrust, UnverifiedMark, UnverifiedReason,
+};
+use super::spool_command::SpoolCommand;
 
 /// A later fixed instant than the one the type crate's sample carries.
 fn later_instant() -> Timestamp {
@@ -42,6 +50,26 @@ fn intervention_id() -> InterventionId {
     "0191f0a0-0000-7000-8000-000000000005"
         .parse()
         .expect("a fixed version 7 identifier")
+}
+
+/// A fixed spool identifier.
+fn spool_id() -> SpoolId {
+    "0191f0a0-0000-7000-8000-000000000006"
+        .parse()
+        .expect("a fixed version 7 identifier")
+}
+
+/// A second fixed spool identifier, for the spool a swap replaced.
+fn replaced_spool_id() -> SpoolId {
+    "0191f0a0-0000-7000-8000-000000000007"
+        .parse()
+        .expect("a fixed version 7 identifier")
+}
+
+impl Sample for SpoolId {
+    fn sample_full() -> Self {
+        spool_id()
+    }
 }
 
 impl Sample for ActionId {
@@ -192,6 +220,7 @@ impl Sample for PrintAction {
             Self::StartPrint {
                 file_name: FileName::sample_full(),
                 manifest: JobManifest::sample_full(),
+                override_filament_check: true,
                 reason: reason(),
                 actor: Actor::sample_full(),
             },
@@ -319,6 +348,42 @@ impl Sample for RejectionReason {
             allowed: Range::new(0.5, 1.5),
         }
     }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::InsufficientFilament {
+                tool: 0,
+                spool_id: spool_id(),
+                spool_name: "Galaxy black".to_owned(),
+                required_g: 120.0,
+                buffer_g: 12.0,
+                remaining_g: 80.0,
+                unverified: Some(UnverifiedReason::sample_full()),
+            },
+            Self::InsufficientFilament {
+                tool: 0,
+                spool_id: spool_id(),
+                spool_name: "Galaxy black".to_owned(),
+                required_g: 120.0,
+                buffer_g: 12.0,
+                remaining_g: 80.0,
+                unverified: None,
+            },
+            Self::UnverifiedSpool {
+                tool: 0,
+                spool_id: spool_id(),
+                spool_name: "Galaxy black".to_owned(),
+                reason: UnverifiedReason::sample_full(),
+            },
+            Self::AnalysisUnavailable {
+                file_name: "benchy.gcode".to_owned(),
+                waited_s: 300,
+            },
+            Self::SpoolRefused {
+                detail: "spool 0191f0a0 is retired, so it takes no command".to_owned(),
+            },
+        ]
+    }
 }
 
 impl Sample for PolicyDecision {
@@ -358,5 +423,313 @@ impl Sample for Intervention {
             outcome: InterventionOutcome::StillActive,
             ..Self::sample_full()
         }
+    }
+}
+
+impl Sample for UnverifiedReason {
+    fn sample_full() -> Self {
+        Self::UnchargedPrint {
+            print_id: PrintId::sample_full(),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::UnaccountedPrint {
+                file_name: "benchy.gcode".to_owned(),
+                printed_at: Timestamp::sample_full(),
+            },
+            Self::FilamentChangeUnconfirmed {
+                print_id: PrintId::sample_full(),
+            },
+            Self::FilamentChangeUnconfirmedPosition {
+                print_id: PrintId::sample_full(),
+            },
+            Self::TallyReset {
+                file_name: "benchy.gcode".to_owned(),
+                origin: "local".to_owned(),
+            },
+        ]
+    }
+}
+
+impl Sample for UnverifiedMark {
+    fn sample_full() -> Self {
+        Self {
+            reason: UnverifiedReason::sample_full(),
+            since: Timestamp::sample_full(),
+        }
+    }
+}
+
+impl Sample for SpoolTrust {
+    fn sample_full() -> Self {
+        Self::Unverified {
+            marks: vec![
+                UnverifiedMark::sample_full(),
+                UnverifiedMark {
+                    reason: UnverifiedReason::FilamentChangeUnconfirmed {
+                        print_id: PrintId::sample_full(),
+                    },
+                    since: later_instant(),
+                },
+            ],
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Verified]
+    }
+}
+
+impl Sample for SpoolRecord {
+    fn sample_full() -> Self {
+        Self {
+            id: spool_id(),
+            name: "Galaxy black".to_owned(),
+            material: "PLA".to_owned(),
+            color: Some("black".to_owned()),
+            diameter_mm: 1.75,
+            density_g_cm3: 1.24,
+            initial_g: 1_000.0,
+            remaining_g: 742.5,
+            tare_g: Some(250.0),
+            loaded_on_tool: Some(0),
+            trust: SpoolTrust::sample_full(),
+            registered_at: Timestamp::sample_full(),
+            updated_at: later_instant(),
+            retired_at: Some(later_instant()),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            color: None,
+            tare_g: None,
+            loaded_on_tool: None,
+            trust: SpoolTrust::Verified,
+            retired_at: None,
+            ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for ClearedMark {
+    fn sample_full() -> Self {
+        Self {
+            spool_id: replaced_spool_id(),
+            reason: UnverifiedReason::FilamentChangeUnconfirmed {
+                print_id: PrintId::sample_full(),
+            },
+        }
+    }
+}
+
+impl Sample for LoadedSpool {
+    fn sample_full() -> Self {
+        Self {
+            tool: 0,
+            spool_id: spool_id(),
+        }
+    }
+}
+
+impl Sample for PrintOutcome {
+    fn sample_full() -> Self {
+        Self::Completed
+    }
+}
+
+impl Sample for ChargeMethod {
+    fn sample_full() -> Self {
+        Self::GcodeExtrusion
+    }
+}
+
+impl Sample for ChargeKey {
+    fn sample_full() -> Self {
+        Self::Print {
+            print_id: PrintId::sample_full(),
+            tool: 0,
+            segment: 1,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Unobserved {
+            origin: "local".to_owned(),
+            file_name: "benchy.gcode".to_owned(),
+            generation: 2,
+            print_number: 7,
+            tool: 0,
+        }]
+    }
+}
+
+impl Sample for FilePosition {
+    fn sample_full() -> Self {
+        Self {
+            bytes: 1_761_607,
+            size_bytes: Some(4_194_304),
+            observed_at: Timestamp::sample_full(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            size_bytes: None,
+            ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for PendingCharge {
+    fn sample_full() -> Self {
+        Self {
+            charge_key: ChargeKey::sample_full(),
+            print_id: PrintId::sample_full(),
+            tool: 0,
+            length_mm: 1_204.5,
+            method: ChargeMethod::GcodeExtrusion,
+            analysed_length_mm: Some(5_120.0),
+            position: Some(FilePosition::sample_full()),
+            note: Some("fed after the filament change at layer 12".to_owned()),
+            pended_at: later_instant(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            method: ChargeMethod::FileFraction,
+            analysed_length_mm: None,
+            position: None,
+            note: None,
+            ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for PendingTaken {
+    fn sample_full() -> Self {
+        Self {
+            charge_key: ChargeKey::sample_full(),
+            print_id: PrintId::sample_full(),
+        }
+    }
+}
+
+impl Sample for PreflightVerdict {
+    fn sample_full() -> Self {
+        Self::Insufficient
+    }
+}
+
+impl Sample for PreflightTool {
+    fn sample_full() -> Self {
+        Self {
+            tool: 0,
+            spool_id: Some(spool_id()),
+            spool_name: Some("Galaxy black".to_owned()),
+            required_g: Some(120.0),
+            buffer_g: Some(12.0),
+            remaining_g: Some(80.0),
+            marks: vec![UnverifiedMark::sample_full()],
+            verdict: PreflightVerdict::Insufficient,
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            tool: 1,
+            spool_id: None,
+            spool_name: None,
+            required_g: None,
+            buffer_g: None,
+            remaining_g: None,
+            marks: Vec::new(),
+            verdict: PreflightVerdict::Unchecked,
+        }
+    }
+}
+
+impl Sample for Preflight {
+    fn sample_full() -> Self {
+        Self {
+            file_name: "benchy.gcode".to_owned(),
+            tools: vec![
+                PreflightTool::sample_full(),
+                PreflightTool::sample_minimal(),
+            ],
+            verdict: PreflightVerdict::Insufficient,
+            checked_at: Timestamp::sample_full(),
+        }
+    }
+}
+
+impl Sample for SpoolCommand {
+    fn sample_full() -> Self {
+        Self::RegisterSpool {
+            name: "Galaxy black".to_owned(),
+            material: "PLA".to_owned(),
+            color: Some("black".to_owned()),
+            diameter_mm: Some(1.75),
+            density_g_cm3: Some(1.24),
+            initial_g: 1_000.0,
+            remaining_g: Some(742.5),
+            tare_g: Some(250.0),
+            reason: "a new spool went on the shelf".to_owned(),
+            actor: Actor::Operator,
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self::RegisterSpool {
+            name: "Galaxy black".to_owned(),
+            material: "PLA".to_owned(),
+            color: None,
+            diameter_mm: None,
+            density_g_cm3: None,
+            initial_g: 1_000.0,
+            remaining_g: None,
+            tare_g: None,
+            reason: "a new spool went on the shelf".to_owned(),
+            actor: Actor::Operator,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        let reason = || "the spool on the shelf changed".to_owned();
+        vec![
+            Self::LoadSpool {
+                spool_id: spool_id(),
+                tool: 0,
+                reason: reason(),
+                actor: Actor::Operator,
+            },
+            Self::UnloadSpool {
+                spool_id: spool_id(),
+                reason: reason(),
+                actor: Actor::Operator,
+            },
+            Self::AdjustSpool {
+                spool_id: spool_id(),
+                remaining_g: Some(700.0),
+                gross_g: None,
+                reason: reason(),
+                actor: Actor::Operator,
+            },
+            Self::AdjustSpool {
+                spool_id: spool_id(),
+                remaining_g: None,
+                gross_g: Some(950.0),
+                reason: reason(),
+                actor: Actor::sample_full(),
+            },
+            Self::RetireSpool {
+                spool_id: spool_id(),
+                reason: reason(),
+                actor: Actor::Operator,
+            },
+        ]
     }
 }

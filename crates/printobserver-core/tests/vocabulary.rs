@@ -81,9 +81,19 @@ fn the_vocabulary_declares_exactly_the_stated_variants() {
     );
 }
 
-/// The kind vocabulary names the same ten, so nothing can name a sixth policy.
+/// The five spool commands, which are kinds of their own beside the actions.
+const SPOOL_COMMAND_KINDS: [&str; 5] = [
+    "register_spool",
+    "load_spool",
+    "unload_spool",
+    "adjust_spool",
+    "retire_spool",
+];
+
+/// The kind vocabulary names the same ten and then the five spool commands, so
+/// nothing can name a policy for an action the vocabularies do not declare.
 #[test]
-fn the_kind_vocabulary_names_the_same_ten() {
+fn the_kind_vocabulary_names_the_same_ten_and_the_spool_commands() {
     let kinds: Vec<String> = arms(&schema_of::<ActionKind>())
         .iter()
         .map(|arm| {
@@ -93,7 +103,9 @@ fn the_kind_vocabulary_names_the_same_ten() {
                 .to_owned()
         })
         .collect();
-    assert_eq!(kinds, STATED_VARIANTS.to_vec());
+    let mut stated = STATED_VARIANTS.to_vec();
+    stated.extend(SPOOL_COMMAND_KINDS);
+    assert_eq!(kinds, stated);
 }
 
 /// A fixture vocabulary carrying a reserved variant.

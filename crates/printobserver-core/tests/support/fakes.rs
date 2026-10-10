@@ -97,11 +97,17 @@ pub enum PrinterMethod {
     SetBedTargetC,
     /// `set_fan_percent`.
     SetFanPercent,
+    /// `file_facts`.
+    FileFacts,
+    /// `printed_files`.
+    PrintedFiles,
+    /// `extruded_to`.
+    ExtrudedTo,
 }
 
 impl PrinterMethod {
     /// Every method the printer port declares.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 14] = [
         Self::Snapshot,
         Self::Job,
         Self::Start,
@@ -113,6 +119,9 @@ impl PrinterMethod {
         Self::SetToolTargetC,
         Self::SetBedTargetC,
         Self::SetFanPercent,
+        Self::FileFacts,
+        Self::PrintedFiles,
+        Self::ExtrudedTo,
     ];
 
     /// The method's own name, as the trait spells it.
@@ -130,6 +139,9 @@ impl PrinterMethod {
             Self::SetToolTargetC => "set_tool_target_c",
             Self::SetBedTargetC => "set_bed_target_c",
             Self::SetFanPercent => "set_fan_percent",
+            Self::FileFacts => "file_facts",
+            Self::PrintedFiles => "printed_files",
+            Self::ExtrudedTo => "extruded_to",
         }
     }
 }

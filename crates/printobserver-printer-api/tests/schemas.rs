@@ -297,7 +297,10 @@ fn a_job_stored_without_the_filament_fields_reads_without_them_and_writes_back_u
     let job: JobSnapshot = serde_json::from_str(STORED_JOB).expect("a stored job reads");
     assert_eq!(job.file_position_bytes, None);
     assert!(job.filament.is_empty());
-    assert_eq!(serde_json::to_string(&job).expect("a job writes"), STORED_JOB);
+    assert_eq!(
+        serde_json::to_string(&job).expect("a job writes"),
+        STORED_JOB
+    );
 }
 
 /// Every canonical value of the job and of the three file shapes is one its
@@ -309,7 +312,10 @@ fn the_file_shapes_validate_against_their_generated_schemas() {
         let validator =
             jsonschema::validator_for(&entry.schema()).expect("the generated schema compiles");
         for value in entry.samples() {
-            assert!(validator.is_valid(&value), "{name}'s schema refused {value}");
+            assert!(
+                validator.is_valid(&value),
+                "{name}'s schema refused {value}"
+            );
         }
     }
     let entry = contract("FileFacts");

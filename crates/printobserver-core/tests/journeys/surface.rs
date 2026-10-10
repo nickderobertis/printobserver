@@ -5,8 +5,9 @@
 //! method admits a byte sequence or an unvalidated string** — neither as a
 //! parameter's own type nor, following each declared field and each variant
 //! payload in turn, anywhere in the closure reachable from it. The sole
-//! exception is the `FileName` newtype the contracts declare, which exactly one
-//! method takes and which refuses anything but a name.
+//! exception is the `FileName` newtype the contracts declare, which only
+//! `start` and the two reads of one file take and which refuses anything but a
+//! name.
 //!
 //! So this crate has no surface at all through which a command string could
 //! reach a printer, which is what makes that safety property structural rather
@@ -28,8 +29,12 @@ const CRATE: &str = "printobserver-core";
 /// The one newtype a printer-port method may take a string inside.
 const EXEMPT: &str = "FileName";
 
-/// The one method that newtype may be taken by.
+/// The one method that newtype must be taken by.
 const EXEMPT_METHOD: &str = "start";
+
+/// Every method that newtype may be taken by: `start`, and the two reads that
+/// name one file.
+const EXEMPT_METHODS: [&str; 3] = [EXEMPT_METHOD, "file_facts", "extruded_to"];
 
 /// The printer port's own source.
 fn port_source() -> String {
@@ -71,9 +76,10 @@ fn findings_for(source: &str) -> Vec<String> {
         }
     }
     for (method, name, ty) in &params {
-        if ty.contains(EXEMPT) && method != EXEMPT_METHOD {
+        if ty.contains(EXEMPT) && !EXEMPT_METHODS.contains(&method.as_str()) {
             findings.push(format!(
-                "{method}({name}) takes {EXEMPT}, and only {EXEMPT_METHOD} may"
+                "{method}({name}) takes {EXEMPT}, and only {} may",
+                EXEMPT_METHODS.join(", ")
             ));
         }
     }
@@ -184,7 +190,8 @@ fn a_method_taking_an_enum_carrying_bytes_is_refused() {
     refused(&findings_for(fixture), "reaches a byte sequence");
 }
 
-/// A method other than `start` taking the newtype is refused.
+/// A method other than `start` and the two file reads taking the newtype is
+/// refused.
 #[test]
 fn a_second_method_taking_the_newtype_is_refused() {
     let fixture = "pub trait PrinterPort { \

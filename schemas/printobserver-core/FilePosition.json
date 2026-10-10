@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How far into its file a print had got, and when that was read.",
+  "properties": {
+    "bytes": {
+      "description": "The byte the printer had read the file up to.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "observed_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When the position was read."
+    },
+    "size_bytes": {
+      "description": "The file's size in bytes, when it was known.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "bytes",
+    "observed_at"
+  ],
+  "title": "FilePosition",
+  "type": "object"
+}

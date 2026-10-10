@@ -24,9 +24,14 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraLookPayload, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
-    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PrintContext, agent_source,
-    operator_source, system_source,
+    CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
+    FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload, Look,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
+    PrintUntrackedPayload, RebaselineDisposition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    agent_source, operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -56,6 +61,8 @@ struct DeclaredKind {
     schema: Value,
     /// Every canonical value, rendered as a body and read back as the type.
     round_trips: fn() -> Vec<bool>,
+    /// Every canonical value, in its wire form.
+    values: fn() -> Vec<Value>,
 }
 
 /// One kind, from its payload type.
@@ -72,11 +79,20 @@ fn kind_of<P: EventPayload + Sample + PartialEq>(name: &'static str) -> Declared
             })
             .collect()
     }
+    fn values<P: EventPayload + Sample>() -> Vec<Value> {
+        let mut samples = vec![P::sample_full(), P::sample_minimal()];
+        samples.extend(P::sample_alternates());
+        samples
+            .iter()
+            .map(|sample| EventBody::of(sample).expect("a payload renders").payload)
+            .collect()
+    }
     DeclaredKind {
         name,
         kind: P::KIND,
         schema: event_schema_of::<P>(),
         round_trips: round_trips::<P>,
+        values: values::<P>,
     }
 }
 
@@ -92,6 +108,22 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<PortFailurePayload>("PortFailurePayload"),
         kind_of::<CameraLookPayload>("CameraLookPayload"),
         kind_of::<PeriodicObservationPayload>("PeriodicObservationPayload"),
+        kind_of::<PrintStartedPayload>("PrintStartedPayload"),
+        kind_of::<PrintEndedPayload>("PrintEndedPayload"),
+        kind_of::<FilamentConsumedPayload>("FilamentConsumedPayload"),
+        kind_of::<SpoolRegisteredPayload>("SpoolRegisteredPayload"),
+        kind_of::<SpoolLoadedPayload>("SpoolLoadedPayload"),
+        kind_of::<SpoolUnloadedPayload>("SpoolUnloadedPayload"),
+        kind_of::<SpoolAdjustedPayload>("SpoolAdjustedPayload"),
+        kind_of::<SpoolRetiredPayload>("SpoolRetiredPayload"),
+        kind_of::<SpoolCommandRejectedPayload>("SpoolCommandRejectedPayload"),
+        kind_of::<SpoolUnverifiedPayload>("SpoolUnverifiedPayload"),
+        kind_of::<FilamentChangeSignalledPayload>("FilamentChangeSignalledPayload"),
+        kind_of::<UnaccountedPrintPayload>("UnaccountedPrintPayload"),
+        kind_of::<PreflightCheckedPayload>("PreflightCheckedPayload"),
+        kind_of::<ChargePendedPayload>("ChargePendedPayload"),
+        kind_of::<PrintUntrackedPayload>("PrintUntrackedPayload"),
+        kind_of::<FileTallyRebaselinedPayload>("FileTallyRebaselinedPayload"),
     ]
 }
 
@@ -104,6 +136,10 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((
         "PortFailureSite.json".to_owned(),
         schema_of::<PortFailureSite>(),
+    ));
+    entries.push((
+        "RebaselineDisposition.json".to_owned(),
+        schema_of::<RebaselineDisposition>(),
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));
@@ -150,6 +186,25 @@ fn each_kind_is_written_under_its_own_name() {
             ("PortFailurePayload", "port_failure"),
             ("CameraLookPayload", "camera_look"),
             ("PeriodicObservationPayload", "periodic_observation"),
+            ("PrintStartedPayload", "print_started"),
+            ("PrintEndedPayload", "print_ended"),
+            ("FilamentConsumedPayload", "filament_consumed"),
+            ("SpoolRegisteredPayload", "spool_registered"),
+            ("SpoolLoadedPayload", "spool_loaded"),
+            ("SpoolUnloadedPayload", "spool_unloaded"),
+            ("SpoolAdjustedPayload", "spool_adjusted"),
+            ("SpoolRetiredPayload", "spool_retired"),
+            ("SpoolCommandRejectedPayload", "spool_command_rejected"),
+            ("SpoolUnverifiedPayload", "spool_unverified"),
+            (
+                "FilamentChangeSignalledPayload",
+                "filament_change_signalled"
+            ),
+            ("UnaccountedPrintPayload", "unaccounted_print"),
+            ("PreflightCheckedPayload", "preflight_checked"),
+            ("ChargePendedPayload", "charge_pended"),
+            ("PrintUntrackedPayload", "print_untracked"),
+            ("FileTallyRebaselinedPayload", "file_tally_rebaselined"),
         ]
     );
     for declared in declared_kinds() {
@@ -165,6 +220,56 @@ fn each_kind_is_written_under_its_own_name() {
             "{}'s schema is titled otherwise",
             declared.name
         );
+    }
+}
+
+/// The printer timeline is exactly the sixteen kinds the ledger declares, in
+/// the order the contract lists them, each written under its payload's own
+/// kind.
+#[test]
+fn the_timeline_is_exactly_the_ledgers_sixteen_kinds() {
+    let ledger: Vec<&str> = declared_kinds()
+        .iter()
+        .skip_while(|declared| declared.name != "PrintStartedPayload")
+        .map(|declared| declared.kind)
+        .collect();
+    assert_eq!(TIMELINE_KINDS.to_vec(), ledger);
+    assert_eq!(
+        TIMELINE_KINDS,
+        [
+            "print_started",
+            "print_ended",
+            "filament_consumed",
+            "spool_registered",
+            "spool_loaded",
+            "spool_unloaded",
+            "spool_adjusted",
+            "spool_retired",
+            "spool_command_rejected",
+            "spool_unverified",
+            "filament_change_signalled",
+            "unaccounted_print",
+            "preflight_checked",
+            "charge_pended",
+            "print_untracked",
+            "file_tally_rebaselined",
+        ]
+    );
+}
+
+/// Every canonical value of every kind is one its own generated schema admits.
+#[test]
+fn every_canonical_value_of_every_kind_validates_against_its_schema() {
+    for declared in declared_kinds() {
+        let validator =
+            jsonschema::validator_for(&declared.schema).expect("the generated schema compiles");
+        for value in (declared.values)() {
+            assert!(
+                validator.is_valid(&value),
+                "{}'s schema refused {value}",
+                declared.name
+            );
+        }
     }
 }
 

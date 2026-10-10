@@ -72,6 +72,10 @@ pub struct ActionBody {
     /// The manifest a start is bounded by.
     #[serde(default)]
     pub manifest: Option<JobManifest>,
+    /// Whether a start goes ahead despite the filament check; absent, it does
+    /// not.
+    #[serde(default)]
+    pub override_filament_check: bool,
     /// The event an acknowledgement is about.
     #[serde(default)]
     pub event_id: Option<EventId>,
@@ -179,6 +183,7 @@ impl ActionBody {
                     Some(manifest) => manifest,
                     None => return missing("manifest"),
                 },
+                override_filament_check: self.override_filament_check,
                 reason,
                 actor,
             },
@@ -243,6 +248,17 @@ impl ActionBody {
                 reason,
                 actor,
             },
+            ActionKind::RegisterSpool
+            | ActionKind::LoadSpool
+            | ActionKind::UnloadSpool
+            | ActionKind::AdjustSpool
+            | ActionKind::RetireSpool => {
+                return Err(BodyRefusal {
+                    detail: format!(
+                        "{kind:?} is a spool command, and no print-action operation carries one"
+                    ),
+                });
+            }
         })
     }
 }
@@ -437,6 +453,7 @@ mod tests {
             tool: None,
             file_name: None,
             manifest: None,
+            override_filament_check: false,
             event_id: None,
             disposition: None,
         }

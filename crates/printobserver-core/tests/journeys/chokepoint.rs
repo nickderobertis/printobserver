@@ -60,7 +60,17 @@ fn declared_methods() -> Vec<String> {
     trait_method_names(&parse(&read(&path)), HANDLE)
 }
 
-/// Every **action** method: the whole trait but its two reads.
+/// The port's reads: the printer's state, its job, and the three reads of the
+/// files it holds.
+const READS: [&str; 5] = [
+    "snapshot",
+    "job",
+    "file_facts",
+    "printed_files",
+    "extruded_to",
+];
+
+/// Every **action** method: the whole trait but its reads.
 ///
 /// The reads are outside the rule because the loop reads the printer without
 /// taking a decision, and a rule demanding one before them would demand a loop
@@ -68,7 +78,7 @@ fn declared_methods() -> Vec<String> {
 fn action_methods() -> Vec<String> {
     declared_methods()
         .into_iter()
-        .filter(|method| method != "snapshot" && method != "job")
+        .filter(|method| !READS.contains(&method.as_str()))
         .collect()
 }
 
@@ -118,11 +128,13 @@ fn refused(findings: &[String], expected: &str) {
 #[test]
 fn the_action_methods_are_read_off_the_port_rather_than_a_list_here() {
     let declared = declared_methods();
-    assert!(
-        declared.contains(&"snapshot".to_owned()) && declared.contains(&"job".to_owned()),
-        "the port declares its two reads: {declared:?}"
-    );
-    assert_eq!(declared.len(), action_methods().len() + 2);
+    for read in READS {
+        assert!(
+            declared.iter().any(|method| method == read),
+            "the port declares its read {read}: {declared:?}"
+        );
+    }
+    assert_eq!(declared.len(), action_methods().len() + READS.len());
     let walked: Vec<String> = PrinterMethod::ALL
         .iter()
         .map(|method| method.name().to_owned())

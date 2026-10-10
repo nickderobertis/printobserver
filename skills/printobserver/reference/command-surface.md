@@ -287,6 +287,7 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 - `--file-name` — the file to print, as the printer names it (required).
 - `--manifest` — the manifest itself, as JSON (required).
 - `--manifest-file` — the path of a file carrying that JSON instead (optional).
+- `--override-filament-check` — `true` to start despite an insufficient or unverified spool, or a file `OctoPrint` has not analysed, with this start's reason as the override's (optional). It is recorded on the action; nothing checks spools before a start yet.
 - `--reason` — why this change is being made, in the actor's own words (required).
 
 **Output.** The action record, carrying the request, who asked, the reason and the policy's decision; the bounded intervention it opened, when it opened one; and what the printer said, when the request reached it and it refused.

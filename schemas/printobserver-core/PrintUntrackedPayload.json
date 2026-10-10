@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print that was already open when spool tracking was installed: it is\nnever charged, and this says why it carries no charge.",
+  "properties": {
+    "reason": {
+      "description": "Why the print carries no charge.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "title": "PrintUntrackedPayload",
+  "type": "object",
+  "x-event-kind": "print_untracked"
+}

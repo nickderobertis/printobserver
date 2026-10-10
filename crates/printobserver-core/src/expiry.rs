@@ -107,6 +107,25 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
         RejectionReason::UnsupportedAdjustable { adjustable } => {
             format!("this printer has no {adjustable}")
         }
+        RejectionReason::InsufficientFilament {
+            tool,
+            spool_name,
+            required_g,
+            buffer_g,
+            remaining_g,
+            ..
+        } => format!(
+            "spool {spool_name} on tool {tool} holds {remaining_g}g, and the print needs \
+             {required_g}g and a {buffer_g}g buffer"
+        ),
+        RejectionReason::UnverifiedSpool {
+            tool, spool_name, ..
+        } => format!("spool {spool_name} on tool {tool} is unverified"),
+        RejectionReason::AnalysisUnavailable {
+            file_name,
+            waited_s,
+        } => format!("{file_name} had no analysis after waiting {waited_s}s for one"),
+        RejectionReason::SpoolRefused { detail } => detail.clone(),
     }
 }
 

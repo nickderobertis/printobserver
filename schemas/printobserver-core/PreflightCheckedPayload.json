@@ -1,0 +1,327 @@
+{
+  "$defs": {
+    "ActionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one requested action.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ActionId",
+      "type": "string"
+    },
+    "Preflight": {
+      "additionalProperties": false,
+      "description": "What a filament check found for one print.",
+      "properties": {
+        "checked_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the check was made."
+        },
+        "file_name": {
+          "description": "The file the print is of.",
+          "type": "string"
+        },
+        "tools": {
+          "description": "What it found for each tool.",
+          "items": {
+            "$ref": "#/$defs/PreflightTool"
+          },
+          "type": "array"
+        },
+        "verdict": {
+          "$ref": "#/$defs/PreflightVerdict",
+          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed."
+        }
+      },
+      "required": [
+        "file_name",
+        "tools",
+        "verdict",
+        "checked_at"
+      ],
+      "type": "object"
+    },
+    "PreflightTool": {
+      "additionalProperties": false,
+      "description": "What a filament check found for one tool.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that, in grams.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "marks": {
+          "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
+          "items": {
+            "$ref": "#/$defs/UnverifiedMark"
+          },
+          "type": "array"
+        },
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "required_g": {
+          "description": "What the print needs from it, in grams, when the file's analysis says.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool loaded on it, when one is."
+        },
+        "spool_name": {
+          "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "verdict": {
+          "$ref": "#/$defs/PreflightVerdict",
+          "description": "What the check found for this tool."
+        }
+      },
+      "required": [
+        "tool",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "PreflightVerdict": {
+      "description": "What a filament check found, for one tool or for a whole print.",
+      "oneOf": [
+        {
+          "const": "passed",
+          "description": "The spool holds what the print needs and its buffer.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "type": "string"
+        },
+        {
+          "const": "insufficient",
+          "description": "The spool holds less than the print needs and its buffer.",
+          "type": "string"
+        },
+        {
+          "const": "unverified_spool",
+          "description": "The spool's figure is in doubt.",
+          "type": "string"
+        },
+        {
+          "const": "no_analysis",
+          "description": "`OctoPrint`'s analysis of the file had still not appeared when the\nstart's wait for it elapsed, or has not appeared yet when the check is\nonly read.",
+          "type": "string"
+        },
+        {
+          "const": "overridden",
+          "description": "The start went ahead despite the check, because the actor said so.",
+          "type": "string"
+        },
+        {
+          "const": "warned",
+          "description": "The check is set to warn, and let an insufficient, unverified or\nunanalysed start go ahead.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedMark": {
+      "additionalProperties": false,
+      "description": "One reason a spool's figure is in doubt, and since when.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/UnverifiedReason",
+          "description": "Why the figure is in doubt."
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the spool was marked for it."
+        }
+      },
+      "required": [
+        "reason",
+        "since"
+      ],
+      "type": "object"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis — an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The filament check before a start was made.",
+  "properties": {
+    "action_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActionId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The start it was made for, when it was made for one."
+    },
+    "preflight": {
+      "$ref": "#/$defs/Preflight",
+      "description": "What the check found."
+    }
+  },
+  "required": [
+    "preflight"
+  ],
+  "title": "PreflightCheckedPayload",
+  "type": "object",
+  "x-event-kind": "preflight_checked"
+}

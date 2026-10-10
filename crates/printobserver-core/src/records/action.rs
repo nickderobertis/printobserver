@@ -123,6 +123,16 @@ pub enum ActionKind {
     SetFanPercent,
     /// Acknowledge a failure event.
     AcknowledgeFailure,
+    /// Register a spool.
+    RegisterSpool,
+    /// Load a spool onto a tool.
+    LoadSpool,
+    /// Unload a spool from its tool.
+    UnloadSpool,
+    /// Correct a spool's remaining figure.
+    AdjustSpool,
+    /// Retire a spool.
+    RetireSpool,
 }
 
 /// The whole vocabulary an actor may ask for, and there is no other.
@@ -162,6 +172,11 @@ pub enum PrintAction {
         file_name: FileName,
         /// The manifest this print is bounded by.
         manifest: JobManifest,
+        /// Start despite an insufficient or unverified spool, or a file
+        /// `OctoPrint` has not analysed; the start's own reason is the
+        /// override's reason.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        override_filament_check: bool,
         /// Why the actor is asking for this.
         reason: String,
         /// Who is asking.

@@ -434,6 +434,16 @@
           }
         },
         {
+          "kind": "boolean",
+          "located": "body",
+          "name": "override_filament_check",
+          "required": false,
+          "shape": {
+            "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+            "type": "boolean"
+          }
+        },
+        {
           "kind": "text",
           "located": "body",
           "name": "reason",
