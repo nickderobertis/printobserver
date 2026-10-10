@@ -1,4 +1,6 @@
-//! The filament ledger's vocabulary holds the wire contract the plan states.
+//! The filament ledger's vocabulary holds its wire contract: the schemas it
+//! generates, the spellings its keys are stored under, and the empty values it
+//! leaves off rather than writes as `null`.
 //!
 //! Everything here reads the serialized form a consumer receives rather than
 //! the value that survives a round trip, because the contract is the wire: a

@@ -1,5 +1,7 @@
 //! The arithmetic of filament, and the one rule for which command clears which
-//! mark, hold the figures and the rulings the plan states.
+//! mark: a correction clears every mark, a swap clears only the outgoing
+//! spool's unconfirmed filament change, and a confirmation in place clears both
+//! filament-change marks.
 //!
 //! These are the functions the store and the supervision domain call rather
 //! than restate, so each is pinned here on a worked figure: the seven
@@ -186,7 +188,7 @@ fn a_spool_keeps_every_distinct_mark_and_no_duplicate() {
 /// filament-change marks and nothing else; a correction clears every one; and
 /// each says what it removed.
 #[test]
-fn each_clearing_removes_exactly_the_marks_the_ruling_names() {
+fn each_clearing_removes_exactly_the_marks_its_rule_names() {
     let print_id = PrintId::sample_full();
 
     let (swapped, removed) =
@@ -259,7 +261,9 @@ fn each_clearing_removes_exactly_the_marks_the_ruling_names() {
     assert!(removed.is_empty());
 }
 
-/// The clearing rule names exactly the kinds the rulings give each command.
+/// The clearing rule names exactly those kinds for each command: every kind
+/// for a correction, the unconfirmed change for a swap, and both
+/// filament-change kinds for a confirmation in place.
 #[test]
 fn the_clearing_rule_is_the_stated_one() {
     assert_eq!(
