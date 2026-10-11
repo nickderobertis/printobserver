@@ -274,6 +274,9 @@ pub(crate) fn lengths_of(filament: &[ToolFilament]) -> BTreeMap<i64, f64> {
     {
         *lengths.entry(each.tool).or_insert(0.0) += each.length_mm;
     }
+    // Lengths that are each finite can still sum past what a figure holds;
+    // such a tool's total is no length either.
+    lengths.retain(|_, total| total.is_finite());
     lengths
 }
 

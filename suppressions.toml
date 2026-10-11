@@ -2284,7 +2284,7 @@ reason = "`printobserver-core` may depend on no adapter and no store — `repo-p
 [[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-core/src/events.rs"
-site = "if opened {"
+site = "Resolution::Opened(print) => {"
 reason = "`printobserver-core` may depend on no adapter and no store — `repo-policy.toml`'s `crates.may_depend_on` row and AGENTS.md's dependency rule — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and forbids touching the store, adapter and server crates. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `tests/journeys/filament_change.rs` hands the adapter-pinned Obico alert to `handle_event`; the existing event-loop journeys still pass with a print an alert opens now carrying its `print_started`."
 
 [[suppression]]

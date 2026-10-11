@@ -100,6 +100,26 @@ fn state_name(state: &PrinterState) -> Option<String> {
         .and_then(|value| value.as_str().map(str::to_owned))
 }
 
+/// The print an alert belongs to, and whether resolving it opened one.
+enum Resolution {
+    /// The alert is about no print.
+    NoPrint,
+    /// A print this system already held.
+    Existing(PrintRecord),
+    /// A print opened for it now, which is owed its `print_started`.
+    Opened(PrintRecord),
+}
+
+impl Resolution {
+    /// The print, however it was found.
+    const fn print(&self) -> Option<&PrintRecord> {
+        match self {
+            Self::NoPrint => None,
+            Self::Existing(print) | Self::Opened(print) => Some(print),
+        }
+    }
+}
+
 /// The states a print does not carry on from.
 ///
 /// Read off the printer's own reported state rather than inferred from a
@@ -147,9 +167,9 @@ impl Supervisor {
     ///
     /// Exactly as [`Supervisor::handle_event`]'s.
     pub async fn receive_event(&self, alert: NormalizedAlert) -> Result<Received, CoreError> {
-        let (print, opened) = self.resolve_print(&alert).await?;
+        let resolution = self.resolve_print(&alert).await?;
         let draft = EventDraft {
-            print_id: print.as_ref().map(|record| record.id),
+            print_id: resolution.print().map(|record| record.id),
             source: alert.source.clone(),
             received_at: alert.received_at,
             body: alert.body.clone(),
@@ -161,14 +181,16 @@ impl Supervisor {
             .append_event(draft)
             .await
             .map_err(CoreError::Store)?;
-        let Some(print) = print else {
-            return Ok(Received { event, turn: None });
+        let print = match resolution {
+            Resolution::NoPrint => return Ok(Received { event, turn: None }),
+            Resolution::Existing(print) => print,
+            // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+            Resolution::Opened(print) => {
+                self.record_print_started(print.id, print.file_name.clone(), None, None)
+                    .await?;
+                print
+            }
         };
-        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
-        if opened {
-            self.record_print_started(print.id, print.file_name.clone(), None, None)
-                .await?;
-        }
         let image = self
             .write_image(&print, &event, alert.image_url.clone())
             .await;
@@ -268,12 +290,9 @@ impl Supervisor {
     ///
     /// Answers whether this opened it, so that the print's `print_started` is
     /// written once the alert itself has been.
-    async fn resolve_print(
-        &self,
-        alert: &NormalizedAlert,
-    ) -> Result<(Option<PrintRecord>, bool), CoreError> {
+    async fn resolve_print(&self, alert: &NormalizedAlert) -> Result<Resolution, CoreError> {
         let Some(provider_print) = &alert.print else {
-            return Ok((None, false));
+            return Ok(Resolution::NoPrint);
         };
         let _resolving = self.resolving().await;
         if let Some(found) = self
@@ -282,7 +301,7 @@ impl Supervisor {
             .print_by_provider_id(provider_print.id)
             .await?
         {
-            return Ok((Some(found), false));
+            return Ok(Resolution::Existing(found));
         }
         if let Some(file_name) = &provider_print.file_name {
             let unattached = self
@@ -302,7 +321,7 @@ impl Supervisor {
                     .prints
                     .attach_obico_print(found.id, provider_print.id)
                     .await?;
-                return Ok((Some(attached), false));
+                return Ok(Resolution::Existing(attached));
             }
         }
         let opened = self
@@ -310,7 +329,7 @@ impl Supervisor {
             .prints
             .open_print(Some(provider_print.id), provider_print.file_name.clone())
             .await?;
-        Ok((Some(opened), true))
+        Ok(Resolution::Opened(opened))
     }
 
     /// Fetch and store the image an alert names, recording either failure.

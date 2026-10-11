@@ -404,8 +404,9 @@ fn a_file_that_cannot_be_read_is_checked_as_having_no_analysis() {
     assert_eq!(preflight.tools[0].required_g, None);
 }
 
-/// An analysis naming a tool below zero, or a length that is negative or not a
-/// number, is read as no filament for it: the check names only the tools a
+/// An analysis naming a tool below zero, a length that is negative or not a
+/// number, or lengths summing past what a figure holds, is read as no filament
+/// for it: the check names only the tools a
 /// print can feed.
 #[test]
 fn an_analysis_s_impossible_entries_are_left_out_of_the_check() {
@@ -416,6 +417,8 @@ fn an_analysis_s_impossible_entries_are_left_out_of_the_check() {
             on_tool(-1, 2_000.0),
             on_tool(1, -50.0),
             on_tool(2, f64::NAN),
+            on_tool(3, f64::MAX),
+            on_tool(3, f64::MAX),
         ]),
         ..facts(None)
     });

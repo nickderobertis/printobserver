@@ -391,7 +391,7 @@ impl PrinterPort for FakePrinter {
                     .lock()
                     .expect("the printer holds")
                     .values()
-                    .filter(|facts| facts.successes + facts.failures > 0)
+                    .filter(|facts| facts.successes.saturating_add(facts.failures) > 0)
                     .cloned()
                     .collect())
             },

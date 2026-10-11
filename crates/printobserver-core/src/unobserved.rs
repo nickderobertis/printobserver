@@ -62,15 +62,31 @@ impl Settled {
 }
 
 /// The unseen prints between two tallies of one generation: the highest
-/// ordinals of the growth, completed ones first.
+/// ordinals of the growth, completed ones first. A tally whose counts overflow
+/// when added is no tally, and has none.
 fn unseen_between(from: (i64, i64), to: (i64, i64), settled: Settled) -> Vec<Unseen> {
-    let successes = (to.0 - from.0 - settled.successes).max(0);
-    let failures = (to.1 - from.1 - settled.failures).max(0);
-    let total = to.0 + to.1;
-    let first = total - successes - failures + 1;
-    (0..successes + failures)
+    let grown = |now: i64, before: i64, seen: i64| {
+        now.checked_sub(before)
+            .and_then(|growth| growth.checked_sub(seen))
+            .map(|unseen| unseen.max(0))
+    };
+    let (Some(successes), Some(failures), Some(total)) = (
+        grown(to.0, from.0, settled.successes),
+        grown(to.1, from.1, settled.failures),
+        to.0.checked_add(to.1),
+    ) else {
+        return Vec::new();
+    };
+    let Some(first) = successes
+        .checked_add(failures)
+        .and_then(|unseen| total.checked_sub(unseen))
+        .and_then(|before| before.checked_add(1))
+    else {
+        return Vec::new();
+    };
+    (0..successes.saturating_add(failures))
         .map(|offset| Unseen {
-            print_number: first + offset,
+            print_number: first.saturating_add(offset),
             outcome: if offset < successes {
                 PrintOutcome::Completed
             } else {
