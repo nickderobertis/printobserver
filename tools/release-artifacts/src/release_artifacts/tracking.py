@@ -147,6 +147,7 @@ class Forge:
                 content_type="" if document is None else "application/json",
                 accept=MEDIA_TYPE,
                 token=self.token,
+                expect=operation.answers,
             )
         except RegistryError as refused:
             msg = f"the forge did not take `{method} {path}`: {refused}. {NEXT}"

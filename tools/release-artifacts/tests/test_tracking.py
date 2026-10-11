@@ -532,3 +532,16 @@ def test_a_label_read_answering_another_label_fails_the_step_opening_nothing(
     equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
     contains(capsys.readouterr().err, f"answered the `{LABEL}` label with", describing="it said")
     equal(forge.issues, {}, describing="the issues opened")
+
+
+def test_a_comment_answered_with_a_status_it_does_not_succeed_with_fails_the_step(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A `202` is not the `201` a comment is taken with, so nothing is reported done."""
+    number = forge.seed(TITLE, [LABEL])
+    forge.refuse("POST", f"/repos/{REPOSITORY}/issues/{number}/comments", 202, "Accepted")
+
+    equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
+    said = capsys.readouterr().err
+    contains(said, "202", describing="the status the forge answered")
+    contains(said, "where 201 was expected", describing="the status it succeeds with")
