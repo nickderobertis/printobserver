@@ -35,8 +35,8 @@ use printobserver_obico::{
 use printobserver_types::serde_json::{self, Value, json};
 use printobserver_types::{EventPayload, EventRecord, RawBytes, Timestamp};
 use printobserver_vision_api::{
-    Detection, MalformedExternalEventPayload, ProviderPrint, VisionError, VisionPort as _,
-    WebAddress,
+    Detection, MalformedExternalEventPayload, PrinterSignal, ProviderPrint, VisionError,
+    VisionPort as _, WebAddress,
 };
 use store::{MemoryStore, RefusingStore};
 
@@ -902,6 +902,41 @@ async fn the_failure_alert_carries_the_detection_and_a_notification_none() {
             .unwrap_or_else(|error| panic!("{name} normalizes: {error}"));
         assert_eq!(notification.detection, None, "{name}");
     }
+}
+
+/// A filament-change notification carries the printer's signal beside its
+/// body, so the supervision domain charges the loaded spool for it without
+/// reading anything this adapter declares; no other body carries one.
+#[tokio::test]
+async fn a_filament_change_notification_carries_the_printer_s_signal() {
+    let store = Arc::new(MemoryStore::new());
+    let vision = ingress(&store, prompt_bounds()).vision().clone();
+    for (sent, signal) in [
+        ("PrintStarted", None),
+        ("PrintDone", None),
+        ("PrintCancelled", None),
+        ("PrintPaused", None),
+        ("PrintResumed", None),
+        ("FilamentChange", Some(PrinterSignal::FilamentChange)),
+        ("HeaterCooledDown", None),
+        ("HeaterTargetReached", None),
+    ] {
+        let mut body = sample("printer-notification-about-a-print.json");
+        body["event"]["type"] = json!(sent);
+        let alert = vision
+            .normalize(body_of(&body), Some("application/json".to_owned()))
+            .await
+            .unwrap_or_else(|error| panic!("{sent} normalizes: {error}"));
+        assert_eq!(alert.signal, signal, "{sent} carried the wrong signal");
+    }
+    let alert = vision
+        .normalize(
+            RawBytes::new(sample_bytes("failure-alert.json")),
+            Some("application/json".to_owned()),
+        )
+        .await
+        .expect("the sample normalizes");
+    assert_eq!(alert.signal, None, "a failure alert relays no signal");
 }
 
 /// The token a journey configures, which must never be shown.
