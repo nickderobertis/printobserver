@@ -805,9 +805,10 @@ impl Supervisor {
             None => FileAnalysis::default(),
         };
         let position = self.stores().filament.file_position(print.id).await?;
-        let began = print
-            .job_started_at
-            .map_or(print.opened_at, |started| started.min(print.opened_at));
+        // A print completes after it was opened, whoever opened it; the job's
+        // own start, as a read puts it, can lie before that, and a success
+        // recorded between the two is an earlier print's.
+        let began = print.opened_at;
         let tally_success = analysis
             .facts
             .as_ref()

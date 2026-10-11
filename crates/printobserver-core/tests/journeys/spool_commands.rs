@@ -468,3 +468,152 @@ fn a_correction_racing_a_close_out_loses_neither_the_correction_nor_the_charge()
         assert_eq!(every::<FilamentConsumedPayload>(&world).len(), 1);
     }
 }
+
+/// A registration naming a figure no spool has is refused saying which, and
+/// writes no spool: no name, no material, a diameter, density or full figure
+/// at or below zero, a tare below zero.
+#[test]
+fn a_registration_naming_an_impossible_figure_is_refused() {
+    let world = spool_world();
+    let valid = |edit: &dyn Fn(&mut SpoolCommand)| {
+        let mut asked = SpoolCommand::RegisterSpool {
+            name: "Valid".to_owned(),
+            material: "PLA".to_owned(),
+            color: None,
+            diameter_mm: None,
+            density_g_cm3: None,
+            initial_g: 1_000.0,
+            remaining_g: None,
+            tare_g: None,
+            reason: "bought".to_owned(),
+            actor: Actor::Operator,
+        };
+        edit(&mut asked);
+        asked
+    };
+    let cases: [(&dyn Fn(&mut SpoolCommand), &str); 6] = [
+        (
+            &|asked| {
+                if let SpoolCommand::RegisterSpool { name, .. } = asked {
+                    "  ".clone_into(name);
+                }
+            },
+            "needs a name",
+        ),
+        (
+            &|asked| {
+                if let SpoolCommand::RegisterSpool { material, .. } = asked {
+                    String::new().clone_into(material);
+                }
+            },
+            "needs its material",
+        ),
+        (
+            &|asked| {
+                if let SpoolCommand::RegisterSpool { diameter_mm, .. } = asked {
+                    *diameter_mm = Some(0.0);
+                }
+            },
+            "is not one a filament has",
+        ),
+        (
+            &|asked| {
+                if let SpoolCommand::RegisterSpool { density_g_cm3, .. } = asked {
+                    *density_g_cm3 = Some(-1.0);
+                }
+            },
+            "is not one a material has",
+        ),
+        (
+            &|asked| {
+                if let SpoolCommand::RegisterSpool { initial_g, .. } = asked {
+                    *initial_g = 0.0;
+                }
+            },
+            "holds nothing",
+        ),
+        (
+            &|asked| {
+                if let SpoolCommand::RegisterSpool { tare_g, .. } = asked {
+                    *tare_g = Some(-5.0);
+                }
+            },
+            "at least zero grams",
+        ),
+    ];
+    for (edit, naming) in cases {
+        refused_with(&world, &valid(edit), naming);
+    }
+    assert!(
+        block_on(world.core.spools(true))
+            .expect("listed")
+            .is_empty()
+    );
+}
+
+/// Unloading a spool that is on no tool, and correcting one from a negative
+/// scale reading, are refused saying why.
+#[test]
+fn an_unload_of_an_unloaded_spool_and_a_negative_reading_are_refused() {
+    let world = spool_world();
+    let spool = register(&world, "On The Shelf", 1_000.0);
+    refused_with(
+        &world,
+        &SpoolCommand::UnloadSpool {
+            spool_id: spool.id,
+            reason: "tidying".to_owned(),
+            actor: Actor::Operator,
+        },
+        "is not loaded on any tool",
+    );
+    refused_with(
+        &world,
+        &SpoolCommand::AdjustSpool {
+            spool_id: spool.id,
+            remaining_g: None,
+            gross_g: Some(-10.0),
+            reason: "weighed".to_owned(),
+            actor: Actor::Operator,
+        },
+        "is not a weight in grams",
+    );
+}
+
+/// A spool unloaded during a print is charged for what it fed up to where the
+/// print is, and what the tool feeds after it, with no spool on it, is
+/// recorded uncharged — together the tool's total.
+#[test]
+fn a_spool_unloaded_mid_print_is_charged_to_the_unload() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Unloaded Mid-Print", 1_000.0);
+    let print_id = start(&world);
+    running_at(&world, 400_000);
+    world
+        .printer
+        .extrudes(FILE, 400_000, vec![on_tool(0, 2_000.0)]);
+    let unloaded = command(
+        &world,
+        SpoolCommand::UnloadSpool {
+            spool_id: spool.id,
+            reason: "ran out early".to_owned(),
+            actor: Actor::Operator,
+        },
+    );
+    assert_eq!(unloaded.decision, PolicyDecision::Accepted);
+    running_at(&world, SIZE);
+    ends(&world, PrinterState::Operational);
+
+    let charged = charges_to(&world, spool.id);
+    assert_eq!(charged.len(), 1);
+    assert_close(charged[0].length_mm, 2_000.0);
+    let rest: Vec<FilamentConsumedPayload> = every::<FilamentConsumedPayload>(&world)
+        .into_iter()
+        .filter(|charge| charge.spool_id.is_none())
+        .collect();
+    assert_eq!(rest.len(), 1);
+    assert_close(rest[0].length_mm, TOTAL_MM - 2_000.0);
+    let unload = every::<SpoolUnloadedPayload>(&world);
+    assert_eq!(unload.len(), 1);
+    let _ = print_id;
+    assert_ledger_explains(&world, spool.id);
+}

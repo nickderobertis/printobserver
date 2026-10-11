@@ -787,3 +787,52 @@ fn a_restarted_supervisor_lists_what_was_held_and_a_load_takes_it_once() {
     assert_close(change.accounted_mm(), TOTAL_MM);
     let _: SpoolId = next.id;
 }
+
+/// Unloading the spool an unconfirmed change left takes nothing: what the tool
+/// fed after the signal is still held for the next spool loaded, which takes
+/// it.
+#[test]
+fn unloading_the_spool_after_a_change_takes_nothing() {
+    let change = signalled(true, false);
+    let world = &change.world;
+    running_at(world, 600_000);
+    world
+        .printer
+        .extrudes(FILE, 600_000, vec![on_tool(0, 3_000.0)]);
+    let unloaded = command(
+        world,
+        SpoolCommand::UnloadSpool {
+            spool_id: change.spool.id,
+            reason: "took the old spool off".to_owned(),
+            actor: printobserver_core::Actor::Operator,
+        },
+    );
+    assert_eq!(unloaded.decision, PolicyDecision::Accepted);
+    assert_eq!(change.charges().len(), 1, "the unload charged something");
+    change.completes();
+    assert_eq!(every::<ChargePendedPayload>(world).len(), 1);
+    assert_close(pending(world)[0].length_mm, TOTAL_MM - STOPPED_MM);
+    let next = register(world, "Fed It", 1_000.0);
+    assert_eq!(load(world, next.id, 0).decision, PolicyDecision::Accepted);
+    assert_eq!(charges_to(world, next.id).len(), 1);
+    assert_close(change.accounted_mm(), TOTAL_MM);
+}
+
+/// A change signalled with no spool loaded is written down naming none, and
+/// charges and marks nothing.
+#[test]
+fn a_change_with_no_spool_loaded_charges_nothing() {
+    let world = spool_world_with(|_| {});
+    world.clock.advance(80_000_000);
+    let print_id = start(&world);
+    paused_at(&world, STOPPED_AT);
+    world
+        .handle(obico_filament_change(&world))
+        .expect("the alert is handled");
+    let signals = every::<FilamentChangeSignalledPayload>(&world);
+    assert_eq!(signals.len(), 1);
+    assert_eq!(signals[0].tool, None);
+    assert_eq!(signals[0].spool_id, None);
+    assert!(signals[0].position_read_at_signal);
+    assert!(every_of::<FilamentConsumedPayload>(&world, print_id).is_empty());
+}

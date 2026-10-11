@@ -300,3 +300,22 @@ fn a_printer_that_cannot_list_its_files_is_answered_and_nothing_is_recorded() {
     assert_eq!(every::<UnaccountedPrintPayload>(&world).len(), 1);
     assert_eq!(charges_to(&world, spool.id).len(), 1);
 }
+
+/// A print this system cancelled, counted by the printer's tally as failed,
+/// is one it saw: the accounting flags nothing and marks nothing for it.
+#[test]
+fn a_print_this_system_cancelled_is_not_flagged_when_the_tally_counts_it_failed() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Cancelled And Tallied", 1_000.0);
+    tally(&world, 1, 0, true);
+    account(&world);
+    start(&world);
+    running_at(&world, 200_000);
+    world
+        .printer
+        .extrudes(FILE, 200_000, vec![crate::shelf::on_tool(0, 900.0)]);
+    ends(&world, PrinterState::Cancelling);
+    tally_failure(&world, world.clock.now());
+    assert!(account(&world).is_empty());
+    assert_eq!(spool_now(&world, spool.id).trust, SpoolTrust::Verified);
+}
