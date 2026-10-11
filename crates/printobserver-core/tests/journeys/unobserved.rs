@@ -343,3 +343,19 @@ fn an_unseen_completed_print_with_no_analysis_marks_the_spool() {
         UnverifiedReason::UnaccountedPrint { .. }
     ));
 }
+
+/// A file whose tally reports a count below zero is left as last held: the
+/// accounting accounts nothing on it and advances nothing for it.
+#[test]
+fn a_tally_below_zero_is_left_as_last_held() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Odd Tally", 1_000.0);
+    tally(&world, 2, 0, true);
+    account(&world);
+    tally(&world, 3, -1, true);
+    assert!(account(&world).is_empty());
+    tally(&world, 3, 0, true);
+    account(&world);
+    assert_eq!(every::<UnaccountedPrintPayload>(&world).len(), 1);
+    assert_eq!(charges_to(&world, spool.id).len(), 1);
+}

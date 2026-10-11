@@ -403,3 +403,29 @@ fn a_file_that_cannot_be_read_is_checked_as_having_no_analysis() {
     assert_eq!(preflight.tools[0].spool_id, Some(spool.id));
     assert_eq!(preflight.tools[0].required_g, None);
 }
+
+/// An analysis naming a tool below zero, or a length that is negative or not a
+/// number, is read as no filament for it: the check names only the tools a
+/// print can feed.
+#[test]
+fn an_analysis_s_impossible_entries_are_left_out_of_the_check() {
+    let world = spool_world();
+    world.printer.holds_file(FileFacts {
+        filament: Some(vec![
+            on_tool(0, 3_000.0),
+            on_tool(-1, 2_000.0),
+            on_tool(1, -50.0),
+            on_tool(2, f64::NAN),
+        ]),
+        ..facts(None)
+    });
+    let spool = loaded_spool(&world, "Only Tool Zero", 1_000.0);
+    let preflight = block_on(world.core.preflight(&FileName::new(FILE).expect("a name")))
+        .expect("the check is read");
+    assert_eq!(preflight.tools.len(), 1);
+    assert_eq!(preflight.tools[0].tool, 0);
+    assert_close(
+        preflight.tools[0].required_g.expect("figured"),
+        grams(&spool, 3_000.0),
+    );
+}

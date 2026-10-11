@@ -692,3 +692,21 @@ fn a_spool_retired_while_loaded_is_charged_for_what_it_fed_before_a_swap() {
     );
     assert_ledger_explains(&world, retired.id);
 }
+
+/// A change the store refuses on one of its own constraints is answered as a
+/// spool refusal naming the constraint, written down like any other, and
+/// changes nothing.
+#[test]
+fn a_change_the_store_refuses_is_answered_as_a_refusal() {
+    let world = spool_world();
+    let spool = register(&world, "Refused By The Store", 1_000.0);
+    world.store.fails(
+        crate::fakes::StoreMethod::ApplySpoolChanges,
+        printobserver_core::store::StoreError::ConstraintRefused {
+            constraint: "spools.loaded_on_tool".to_owned(),
+        },
+    );
+    refused_with(&world, &load_command(spool.id, 0), "spools.loaded_on_tool");
+    world.store.heals();
+    assert_eq!(spool_now(&world, spool.id).loaded_on_tool, None);
+}

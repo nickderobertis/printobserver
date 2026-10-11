@@ -748,3 +748,72 @@ fn a_look_whose_position_is_refused_is_answered_and_a_later_read_records_it() {
         2_500.0,
     );
 }
+
+/// A print whose job reports itself complete as it ends is completed, though
+/// its last position fell short of the file's end and no tally says so; a
+/// completion reported for another file's job is not this print's.
+#[test]
+fn a_job_reporting_its_own_completion_completes_the_print() {
+    for same_file in [true, false] {
+        let world = spool_world();
+        let spool = loaded_spool(&world, "Reported Complete", 1_000.0);
+        let print_id = start(&world);
+        running_at(&world, 990_000);
+        world
+            .printer
+            .extrudes(FILE, 990_000, vec![on_tool(0, 4_950.0)]);
+        world.clock.advance(60);
+        world.printer.reports_completion(Some(1.0));
+        world.printer.reports_state(PrinterState::Operational);
+        let file = if same_file { FILE } else { "calibration.gcode" };
+        world
+            .printer
+            .reports_job(Some(file), PrinterState::Operational);
+        world.printer.reports_position(None, Some(SIZE));
+        block_on(world.core.list_and_adopt_prints()).expect("listed");
+
+        let ended = ended_of(&world, print_id);
+        let charge = &charges_of(&world, print_id)[0];
+        if same_file {
+            assert_eq!(ended.outcome, PrintOutcome::Completed);
+            assert_charge(
+                charge,
+                spool.id,
+                &world,
+                ChargeMethod::SlicerEstimate,
+                TOTAL_MM,
+            );
+        } else {
+            assert_eq!(ended.outcome, PrintOutcome::Cancelled);
+            assert_charge(
+                charge,
+                spool.id,
+                &world,
+                ChargeMethod::GcodeExtrusion,
+                4_950.0,
+            );
+        }
+    }
+}
+
+/// A position a printer reports before the file's start is no position: it is
+/// not recorded, and the print is charged to the last real one.
+#[test]
+fn a_position_before_the_file_s_start_is_not_recorded() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Odd Position", 1_000.0);
+    let print_id = start(&world);
+    running_at(&world, 300_000);
+    world
+        .printer
+        .extrudes(FILE, 300_000, vec![on_tool(0, 1_400.0)]);
+    running_at(&world, -5);
+    ends(&world, PrinterState::Cancelling);
+    assert_charge(
+        &charges_of(&world, print_id)[0],
+        spool.id,
+        &world,
+        ChargeMethod::GcodeExtrusion,
+        1_400.0,
+    );
+}

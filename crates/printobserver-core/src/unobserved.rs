@@ -137,6 +137,7 @@ impl Supervisor {
         if held.is_empty() {
             let baseline = files
                 .iter()
+                .filter(|file| file.successes >= 0 && file.failures >= 0)
                 .map(|file| FileTally {
                     file_name: file.file_name.clone(),
                     origin: file.origin.clone(),
@@ -155,7 +156,13 @@ impl Supervisor {
         let loaded = self.stores().filament.loaded_spools().await?;
         let settlements = self.settlements_of(&files).await?;
         let mut accounting = Accounting::default();
-        for file in &files {
+        // A tally is read at this boundary: a count below zero is not one the
+        // printer can have, and a file reporting one is left as last held
+        // rather than accounted on it.
+        for file in files
+            .iter()
+            .filter(|file| file.successes >= 0 && file.failures >= 0)
+        {
             let previous = held
                 .iter()
                 .find(|tally| tally.file_name == file.file_name && tally.origin == file.origin);
@@ -306,8 +313,6 @@ impl Supervisor {
                                 print_number: print.print_number,
                                 tool: *tool,
                             },
-                            print_id: None,
-                            tool: *tool,
                             method: ChargeMethod::UnobservedEstimate,
                             length_mm: *length,
                             analysed_length_mm: Some(*length),

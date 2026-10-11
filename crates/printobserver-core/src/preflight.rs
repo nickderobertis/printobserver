@@ -33,6 +33,21 @@ use crate::records::{
 };
 use crate::supervisor::Supervisor;
 
+/// Whether a start asked to go ahead despite the filament check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Override {
+    /// It asked; only an operator's asking counts.
+    Asked,
+    /// It did not.
+    NotAsked,
+}
+
+impl From<bool> for Override {
+    fn from(asked: bool) -> Self {
+        if asked { Self::Asked } else { Self::NotAsked }
+    }
+}
+
 /// How often a start waiting for an analysis reads the file again.
 pub const ANALYSIS_POLL: Duration = Duration::from_millis(250);
 
@@ -282,6 +297,7 @@ impl Supervisor {
             }
             // A wait the system will not take a thread for ends the wait: the
             // start is judged on what the file says now.
+            // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
             if Delay::new(ANALYSIS_POLL).await.is_err() {
                 return Ok(());
             }
@@ -304,7 +320,7 @@ impl Supervisor {
         &self,
         file_name: &FileName,
         actor: &Actor,
-        override_filament_check: bool,
+        asked: Override,
     ) -> Result<(Preflight, Option<RejectionReason>), CoreError> {
         let policy = self.config().spools;
         if policy.preflight == PreflightMode::Off {
@@ -324,7 +340,7 @@ impl Supervisor {
         };
         Ok(match policy.preflight {
             PreflightMode::Warn => (let_through(preflight, PreflightVerdict::Warned), None),
-            _ if override_filament_check && actor.class() == ActorClass::Operator => {
+            _ if asked == Override::Asked && actor.class() == ActorClass::Operator => {
                 (let_through(preflight, PreflightVerdict::Overridden), None)
             }
             _ => (preflight, Some(reason)),

@@ -278,7 +278,7 @@ impl Supervisor {
                 ..
             } => {
                 let (checked, refusal) = self
-                    .check_start(file_name, actor, *override_filament_check)
+                    .check_start(file_name, actor, (*override_filament_check).into())
                     .await?;
                 if let Some(reason) = refusal {
                     *decision = PolicyDecision::Rejected(reason);

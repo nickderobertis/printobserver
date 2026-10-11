@@ -174,12 +174,9 @@ impl Figures {
 /// One stretch of filament a tool fed, before it is charged or held.
 #[derive(Debug, Clone)]
 pub(crate) struct Feed {
-    /// The durable identity of the debit.
+    /// The durable identity of the debit, which names the tool that fed it
+    /// and, for a print this system watched, the print.
     pub(crate) key: ChargeKey,
-    /// The print it was fed in, when it was fed in one this system recorded.
-    pub(crate) print_id: Option<PrintId>,
-    /// The tool that fed it.
-    pub(crate) tool: i64,
     /// How the length was worked out.
     pub(crate) method: ChargeMethod,
     /// The length fed, in millimetres.
@@ -190,6 +187,44 @@ pub(crate) struct Feed {
     pub(crate) position: Option<FilePosition>,
     /// Anything a reader needs to make sense of the figure.
     pub(crate) note: Option<String>,
+}
+
+impl Feed {
+    /// The tool that fed it, as its key names it.
+    const fn tool(&self) -> i64 {
+        match &self.key {
+            ChargeKey::Print { tool, .. } | ChargeKey::Unobserved { tool, .. } => *tool,
+        }
+    }
+
+    /// The print it was fed in, when its key names one.
+    const fn print_id(&self) -> Option<PrintId> {
+        match &self.key {
+            ChargeKey::Print { print_id, .. } => Some(*print_id),
+            ChargeKey::Unobserved { .. } => None,
+        }
+    }
+}
+
+/// Where a print is, and how that is known.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Whereabouts {
+    /// Read from the job just now.
+    ReadNow(FilePosition),
+    /// The last position recorded, the job reporting none now.
+    Recorded(FilePosition),
+    /// No position has been read for it at all.
+    Unknown,
+}
+
+impl Whereabouts {
+    /// The position, however it is known.
+    const fn position(&self) -> Option<&FilePosition> {
+        match self {
+            Self::ReadNow(position) | Self::Recorded(position) => Some(position),
+            Self::Unknown => None,
+        }
+    }
 }
 
 /// The filament each tool fed up to a position, and how that was worked out.
@@ -227,9 +262,16 @@ impl FileAnalysis {
 }
 
 /// The lengths per tool one list of tool filament adds up to.
+///
+/// A printer's answer is read at this boundary: a tool numbered below zero, or
+/// a length that is negative or not a number, is no filament any tool fed, and
+/// is left out rather than charged.
 pub(crate) fn lengths_of(filament: &[ToolFilament]) -> BTreeMap<i64, f64> {
     let mut lengths = BTreeMap::new();
-    for each in filament {
+    for each in filament
+        .iter()
+        .filter(|each| each.tool >= 0 && each.length_mm.is_finite() && each.length_mm >= 0.0)
+    {
         *lengths.entry(each.tool).or_insert(0.0) += each.length_mm;
     }
     lengths
@@ -252,8 +294,6 @@ pub(crate) fn feed_to(
             tool,
             segment: ledger.open_segment(tool),
         },
-        print_id: Some(print_id),
-        tool,
         method: extrusion.method,
         length_mm: length,
         analysed_length_mm: analysis.length(tool),
@@ -318,11 +358,15 @@ pub(crate) fn position_from(
     if !active || !same_file {
         return None;
     }
-    job.file_position_bytes.map(|bytes| FilePosition {
-        bytes,
-        size_bytes: job.size_bytes,
-        observed_at,
-    })
+    // A position before the file's start is no position, and a size of
+    // nothing is no size: neither is kept.
+    job.file_position_bytes
+        .filter(|bytes| *bytes >= 0)
+        .map(|bytes| FilePosition {
+            bytes,
+            size_bytes: job.size_bytes.filter(|size| *size > 0),
+            observed_at,
+        })
 }
 
 /// What a tracked print's close-out writes: its charges, its pends and its
@@ -452,7 +496,7 @@ impl Supervisor {
         };
         let payload = FilamentConsumedPayload {
             charge_key: feed.key.clone(),
-            tool: feed.tool,
+            tool: feed.tool(),
             spool_id: spool.map(|spool| spool.id),
             method: feed.method,
             length_mm: feed.length_mm,
@@ -465,11 +509,11 @@ impl Supervisor {
             remaining_after_g: figure.map(|(_, after)| after),
             note: feed.note.clone(),
         };
-        let event = self.draft_of(feed.print_id, source, &payload)?;
+        let event = self.draft_of(feed.print_id(), source, &payload)?;
         Ok(Charge {
+            tool: feed.tool(),
+            print_id: feed.print_id(),
             key: feed.key,
-            tool: feed.tool,
-            print_id: feed.print_id,
             spool_id: spool.map(|spool| spool.id),
             length_mm: feed.length_mm,
             grams,
@@ -482,9 +526,9 @@ impl Supervisor {
     /// carrying its `charge_pended` event.
     pub(crate) fn pend_of(&self, feed: Feed, print_id: PrintId) -> Result<Pend, CoreError> {
         let pending = PendingCharge {
+            tool: feed.tool(),
             charge_key: feed.key,
             print_id,
-            tool: feed.tool,
             length_mm: feed.length_mm,
             method: feed.method,
             analysed_length_mm: feed.analysed_length_mm,
@@ -545,8 +589,6 @@ impl Supervisor {
             charges.push(self.charge_of(
                 Feed {
                     key: held.charge_key.clone(),
-                    print_id: Some(held.print_id),
-                    tool: held.tool,
                     method: held.method,
                     length_mm: held.length_mm,
                     analysed_length_mm: held.analysed_length_mm,
@@ -927,8 +969,6 @@ impl Supervisor {
                     tool,
                     segment: ledger.open_segment(tool),
                 },
-                print_id: Some(print_id),
-                tool,
                 method: totals.method,
                 length_mm: remainder,
                 analysed_length_mm: closing.analysis.length(tool),
@@ -1039,23 +1079,25 @@ impl Supervisor {
     }
 
     /// Where a print is now: read afresh from the job when it reports one,
-    /// recorded as it is read, and otherwise the last position recorded.
-    ///
-    /// Answers the position and whether it was read now.
+    /// recorded as it is read, and otherwise the last position recorded —
+    /// with the job the read found, when it found one.
     pub(crate) async fn position_now(
         &self,
         print: &PrintRecord,
-    ) -> Result<(Option<FilePosition>, Option<JobSnapshot>, bool), CoreError> {
+    ) -> Result<(Whereabouts, Option<JobSnapshot>), CoreError> {
         let job = self.read_job().await.ok();
         let observed_at = self.clock().now();
         if let Some(job) = &job
             && let Some(position) = self.record_position_from(print, job, observed_at).await?
         {
             self.note_seen_running(print.id);
-            return Ok((Some(position), Some(job.clone()), true));
+            return Ok((Whereabouts::ReadNow(position), Some(job.clone())));
         }
-        let recorded = self.stores().filament.file_position(print.id).await?;
-        Ok((recorded, job, false))
+        let whereabouts = match self.stores().filament.file_position(print.id).await? {
+            Some(recorded) => Whereabouts::Recorded(recorded),
+            None => Whereabouts::Unknown,
+        };
+        Ok((whereabouts, job))
     }
 
     /// The filament each tool fed up to where a print is now, and that
@@ -1067,8 +1109,8 @@ impl Supervisor {
         let Some(file_name) = print.file_name.clone() else {
             return Ok(None);
         };
-        let (position, job, _) = self.position_now(print).await?;
-        let Some(position) = position else {
+        let (whereabouts, job) = self.position_now(print).await?;
+        let Some(position) = whereabouts.position().cloned() else {
             return Ok(None);
         };
         let analysis = self.analysis_of(&file_name, job.as_ref()).await;
@@ -1107,7 +1149,9 @@ impl Supervisor {
         {
             return Ok(());
         }
-        let (position, job, read_now) = self.position_now(print).await?;
+        let (whereabouts, job) = self.position_now(print).await?;
+        let read_now = matches!(whereabouts, Whereabouts::ReadNow(_));
+        let position = whereabouts.position().cloned();
         let analysis = match &print.file_name {
             Some(file) => self.analysis_of(file, job.as_ref()).await,
             None => FileAnalysis::default(),
