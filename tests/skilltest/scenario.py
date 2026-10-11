@@ -943,7 +943,104 @@ def _answers(
         answers[operation] = composer.records(operation, {"reason": ECHOED_REASON})
     for adjustment in ADJUSTMENTS:
         answers[adjustment.command] = [_adjusted(composer, adjustment, adjustment.nominal)]
+    answers.update(_spool_answers(composer))
     return answers, replayed
+
+
+def _spool_answers(composer: _Composer) -> dict[str, list[dict[str, Any]]]:
+    """The spool ledger's answers: one verified spool, loaded on the print's tool.
+
+    The printer's file has no analysis yet, so a preflight of it answers
+    `no_analysis`, as the generated example does. A spool command is answered
+    accepted, as every other action here is, and echoes the reason it was given.
+    """
+    actor = json.loads(composer.actor)
+    loaded_at = _instant(composer.now - timedelta(hours=2))
+    spool: dict[str, Any] = {
+        "density_g_cm3": 1.24,
+        "diameter_mm": 1.75,
+        "id": _id(),
+        "initial_g": 1000.0,
+        "loaded_on_tool": TOOL,
+        "material": "PLA",
+        "name": "PLA black",
+        "registered_at": _instant(composer.now - timedelta(days=3)),
+        "remaining_g": 650.0,
+        "tare_g": 250.0,
+        "trust": {"state": "verified"},
+        "updated_at": loaded_at,
+    }
+    loaded = {
+        "id": _id(),
+        "kind": "spool_loaded",
+        "payload": {
+            "actor": "operator",
+            "reason": "the black roll is going on the printer",
+            "spool_id": spool["id"],
+            "tool": TOOL,
+        },
+        "received_at": loaded_at,
+        "source": "operator",
+    }
+    unloaded = {key: value for key, value in spool.items() if key != "loaded_on_tool"}
+    commanded = _instant(composer.now)
+
+    def command(kind: str, record: dict[str, Any], **payload: object) -> list[dict[str, Any]]:
+        event = {
+            "id": _id(),
+            "kind": kind,
+            "payload": {"actor": actor, "reason": ECHOED_REASON, **payload},
+            "print_id": composer.print_id,
+            "received_at": commanded,
+            "source": "agent",
+        }
+        return [{"decision": "accepted", "events": [event], "spool": record}]
+
+    on_tool = {"spool_id": spool["id"], "tool": TOOL}
+    return {
+        "spools": [
+            {
+                "at_a_glance": [
+                    f"{spool['name']} | {spool['material']} | {spool['remaining_g']:.1f} g of "
+                    f"{spool['initial_g']:.1f} g left | on tool {TOOL} | verified"
+                ],
+                "pending": [],
+                "spools": [spool],
+            }
+        ],
+        "spool": [{"recent": [loaded], "spool": spool}],
+        "printer-history": [{"events": [loaded]}],
+        "preflight": [
+            {
+                "preflight": {
+                    "checked_at": commanded,
+                    "file_name": composer.file_name,
+                    "tools": [
+                        {
+                            "remaining_g": spool["remaining_g"],
+                            "spool_id": spool["id"],
+                            "spool_name": spool["name"],
+                            "tool": TOOL,
+                            "verdict": "no_analysis",
+                        }
+                    ],
+                    "verdict": "no_analysis",
+                }
+            }
+        ],
+        "register-spool": command("spool_registered", unloaded, spool=unloaded),
+        "load-spool": command("spool_loaded", spool, **on_tool),
+        "unload-spool": command("spool_unloaded", unloaded, **on_tool),
+        "adjust-spool": command(
+            "spool_adjusted", spool, remaining_g=spool["remaining_g"], spool_id=spool["id"]
+        ),
+        "retire-spool": command(
+            "spool_retired",
+            {**unloaded, "retired_at": commanded},
+            remaining_g=spool["remaining_g"],
+            spool_id=spool["id"],
+        ),
+    }
 
 
 def _adjusted(composer: _Composer, adjustment: Adjustment, value: float) -> dict[str, Any]:

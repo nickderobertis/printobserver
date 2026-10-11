@@ -51,6 +51,8 @@ class Field:
     located: str
     forms: tuple[str, ...]
     file_forms: tuple[str, ...] = ()
+    # Whether the value may be given as often as it is wanted.
+    repeated: bool = False
 
     @property
     def structured(self) -> bool:
@@ -77,7 +79,8 @@ class CommandSpec:
                 continue
             value = "<json>" if field.structured else "<value>"
             option = f"{field.forms[0]} {value}"
-            taken.append(option if field.required else f"[{option}]")
+            more = "..." if field.repeated else ""
+            taken.append(f"{option}{more}" if field.required else f"[{option}]{more}")
         return f"  {PROGRAM} {self.name} {' '.join(taken)}".rstrip()
 
 
@@ -129,6 +132,7 @@ def surface() -> Surface:
                 located=option["located"],
                 forms=forms,
                 file_forms=files,
+                repeated=bool(parameter.get("repeated")),
             )
         commands.append(
             CommandSpec(
