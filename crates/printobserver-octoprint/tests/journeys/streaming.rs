@@ -1,0 +1,749 @@
+//! `extruded_to` reads a download as it arrives and stops at the position.
+//!
+//! The stand-in here is a real HTTP server on a real socket. It answers a
+//! file's facts the way `OctoPrint` does, and then serves the file's download
+//! with every byte up to a little past the requested position — and **holds
+//! the rest unsent** until the test lets it go. An adapter that read the whole
+//! download before answering would wait on those bytes until its timeout; this
+//! one answers, correctly, while they are still held. The stand-in records
+//! whether it had let go at the moment the answer came back, so the claim is
+//! observed rather than inferred from timing.
+
+use core::fmt::Write as _;
+use std::io::Write as _;
+use std::net::{SocketAddr, TcpListener};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter, extruded_to};
+use printobserver_printer_api::{PrinterError, PrinterPort as _, ToolFilament};
+use printobserver_types::FileName;
+
+use crate::block_on::block_on;
+use crate::received::{Recorded, read_request};
+
+/// How far past the position the stand-in sends before it holds.
+const BEYOND: usize = 64;
+
+/// How long the stand-in holds the rest of the body at most.
+const HOLD: Duration = Duration::from_secs(60);
+
+/// How the stand-in frames the download.
+#[derive(Debug, Clone, Copy)]
+enum Framing {
+    /// `Content-Length`.
+    Length,
+    /// `Transfer-Encoding: chunked`.
+    Chunked,
+    /// Neither: the body ends when the connection closes.
+    Close,
+}
+
+/// What the stand-in answers the download with.
+enum Download {
+    /// The file, framed one way, sent up to a byte and then held.
+    Held {
+        /// How it is framed.
+        framing: Framing,
+        /// The whole file.
+        bytes: Vec<u8>,
+        /// How many of its bytes go out before the hold.
+        sent_first: usize,
+    },
+    /// These bytes exactly, and then the connection closes.
+    Raw(Vec<u8>),
+    /// Nothing: the stand-in stops listening before it answers the facts, so
+    /// the download's connection is refused.
+    Gone,
+}
+
+/// A file's facts and its download, served by a real server.
+struct StandIn {
+    /// Where it answers.
+    address: SocketAddr,
+    /// Every request it received.
+    recorded: Arc<Mutex<Vec<Recorded>>>,
+    /// Set the moment the held rest of the body is let go.
+    released: Arc<AtomicBool>,
+    /// Lets the held rest go, when dropped.
+    release: Option<Sender<()>>,
+    /// The server.
+    thread: Option<JoinHandle<()>>,
+}
+
+impl StandIn {
+    /// Serve one file's facts, naming a download link, and then its download.
+    fn start(facts_body: String, download: Download) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        let address = listener.local_addr().expect("the bound address");
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        let released = Arc::new(AtomicBool::new(false));
+        let (release, held): (Sender<()>, Receiver<()>) = mpsc::channel();
+        let thread = {
+            let recorded = Arc::clone(&recorded);
+            let released = Arc::clone(&released);
+            thread::spawn(move || {
+                serve(
+                    listener,
+                    &facts_body,
+                    &download,
+                    &recorded,
+                    &released,
+                    &held,
+                );
+            })
+        };
+        Self {
+            address,
+            recorded,
+            released,
+            release: Some(release),
+            thread: Some(thread),
+        }
+    }
+
+    /// A printer configured against this stand-in.
+    fn printer(&self) -> OctoPrintPrinter {
+        self.printer_timing_out(Duration::from_secs(20))
+    }
+
+    /// The same, giving up on a silent connection after `timeout`.
+    fn printer_timing_out(&self, timeout: Duration) -> OctoPrintPrinter {
+        OctoPrintPrinter::new(
+            OctoPrintConfig::new(&format!("http://{}", self.address), "test-key")
+                .expect("a configuration")
+                .with_timeout(timeout),
+        )
+    }
+
+    /// Whether the held rest of the body has been let go.
+    fn released(&self) -> bool {
+        self.released.load(Ordering::SeqCst)
+    }
+
+    /// Every request it received.
+    fn requests(&self) -> Vec<Recorded> {
+        self.recorded.lock().expect("not poisoned").clone()
+    }
+}
+
+impl Drop for StandIn {
+    fn drop(&mut self) {
+        drop(self.release.take());
+        // Unblock a server still waiting for a download nothing will request.
+        let _ = std::net::TcpStream::connect(self.address);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// The stand-in's two answers, in order.
+fn serve(
+    listener: TcpListener,
+    facts_body: &str,
+    download: &Download,
+    recorded: &Mutex<Vec<Recorded>>,
+    released: &AtomicBool,
+    held: &Receiver<()>,
+) {
+    for answer in 0..2 {
+        let Ok((mut connection, _)) = listener.accept() else {
+            return;
+        };
+        let Some(request) = read_request(&mut connection) else {
+            return;
+        };
+        recorded.lock().expect("not poisoned").push(request);
+        if answer == 0 {
+            if matches!(download, Download::Gone) {
+                // Closed before the facts go out, so nothing the client does
+                // after reading them can reach a listener.
+                drop(listener);
+                let _ = connection.write_all(&answered(facts_body));
+                return;
+            }
+            let _ = connection.write_all(&answered(facts_body));
+            continue;
+        }
+        match download {
+            Download::Gone => {}
+            Download::Raw(bytes) => {
+                let _ = connection.write_all(bytes);
+            }
+            Download::Held {
+                framing,
+                bytes,
+                sent_first,
+            } => {
+                let (first, rest) = bytes.split_at((*sent_first).min(bytes.len()));
+                let _ = connection.write_all(&head(*framing, bytes.len()));
+                let _ = connection.write_all(&framed(*framing, first));
+                let _ = connection.flush();
+                let _ = held.recv_timeout(HOLD);
+                released.store(true, Ordering::SeqCst);
+                let _ = connection.write_all(&framed(*framing, rest));
+                if matches!(framing, Framing::Chunked) {
+                    let _ = connection.write_all(b"0\r\n\r\n");
+                }
+            }
+        }
+    }
+}
+
+/// A JSON body, answered whole.
+fn answered(body: &str) -> Vec<u8> {
+    format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .into_bytes()
+}
+
+/// The header block of a download framed one way.
+fn head(framing: Framing, length: usize) -> Vec<u8> {
+    let framing = match framing {
+        Framing::Length => format!("Content-Length: {length}\r\n"),
+        Framing::Chunked => "Transfer-Encoding: chunked\r\n".to_owned(),
+        Framing::Close => String::new(),
+    };
+    format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n{framing}Connection: close\r\n\r\n")
+        .into_bytes()
+}
+
+/// Some bytes of a body, framed one way.
+fn framed(framing: Framing, bytes: &[u8]) -> Vec<u8> {
+    match framing {
+        Framing::Chunked if !bytes.is_empty() => {
+            let mut chunk = format!("{:x}\r\n", bytes.len()).into_bytes();
+            chunk.extend_from_slice(bytes);
+            chunk.extend_from_slice(b"\r\n");
+            chunk
+        }
+        Framing::Chunked => Vec::new(),
+        Framing::Length | Framing::Close => bytes.to_vec(),
+    }
+}
+
+/// The facts of `print.gcode`, naming its download on some other host, the way
+/// `OctoPrint` spells it absolute.
+fn facts_naming(download: &str) -> String {
+    format!(
+        r#"{{"name": "print.gcode", "origin": "local", "type": "machinecode", "size": 1,
+            "refs": {{"download": "{download}",
+                      "resource": "http://elsewhere.invalid:9/api/files/local/print.gcode"}}}}"#
+    )
+}
+
+/// The facts of `print.gcode`, downloadable at its usual path.
+fn facts() -> String {
+    facts_naming("http://elsewhere.invalid:9/downloads/files/local/print.gcode")
+}
+
+/// A file long enough that the position lands well inside it.
+fn program() -> Vec<u8> {
+    let mut text = String::from("M83\nT0\n");
+    for line in 0..2_000 {
+        writeln!(text, "G1 X{} Y{} E0.{}", line % 50, line % 30, line % 7 + 1)
+            .expect("a String never fails to be written to");
+        if line == 300 {
+            text.push_str("T1\n");
+        }
+    }
+    text.into_bytes()
+}
+
+/// The one file the stand-in serves facts and a download for.
+fn print_gcode() -> FileName {
+    FileName::new("print.gcode").expect("a file name")
+}
+
+/// The correct figure is answered while the rest of the body is still held,
+/// whichever way the download is framed.
+#[test]
+fn extruded_to_answers_while_the_rest_of_the_download_is_held() {
+    let bytes = program();
+    for (framing, position) in [
+        (Framing::Length, bytes.len() * 2 / 3),
+        (Framing::Chunked, bytes.len() / 2 + 3),
+        (Framing::Close, bytes.len() / 4),
+    ] {
+        let stand_in = StandIn::start(
+            facts(),
+            Download::Held {
+                framing,
+                bytes: bytes.clone(),
+                sent_first: position + BEYOND,
+            },
+        );
+        let position = i64::try_from(position).expect("a position");
+
+        let fed = block_on(stand_in.printer().extruded_to(print_gcode(), position))
+            .expect("the filament fed");
+        let held = !stand_in.released();
+
+        assert!(
+            held,
+            "{framing:?}: the answer came back only after the rest was sent"
+        );
+        assert_eq!(fed, extruded_to(&bytes, position), "{framing:?}");
+        assert_eq!(fed.len(), 2, "{framing:?}: both tools fed by then: {fed:?}");
+
+        let requests = stand_in.requests();
+        assert_eq!(requests[0].path, "/api/files/local/print.gcode");
+        assert_eq!(
+            requests[1].path, "/downloads/files/local/print.gcode",
+            "the link's path, sent to the configured instance rather than its host"
+        );
+        assert_eq!(requests[1].header("x-api-key"), Some("test-key"));
+    }
+}
+
+/// A position past the end is the whole file, whichever way it is framed.
+#[test]
+fn a_position_past_the_end_reads_the_whole_download() {
+    let bytes = program();
+    let whole = extruded_to(&bytes, i64::MAX);
+    for framing in [Framing::Length, Framing::Chunked, Framing::Close] {
+        let stand_in = StandIn::start(
+            facts(),
+            Download::Held {
+                framing,
+                bytes: bytes.clone(),
+                sent_first: bytes.len(),
+            },
+        );
+        let reading = thread::spawn({
+            let printer = stand_in.printer();
+            move || block_on(printer.extruded_to(print_gcode(), 1_000_000_000))
+        });
+        if !matches!(framing, Framing::Length) {
+            // Nothing but the end of the body says where it ends, so the answer
+            // arrives once the rest is let go.
+            thread::sleep(Duration::from_millis(200));
+            assert!(
+                !reading.is_finished(),
+                "{framing:?}: answered before the end"
+            );
+        }
+        let mut stand_in = stand_in;
+        drop(stand_in.release.take());
+
+        let fed: Vec<ToolFilament> = reading
+            .join()
+            .expect("the reader")
+            .expect("the filament fed");
+        assert_eq!(fed, whole, "{framing:?}");
+    }
+}
+
+/// A download the instance refuses is ruled on like every other request.
+#[test]
+fn a_refused_download_is_ruled_on_like_any_request() {
+    let body = r#"{"error": "You don't have the permission to access the requested resource."}"#;
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(
+            format!(
+                "HTTP/1.1 403 FORBIDDEN\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .into_bytes(),
+        ),
+    );
+
+    let error = block_on(stand_in.printer().extruded_to(print_gcode(), 10)).expect_err("a refusal");
+
+    match error {
+        PrinterError::Unauthorized { detail } => assert!(detail.contains("permission"), "{detail}"),
+        other => panic!("expected the key refused, found {other:?}"),
+    }
+}
+
+/// A file whose facts name no download link is malformed, and so is a link
+/// that would change the request it lands in; neither is followed.
+#[test]
+fn a_missing_or_unfollowable_download_link_is_malformed() {
+    let stub_facts = [
+        r#"{"name": "print.gcode", "origin": "local", "type": "machinecode"}"#.to_owned(),
+        facts_naming(r"http://elsewhere.invalid:9/downloads/a b.gcode"),
+        facts_naming("downloads/files/local/print.gcode"),
+    ];
+    for body in stub_facts {
+        let stand_in = StandIn::start(body.clone(), Download::Raw(Vec::new()));
+
+        let error =
+            block_on(stand_in.printer().extruded_to(print_gcode(), 10)).expect_err("a refusal");
+
+        assert!(
+            matches!(error, PrinterError::Malformed { .. }),
+            "{body}: {error:?}"
+        );
+        assert_eq!(stand_in.requests().len(), 1, "{body}: a download was sent");
+    }
+}
+
+/// A link with no path at all is the root, and a link that is already a path
+/// is followed as it stands.
+#[test]
+fn a_link_spelled_as_a_path_is_followed_as_it_stands() {
+    let bytes = b"M83\nG1 E2\n".to_vec();
+    let stand_in = StandIn::start(
+        facts_naming("/prefix/downloads/files/local/print.gcode"),
+        Download::Raw(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                bytes.len(),
+                String::from_utf8_lossy(&bytes)
+            )
+            .into_bytes(),
+        ),
+    );
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 100)).expect("the feed");
+
+    assert_eq!(fed, extruded_to(&bytes, 100));
+    assert_eq!(
+        stand_in.requests()[1].path,
+        "/prefix/downloads/files/local/print.gcode"
+    );
+
+    let rooted = StandIn::start(
+        facts_naming("http://elsewhere.invalid:9"),
+        Download::Raw(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec()),
+    );
+    let fed = block_on(rooted.printer().extruded_to(print_gcode(), 100)).expect("the feed");
+    assert!(fed.is_empty(), "{fed:?}");
+    assert_eq!(rooted.requests()[1].path, "/");
+}
+
+/// Downloads that are not framed as HTTP/1 frames a body, each with what it is.
+const MALFORMED_DOWNLOADS: [(&str, &[u8]); 25] = [
+    (
+        "a chunk size that is no number",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nM83\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk longer than it declared",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nM83\r\n0\r\n\r\n",
+    ),
+    (
+        "chunks that stop without a last one",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n",
+    ),
+    (
+        "no header block",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n",
+    ),
+    (
+        "a status line that is not HTTP's",
+        b"garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a length that is no number",
+        b"HTTP/1.1 200 OK\r\nContent-Length: lots\r\n\r\nM83\n",
+    ),
+    (
+        "two lengths that disagree",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nContent-Length: 9\r\n\r\nM83\n",
+    ),
+    (
+        "a coding this client cannot undo",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nM83\n",
+    ),
+    (
+        "an HTTP version that is not one",
+        b"HTTP/1.garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a header line with no field name",
+        b"HTTP/1.1 200 OK\r\nContent-Length 4\r\n\r\nM83\n",
+    ),
+    (
+        "a header field name carrying a space",
+        b"HTTP/1.1 200 OK\r\nContent Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a header field value carrying a control character",
+        b"HTTP/1.1 200 OK\r\nX-Note: a\x01b\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a trailer field with no name",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n: x\r\n\r\n",
+    ),
+    (
+        "a status that is not three digits",
+        b"HTTP/1.1 0200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a status carrying a sign",
+        b"HTTP/1.1 +20 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a length carrying a sign",
+        b"HTTP/1.1 200 OK\r\nContent-Length: +4\r\n\r\nM83\n",
+    ),
+    (
+        "a chunk size carrying a sign",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n+4\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "both a length and chunks",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n\
+              4\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a trailer that is no field",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\nnonsense\r\n\r\n",
+    ),
+    (
+        "a chunk extension with no name",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk extension carrying a control character",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;a\x01b\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk extension with no value after its `=`",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;a=\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk extension whose quoted value never closes",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;a=\"b\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk size followed by something that is no extension",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4 x\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a last chunk with no blank line after it",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n",
+    ),
+];
+
+/// A download that is not framed as it says is refused as malformed rather
+/// than read as though it were the file.
+#[test]
+fn a_misframed_download_is_malformed() {
+    for (describing, raw) in MALFORMED_DOWNLOADS {
+        let stand_in = StandIn::start(facts(), Download::Raw(raw.to_vec()));
+
+        let error =
+            block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect_err("a refusal");
+
+        assert!(
+            matches!(error, PrinterError::Malformed { .. }),
+            "{describing}: {error:?}"
+        );
+    }
+}
+
+/// A download that stops short of the length it promised is not the file:
+/// the instance stopped answering part-way.
+#[test]
+fn a_download_short_of_its_length_is_unreachable() {
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(b"HTTP/1.1 200 OK\r\nContent-Length: 500\r\n\r\nM83\nG1 E1\n".to_vec()),
+    );
+
+    let error =
+        block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect_err("a refusal");
+
+    assert!(
+        matches!(error, PrinterError::Unreachable { .. }),
+        "{error:?}"
+    );
+}
+
+/// Every rule the G-code reader keeps, in one program, read through the
+/// adapter's own download — with the figure each tool is owed worked by hand.
+#[test]
+fn every_rule_of_the_reader_holds_through_the_download() {
+    let program = "M82 ; absolute\n\
+                   G92 E0\n\
+                   N1 G1 X1 E2*71\n\
+                   G1 X2 E1.2\n\
+                   G0 X3 E2\n\
+                   G92\n\
+                   G2 X1 Y1 I1 J0 E1.5\n\
+                   G91\n\
+                   G3 X0 Y0 I-1 J0 E0.5\n\
+                   G90\n\
+                   (G1 E100) ; G1 E100\n\
+                   M221 S50\n\
+                   T1\n\
+                   M83\n\
+                   G1 X1 E3\n\
+                   G1 E-1\n\
+                   G1 E1\n\
+                   G1X2E0.25\n\
+                   G1 E1.2.3\n\
+                   G1 E99999999999\n";
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{program}",
+                program.len()
+            )
+            .into_bytes(),
+        ),
+    );
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 100_000)).expect("the feed");
+
+    // Tool 0: 2, a retraction of 0.8 and its unretraction, a bare reset, an arc
+    // of 1.5 in absolute and one of 0.5 relative under G91 — 4. Tool 1: 3, a
+    // retraction and its unretraction, and 0.25 written without spaces — 3.25.
+    // Neither the commented G1 E100, nor M221, nor an E word that is no length
+    // counts.
+    let expected = [(0, 4.0), (1, 3.25)];
+    assert_eq!(fed.len(), expected.len(), "{fed:?}");
+    for (tool, (want_tool, want_length)) in fed.iter().zip(expected) {
+        assert_eq!(tool.tool, want_tool, "{fed:?}");
+        assert!(
+            (tool.length_mm - want_length).abs() < 1e-9,
+            "tool {want_tool} fed {} mm, owed {want_length} mm",
+            tool.length_mm
+        );
+    }
+}
+
+/// A chunked download whose last chunk carries trailer fields is read whole.
+#[test]
+fn a_chunked_download_with_trailer_fields_is_read_whole() {
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n\
+              a\r\nM83\nG1 E2\n\r\n0\r\nX-Checksum: 1\r\n\r\n"
+                .to_vec(),
+        ),
+    );
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
+
+    assert_eq!(fed, extruded_to(b"M83\nG1 E2\n", 1_000));
+}
+
+/// Chunk extensions in RFC 9112's grammar — bare, valued with a token, valued
+/// with a quoted string carrying an escape, spaced — are passed over, and the
+/// chunks they ride on are read.
+#[test]
+fn a_chunked_download_with_extensions_is_read_whole() {
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n\
+              4;bare\r\nM83\n\r\n\
+              6 ; name = value ;q=\"a \\\"b\\\" c\"\r\nG1 E2\n\r\n\
+              0;last\r\n\r\n"
+                .to_vec(),
+        ),
+    );
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
+
+    assert_eq!(fed, extruded_to(b"M83\nG1 E2\n", 1_000));
+}
+
+/// A download the instance stops taking connections for, after it answered
+/// the file's facts, is a machine that is not there.
+#[test]
+fn a_download_whose_connection_is_refused_is_unreachable() {
+    let stand_in = StandIn::start(facts(), Download::Gone);
+
+    let error = block_on(stand_in.printer().extruded_to(print_gcode(), 10)).expect_err("a refusal");
+
+    match error {
+        PrinterError::Unreachable { detail } => {
+            assert!(detail.contains("connecting to"), "{detail}");
+        }
+        other => panic!("expected the download unreachable, found {other:?}"),
+    }
+    assert_eq!(
+        stand_in.requests().len(),
+        1,
+        "the facts were answered and nothing more"
+    );
+}
+
+/// A download that goes silent part-way, short of the position, is given up on
+/// at the configured timeout rather than waited on, and is a machine that
+/// stopped answering.
+#[test]
+fn a_download_that_stalls_short_of_the_position_is_unreachable() {
+    let bytes = program();
+    let position = bytes.len() / 2;
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Held {
+            framing: Framing::Length,
+            bytes,
+            sent_first: position / 2,
+        },
+    );
+    let position = i64::try_from(position).expect("a position");
+
+    let error = block_on(
+        stand_in
+            .printer_timing_out(Duration::from_millis(300))
+            .extruded_to(print_gcode(), position),
+    )
+    .expect_err("a refusal");
+
+    match error {
+        PrinterError::Unreachable { detail } => {
+            assert!(detail.contains("reading from"), "{detail}");
+        }
+        other => panic!("expected the download unreachable, found {other:?}"),
+    }
+    assert!(
+        !stand_in.released(),
+        "the answer waited for the held rest of the body"
+    );
+}
+
+/// A download whose last line has no newline counts that line once the body
+/// ends — and a length declared twice alike is one length.
+#[test]
+fn a_last_line_without_a_newline_counts_once_the_download_ends() {
+    let program = b"M83\nG1 E1\nG1 E4";
+    let mut response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {0}\r\nContent-Length: {0}\r\n\r\n",
+        program.len()
+    )
+    .into_bytes();
+    response.extend_from_slice(program);
+    let stand_in = StandIn::start(facts(), Download::Raw(response));
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
+
+    assert_eq!(fed.len(), 1, "{fed:?}");
+    assert!(
+        (fed[0].length_mm - 5.0).abs() < 1e-9,
+        "the unterminated last line was not counted: {fed:?}"
+    );
+}
+
+/// A record `file_facts` refuses — here a folder — has no link followed.
+#[test]
+fn a_record_that_is_no_file_is_not_downloaded() {
+    let stand_in = StandIn::start(
+        r#"{"name": "print.gcode", "origin": "local", "type": "folder",
+            "refs": {"download": "/downloads/files/local/print.gcode"}}"#
+            .to_owned(),
+        Download::Raw(Vec::new()),
+    );
+
+    let error = block_on(stand_in.printer().extruded_to(print_gcode(), 10)).expect_err("a refusal");
+
+    assert!(matches!(error, PrinterError::Malformed { .. }), "{error:?}");
+    assert_eq!(stand_in.requests().len(), 1, "a download was sent");
+}

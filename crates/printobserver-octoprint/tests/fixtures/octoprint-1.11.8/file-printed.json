@@ -1,0 +1,66 @@
+{
+  "date": 1791683181,
+  "display": "extrusion.gcode",
+  "gcodeAnalysis": {
+    "dimensions": {
+      "depth": 30.0,
+      "height": 0.0,
+      "width": 30.0
+    },
+    "estimatedPrintTime": 179.70710678118616,
+    "filament": {
+      "tool0": {
+        "length": 300.0,
+        "volume": 0.0
+      }
+    },
+    "printingArea": {
+      "maxX": 30.0,
+      "maxY": 30.0,
+      "maxZ": 0.0,
+      "minX": 0.0,
+      "minY": 0.0,
+      "minZ": 0.0
+    },
+    "travelArea": {
+      "maxX": 30.0,
+      "maxY": 30.0,
+      "maxZ": 0.0,
+      "minX": 0.0,
+      "minY": 0.0,
+      "minZ": 0.0
+    },
+    "travelDimensions": {
+      "depth": 30.0,
+      "height": 0.0,
+      "width": 30.0
+    }
+  },
+  "hash": "4d14cbecb029d01e1906d106ea4533b46c53c5ff",
+  "name": "extrusion.gcode",
+  "origin": "local",
+  "path": "extrusion.gcode",
+  "prints": {
+    "failure": 1,
+    "last": {
+      "date": 1791683203.4057045,
+      "success": false
+    },
+    "success": 0
+  },
+  "refs": {
+    "download": "http://127.0.0.1:53081/downloads/files/local/extrusion.gcode",
+    "resource": "http://127.0.0.1:53081/api/files/local/extrusion.gcode"
+  },
+  "size": 4372,
+  "statistics": {
+    "averagePrintTime": {},
+    "lastPrintTime": {}
+  },
+  "type": "machinecode",
+  "typePath": [
+    "machinecode",
+    "gcode"
+  ],
+  "user": "printobserver"
+}

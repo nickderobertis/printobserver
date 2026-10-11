@@ -1,0 +1,58 @@
+{
+  "date": 1791683180,
+  "display": "two-tools.gcode",
+  "gcodeAnalysis": {
+    "dimensions": {
+      "depth": 20.0,
+      "height": 0.0,
+      "width": 20.0
+    },
+    "estimatedPrintTime": 2.207106781186547,
+    "filament": {
+      "tool0": {
+        "length": 10.0,
+        "volume": 0.0
+      },
+      "tool1": {
+        "length": 7.0,
+        "volume": 0.0
+      }
+    },
+    "printingArea": {
+      "maxX": 20.0,
+      "maxY": 20.0,
+      "maxZ": 0.0,
+      "minX": 0.0,
+      "minY": 0.0,
+      "minZ": 0.0
+    },
+    "travelArea": {
+      "maxX": 20.0,
+      "maxY": 20.0,
+      "maxZ": 0.0,
+      "minX": 0.0,
+      "minY": 0.0,
+      "minZ": 0.0
+    },
+    "travelDimensions": {
+      "depth": 20.0,
+      "height": 0.0,
+      "width": 20.0
+    }
+  },
+  "hash": "55846cd39057ca27f0a477d2051c30cad0671ba0",
+  "name": "two-tools.gcode",
+  "origin": "local",
+  "path": "two-tools.gcode",
+  "refs": {
+    "download": "http://127.0.0.1:53081/downloads/files/local/two-tools.gcode",
+    "resource": "http://127.0.0.1:53081/api/files/local/two-tools.gcode"
+  },
+  "size": 184,
+  "type": "machinecode",
+  "typePath": [
+    "machinecode",
+    "gcode"
+  ],
+  "user": "printobserver"
+}
