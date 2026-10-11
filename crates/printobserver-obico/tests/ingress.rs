@@ -29,7 +29,7 @@ use printobserver_core::{ImageRecord, PrintRecord};
 use printobserver_core::{PortFailurePayload, PortFailureSite, system_source};
 use printobserver_obico::{
     AccessToken, DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, IngressError,
-    ObicoApi, ObicoFailureAlertPayload, ObicoIngress, ObicoNotificationType,
+    ObicoApi, ObicoEventType, ObicoFailureAlertPayload, ObicoIngress, ObicoNotificationType,
     ObicoPrinterNotificationPayload, ObicoVision, ObicoVisionConfig, Receipt, obico_source,
 };
 use printobserver_types::serde_json::{self, Value, json};
@@ -907,20 +907,26 @@ async fn the_failure_alert_carries_the_detection_and_a_notification_none() {
 /// A filament-change notification carries the printer's signal beside its
 /// body, so the supervision domain charges the loaded spool for it without
 /// reading anything this adapter declares; no other body carries one.
+///
+/// The spellings walked are read off the producer's own type's schema, so a
+/// notification type added there is walked here too.
 #[tokio::test]
 async fn a_filament_change_notification_carries_the_printer_s_signal() {
     let store = Arc::new(MemoryStore::new());
     let vision = ingress(&store, prompt_bounds()).vision().clone();
-    for (sent, signal) in [
-        ("PrintStarted", None),
-        ("PrintDone", None),
-        ("PrintCancelled", None),
-        ("PrintPaused", None),
-        ("PrintResumed", None),
-        ("FilamentChange", Some(PrinterSignal::FilamentChange)),
-        ("HeaterCooledDown", None),
-        ("HeaterTargetReached", None),
-    ] {
+    let schema = printobserver_types::contract::schema_of::<ObicoEventType>();
+    let spellings: Vec<String> = schema["oneOf"]
+        .as_array()
+        .expect("the producer's notification types are one of their spellings")
+        .iter()
+        .map(|variant| variant["const"].as_str().expect("a spelling").to_owned())
+        .collect();
+    assert_eq!(spellings.len(), 8, "{spellings:?}");
+    for sent in &spellings {
+        let reported: ObicoEventType =
+            serde_json::from_value(json!(sent)).expect("a declared spelling reads");
+        let signal =
+            (reported == ObicoEventType::FilamentChange).then_some(PrinterSignal::FilamentChange);
         let mut body = sample("printer-notification-about-a-print.json");
         body["event"]["type"] = json!(sent);
         let alert = vision
