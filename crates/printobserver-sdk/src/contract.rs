@@ -2827,6 +2827,7 @@ impl Client {
     /// when the policy refused the action — which arrives as
     /// `ClientError::Rejected`, carrying the reason, the value asked for and
     /// the range allowed.
+    // One argument per value the operation declares, as every client takes them; suppressions.toml has the reason.
     #[expect(clippy::too_many_arguments)]
     pub fn register_spool(
         &self,

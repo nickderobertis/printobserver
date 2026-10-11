@@ -197,6 +197,13 @@ def _argument(parameter: Parameter) -> str:
 #: included.
 CLIPPY_ARGUMENT_LIMIT = 7
 
+#: Why a generated method past that limit takes its arguments one by one, as
+#: the comment above its directive says at its own site.
+TOO_MANY_REASON = (
+    "One argument per value the operation declares, as every client takes them; "
+    "suppressions.toml has the reason."
+)
+
 
 def _query_owned(parameter: Parameter) -> str:
     """One required query value, as the owned text a request carries it as."""
@@ -240,6 +247,7 @@ def _method(operation: Operation) -> list[str]:
         # A method takes the values its operation declares, one argument
         # each, so one whose contract variant has more fields than the lint
         # admits says so at its own site; `suppressions.toml` has the reason.
+        lines.append(f"    // {TOO_MANY_REASON}")
         lines.append("    #[expect(clippy::too_many_arguments)]")
     lines.append(
         f"    pub fn {method_name(operation.name, 'rust')}({arguments}) "
