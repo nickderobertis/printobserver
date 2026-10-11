@@ -584,3 +584,124 @@ async fn every_other_way_the_envelope_and_the_bound_can_be_wrong_is_refused() {
         );
     }
 }
+
+/// An asset of the agent's that cannot be written refuses the start naming it
+/// — on every platform, modes or none: a directory where the file belongs is
+/// a path nothing can write a file to.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_asset_that_cannot_be_written_refuses_the_start_naming_it() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let assets = root
+        .path()
+        .join("state")
+        .join(printobserver_server::ASSETS_DIRECTORY);
+    std::fs::create_dir_all(assets.join(printobserver_server::SCHEMA_FILE))
+        .expect("a directory where the schema belongs");
+
+    let started = started_with(root.path(), &base_url(&answering), |_| {}).await;
+
+    let Err(refusal) = started else {
+        panic!("a server came up with no schema for the agent to answer in");
+    };
+    assert!(
+        matches!(refusal, StartError::State { .. }),
+        "the refusal is not about the state directory: {refusal}"
+    );
+    assert!(
+        refusal.to_string().contains(&format!(
+            "{} could not be written",
+            printobserver_server::SCHEMA_FILE
+        )),
+        "the refusal does not name the asset: {refusal}"
+    );
+}
+
+/// A state directory that cannot hold the configured harness's sign-in refuses
+/// the start naming the directory, rather than starting turns that could never
+/// find a sign-in.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_state_directory_that_cannot_hold_the_harnesss_sign_in_refuses_the_start() {
+    let answering = silent_host().await;
+    let root = TempDir::new().expect("a journey's own root");
+    let state = root.path().join("state");
+    std::fs::create_dir_all(&state).expect("a state directory");
+    // A file where the directory every harness's own directory goes in has to be.
+    std::fs::write(
+        state.join(printobserver_server::HARNESS_DIRECTORY),
+        "not a directory",
+    )
+    .expect("a file is writable");
+
+    let started = started_with(root.path(), &base_url(&answering), |_| {}).await;
+
+    let Err(refusal) = started else {
+        panic!("a server came up with nowhere to keep its harness's sign-in");
+    };
+    assert!(
+        matches!(refusal, StartError::State { .. }),
+        "the refusal is not about the state directory: {refusal}"
+    );
+    let named = std::path::Path::new(printobserver_server::HARNESS_DIRECTORY).join("claude-code");
+    assert!(
+        refusal
+            .to_string()
+            .contains(&format!("{} could not be created", named.display())),
+        "the refusal does not name the sign-in's directory: {refusal}"
+    );
+}
+
+/// A secret and a state directory that name nothing are each refused where
+/// they are configured, saying why.
+///
+/// Neither is a value of the wrong kind, which the field walk covers: each is
+/// text that parses and still leaves a supervisor that anything could pause, or
+/// one with nowhere to keep its state.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_secret_or_a_state_directory_that_names_nothing_is_refused() {
+    let answering = silent_host().await;
+    let base = base_url(&answering);
+    let cases = [
+        Wrongly {
+            described: "a shared secret that is only whitespace",
+            field: ConfigField::IngressSharedSecret,
+            saying: "anything that can post to the ingress can pause a printer",
+            change: Box::new(|document: &mut toml::Value| {
+                set(
+                    document,
+                    "ingress.shared_secret",
+                    toml::Value::String("   ".to_owned()),
+                );
+            }),
+        },
+        Wrongly {
+            described: "an empty state directory",
+            field: ConfigField::StateDir,
+            saying: "names no directory",
+            change: Box::new(|document: &mut toml::Value| {
+                set(document, "state_dir", toml::Value::String(String::new()));
+            }),
+        },
+    ];
+
+    for case in cases {
+        let root = TempDir::new().expect("a journey's own root");
+        let started = started_with(root.path(), &base, case.change).await;
+
+        let Err(refusal) = started else {
+            panic!("{} was accepted", case.described);
+        };
+        assert_eq!(
+            refusal.field(),
+            Some(case.field),
+            "{} was refused naming {:?}: {refusal}",
+            case.described,
+            refusal.field()
+        );
+        assert!(
+            refusal.to_string().contains(case.saying),
+            "{} was refused without saying why: {refusal}",
+            case.described
+        );
+    }
+}

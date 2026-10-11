@@ -346,3 +346,13 @@ fn the_startup_kind_is_written_under_its_own_name_and_reads_back_under_it() {
         );
     }
 }
+
+/// An answer renders as the name the description spells it by, so a message
+/// naming one says what a consumer reading the description reads.
+#[test]
+fn an_answer_renders_as_the_name_the_description_spells() {
+    for (answer, spelled) in [(Answer::Success, "success"), (Answer::Rejected, "rejected")] {
+        assert_eq!(answer.as_str(), spelled);
+        assert_eq!(answer.to_string(), spelled);
+    }
+}

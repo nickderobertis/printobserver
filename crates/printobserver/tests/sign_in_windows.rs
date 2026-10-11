@@ -20,7 +20,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use printobserver::failure::Exit;
-use printobserver_server::{CLIENT_CONFIG_FILE, HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
+use printobserver_server::{
+    CLIENT_CONFIG_FILE, HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS, plainly_written,
+};
 use tempfile::TempDir;
 
 /// What the operator types at the harness's prompt.
@@ -61,6 +63,16 @@ impl Host {
         for entry in &SIGN_INS {
             stand_in(&host.bin(), entry, &host.invocations(), status);
         }
+        host
+    }
+
+    /// A root with no stand-in at all, and so no harness program to find.
+    fn bare() -> Self {
+        let host = Self {
+            root: TempDir::new().expect("a journey's own root"),
+        };
+        std::fs::create_dir_all(host.bin()).expect("an empty bin directory");
+        std::fs::create_dir_all(host.state()).expect("a state directory");
         host
     }
 
@@ -193,10 +205,16 @@ fn main() {{
 /// Run `printobserver sign-in` under one configuration, with the host's
 /// stand-ins first on the path, writing `typed` to its standard input.
 fn signing_in(host: &Host, config: &Path, typed: &str) -> Output {
+    signing_in_searching(&host.path(), config, typed)
+}
+
+/// Run `printobserver sign-in` under one configuration with `path` as the whole
+/// of its search path, writing `typed` to its standard input.
+fn signing_in_searching(path: &str, config: &Path, typed: &str) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_printobserver"))
         .args(["sign-in", "--config"])
         .arg(config)
-        .env("PATH", host.path())
+        .env("PATH", path)
         .env_remove("PRINTOBSERVER_SERVER")
         .env_remove("PRINTOBSERVER_CREDENTIAL")
         .stdin(Stdio::piped())
@@ -445,5 +463,98 @@ fn a_harness_outside_the_table_is_refused_before_anything_runs() {
     assert!(
         !host.state().join(HARNESS_DIRECTORY).exists(),
         "a directory was made for a harness nothing can sign in"
+    );
+}
+
+/// A configuration signing in cannot read the two values out of — one missing
+/// a value, one that is no document, and one that is not there — is refused,
+/// naming what is wrong, before anything runs.
+#[test]
+fn a_configuration_without_the_values_signing_in_reads_is_refused() {
+    let host = Host::with_stand_ins(0);
+    let without_a_harness = host.configuration(
+        "config.toml",
+        &format!(
+            "state_dir = \"{}\"\n\n[supervisor]\n",
+            toml_path(&host.state())
+        ),
+    );
+    let no_document = host.configuration("broken.toml", "state_dir = [\n");
+    let absent = host.root.path().join("nowhere.toml");
+
+    for (config, named) in [
+        (without_a_harness, "supervisor.harness"),
+        (no_document, "broken.toml"),
+        (absent, "nowhere.toml"),
+    ] {
+        let output = signing_in(&host, &config, TYPED);
+
+        assert_eq!(
+            output.status.code(),
+            Some(i32::from(Exit::Unconfigured.status())),
+            "{}",
+            said(&output)
+        );
+        assert!(
+            said(&output).contains(named),
+            "the refusal does not name {named}: {}",
+            said(&output)
+        );
+    }
+    assert_eq!(host.invoked(), Vec::<String>::new(), "a stand-in was run");
+}
+
+/// A harness directory the state directory cannot hold is refused naming it,
+/// before anything runs.
+#[test]
+fn a_harness_directory_that_cannot_be_created_is_refused_naming_it() {
+    let host = Host::with_stand_ins(0);
+    let entry = &SIGN_INS[0];
+    let config = host.only_what_signing_in_reads(entry.identity());
+    // A file where the directory every harness's own directory goes in has to be.
+    std::fs::write(host.state().join(HARNESS_DIRECTORY), "not a directory")
+        .expect("the state directory is writable");
+
+    let output = signing_in(&host, &config, TYPED);
+
+    assert_eq!(
+        output.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&output)
+    );
+    assert!(
+        // Named as the program writes a path, without the verbatim prefix the
+        // resolution here carries.
+        said(&output).contains(&format!(
+            "{} could not be created",
+            plainly_written(host.directory(entry)).display()
+        )),
+        "the refusal does not name the directory: {}",
+        said(&output)
+    );
+    assert_eq!(host.invoked(), Vec::<String>::new(), "a stand-in was run");
+}
+
+/// A harness program nobody installed where the caller's path finds it is
+/// refused naming the program and the path.
+#[test]
+fn a_harness_program_not_on_the_path_is_refused_naming_it() {
+    let host = Host::bare();
+    let entry = &SIGN_INS[0];
+    let config = host.only_what_signing_in_reads(entry.identity());
+
+    let output = signing_in_searching(&host.bin().display().to_string(), &config, TYPED);
+
+    assert_eq!(
+        output.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&output)
+    );
+    assert!(
+        said(&output).contains(&format!("`{}`", entry.program())) && said(&output).contains("PATH"),
+        "the refusal does not say what to install where: {}",
+        said(&output)
     );
 }
