@@ -105,6 +105,114 @@ site = "pub printer_state: Option<String>,"
 reason = "The printer contract's own state vocabulary, `PrinterState`, lives in `printobserver-printer-api`, and this port may depend on `printobserver-types` alone: `repo-policy.toml`'s `crates.may_depend_on` gives `printobserver-supervisor-api` that one edge, and its manifest and surface tier hold it there, so it cannot name the enum. The string is filled only from `PrinterState`'s own serialization, in `printobserver-core`'s loop, and `the_situations_printer_state_is_the_printer_contracts_own_spelling` in `crates/printobserver-core/tests/journeys/one_agent_per_print.rs` holds it to exactly that spelling for every state. Moving the state vocabulary into `printobserver-types`, so the port could carry the enum without a new edge, is drafted as a follow-up."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/spool.rs"
+site = "marks: Vec<UnverifiedMark>,"
+reason = "The shape is the filament ledger's shared contract, stated once by the plan as `unverified { marks: Vec<UnverifiedMark> }` and built against by the store, the domain and the three clients at the same time, so a non-empty collection type in its place is a change to that agreement rather than to this field; it is proposed as a follow-up instead. What can be enforced without changing the agreement is: the schema says `minItems: 1`, a parse of an empty list is refused naming why, and the only two functions that produce this variant — `SpoolTrust::marked`, which always adds one, and `SpoolTrust::cleared`, which answers `verified` once none remain — cannot make an empty one, which `tests/filament.rs` and `tests/spool_ledger.rs` hold."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/spool_command.rs"
+site = "AdjustSpool {"
+reason = "The plan states this command's shape as `adjust_spool { spool_id, remaining_g: Option<f64>, gross_g: Option<f64> }` and makes naming both or neither a stated refusal, `spool_refused`, which the domain gives and records; the command-line surface folds each field into an option of its own, and the store, the domain and the clients are being built against that shape at the same time. An enum of the two would be a different wire form every one of them would have to change to, so it is proposed as a follow-up rather than made here."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub position_read_at_signal: bool,"
+reason = "The plan states this payload as `position: Option<FilePosition>` beside `position_read_at_signal: bool`, and the domain that writes it, the store that keeps it and the clients that read it are being built against that shape at the same time; nothing writes the event yet. Folding the flag into the position's own type would be a different wire form, so it is proposed as a follow-up rather than made unilaterally here, and the field's documentation states that it is never set with no position."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/policy.rs"
+site = "SpoolRefused {"
+reason = "The plan states this rejection as `spool_refused { detail: String }`, one variant for every spool command the domain cannot carry out — an unknown or retired spool, a tool that already holds the spool with nothing to confirm, an adjust naming both or neither figure, a gross weight with no tare, a material with no known density — and the domain, the command surface and the three clients are being built against that one variant at the same time. A variant per cause would be a different wire form each of them would have to change to, so it is proposed as a follow-up rather than made here; every other rejection stays a distinct variant carrying what a second request is composed from."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub success: bool,"
+reason = "`UnaccountedPrintPayload.success` is a bare flag beside `PrintOutcome`. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub charged: bool,"
+reason = "`UnaccountedPrintPayload.charged` is a bare flag for whether the print was charged. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/kinds.rs"
+site = "pub struct FilamentConsumedPayload {"
+reason = "`FilamentConsumedPayload` carries its grams, diameter, density and before and after figures as independent options, each present exactly when a spool was charged. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-printer-api/src/file.rs"
+site = "pub success: bool,"
+reason = "`FilePrint.success` is the printer's own completed-or-not flag for a file's last print, as `OctoPrint` reports it. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/charge.rs"
+site = "pub print_id: PrintId,"
+reason = "`PendingCharge.print_id` repeats what its `print` charge key names, so a reader of a pending charge need not unpack the key. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/charge.rs"
+site = "pub tool: i64,"
+reason = "`PendingCharge.tool` repeats what its `print` charge key names, so a reader of a pending charge need not unpack the key. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub spool_name: Option<String>,"
+reason = "`PreflightTool.spool_name` is an option independent of `spool_id`, present exactly when it is. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/spool.rs"
+site = "pub loaded_on_tool: Option<i64>,"
+reason = "`SpoolRecord.loaded_on_tool` and `retired_at` are independent options, so a retired spool still loaded is representable; the domain unloads a spool as it retires it, and the canonical values carry a loaded spool and a retired one apart. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/spool.rs"
+site = "pub retired_at: Option<Timestamp>,"
+reason = "`SpoolRecord.retired_at` is an option independent of `loaded_on_tool`, for the same reason as that field's entry. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub required_g: Option<f64>,"
+reason = "`PreflightTool.required_g`, `buffer_g` and `remaining_g` are independent options whose valid combinations follow the verdict and whether a spool is loaded. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub buffer_g: Option<f64>,"
+reason = "`PreflightTool.buffer_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/preflight.rs"
+site = "pub remaining_g: Option<f64>,"
+reason = "`PreflightTool.remaining_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/action.rs"
+site = "override_filament_check: bool,"
+reason = "The plan states `PrintAction::StartPrint` gains `override_filament_check: bool`, defaulted and left off the wire when false so every stored start reads as before, and the domain, the command surface and the three clients are built against it concurrently; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/wire.rs"
+site = "pub override_filament_check: bool,"
+reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_filament_check`, read so the option the derived surface declares is one the server accepts (the manager's ruling), and it carries exactly the action's own type; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/vision.rs"
 site = "pub const HANDLED_OVERWRITE: &str = \"FAILED\";"
@@ -1085,6 +1193,18 @@ rule = "async_typed_clients_at_boundaries"
 file = "python/printobserver-sdk/integration/test_live.py"
 site = "answered = client."
 reason = "Each generated step of the method walk calls one method of the published synchronous client against a real supervisor. It is the same client this file's entry at `client = Client(proxy.url, \"operator\", world.credential)` answers for, and the judged tier reads each step's call as a site of its own apart from that construction; the reason is that entry's."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "client."
+reason = "Each generated step of the rejection walk calls one method of the published synchronous client against a real supervisor that grants the operator nothing, which is what proves the shipped client surfaces a refusal as its typed error. It is the same client this file's entry at `client = Client(proxy.url, \"operator\", world.credential)` answers for, and the generator writes this directive above every such call as it does above every step of the method walk; the reason is that entry's."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_operations.py"
+site = "client."
+reason = "Each generated refusal test calls one method of the published synchronous client against the in-process `Host` stand-in answering the policy's refusal, which is what proves the method surfaces it as the typed error. It is the same client, against the same stand-in, as this file's entry at `answered = client.`, and the generator writes this directive above every such call; the reason is that entry's."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"

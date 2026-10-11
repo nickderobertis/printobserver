@@ -36,6 +36,16 @@
       "title": "EventSource",
       "type": "string"
     },
+    "PrinterSignal": {
+      "description": "Something an alert says the printer itself signalled, beside what the\ndetector saw.\n\nNamed for what the printer did rather than for the provider that relayed\nit, like [`Detection`], so the supervision domain acts on it without knowing\nwhose alert carried it.",
+      "oneOf": [
+        {
+          "const": "filament_change",
+          "description": "The printer asked for its filament to be changed.",
+          "type": "string"
+        }
+      ]
+    },
     "ProviderPrint": {
       "additionalProperties": false,
       "description": "The provider's own identifier for the print an alert is about.\n\nHeld in the provider's representation — a 64-bit integer, which is what\nevery provider this system has met uses — and named for what it is rather\nthan for the provider, so that the supervision domain correlates on it\nwithout knowing whose it is.",
@@ -128,6 +138,17 @@
     "received_at": {
       "$ref": "#/$defs/Timestamp",
       "description": "When it was received."
+    },
+    "signal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrinterSignal"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the printer itself signalled, when the alert relays a signal."
     },
     "source": {
       "$ref": "#/$defs/EventSource",

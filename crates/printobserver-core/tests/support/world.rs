@@ -346,6 +346,7 @@ pub fn failure_alert(provider_print_id: i64) -> NormalizedAlert {
             started_at: None,
         }),
         detection: None,
+        signal: None,
     }
 }
 

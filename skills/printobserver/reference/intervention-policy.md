@@ -68,6 +68,23 @@ second, acceptable request would be composed from.
 - `unsupported_adjustable` — the adjustable is not one this printer has. It
   carries `adjustable`.
 
+Four more belong to the filament ledger, which this server declares and does
+not produce yet:
+
+- `insufficient_filament` — a start was refused because the spool on a tool
+  holds less than the print needs and its buffer. It carries `tool`,
+  `spool_id`, `spool_name`, `required_g`, `buffer_g` and `remaining_g`, and
+  `unverified` — the spool's oldest mark — when the short spool is also in
+  doubt.
+- `unverified_spool` — a start was refused because the spool on a tool is in
+  doubt. It carries `tool`, `spool_id`, `spool_name` and `reason`, the spool's
+  oldest mark.
+- `analysis_unavailable` — a start was refused because OctoPrint had not
+  analysed the file when the start's wait elapsed. It carries `file_name` and
+  `waited_s`.
+- `spool_refused` — a spool command could not be carried out. It carries
+  `detail`, saying why.
+
 The command-line program exits with its rejected status on all of these and prints
 the record,
 so the reason, the value asked for and the range allowed are in front of

@@ -33,6 +33,7 @@ pub(crate) fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
         ActionKind::StartPrint => PrintAction::StartPrint {
             file_name: FileName::new("benchy.gcode").expect("a name"),
             manifest: crate::world::manifest(&[]),
+            override_filament_check: false,
             reason,
             actor,
         },
@@ -73,6 +74,15 @@ pub(crate) fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
             reason,
             actor,
         },
+        ActionKind::RegisterSpool
+        | ActionKind::LoadSpool
+        | ActionKind::UnloadSpool
+        | ActionKind::AdjustSpool
+        | ActionKind::RetireSpool => {
+            unreachable!(
+                "{kind:?} is a spool command, which this walk over print actions never drives"
+            )
+        }
     }
 }
 
@@ -87,8 +97,9 @@ pub(crate) const fn state_for(kind: ActionKind) -> PrinterState {
 
 /// The call each kind is expected to make at the printer port, if any.
 ///
-/// Acknowledging a failure is the one kind that makes none, whatever its
-/// disposition: it is a decision written into the print's record. Stopping a
+/// Acknowledging a failure is the one print action that makes none, whatever
+/// its disposition: it is a decision written into the print's record. No spool
+/// command makes one either, since none asks anything of the machine. Stopping a
 /// print is cancelling it, which the policy grants each actor on its own, so an
 /// acknowledgement asking for `stop` cancels nothing.
 pub(crate) fn expected_call(kind: ActionKind) -> Option<Call> {
@@ -96,7 +107,12 @@ pub(crate) fn expected_call(kind: ActionKind) -> Option<Call> {
         ActionKind::Pause => Call::Pause,
         ActionKind::Resume => Call::Resume,
         ActionKind::Cancel => Call::Cancel,
-        ActionKind::AcknowledgeFailure => return None,
+        ActionKind::AcknowledgeFailure
+        | ActionKind::RegisterSpool
+        | ActionKind::LoadSpool
+        | ActionKind::UnloadSpool
+        | ActionKind::AdjustSpool
+        | ActionKind::RetireSpool => return None,
         ActionKind::StartPrint => Call::Start("benchy.gcode".to_owned()),
         ActionKind::SetFeedrateFactor => Call::SetFeedrateFactor(1.5),
         ActionKind::SetFlowrateFactor => Call::SetFlowrateFactor(1.1),

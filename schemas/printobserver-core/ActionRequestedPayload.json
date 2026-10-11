@@ -226,6 +226,10 @@
               "$ref": "#/$defs/JobManifest",
               "description": "The manifest this print is bounded by."
             },
+            "override_filament_check": {
+              "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+              "type": "boolean"
+            },
             "reason": {
               "description": "Why the actor is asking for this.",
               "type": "string"

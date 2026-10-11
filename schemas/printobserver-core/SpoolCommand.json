@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The whole vocabulary of the spool ledger, and there is no other.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Register a spool.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who is asking."
+        },
+        "color": {
+          "description": "The filament's colour.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command": {
+          "const": "register_spool",
+          "type": "string"
+        },
+        "density_g_cm3": {
+          "description": "The material's density, in grams per cubic centimetre; the known\ndensity of the material when absent, and a material with none known\nis refused.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "diameter_mm": {
+          "description": "The filament's diameter, in millimetres; 1.75 when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "initial_g": {
+          "description": "The net filament on the spool when full, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "material": {
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The operator's own label for it.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the actor is asking for this.",
+          "type": "string"
+        },
+        "remaining_g": {
+          "description": "The filament on it now, in grams; the full figure when absent.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tare_g": {
+          "description": "The empty spool's own weight, in grams.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "command",
+        "name",
+        "material",
+        "initial_g",
+        "reason",
+        "actor"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Load a spool onto a tool.\n\nOnto an occupied tool it is a swap, and the spool there is unloaded in\nthe same write. Naming the spool already on the tool confirms it was\nnever swapped, which is accepted only while that tool holds a pending\ncharge or that spool holds a filament-change mark.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who is asking."
+        },
+        "command": {
+          "const": "load_spool",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the actor is asking for this.",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool to load."
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command",
+        "spool_id",
+        "tool",
+        "reason",
+        "actor"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Unload a spool from its tool.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who is asking."
+        },
+        "command": {
+          "const": "unload_spool",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the actor is asking for this.",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool to unload."
+        }
+      },
+      "required": [
+        "command",
+        "spool_id",
+        "reason",
+        "actor"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Correct a spool's remaining figure, from exactly one of the two; a\ncommand naming both or neither is refused as `spool_refused`.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who is asking."
+        },
+        "command": {
+          "const": "adjust_spool",
+          "type": "string"
+        },
+        "gross_g": {
+          "description": "A scale reading of the spool, in grams, which needs its tare.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why the actor is asking for this.",
+          "type": "string"
+        },
+        "remaining_g": {
+          "description": "The filament left, in grams.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool to correct."
+        }
+      },
+      "required": [
+        "command",
+        "spool_id",
+        "reason",
+        "actor"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Retire a spool, after which it refuses every command.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who is asking."
+        },
+        "command": {
+          "const": "retire_spool",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the actor is asking for this.",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool to retire."
+        }
+      },
+      "required": [
+        "command",
+        "spool_id",
+        "reason",
+        "actor"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SpoolCommand"
+}

@@ -33,6 +33,7 @@ fn start_under(manifest: JobManifest) -> (World, PrintRecord, PrintContext) {
             PrintAction::StartPrint {
                 file_name: FileName::new("benchy.gcode").expect("a name"),
                 manifest,
+                override_filament_check: false,
                 reason: "the operator started it".to_owned(),
                 actor: Actor::Operator,
             },

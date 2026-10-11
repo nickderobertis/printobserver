@@ -166,11 +166,17 @@ schema with an `x-event-kind` marker through `event_schema_of`, and the
 generated clients' kind-to-payload tables are produced from the marker — with
 `just check-repo`'s `generated-clients` check red when a generated copy parts
 from what the schema set writes, and the codegen refusing two schemas under one
-kind name. Fifteen kinds are
+kind name. Thirty-one kinds are
 declared today, each by its owner: `printobserver-core` writes
 `action_requested`, `action_executed`, `action_rejected`,
 `intervention_expired`, `agent_assessment`, `operator_acknowledgement`,
-`port_failure`, `camera_look` and `periodic_observation`; `printobserver-obico` writes `obico_failure_alert` and
+`port_failure`, `camera_look` and `periodic_observation`, and declares the
+sixteen of the printer timeline — `print_started`, `print_ended`,
+`filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`,
+`spool_adjusted`, `spool_retired`, `spool_command_rejected`,
+`spool_unverified`, `filament_change_signalled`, `unaccounted_print`,
+`preflight_checked`, `charge_pended`, `print_untracked` and
+`file_tally_rebaselined`, which nothing writes yet; `printobserver-obico` writes `obico_failure_alert` and
 `obico_printer_notification`; `printobserver-vision-api` declares
 `malformed_external_event`; `printobserver-supervisor-api` declares
 `supervision_session_opened` and `supervision_session_closed`; and

@@ -186,6 +186,7 @@ async function stepStartPrint(client: Client, proxy: Recording) {
     world.file_name,
     manifest(world),
     REASON,
+    false,
   );
 
   const seen = proxy.last();
@@ -196,6 +197,7 @@ async function stepStartPrint(client: Client, proxy: Recording) {
   expect(sent.actor).toBe("operator");
   expect(sent.file_name).toEqual(world.file_name);
   expect(sent.manifest).toEqual(manifest(world));
+  expect(sent.override_filament_check).toEqual(false);
   expect(sent.reason).toEqual(REASON);
   same("start_print", answered, seen.answer);
   // Every step after this one is about the print the start opened.
@@ -407,7 +409,7 @@ async function refusedCancel(client: Client, proxy: Recording) {
 /** `start_print`, refused by a real supervisor's own policy. */
 async function refusedStartPrint(client: Client, proxy: Recording) {
   const refused = await client
-    .startPrint(world.print_id, world.file_name, manifest(world), REASON)
+    .startPrint(world.print_id, world.file_name, manifest(world), REASON, false)
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);

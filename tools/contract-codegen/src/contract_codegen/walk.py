@@ -278,6 +278,9 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("set_tool_target_c", "tool"): "0",
     ("set_tool_target_c", "target_c"): "210.0",
     ("set_bed_target_c", "target_c"): "60.0",
+    # The walk starts its print the ordinary way, with the filament check
+    # standing: an override is a decision for whoever is at the machine.
+    ("start_print", "override_filament_check"): "bool:false",
 }
 
 

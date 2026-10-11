@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The filament one tool feeds, as a length and, when it is known, a volume.",
+  "properties": {
+    "length_mm": {
+      "description": "The length of filament fed, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "volume_cm3": {
+      "description": "The volume of filament fed, in cubic centimetres, when the source\nreported one.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "tool",
+    "length_mm"
+  ],
+  "title": "ToolFilament",
+  "type": "object"
+}

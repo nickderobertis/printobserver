@@ -181,7 +181,7 @@ fn starts(
     until(client, &world.print_id, &[PrinterState::Operational]);
 
     let started = client
-        .start_print(&world.print_id, &world.file_name, wanted, REASON)
+        .start_print(&world.print_id, &world.file_name, wanted, REASON, None)
         .expect("a start is answered");
     assert!(matches!(started.record.decision, PolicyDecision::Accepted));
     let world = supervisor::Supervisor {
@@ -396,6 +396,7 @@ fn cancels(client: &Client, world: &supervisor::Supervisor, wanted: &JobManifest
         &world.file_name,
         wanted,
         "putting the hold print back where the bring-up left it",
+        None,
     );
 }
 

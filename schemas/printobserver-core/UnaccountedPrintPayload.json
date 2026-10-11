@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print this system never saw was found in the printer's own tally.",
+  "properties": {
+    "charged": {
+      "description": "Whether it was charged against a spool.",
+      "type": "boolean"
+    },
+    "file_name": {
+      "description": "The file that was printed.",
+      "type": "string"
+    },
+    "printed_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When it was printed, when the printer says."
+    },
+    "success": {
+      "description": "Whether it completed.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "file_name",
+    "success",
+    "charged"
+  ],
+  "title": "UnaccountedPrintPayload",
+  "type": "object",
+  "x-event-kind": "unaccounted_print"
+}

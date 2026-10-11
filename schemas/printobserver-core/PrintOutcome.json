@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a print ended.",
+  "oneOf": [
+    {
+      "const": "completed",
+      "description": "It ran to its end.",
+      "type": "string"
+    },
+    {
+      "const": "cancelled",
+      "description": "Somebody cancelled it.",
+      "type": "string"
+    },
+    {
+      "const": "failed",
+      "description": "It stopped on an error.",
+      "type": "string"
+    }
+  ],
+  "title": "PrintOutcome"
+}

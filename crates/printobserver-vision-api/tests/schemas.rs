@@ -5,11 +5,13 @@
 mod schema_files;
 
 use printobserver_types::contract::{Sample as _, schema_of};
+use printobserver_types::serde_json::{self, Value};
 use printobserver_types::{
     EVENT_KIND_MARKER, EventBody, EventPayload, WireField, event_schema_of, wire_fields,
 };
 use printobserver_vision_api::{
-    Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, ProviderPrint,
+    Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert, PrinterSignal,
+    ProviderPrint,
 };
 use schema_files::reconcile;
 
@@ -36,6 +38,10 @@ fn generated() -> Vec<(String, printobserver_types::serde_json::Value)> {
             schema_of::<ProviderPrint>(),
         ),
         ("Detection.json".to_owned(), schema_of::<Detection>()),
+        (
+            "PrinterSignal.json".to_owned(),
+            schema_of::<PrinterSignal>(),
+        ),
         (
             "MalformedExternalEventPayload.json".to_owned(),
             event_schema_of::<MalformedExternalEventPayload>(),
@@ -65,6 +71,7 @@ fn normalized_alert_carries_exactly_the_stated_fields() {
         field("print", "ProviderPrint", false),
         field("raw", "RawBytes", true),
         field("received_at", "Timestamp", true),
+        field("signal", "PrinterSignal", false),
         field("source", "EventSource", true),
     ];
     assert_eq!(wire_fields(&schema_of::<NormalizedAlert>()), expected);
@@ -132,4 +139,48 @@ fn fetched_image_carries_exactly_the_stated_fields() {
         field("content_type", "string", true),
     ];
     assert_eq!(wire_fields(&schema_of::<FetchedImage>()), expected);
+}
+
+/// An alert as it was stored before alerts could carry a printer's signal.
+const STORED_ALERT: &str = concat!(
+    r#"{"source":"obico","received_at":"2026-03-01T12:00:00Z","#,
+    r#""kind":"malformed_external_event","payload":{"detail":"unreadable"},"#,
+    r#""raw":"e30=","image_url":"https://provider.example/1.jpg","#,
+    r#""print":{"id":4211,"file_name":"benchy.gcode"},"#,
+    r#""detection":{"warning":false,"paused_the_print":true,"provider_printer_id":41}}"#
+);
+
+/// An alert stored before `signal` existed reads as carrying none, and writes
+/// back byte for byte as it was stored.
+#[test]
+fn an_alert_stored_without_a_signal_reads_as_none_and_writes_back_unchanged() {
+    let alert: NormalizedAlert = serde_json::from_str(STORED_ALERT).expect("a stored alert reads");
+    assert_eq!(alert.signal, None);
+    assert_eq!(
+        serde_json::to_string(&alert).expect("an alert writes"),
+        STORED_ALERT
+    );
+}
+
+/// A filament-change signal is written as its snake-case name, round-trips,
+/// and is what the generated schema admits; a signal it does not name is
+/// refused by the type and the schema alike.
+#[test]
+fn a_filament_change_signal_round_trips_and_validates() {
+    let mut value: Value = serde_json::from_str(STORED_ALERT).expect("a stored alert reads");
+    value["signal"] = Value::String("filament_change".to_owned());
+    let alert: NormalizedAlert = serde_json::from_value(value.clone()).expect("a signal reads");
+    assert_eq!(alert.signal, Some(PrinterSignal::FilamentChange));
+    assert_eq!(
+        serde_json::to_value(&alert).expect("an alert writes"),
+        value
+    );
+    let validator = jsonschema::validator_for(&schema_of::<NormalizedAlert>())
+        .expect("the generated schema compiles");
+    assert!(validator.is_valid(&value), "the schema refused {value}");
+    let signal = jsonschema::validator_for(&schema_of::<PrinterSignal>())
+        .expect("the generated schema compiles");
+    assert!(signal.is_valid(&Value::String("filament_change".to_owned())));
+    assert!(!signal.is_valid(&Value::String("run_out".to_owned())));
+    assert!(serde_json::from_value::<PrinterSignal>(Value::String("run_out".to_owned())).is_err());
 }

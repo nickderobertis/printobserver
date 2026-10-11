@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "FilePrint": {
+      "additionalProperties": false,
+      "description": "The last time a file was printed, and whether that print completed.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was printed."
+        },
+        "success": {
+          "description": "Whether that print completed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "at",
+        "success"
+      ],
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "ToolFilament": {
+      "additionalProperties": false,
+      "description": "The filament one tool feeds, as a length and, when it is known, a volume.",
+      "properties": {
+        "length_mm": {
+          "description": "The length of filament fed, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "volume_cm3": {
+          "description": "The volume of filament fed, in cubic centimetres, when the source\nreported one.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "tool",
+        "length_mm"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One file the printer holds, as its source describes it.",
+  "properties": {
+    "failures": {
+      "description": "How many prints of the file did not, by the source's own tally.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "filament": {
+      "description": "The filament the source's analysis of the file says each tool uses.\n\nAbsent when the file has no analysis: one still pending, or a file the\nsource never analyses, such as one on an SD card.",
+      "items": {
+        "$ref": "#/$defs/ToolFilament"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "file_name": {
+      "description": "The file's name, as the source reported it.",
+      "type": "string"
+    },
+    "last_print": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FilePrint"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The file's most recent print, when it has been printed."
+    },
+    "origin": {
+      "description": "Where the file lives, in the source's own vocabulary.",
+      "type": "string"
+    },
+    "size_bytes": {
+      "description": "The file's size in bytes, when the source reported it.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "successes": {
+      "description": "How many prints of the file completed, by the source's own tally.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file_name",
+    "origin",
+    "successes",
+    "failures"
+  ],
+  "title": "FileFacts",
+  "type": "object"
+}

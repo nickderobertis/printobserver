@@ -395,6 +395,13 @@
           "supply": "file"
         },
         {
+          "field": "override_filament_check",
+          "located": "body",
+          "option": "--override-filament-check",
+          "required": false,
+          "supply": "value"
+        },
+        {
           "field": "reason",
           "located": "body",
           "option": "--reason",

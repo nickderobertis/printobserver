@@ -277,7 +277,13 @@ fn step_start_print(
     ready(client, &world.print_id, "operational");
 
     let answered = client
-        .start_print(&world.print_id, &world.file_name, manifest, REASON)
+        .start_print(
+            &world.print_id,
+            &world.file_name,
+            manifest,
+            REASON,
+            Some(false),
+        )
         .expect("`start_print` is answered by a real supervisor");
 
     let seen = proxy.last();
@@ -307,6 +313,11 @@ fn step_start_print(
         sent["manifest"],
         serde_json::to_value(manifest).expect("a value renders"),
         "`start_print` sent another `manifest`"
+    );
+    assert_eq!(
+        sent["override_filament_check"],
+        serde_json::to_value(false).expect("a value renders"),
+        "`start_print` sent another `override_filament_check`"
     );
     assert_eq!(
         sent["reason"],
@@ -698,7 +709,13 @@ fn refused_start_print(
     manifest: &printobserver_sdk::JobManifest,
 ) {
     let refused = client
-        .start_print(&world.print_id, &world.file_name, manifest, REASON)
+        .start_print(
+            &world.print_id,
+            &world.file_name,
+            manifest,
+            REASON,
+            Some(false),
+        )
         .expect_err("`start_print` is refused for an actor granted nothing");
 
     let ClientError::Rejected(rejection) = refused else {

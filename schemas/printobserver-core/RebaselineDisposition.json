@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What became of the prints a file's new tally generation counts.",
+  "oneOf": [
+    {
+      "const": "accounted",
+      "description": "They were accounted as prints this system never saw.",
+      "type": "string"
+    },
+    {
+      "const": "unverified",
+      "description": "It could not be told which of them this system already settled, so the\nloaded spool was marked unverified rather than charged on a guess.",
+      "type": "string"
+    }
+  ],
+  "title": "RebaselineDisposition"
+}

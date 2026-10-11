@@ -200,6 +200,20 @@ pub struct Detection {
     pub provider_printer_id: i64,
 }
 
+/// Something an alert says the printer itself signalled, beside what the
+/// detector saw.
+///
+/// Named for what the printer did rather than for the provider that relayed
+/// it, like [`Detection`], so the supervision domain acts on it without knowing
+/// whose alert carried it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum PrinterSignal {
+    /// The printer asked for its filament to be changed.
+    FilamentChange,
+}
+
 /// One external body, read into an event under the adapter's own kind.
 ///
 /// `kind` and `payload` are the [`EventBody`] flattened into this shape, so an
@@ -229,6 +243,9 @@ pub struct NormalizedAlert {
     /// detections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detection: Option<Detection>,
+    /// What the printer itself signalled, when the alert relays a signal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal: Option<PrinterSignal>,
 }
 
 impl NormalizedAlert {

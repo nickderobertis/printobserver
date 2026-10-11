@@ -72,6 +72,11 @@ pub struct ActionBody {
     /// The manifest a start is bounded by.
     #[serde(default)]
     pub manifest: Option<JobManifest>,
+    /// Whether a start goes ahead despite the filament check; absent, it does
+    /// not.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
+    #[serde(default)]
+    pub override_filament_check: bool,
     /// The event an acknowledgement is about.
     #[serde(default)]
     pub event_id: Option<EventId>,
@@ -179,6 +184,7 @@ impl ActionBody {
                     Some(manifest) => manifest,
                     None => return missing("manifest"),
                 },
+                override_filament_check: self.override_filament_check,
                 reason,
                 actor,
             },
@@ -243,6 +249,17 @@ impl ActionBody {
                 reason,
                 actor,
             },
+            ActionKind::RegisterSpool
+            | ActionKind::LoadSpool
+            | ActionKind::UnloadSpool
+            | ActionKind::AdjustSpool
+            | ActionKind::RetireSpool => {
+                return Err(BodyRefusal {
+                    detail: format!(
+                        "{kind:?} is a spool command, and no print-action operation carries one"
+                    ),
+                });
+            }
         })
     }
 }
@@ -437,6 +454,7 @@ mod tests {
             tool: None,
             file_name: None,
             manifest: None,
+            override_filament_check: false,
             event_id: None,
             disposition: None,
         }
@@ -465,6 +483,27 @@ mod tests {
             assert!(
                 refusal.to_string().contains(named),
                 "{kind:?} was refused without naming `{named}`: {refusal}"
+            );
+        }
+    }
+
+    /// A spool command is no print action, so no print-action body is read as
+    /// one, whatever it carries.
+    #[test]
+    fn a_spool_command_kind_is_refused_as_a_print_action() {
+        for kind in [
+            ActionKind::RegisterSpool,
+            ActionKind::LoadSpool,
+            ActionKind::UnloadSpool,
+            ActionKind::AdjustSpool,
+            ActionKind::RetireSpool,
+        ] {
+            let refusal = bare()
+                .into_action(kind)
+                .expect_err("a spool command is not a print action");
+            assert!(
+                refusal.to_string().contains("spool command"),
+                "{kind:?} was refused without saying why: {refusal}"
             );
         }
     }

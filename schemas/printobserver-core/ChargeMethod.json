@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How the length a charge debits was worked out.",
+  "oneOf": [
+    {
+      "const": "slicer_estimate",
+      "description": "A completed print: the length the file's analysis gives.",
+      "type": "string"
+    },
+    {
+      "const": "gcode_extrusion",
+      "description": "The extrusion the file's own moves add up to, up to a position in it.",
+      "type": "string"
+    },
+    {
+      "const": "file_fraction",
+      "description": "The analysed length scaled by how far into the file the print got; the\nfallback used only when the file itself could not be read.",
+      "type": "string"
+    },
+    {
+      "const": "unobserved_estimate",
+      "description": "A completed print this system never saw: the file's analysed length.",
+      "type": "string"
+    }
+  ],
+  "title": "ChargeMethod"
+}

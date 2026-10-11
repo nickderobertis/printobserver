@@ -94,6 +94,21 @@ fn printer_port_declares_exactly_the_stated_methods() {
             &[("percent", "f64")],
             "BoxFuture<'_,Result<(),PrinterError>>",
         ),
+        method(
+            "file_facts",
+            &[("file_name", "FileName")],
+            "BoxFuture<'_,Result<FileFacts,PrinterError>>",
+        ),
+        method(
+            "printed_files",
+            &[],
+            "BoxFuture<'_,Result<Vec<FileFacts>,PrinterError>>",
+        ),
+        method(
+            "extruded_to",
+            &[("file_name", "FileName"), ("position_bytes", "i64")],
+            "BoxFuture<'_,Result<Vec<ToolFilament>,PrinterError>>",
+        ),
     ];
     assert_eq!(trait_methods(&source, "PrinterPort"), expected);
 }
@@ -231,9 +246,10 @@ fn printer_port_closure_carries_no_bytes_and_one_string() {
     );
 }
 
-/// Exactly one printer-port method takes a `FileName`, and it is `start`.
+/// The printer-port methods that take a `FileName` are `start` and the two
+/// reads of one file, each taking exactly one.
 #[test]
-fn only_start_takes_a_file_name() {
+fn only_start_and_the_file_reads_take_a_file_name() {
     let source = parse(&crate_source(CRATE));
     let taking: Vec<(String, usize)> = trait_methods(&source, "PrinterPort")
         .into_iter()
@@ -247,7 +263,14 @@ fn only_start_takes_a_file_name() {
         })
         .filter(|(_, count)| *count > 0)
         .collect();
-    assert_eq!(taking, vec![("start".to_owned(), 1)]);
+    assert_eq!(
+        taking,
+        vec![
+            ("start".to_owned(), 1),
+            ("file_facts".to_owned(), 1),
+            ("extruded_to".to_owned(), 1),
+        ]
+    );
 }
 
 /// A fixture carrying a string or a byte sequence anywhere in the closure is

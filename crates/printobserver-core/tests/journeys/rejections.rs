@@ -113,6 +113,12 @@ fn refuse(reason: &RejectionReason) -> Refused {
             reason: "this printer has no second tool".to_owned(),
             actor: Actor::Operator,
         },
+        RejectionReason::InsufficientFilament { .. }
+        | RejectionReason::UnverifiedSpool { .. }
+        | RejectionReason::AnalysisUnavailable { .. }
+        | RejectionReason::SpoolRefused { .. } => {
+            unreachable!("{reason:?} is the filament ledger's, which this walk does not drive")
+        }
     };
 
     let against = match reason {
@@ -132,6 +138,17 @@ fn refuse(reason: &RejectionReason) -> Refused {
         supervisor: world.journal.at(Port::Supervisor),
     }
 }
+
+/// The rejections the filament ledger declares, which no supervisor path
+/// reaches yet: the preflight before a start and the spool commands that
+/// produce them land after the vocabulary does, and each is walked here by the
+/// change that first produces it, which removes it from this list.
+const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 4] = [
+    "InsufficientFilament",
+    "UnverifiedSpool",
+    "AnalysisUnavailable",
+    "SpoolRefused",
+];
 
 /// Every rejected variant the contracts declare, each built to be reached.
 fn stated_rejections() -> Vec<RejectionReason> {
@@ -166,7 +183,17 @@ fn the_walk_produces_every_rejected_variant_the_contracts_declare() {
         .join("src")
         .join("records")
         .join("policy.rs");
-    let declared = enum_variant_names(&parse(&read(&path)), "RejectionReason");
+    let every = enum_variant_names(&parse(&read(&path)), "RejectionReason");
+    for ahead in DECLARED_AHEAD_OF_THEIR_PRODUCER {
+        assert!(
+            every.iter().any(|name| name == ahead),
+            "{ahead} is excused from the walk and the vocabulary does not declare it"
+        );
+    }
+    let declared: Vec<String> = every
+        .into_iter()
+        .filter(|name| !DECLARED_AHEAD_OF_THEIR_PRODUCER.contains(&name.as_str()))
+        .collect();
     let produced: Vec<String> = stated_rejections()
         .iter()
         .map(|reason| {

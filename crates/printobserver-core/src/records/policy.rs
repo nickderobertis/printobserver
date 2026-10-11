@@ -8,6 +8,8 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 
 use super::action::{ActionKind, ActorClass};
+use super::ids::SpoolId;
+use super::spool::UnverifiedReason;
 
 /// Server configuration: what any actor may ask for at all.
 ///
@@ -87,6 +89,50 @@ pub enum RejectionReason {
     UnsupportedAdjustable {
         /// The adjustable this printer cannot express.
         adjustable: Adjustable,
+    },
+    /// A start was refused because the spool on one tool holds less than the
+    /// print needs and its buffer.
+    InsufficientFilament {
+        /// The tool whose spool is short.
+        tool: i64,
+        /// The spool loaded on it.
+        spool_id: SpoolId,
+        /// That spool's name.
+        spool_name: String,
+        /// What the print needs from it, in grams.
+        required_g: f64,
+        /// The margin asked for beyond that, in grams.
+        buffer_g: f64,
+        /// What the spool holds, in grams.
+        remaining_g: f64,
+        /// The spool's oldest mark, when the short spool is also unverified.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unverified: Option<UnverifiedReason>,
+    },
+    /// A start was refused because the spool on one tool is unverified.
+    UnverifiedSpool {
+        /// The tool whose spool is unverified.
+        tool: i64,
+        /// The spool loaded on it.
+        spool_id: SpoolId,
+        /// That spool's name.
+        spool_name: String,
+        /// The spool's oldest mark.
+        reason: UnverifiedReason,
+    },
+    /// A start was refused because `OctoPrint`'s analysis of the file had not
+    /// appeared when the start's wait for it elapsed.
+    AnalysisUnavailable {
+        /// The file that has no analysis.
+        file_name: String,
+        /// How long the start waited for one, in whole seconds.
+        waited_s: u64,
+    },
+    /// A spool command could not be carried out.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
+    SpoolRefused {
+        /// Why, in a sentence naming what to do instead.
+        detail: String,
     },
 }
 

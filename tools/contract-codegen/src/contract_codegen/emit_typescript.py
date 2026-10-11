@@ -594,6 +594,7 @@ LIVE_TOKENS = {
     "manifest": "manifest(world)",
     "reason": "REASON",
     "disposition:continue": '"continue"',
+    "bool:false": "false",
 }
 
 

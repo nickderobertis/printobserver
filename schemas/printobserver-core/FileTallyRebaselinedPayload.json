@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "RebaselineDisposition": {
+      "description": "What became of the prints a file's new tally generation counts.",
+      "oneOf": [
+        {
+          "const": "accounted",
+          "description": "They were accounted as prints this system never saw.",
+          "type": "string"
+        },
+        {
+          "const": "unverified",
+          "description": "It could not be told which of them this system already settled, so the\nloaded spool was marked unverified rather than charged on a guess.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer's tally for a file went down — the file was deleted and\nuploaded again — so the file's tally generation advanced, and the new count\nis that generation's growth from zero.\n\nThe rebaseline itself marks no spool; only an `unverified` disposition does.",
+  "properties": {
+    "disposition": {
+      "$ref": "#/$defs/RebaselineDisposition",
+      "description": "What became of the prints the new generation counts."
+    },
+    "file_name": {
+      "description": "The file whose tally went down.",
+      "type": "string"
+    },
+    "new_failures": {
+      "description": "The failed prints the new tally counts.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "new_generation": {
+      "description": "The generation it is in now.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "new_successes": {
+      "description": "The completed prints the new tally counts.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "old_failures": {
+      "description": "The failed prints the old tally counted.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "old_generation": {
+      "description": "The generation the tally was in.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "old_successes": {
+      "description": "The completed prints the old tally counted.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "origin": {
+      "description": "Where it lives, in the printer's own vocabulary.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "file_name",
+    "origin",
+    "old_generation",
+    "new_generation",
+    "old_successes",
+    "old_failures",
+    "new_successes",
+    "new_failures",
+    "disposition"
+  ],
+  "title": "FileTallyRebaselinedPayload",
+  "type": "object",
+  "x-event-kind": "file_tally_rebaselined"
+}

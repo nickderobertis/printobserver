@@ -35,6 +35,7 @@ fn prepared() -> (World, printobserver_core::PrintRecord) {
                     printobserver_printer_api::Adjustable::Feedrate,
                     printobserver_types::Range::new(0.9, 1.6),
                 )]),
+                override_filament_check: false,
                 reason: "the operator started it".to_owned(),
                 actor: Actor::Operator,
             },

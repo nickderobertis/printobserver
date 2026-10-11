@@ -611,6 +611,7 @@ def emit_walk(contract: Contract) -> str:
                 "    with Host(409, refusal) as host:",
                 "        client = Client(host.address, ACTOR)",
                 "        try:",
+                f"            {ASYNC_DIRECTIVE}",
                 f"            client.{method_name(step.name, 'python')}({call})",
                 "        except RejectedError as refused:",
                 "            equal(refused.requested, 1.5)",
@@ -715,6 +716,7 @@ LIVE_TOKENS = {
     "manifest": "manifest(world)",
     "reason": "REASON",
     "disposition:continue": '"continue"',
+    "bool:false": "False",
 }
 
 
@@ -935,6 +937,7 @@ def emit_live(contract: Contract) -> str:
             f"def refused_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
             f'    """`{step.name}`, refused by a real supervisor\'s own policy."""',
             "    try:",
+            f"        {ASYNC_DIRECTIVE}",
             f"        client.{spelled}({call})",
             "    except RejectedError as refused:",
             "        truth(",

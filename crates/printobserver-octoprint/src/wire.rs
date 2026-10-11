@@ -166,6 +166,8 @@ impl JobPayload {
             print_time_left_s: progress.print_time_left,
             state: job_state_of(self.state.as_deref()),
             error: self.error,
+            file_position_bytes: None,
+            filament: Vec::new(),
         }
     }
 }

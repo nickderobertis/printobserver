@@ -17,6 +17,7 @@ printobserver-types = { workspace = true }
 # table maintained beside them. Neither is a crate of this workspace, so the
 # type crate stays this port's only workspace dependency.
 [dev-dependencies]
+jsonschema.workspace = true
 quote = "1"
 syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
 

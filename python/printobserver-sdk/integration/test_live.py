@@ -229,7 +229,7 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervi
     ready(client, world.print_id, "operational")
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    answered = client.start_print(world.print_id, world.file_name, manifest(world), REASON)
+    answered = client.start_print(world.print_id, world.file_name, manifest(world), REASON, False)
 
     seen = proxy.last()
     equal(seen.method, "POST", describing="`start_print`")
@@ -248,6 +248,11 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervi
         sent["manifest"],
         manifest(world),
         describing="the `manifest` `start_print` sent",
+    )
+    equal(
+        sent["override_filament_check"],
+        False,
+        describing="the `override_filament_check` `start_print` sent",
     )
     equal(
         sent["reason"],
@@ -578,6 +583,7 @@ def about_the_running_print(client: Client, world: Supervisor) -> Supervisor:
 def refused_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`cancel`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.cancel(world.print_id, REASON)
     except RejectedError as refused:
         truth(
@@ -594,7 +600,8 @@ def refused_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
 def refused_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`start_print`, refused by a real supervisor's own policy."""
     try:
-        client.start_print(world.print_id, world.file_name, manifest(world), REASON)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.start_print(world.print_id, world.file_name, manifest(world), REASON, False)
     except RejectedError as refused:
         truth(
             isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
@@ -610,6 +617,7 @@ def refused_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None
 def refused_set_feedrate_factor(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`set_feedrate_factor`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.set_feedrate_factor(world.print_id, 1.1, REASON, 60)
     except RejectedError as refused:
         truth(
@@ -626,6 +634,7 @@ def refused_set_feedrate_factor(client: Client, world: Supervisor, proxy: Proxy)
 def refused_set_flowrate_factor(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`set_flowrate_factor`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.set_flowrate_factor(world.print_id, 1.0, REASON, 60)
     except RejectedError as refused:
         truth(
@@ -642,6 +651,7 @@ def refused_set_flowrate_factor(client: Client, world: Supervisor, proxy: Proxy)
 def refused_set_fan_percent(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`set_fan_percent`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.set_fan_percent(world.print_id, 50.0, REASON, 60)
     except RejectedError as refused:
         truth(
@@ -658,6 +668,7 @@ def refused_set_fan_percent(client: Client, world: Supervisor, proxy: Proxy) -> 
 def refused_set_tool_target_c(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`set_tool_target_c`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.set_tool_target_c(world.print_id, REASON, 210.0, 0, 60)
     except RejectedError as refused:
         truth(
@@ -674,6 +685,7 @@ def refused_set_tool_target_c(client: Client, world: Supervisor, proxy: Proxy) -
 def refused_set_bed_target_c(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`set_bed_target_c`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.set_bed_target_c(world.print_id, REASON, 60.0, 60)
     except RejectedError as refused:
         truth(
@@ -690,6 +702,7 @@ def refused_set_bed_target_c(client: Client, world: Supervisor, proxy: Proxy) ->
 def refused_acknowledge_failure(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`acknowledge_failure`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.acknowledge_failure(world.print_id, "continue", world.event_id, REASON)
     except RejectedError as refused:
         truth(
@@ -706,6 +719,7 @@ def refused_acknowledge_failure(client: Client, world: Supervisor, proxy: Proxy)
 def refused_pause(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`pause`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.pause(world.print_id, REASON)
     except RejectedError as refused:
         truth(
@@ -722,6 +736,7 @@ def refused_pause(client: Client, world: Supervisor, proxy: Proxy) -> None:
 def refused_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`resume`, refused by a real supervisor's own policy."""
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         client.resume(world.print_id, REASON)
     except RejectedError as refused:
         truth(

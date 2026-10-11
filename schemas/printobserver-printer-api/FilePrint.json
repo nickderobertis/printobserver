@@ -1,0 +1,29 @@
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The last time a file was printed, and whether that print completed.",
+  "properties": {
+    "at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When it was printed."
+    },
+    "success": {
+      "description": "Whether that print completed.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "at",
+    "success"
+  ],
+  "title": "FilePrint",
+  "type": "object"
+}

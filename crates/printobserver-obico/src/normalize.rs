@@ -250,6 +250,7 @@ pub(crate) fn read(
         image_url: read.image_url,
         print: read.print,
         detection: read.detection,
+        signal: None,
     })
 }
 

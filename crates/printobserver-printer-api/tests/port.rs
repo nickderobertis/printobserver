@@ -6,6 +6,10 @@
 //! called and awaited and each asserted to answer that method's declared
 //! success type rather than an error.
 //!
+//! It overrides none of the three file reads, which every implementation
+//! inherits answering a refusal until it implements them, and those are held
+//! to that refusal here.
+//!
 //! It behaves trivially rather than erroring, because a stub answering a
 //! not-yet-implemented error would need a variant in the error vocabulary that
 //! no real implementation can ever produce, and every consumer would still have
@@ -102,6 +106,29 @@ fn every_method_answers_its_declared_success_type() {
     assert_eq!(block_on(port.set_tool_target_c(0, 215.0)), Ok(()));
     assert_eq!(block_on(port.set_bed_target_c(60.0)), Ok(()));
     assert_eq!(block_on(port.set_fan_percent(100.0)), Ok(()));
+}
+
+/// A printer overriding none of the three file reads answers each with the
+/// port's own refusal: status 501, naming the read it cannot answer.
+#[test]
+fn the_file_reads_a_printer_does_not_implement_are_refused_with_501() {
+    let port: Arc<dyn PrinterPort> = Arc::new(TrivialPrinter);
+    let refused = |method: &str| PrinterError::Refused {
+        status: 501,
+        detail: format!("{method} is not supported by this printer"),
+    };
+    assert_eq!(
+        block_on(port.file_facts(FileName::sample_full())),
+        Err(refused("file_facts"))
+    );
+    assert_eq!(
+        block_on(port.printed_files()),
+        Err(refused("printed_files"))
+    );
+    assert_eq!(
+        block_on(port.extruded_to(FileName::sample_full(), 4_096)),
+        Err(refused("extruded_to"))
+    );
 }
 
 /// The same trait object is shareable across threads, which is what core needs.

@@ -52,6 +52,31 @@
           "const": "acknowledge_failure",
           "description": "Acknowledge a failure event.",
           "type": "string"
+        },
+        {
+          "const": "register_spool",
+          "description": "Register a spool.",
+          "type": "string"
+        },
+        {
+          "const": "load_spool",
+          "description": "Load a spool onto a tool.",
+          "type": "string"
+        },
+        {
+          "const": "unload_spool",
+          "description": "Unload a spool from its tool.",
+          "type": "string"
+        },
+        {
+          "const": "adjust_spool",
+          "description": "Correct a spool's remaining figure.",
+          "type": "string"
+        },
+        {
+          "const": "retire_spool",
+          "description": "Retire a spool.",
+          "type": "string"
         }
       ]
     },
@@ -79,6 +104,13 @@
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
       "type": "string"
     },
     "PrinterState": {
@@ -293,6 +325,284 @@
           },
           "required": [
             "unsupported_adjustable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because the spool on one tool holds less than the\nprint needs and its buffer.",
+          "properties": {
+            "insufficient_filament": {
+              "additionalProperties": false,
+              "properties": {
+                "buffer_g": {
+                  "description": "The margin asked for beyond that, in grams.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "remaining_g": {
+                  "description": "What the spool holds, in grams.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "required_g": {
+                  "description": "What the print needs from it, in grams.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "spool_id": {
+                  "$ref": "#/$defs/SpoolId",
+                  "description": "The spool loaded on it."
+                },
+                "spool_name": {
+                  "description": "That spool's name.",
+                  "type": "string"
+                },
+                "tool": {
+                  "description": "The tool whose spool is short.",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "unverified": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/UnverifiedReason"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The spool's oldest mark, when the short spool is also unverified."
+                }
+              },
+              "required": [
+                "tool",
+                "spool_id",
+                "spool_name",
+                "required_g",
+                "buffer_g",
+                "remaining_g"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "insufficient_filament"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because the spool on one tool is unverified.",
+          "properties": {
+            "unverified_spool": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "$ref": "#/$defs/UnverifiedReason",
+                  "description": "The spool's oldest mark."
+                },
+                "spool_id": {
+                  "$ref": "#/$defs/SpoolId",
+                  "description": "The spool loaded on it."
+                },
+                "spool_name": {
+                  "description": "That spool's name.",
+                  "type": "string"
+                },
+                "tool": {
+                  "description": "The tool whose spool is unverified.",
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "tool",
+                "spool_id",
+                "spool_name",
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "unverified_spool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because `OctoPrint`'s analysis of the file had not\nappeared when the start's wait for it elapsed.",
+          "properties": {
+            "analysis_unavailable": {
+              "additionalProperties": false,
+              "properties": {
+                "file_name": {
+                  "description": "The file that has no analysis.",
+                  "type": "string"
+                },
+                "waited_s": {
+                  "description": "How long the start waited for one, in whole seconds.",
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "file_name",
+                "waited_s"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A spool command could not be carried out.",
+          "properties": {
+            "spool_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "detail": {
+                  "description": "Why, in a sentence naming what to do instead.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "detail"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis — an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
           ],
           "type": "object"
         }

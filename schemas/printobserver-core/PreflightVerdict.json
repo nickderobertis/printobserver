@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a filament check found, for one tool or for a whole print.",
+  "oneOf": [
+    {
+      "const": "passed",
+      "description": "The spool holds what the print needs and its buffer.",
+      "type": "string"
+    },
+    {
+      "const": "unchecked",
+      "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+      "type": "string"
+    },
+    {
+      "const": "insufficient",
+      "description": "The spool holds less than the print needs and its buffer.",
+      "type": "string"
+    },
+    {
+      "const": "unverified_spool",
+      "description": "The spool's figure is in doubt.",
+      "type": "string"
+    },
+    {
+      "const": "no_analysis",
+      "description": "`OctoPrint`'s analysis of the file had still not appeared when the\nstart's wait for it elapsed, or has not appeared yet when the check is\nonly read.",
+      "type": "string"
+    },
+    {
+      "const": "overridden",
+      "description": "The start went ahead despite the check, because the actor said so.",
+      "type": "string"
+    },
+    {
+      "const": "warned",
+      "description": "The check is set to warn, and let an insufficient, unverified or\nunanalysed start go ahead.",
+      "type": "string"
+    }
+  ],
+  "title": "PreflightVerdict"
+}

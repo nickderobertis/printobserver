@@ -120,6 +120,21 @@ pub enum ActionKind {
     /// Acknowledge a failure event.
     #[serde(rename = "acknowledge_failure")]
     AcknowledgeFailure,
+    /// Register a spool.
+    #[serde(rename = "register_spool")]
+    RegisterSpool,
+    /// Load a spool onto a tool.
+    #[serde(rename = "load_spool")]
+    LoadSpool,
+    /// Unload a spool from its tool.
+    #[serde(rename = "unload_spool")]
+    UnloadSpool,
+    /// Correct a spool's remaining figure.
+    #[serde(rename = "adjust_spool")]
+    AdjustSpool,
+    /// Retire a spool.
+    #[serde(rename = "retire_spool")]
+    RetireSpool,
 }
 
 /// One request, the decision taken on it, and what became of it.
@@ -255,6 +270,77 @@ pub struct CameraLookPayload {
     pub waited_s: i64,
 }
 
+/// The durable identity of one debit, so that a replay can never debit twice.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "key")]
+pub enum ChargeKey {
+    /// One segment of a print this system watched, on one tool.
+    #[serde(rename = "print")]
+    Print {
+        /// The print.
+        print_id: PrintId,
+        /// Which segment: zero from the print's start, and one more each time
+        /// a mid-print swap or a filament-change signal closes the current
+        /// one.
+        segment: i64,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// One print this system never saw, on one tool.
+    #[serde(rename = "unobserved")]
+    Unobserved {
+        /// The file that was printed.
+        file_name: String,
+        /// The file's tally generation, which advances each time the
+        /// printer's
+        /// tally for the file is reset.
+        generation: i64,
+        /// Where the file lives, in the printer's own vocabulary.
+        origin: String,
+        /// The print's ordinal in the file's tally — completed and failed
+        /// prints counted up to and including this one — within that
+        /// generation.
+        print_number: i64,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+}
+
+/// How the length a charge debits was worked out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChargeMethod {
+    /// A completed print: the length the file's analysis gives.
+    #[serde(rename = "slicer_estimate")]
+    SlicerEstimate,
+    /// The extrusion the file's own moves add up to, up to a position in it.
+    #[serde(rename = "gcode_extrusion")]
+    GcodeExtrusion,
+    /// The analysed length scaled by how far into the file the print got; the
+    /// fallback used only when the file itself could not be read.
+    #[serde(rename = "file_fraction")]
+    FileFraction,
+    /// A completed print this system never saw: the file's analysed length.
+    #[serde(rename = "unobserved_estimate")]
+    UnobservedEstimate,
+}
+
+/// Filament a tool fed after an unconfirmed filament change was held for the
+/// next spool loaded onto that tool, or confirmed on it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChargePendedPayload {
+    /// What was held.
+    pub pending: PendingCharge,
+}
+
+/// One mark a spool command cleared, and the spool it was cleared from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClearedMark {
+    /// The reason that no longer stands.
+    pub reason: UnverifiedReason,
+    /// The spool the mark was cleared from.
+    pub spool_id: SpoolId,
+}
+
 /// How sure the agent is.
 ///
 /// A closed vocabulary rather than a number, because a number invites a
@@ -364,9 +450,115 @@ pub enum ExecutionOutcome {
     },
 }
 
+/// A filament change was signalled during a print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FilamentChangeSignalledPayload {
+    /// The position the spool was charged up to, when one was known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<FilePosition>,
+    /// Whether that position was read when the signal was handled, rather
+    /// than
+    /// being the last one recorded; never with no position at all.
+    pub position_read_at_signal: bool,
+    /// The kind of the alert that carried the signal.
+    pub source_kind: EventKind,
+    /// The spool that was on it, when one was tracked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spool_id: Option<SpoolId>,
+    /// The tool the change was signalled for, when it is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<i64>,
+}
+
+/// Filament was charged against a spool, or recorded uncharged.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FilamentConsumedPayload {
+    /// The file's analysed length for the tool, in millimetres, when it had
+    /// one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysed_length_mm: Option<f64>,
+    /// The durable identity of this debit.
+    pub charge_key: ChargeKey,
+    /// The density the grams were worked out with, in grams per cubic
+    /// centimetre.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density_g_cm3: Option<f64>,
+    /// The diameter the grams were worked out with, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diameter_mm: Option<f64>,
+    /// What that length weighs, in grams, when a spool gave its diameter and
+    /// density.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grams: Option<f64>,
+    /// How much was fed, in millimetres.
+    pub length_mm: f64,
+    /// How the length was worked out.
+    pub method: ChargeMethod,
+    /// Anything a reader needs to make sense of the figure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// How far into the file the charge runs, when that was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<FilePosition>,
+    /// The spool's figure after it, in grams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_after_g: Option<f64>,
+    /// The spool's figure before the charge, in grams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_before_g: Option<f64>,
+    /// The spool charged; absent when nothing was tracked on the tool, and
+    /// the
+    /// filament was recorded uncharged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spool_id: Option<SpoolId>,
+    /// The tool that fed it.
+    pub tool: i64,
+}
+
 /// A file name a printer's own file API can be asked for: no path separator,
 /// no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.
 pub type FileName = String;
+
+/// How far into its file a print had got, and when that was read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FilePosition {
+    /// The byte the printer had read the file up to.
+    pub bytes: i64,
+    /// When the position was read.
+    pub observed_at: Timestamp,
+    /// The file's size in bytes, when it was known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<i64>,
+}
+
+/// The printer's tally for a file went down — the file was deleted and
+/// uploaded again — so the file's tally generation advanced, and the new
+/// count
+/// is that generation's growth from zero.
+///
+/// The rebaseline itself marks no spool; only an `unverified` disposition
+/// does.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileTallyRebaselinedPayload {
+    /// What became of the prints the new generation counts.
+    pub disposition: RebaselineDisposition,
+    /// The file whose tally went down.
+    pub file_name: String,
+    /// The failed prints the new tally counts.
+    pub new_failures: i64,
+    /// The generation it is in now.
+    pub new_generation: i64,
+    /// The completed prints the new tally counts.
+    pub new_successes: i64,
+    /// The failed prints the old tally counted.
+    pub old_failures: i64,
+    /// The generation the tally was in.
+    pub old_generation: i64,
+    /// The completed prints the old tally counted.
+    pub old_successes: i64,
+    /// Where it lives, in the printer's own vocabulary.
+    pub origin: String,
+}
 
 /// One heater, as a source reported it.
 ///
@@ -561,12 +753,20 @@ pub struct JobSnapshot {
     /// The whole print's estimated duration, in whole seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimated_print_time_s: Option<i64>,
+    /// The filament the source's analysis of the file says each tool uses;
+    /// empty when the source reported none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filament: Option<Vec<ToolFilament>>,
     /// The name of the file being printed, as the source reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
     /// Where the file lives, in the source's own vocabulary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_origin: Option<String>,
+    /// How far into the file the printer has read, in bytes, when the source
+    /// reported it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
     /// How long the print has left, in whole seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub print_time_left_s: Option<i64>,
@@ -578,6 +778,15 @@ pub struct JobSnapshot {
     pub size_bytes: Option<i64>,
     /// The state the source reports the job to be in.
     pub state: PrinterState,
+}
+
+/// One spool loaded on one tool, as a print started.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadedSpool {
+    /// The spool loaded on it.
+    pub spool_id: SpoolId,
+    /// The tool, in the printer's own numbering.
+    pub tool: i64,
 }
 
 /// One fresh look at a print.
@@ -736,6 +945,47 @@ pub struct OperatorAcknowledgementPayload {
     pub disposition: AcknowledgementDisposition,
 }
 
+/// Filament a tool fed after a filament change nobody has confirmed, held
+/// until
+/// somebody says which spool fed it.
+///
+/// A length rather than grams, because the grams follow the spool that takes
+/// it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingCharge {
+    /// The file's analysed length for the tool, in millimetres, when it had
+    /// one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysed_length_mm: Option<f64>,
+    /// The key of the print segment the filament was fed in.
+    pub charge_key: ChargeKey,
+    /// How much was fed, in millimetres.
+    pub length_mm: f64,
+    /// How that length was worked out.
+    pub method: ChargeMethod,
+    /// Anything a reader needs to make sense of the figure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// When it was held.
+    pub pended_at: Timestamp,
+    /// How far into the file the segment ran, when that was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<FilePosition>,
+    /// The print it was fed in.
+    pub print_id: PrintId,
+    /// The tool that fed it.
+    pub tool: i64,
+}
+
+/// One pending charge a spool command took.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingTaken {
+    /// The key it is charged under.
+    pub charge_key: ChargeKey,
+    /// The print it was fed in.
+    pub print_id: PrintId,
+}
+
 /// The supervisor looked in on an active print on its own schedule, with no
 /// detector having said anything about it.
 ///
@@ -825,6 +1075,88 @@ pub enum PortFailureSite {
     DetectorAcknowledgement,
 }
 
+/// What a filament check found for one print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Preflight {
+    /// When the check was made.
+    pub checked_at: Timestamp,
+    /// The file the print is of.
+    pub file_name: String,
+    /// What it found for each tool.
+    pub tools: Vec<PreflightTool>,
+    /// The worst of the tools' verdicts, in the order insufficient,
+    /// unverified spool, no analysis, warned, overridden, unchecked, passed.
+    pub verdict: PreflightVerdict,
+}
+
+/// The filament check before a start was made.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreflightCheckedPayload {
+    /// The start it was made for, when it was made for one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_id: Option<ActionId>,
+    /// What the check found.
+    pub preflight: Preflight,
+}
+
+/// What a filament check found for one tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreflightTool {
+    /// The margin asked for beyond that, in grams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffer_g: Option<f64>,
+    /// The loaded spool's marks at the check, oldest first, whatever the
+    /// verdict, so a spool both short and unverified says both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marks: Option<Vec<UnverifiedMark>>,
+    /// What the spool holds, in grams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_g: Option<f64>,
+    /// What the print needs from it, in grams, when the file's analysis says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_g: Option<f64>,
+    /// The spool loaded on it, when one is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spool_id: Option<SpoolId>,
+    /// That spool's name, beside its identifier, so a reader need not look it
+    /// up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spool_name: Option<String>,
+    /// The tool, in the printer's own numbering.
+    pub tool: i64,
+    /// What the check found for this tool.
+    pub verdict: PreflightVerdict,
+}
+
+/// What a filament check found, for one tool or for a whole print.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreflightVerdict {
+    /// The spool holds what the print needs and its buffer.
+    #[serde(rename = "passed")]
+    Passed,
+    /// No tracked spool is loaded on the tool, so nothing was checked.
+    #[serde(rename = "unchecked")]
+    Unchecked,
+    /// The spool holds less than the print needs and its buffer.
+    #[serde(rename = "insufficient")]
+    Insufficient,
+    /// The spool's figure is in doubt.
+    #[serde(rename = "unverified_spool")]
+    UnverifiedSpool,
+    /// `OctoPrint`'s analysis of the file had still not appeared when the
+    /// start's wait for it elapsed, or has not appeared yet when the check is
+    /// only read.
+    #[serde(rename = "no_analysis")]
+    NoAnalysis,
+    /// The start went ahead despite the check, because the actor said so.
+    #[serde(rename = "overridden")]
+    Overridden,
+    /// The check is set to warn, and let an insufficient, unverified or
+    /// unanalysed start go ahead.
+    #[serde(rename = "warned")]
+    Warned,
+}
+
 /// The whole vocabulary an actor may ask for, and there is no other.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action")]
@@ -863,6 +1195,11 @@ pub enum PrintAction {
         file_name: FileName,
         /// The manifest this print is bounded by.
         manifest: JobManifest,
+        /// Start despite an insufficient or unverified spool, or a file
+        /// `OctoPrint` has not analysed; the start's own reason is the
+        /// override's reason.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        override_filament_check: Option<bool>,
         /// Why the actor is asking for this.
         reason: String,
     },
@@ -972,8 +1309,36 @@ pub struct PrintContext {
     pub recent_events: Vec<EventRecord>,
 }
 
+/// A print ended.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrintEndedPayload {
+    /// How far into its file it last read, when that was read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_position: Option<FilePosition>,
+    /// How it ended.
+    pub outcome: PrintOutcome,
+    /// Why it ended, in the words the end was recorded with.
+    pub reason: String,
+    /// The state the printer was in as it ended.
+    pub state: PrinterState,
+}
+
 /// A lowercase hyphenated version 7 UUID identifying one print.
 pub type PrintId = String;
+
+/// How a print ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PrintOutcome {
+    /// It ran to its end.
+    #[serde(rename = "completed")]
+    Completed,
+    /// Somebody cancelled it.
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    /// It stopped on an error.
+    #[serde(rename = "failed")]
+    Failed,
+}
 
 /// One print, and the record supervision keys from.
 ///
@@ -1027,6 +1392,31 @@ pub struct PrintRecord {
     pub provider_print_id: Option<i64>,
     /// The state the print is in.
     pub state: PrinterState,
+}
+
+/// A print started.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrintStartedPayload {
+    /// The file being printed, when it is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    /// The spool loaded on each tool as it started.
+    pub loaded: Vec<LoadedSpool>,
+    /// The filament check made before it started, when one was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preflight: Option<Preflight>,
+    /// The action that started it; absent when the print was observed rather
+    /// than started through this system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_by: Option<ActionId>,
+}
+
+/// A print that was already open when spool tracking was installed: it is
+/// never charged, and this says why it carries no charge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrintUntrackedPayload {
+    /// Why the print carries no charge.
+    pub reason: String,
 }
 
 /// A printer, as a source reported it at one instant.
@@ -1116,6 +1506,18 @@ pub struct Range {
 /// Bytes exactly as received, base64-encoded.
 pub type RawBytes = String;
 
+/// What became of the prints a file's new tally generation counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RebaselineDisposition {
+    /// They were accounted as prints this system never saw.
+    #[serde(rename = "accounted")]
+    Accounted,
+    /// It could not be told which of them this system already settled, so the
+    /// loaded spool was marked unverified rather than charged on a guess.
+    #[serde(rename = "unverified")]
+    Unverified,
+}
+
 /// Why a request was refused.
 ///
 /// Each rejection is a distinct variant, so a consumer distinguishes them by
@@ -1164,6 +1566,53 @@ pub enum RejectionReason {
         /// The adjustable this printer cannot express.
         adjustable: Adjustable,
     },
+    /// A start was refused because the spool on one tool holds less than the
+    /// print needs and its buffer.
+    #[serde(rename = "insufficient_filament")]
+    InsufficientFilament {
+        /// The margin asked for beyond that, in grams.
+        buffer_g: f64,
+        /// What the spool holds, in grams.
+        remaining_g: f64,
+        /// What the print needs from it, in grams.
+        required_g: f64,
+        /// The spool loaded on it.
+        spool_id: SpoolId,
+        /// That spool's name.
+        spool_name: String,
+        /// The tool whose spool is short.
+        tool: i64,
+        /// The spool's oldest mark, when the short spool is also unverified.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unverified: Option<UnverifiedReason>,
+    },
+    /// A start was refused because the spool on one tool is unverified.
+    #[serde(rename = "unverified_spool")]
+    UnverifiedSpool {
+        /// The spool's oldest mark.
+        reason: UnverifiedReason,
+        /// The spool loaded on it.
+        spool_id: SpoolId,
+        /// That spool's name.
+        spool_name: String,
+        /// The tool whose spool is unverified.
+        tool: i64,
+    },
+    /// A start was refused because `OctoPrint`'s analysis of the file had not
+    /// appeared when the start's wait for it elapsed.
+    #[serde(rename = "analysis_unavailable")]
+    AnalysisUnavailable {
+        /// The file that has no analysis.
+        file_name: String,
+        /// How long the start waited for one, in whole seconds.
+        waited_s: i64,
+    },
+    /// A spool command could not be carried out.
+    #[serde(rename = "spool_refused")]
+    SpoolRefused {
+        /// Why, in a sentence naming what to do instead.
+        detail: String,
+    },
 }
 
 /// A value as a source reported it, flagged when it is outside the
@@ -1174,6 +1623,261 @@ pub struct Reported {
     pub out_of_range: bool,
     /// One shape of the contracts, which say nothing more about it.
     pub value: f64,
+}
+
+/// A spool's remaining figure was corrected.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolAdjustedPayload {
+    /// Who corrected it.
+    pub actor: Actor,
+    /// Every mark the correction cleared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleared_marks: Option<Vec<ClearedMark>>,
+    /// The scale reading the figure was worked out from, when it was given as
+    /// one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gross_g: Option<f64>,
+    /// Why.
+    pub reason: String,
+    /// Its figure after, in grams.
+    pub remaining_after_g: f64,
+    /// Its figure before, in grams, after any pending charge it took.
+    pub remaining_before_g: f64,
+    /// The spool corrected.
+    pub spool_id: SpoolId,
+    /// The pending charges the correction took first, each also its own
+    /// `filament_consumed` event under its key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub took_pending: Option<Vec<PendingTaken>>,
+}
+
+/// The whole vocabulary of the spool ledger, and there is no other.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "command")]
+pub enum SpoolCommand {
+    /// Register a spool.
+    #[serde(rename = "register_spool")]
+    RegisterSpool {
+        /// Who is asking.
+        actor: Actor,
+        /// The filament's colour.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        color: Option<String>,
+        /// The material's density, in grams per cubic centimetre; the known
+        /// density of the material when absent, and a material with none
+        /// known
+        /// is refused.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        density_g_cm3: Option<f64>,
+        /// The filament's diameter, in millimetres; 1.75 when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        diameter_mm: Option<f64>,
+        /// The net filament on the spool when full, in grams.
+        initial_g: f64,
+        /// The material, such as `PLA`.
+        material: String,
+        /// The operator's own label for it.
+        name: String,
+        /// Why the actor is asking for this.
+        reason: String,
+        /// The filament on it now, in grams; the full figure when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remaining_g: Option<f64>,
+        /// The empty spool's own weight, in grams.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tare_g: Option<f64>,
+    },
+    /// Load a spool onto a tool.
+    ///
+    /// Onto an occupied tool it is a swap, and the spool there is unloaded in
+    /// the same write. Naming the spool already on the tool confirms it was
+    /// never swapped, which is accepted only while that tool holds a pending
+    /// charge or that spool holds a filament-change mark.
+    #[serde(rename = "load_spool")]
+    LoadSpool {
+        /// Who is asking.
+        actor: Actor,
+        /// Why the actor is asking for this.
+        reason: String,
+        /// The spool to load.
+        spool_id: SpoolId,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// Unload a spool from its tool.
+    #[serde(rename = "unload_spool")]
+    UnloadSpool {
+        /// Who is asking.
+        actor: Actor,
+        /// Why the actor is asking for this.
+        reason: String,
+        /// The spool to unload.
+        spool_id: SpoolId,
+    },
+    /// Correct a spool's remaining figure, from exactly one of the two; a
+    /// command naming both or neither is refused as `spool_refused`.
+    #[serde(rename = "adjust_spool")]
+    AdjustSpool {
+        /// Who is asking.
+        actor: Actor,
+        /// A scale reading of the spool, in grams, which needs its tare.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gross_g: Option<f64>,
+        /// Why the actor is asking for this.
+        reason: String,
+        /// The filament left, in grams.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        remaining_g: Option<f64>,
+        /// The spool to correct.
+        spool_id: SpoolId,
+    },
+    /// Retire a spool, after which it refuses every command.
+    #[serde(rename = "retire_spool")]
+    RetireSpool {
+        /// Who is asking.
+        actor: Actor,
+        /// Why the actor is asking for this.
+        reason: String,
+        /// The spool to retire.
+        spool_id: SpoolId,
+    },
+}
+
+/// A spool command was refused.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolCommandRejectedPayload {
+    /// The command, as it was asked for.
+    pub command: SpoolCommand,
+    /// The whole decision, carrying which refusal it was.
+    pub decision: PolicyDecision,
+}
+
+/// A lowercase hyphenated version 7 UUID identifying one registered spool.
+pub type SpoolId = String;
+
+/// A spool was loaded onto a tool, or confirmed as never having left it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolLoadedPayload {
+    /// Who loaded it.
+    pub actor: Actor,
+    /// Every mark the load cleared, on either spool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleared_marks: Option<Vec<ClearedMark>>,
+    /// Why.
+    pub reason: String,
+    /// The spool the load swapped off the tool, when it was occupied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced: Option<SpoolId>,
+    /// The spool loaded.
+    pub spool_id: SpoolId,
+    /// The pending charges the load took, each also its own
+    /// `filament_consumed` event under its key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub took_pending: Option<Vec<PendingTaken>>,
+    /// The tool, in the printer's own numbering.
+    pub tool: i64,
+}
+
+/// One spool the operator registered, and what is known of it now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolRecord {
+    /// The filament's colour, when the operator gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// The material's density, in grams per cubic centimetre; above zero.
+    pub density_g_cm3: f64,
+    /// The filament's diameter, in millimetres; above zero.
+    pub diameter_mm: f64,
+    /// This spool's identifier, minted when it was registered.
+    pub id: SpoolId,
+    /// The net filament on the spool when it was full, in grams; above zero.
+    pub initial_g: f64,
+    /// The tool the spool is loaded on, when it is loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loaded_on_tool: Option<i64>,
+    /// The material, as given and trimmed, such as `PLA`; never empty.
+    pub material: String,
+    /// The operator's own label for the spool; never empty.
+    pub name: String,
+    /// When the spool was registered.
+    pub registered_at: Timestamp,
+    /// The filament left, in grams.
+    ///
+    /// Always the initial figure less every charge plus every correction. A
+    /// charge is never refused or clamped, so this may go below zero.
+    pub remaining_g: f64,
+    /// When the spool was retired, if it has been.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retired_at: Option<Timestamp>,
+    /// The empty spool's own weight, in grams, when the operator gave it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tare_g: Option<f64>,
+    /// How far the remaining figure can be trusted.
+    pub trust: SpoolTrust,
+    /// When anything about the spool last changed.
+    pub updated_at: Timestamp,
+}
+
+/// A spool was registered.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolRegisteredPayload {
+    /// Who registered it.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+    /// The spool, as it was registered.
+    pub spool: SpoolRecord,
+}
+
+/// A spool was retired.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolRetiredPayload {
+    /// Who retired it.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+    /// Its figure as it was retired, in grams.
+    pub remaining_g: f64,
+    /// The spool retired.
+    pub spool_id: SpoolId,
+}
+
+/// How far a spool's remaining figure can be trusted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state")]
+pub enum SpoolTrust {
+    /// Every charge against the spool was taken exactly.
+    #[serde(rename = "verified")]
+    Verified,
+    /// At least one thing happened that could not be charged exactly.
+    #[serde(rename = "unverified")]
+    Unverified {
+        /// Every reason the figure is in doubt, oldest first, at most one per
+        /// distinct reason; never empty.
+        marks: Vec<UnverifiedMark>,
+    },
+}
+
+/// A spool was unloaded from its tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolUnloadedPayload {
+    /// Who unloaded it.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+    /// The spool unloaded.
+    pub spool_id: SpoolId,
+    /// The tool it left.
+    pub tool: i64,
+}
+
+/// A spool was marked as one whose figure is in doubt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolUnverifiedPayload {
+    /// Why its figure is in doubt.
+    pub reason: UnverifiedReason,
+    /// The spool marked.
+    pub spool_id: SpoolId,
 }
 
 /// What one restart put back the way it found it.
@@ -1278,6 +1982,91 @@ pub struct SupervisionSessionOpenedPayload {
 /// An instant in UTC, as an RFC 3339 string with a zero offset.
 pub type Timestamp = String;
 
+/// The filament one tool feeds, as a length and, when it is known, a volume.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolFilament {
+    /// The length of filament fed, in millimetres.
+    pub length_mm: f64,
+    /// The tool, in the printer's own numbering.
+    pub tool: i64,
+    /// The volume of filament fed, in cubic centimetres, when the source
+    /// reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_cm3: Option<f64>,
+}
+
+/// A print this system never saw was found in the printer's own tally.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnaccountedPrintPayload {
+    /// Whether it was charged against a spool.
+    pub charged: bool,
+    /// The file that was printed.
+    pub file_name: String,
+    /// When it was printed, when the printer says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printed_at: Option<Timestamp>,
+    /// Whether it completed.
+    pub success: bool,
+}
+
+/// One reason a spool's figure is in doubt, and since when.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnverifiedMark {
+    /// Why the figure is in doubt.
+    pub reason: UnverifiedReason,
+    /// When the spool was marked for it.
+    pub since: Timestamp,
+}
+
+/// Why a spool's figure is in doubt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "reason")]
+pub enum UnverifiedReason {
+    /// A print ran on the spool's tool and nothing could be charged, because
+    /// the file had no analysis — an SD-card file, for one.
+    #[serde(rename = "uncharged_print")]
+    UnchargedPrint {
+        /// The print nothing could be charged for.
+        print_id: PrintId,
+    },
+    /// A print this system never saw ran and did not complete.
+    #[serde(rename = "unaccounted_print")]
+    UnaccountedPrint {
+        /// The file that was printed.
+        file_name: String,
+        /// When it was printed.
+        printed_at: Timestamp,
+    },
+    /// A filament change was signalled and nobody has said which spool is now
+    /// loaded. The spool was charged up to a position read when the signal
+    /// was
+    /// handled.
+    #[serde(rename = "filament_change_unconfirmed")]
+    FilamentChangeUnconfirmed {
+        /// The print the change was signalled during.
+        print_id: PrintId,
+    },
+    /// A filament change was signalled, nobody has said which spool is now
+    /// loaded, and no fresh position could be read at the signal: the spool
+    /// was
+    /// charged only up to the last recorded position, so its figure may be
+    /// overstated.
+    #[serde(rename = "filament_change_unconfirmed_position")]
+    FilamentChangeUnconfirmedPosition {
+        /// The print the change was signalled during.
+        print_id: PrintId,
+    },
+    /// A file's print tally was reset, and it cannot be told which of the
+    /// prints since the re-upload were already settled.
+    #[serde(rename = "tally_reset")]
+    TallyReset {
+        /// The file whose tally was reset.
+        file_name: String,
+        /// Where the file lives, in the printer's own vocabulary.
+        origin: String,
+    },
+}
+
 /// One payload type declared under a kind name, by the domain that owns it.
 ///
 /// The table from kind name to payload type, as the server declares it: every
@@ -1308,6 +2097,22 @@ impl EventPayloadKind for CameraLookPayload {
     const KIND: &'static str = "camera_look";
 }
 
+impl EventPayloadKind for ChargePendedPayload {
+    const KIND: &'static str = "charge_pended";
+}
+
+impl EventPayloadKind for FilamentChangeSignalledPayload {
+    const KIND: &'static str = "filament_change_signalled";
+}
+
+impl EventPayloadKind for FilamentConsumedPayload {
+    const KIND: &'static str = "filament_consumed";
+}
+
+impl EventPayloadKind for FileTallyRebaselinedPayload {
+    const KIND: &'static str = "file_tally_rebaselined";
+}
+
 impl EventPayloadKind for InterventionExpiredPayload {
     const KIND: &'static str = "intervention_expired";
 }
@@ -1336,6 +2141,50 @@ impl EventPayloadKind for PortFailurePayload {
     const KIND: &'static str = "port_failure";
 }
 
+impl EventPayloadKind for PreflightCheckedPayload {
+    const KIND: &'static str = "preflight_checked";
+}
+
+impl EventPayloadKind for PrintEndedPayload {
+    const KIND: &'static str = "print_ended";
+}
+
+impl EventPayloadKind for PrintStartedPayload {
+    const KIND: &'static str = "print_started";
+}
+
+impl EventPayloadKind for PrintUntrackedPayload {
+    const KIND: &'static str = "print_untracked";
+}
+
+impl EventPayloadKind for SpoolAdjustedPayload {
+    const KIND: &'static str = "spool_adjusted";
+}
+
+impl EventPayloadKind for SpoolCommandRejectedPayload {
+    const KIND: &'static str = "spool_command_rejected";
+}
+
+impl EventPayloadKind for SpoolLoadedPayload {
+    const KIND: &'static str = "spool_loaded";
+}
+
+impl EventPayloadKind for SpoolRegisteredPayload {
+    const KIND: &'static str = "spool_registered";
+}
+
+impl EventPayloadKind for SpoolRetiredPayload {
+    const KIND: &'static str = "spool_retired";
+}
+
+impl EventPayloadKind for SpoolUnloadedPayload {
+    const KIND: &'static str = "spool_unloaded";
+}
+
+impl EventPayloadKind for SpoolUnverifiedPayload {
+    const KIND: &'static str = "spool_unverified";
+}
+
 impl EventPayloadKind for StartupReconciliationPayload {
     const KIND: &'static str = "startup_reconciliation";
 }
@@ -1348,13 +2197,21 @@ impl EventPayloadKind for SupervisionSessionOpenedPayload {
     const KIND: &'static str = "supervision_session_opened";
 }
 
+impl EventPayloadKind for UnaccountedPrintPayload {
+    const KIND: &'static str = "unaccounted_print";
+}
+
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 15] = [
+pub const EVENT_KINDS: [&str; 31] = [
     "action_executed",
     "action_rejected",
     "action_requested",
     "agent_assessment",
     "camera_look",
+    "charge_pended",
+    "filament_change_signalled",
+    "filament_consumed",
+    "file_tally_rebaselined",
     "intervention_expired",
     "malformed_external_event",
     "obico_failure_alert",
@@ -1362,9 +2219,21 @@ pub const EVENT_KINDS: [&str; 15] = [
     "operator_acknowledgement",
     "periodic_observation",
     "port_failure",
+    "preflight_checked",
+    "print_ended",
+    "print_started",
+    "print_untracked",
+    "spool_adjusted",
+    "spool_command_rejected",
+    "spool_loaded",
+    "spool_registered",
+    "spool_retired",
+    "spool_unloaded",
+    "spool_unverified",
     "startup_reconciliation",
     "supervision_session_closed",
     "supervision_session_opened",
+    "unaccounted_print",
 ];
 
 impl EventRecord {
@@ -1587,6 +2456,7 @@ impl Client {
         file_name: &FileName,
         manifest: &JobManifest,
         reason: &str,
+        override_filament_check: Option<bool>,
     ) -> Result<ActionAnswer, ClientError> {
         crate::reason_given(reason)?;
         let target = format!("/v1/prints/{print_id}/actions/start_print");
@@ -1595,6 +2465,12 @@ impl Client {
         sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
         sending.insert("file_name".to_owned(), crate::as_value(&file_name)?);
         sending.insert("manifest".to_owned(), crate::as_value(&manifest)?);
+        if let Some(value) = override_filament_check {
+            sending.insert(
+                "override_filament_check".to_owned(),
+                crate::as_value(&value)?,
+            );
+        }
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));
         self.call("POST", &target, &asked, sending.as_ref())

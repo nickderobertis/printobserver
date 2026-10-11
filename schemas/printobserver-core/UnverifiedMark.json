@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis — an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One reason a spool's figure is in doubt, and since when.",
+  "properties": {
+    "reason": {
+      "$ref": "#/$defs/UnverifiedReason",
+      "description": "Why the figure is in doubt."
+    },
+    "since": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When the spool was marked for it."
+    }
+  },
+  "required": [
+    "reason",
+    "since"
+  ],
+  "title": "UnverifiedMark",
+  "type": "object"
+}
