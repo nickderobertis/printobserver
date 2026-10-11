@@ -31,6 +31,8 @@ use crate::values::{
     database_error, instant_text, is_constraint_violation, json_text, not_found, refused, tag_text,
 };
 
+mod filament;
+
 /// The one durable implementation of the store port.
 ///
 /// One embedded database under the configured state directory, with image bytes
@@ -351,12 +353,18 @@ impl SqliteStore {
     }
 
     /// Append one event, minting its identifier.
+    fn insert_event(&self, draft: EventDraft) -> Result<EventRecord, StoreError> {
+        self.on_connection(|connection| Self::append_on(connection, draft))
+    }
+
+    /// Append one event on a connection, minting its identifier, inside
+    /// whatever transaction that connection holds open.
     ///
     /// The `kind` column holds the bare kind name and the `payload` column the
     /// JSON text of the whole `{"kind": .., "payload": ..}` pair — the same
     /// text the closed vocabulary's tagged form wrote, so a row written under
     /// it reads back under this store unchanged.
-    fn insert_event(&self, draft: EventDraft) -> Result<EventRecord, StoreError> {
+    fn append_on(connection: &Connection, draft: EventDraft) -> Result<EventRecord, StoreError> {
         let record = EventRecord {
             id: EventId::new(),
             print_id: draft.print_id,
@@ -370,30 +378,28 @@ impl SqliteStore {
         let kind = tag_text(record.kind())?;
         let payload = json_text(&record.body)?;
         let raw = record.raw.as_ref().map(|bytes| bytes.as_slice().to_vec());
-        self.on_connection(|connection| {
-            connection
-                .execute(
-                    "INSERT INTO events (id, print_id, source, received_at, kind, payload, raw) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    params![
-                        record.id.to_string(),
-                        record.print_id.map(|id| id.to_string()),
-                        source,
-                        instant_text(record.received_at),
-                        kind,
-                        payload,
-                        raw,
-                    ],
-                )
-                .map_err(|error| {
-                    let candidates: Vec<(&str, &str, String)> = record
-                        .print_id
-                        .map(|id| vec![("events.print_id", "prints", id.to_string())])
-                        .unwrap_or_default();
-                    Self::refusal(connection, &error, &candidates)
-                })?;
-            Ok(record.clone())
-        })
+        connection
+            .execute(
+                "INSERT INTO events (id, print_id, source, received_at, kind, payload, raw) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    record.id.to_string(),
+                    record.print_id.map(|id| id.to_string()),
+                    source,
+                    instant_text(record.received_at),
+                    kind,
+                    payload,
+                    raw,
+                ],
+            )
+            .map_err(|error| {
+                let candidates: Vec<(&str, &str, String)> = record
+                    .print_id
+                    .map(|id| vec![("events.print_id", "prints", id.to_string())])
+                    .unwrap_or_default();
+                Self::refusal(connection, &error, &candidates)
+            })?;
+        Ok(record)
     }
 
     /// Store one image's bytes, minting its identifier.

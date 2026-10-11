@@ -13,7 +13,12 @@ use crate::contracts::{store_source, store_trait_methods};
 use crate::surface::{method_calls, parse, read, trait_methods};
 
 /// The files the conformance suite is written across.
-const SUITE_FILES: [&str; 2] = ["tests/journeys/conformance.rs", "tests/support/fixture.rs"];
+const SUITE_FILES: [&str; 4] = [
+    "tests/journeys/conformance.rs",
+    "tests/journeys/ledger.rs",
+    "tests/support/fixture.rs",
+    "tests/support/ledger.rs",
+];
 
 /// The suite, parsed.
 fn suite() -> Vec<syn::File> {

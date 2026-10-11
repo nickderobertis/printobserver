@@ -76,6 +76,7 @@
 
 mod hold;
 mod images;
+mod ledger;
 mod memory;
 mod rows;
 mod schema;

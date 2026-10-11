@@ -1,6 +1,6 @@
 //! The store traits are implementable, dyn-compatible and shareable.
 //!
-//! A test-only implementation of all five, held behind the same shared trait
+//! A test-only implementation of all seven, held behind the same shared trait
 //! objects the supervisor holds them behind, with every method each trait
 //! declares called and awaited and each asserted to answer that method's
 //! declared success type rather than an error. It behaves trivially rather than
@@ -14,18 +14,22 @@ use std::thread;
 
 use printobserver_core::block_on;
 use printobserver_core::store::{
-    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
-    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, Stores,
+    ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
+    FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
+    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery,
+    TimelineStore,
 };
 use printobserver_core::{
-    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
-    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
-    PrintRecord,
+    ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
+    Intervention, InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing,
+    PendingCharge, PolicyDecision, PrintOutcome, PrintRecord, SpoolId, SpoolRecord,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::contract::Sample;
-use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
+use printobserver_types::{
+    EventId, EventRecord, EventSource, ImageId, PrintId, RawBytes, Timestamp,
+};
 
 /// A store that answers every method with the success type it declares.
 struct TrivialStore;
@@ -253,6 +257,134 @@ impl SessionStore for TrivialStore {
     }
 }
 
+impl FilamentStore for TrivialStore {
+    fn register_spool(
+        &self,
+        spool: NewSpool,
+        source: EventSource,
+        actor: Actor,
+        reason: String,
+    ) -> BoxFuture<'_, Result<(SpoolRecord, EventRecord), StoreError>> {
+        let _ = (spool, source, actor, reason);
+        Box::pin(async { Ok((SpoolRecord::sample_minimal(), EventRecord::sample_minimal())) })
+    }
+
+    fn apply_spool_changes(
+        &self,
+        mutations: Vec<SpoolMutation>,
+        charges: Vec<Charge>,
+        pends: Vec<Pend>,
+    ) -> BoxFuture<'_, Result<SpoolWrite, StoreError>> {
+        let _ = (mutations, charges, pends);
+        Box::pin(async { Ok(empty_write()) })
+    }
+
+    fn settle_print(
+        &self,
+        print_id: PrintId,
+        outcome: PrintOutcome,
+        ended: EventDraft,
+        charges: Vec<Charge>,
+        pends: Vec<Pend>,
+        marks: Vec<SpoolMutation>,
+    ) -> BoxFuture<'_, Result<Settlement, StoreError>> {
+        let _ = (print_id, ended, charges, pends, marks);
+        Box::pin(async move {
+            Ok(Settlement::AlreadySettled {
+                at: Timestamp::sample_full(),
+                outcome,
+            })
+        })
+    }
+
+    fn print_settlement(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<(Timestamp, PrintOutcome)>, StoreError>> {
+        let _ = print_id;
+        Box::pin(async { Ok(None) })
+    }
+
+    fn charges(&self, print_id: PrintId) -> BoxFuture<'_, Result<Vec<ChargeRecord>, StoreError>> {
+        let _ = print_id;
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn pending_charges(
+        &self,
+        tool: Option<i64>,
+    ) -> BoxFuture<'_, Result<Vec<PendingCharge>, StoreError>> {
+        let _ = tool;
+        Box::pin(async { Ok(vec![PendingCharge::sample_minimal()]) })
+    }
+
+    fn spool(&self, id: SpoolId) -> BoxFuture<'_, Result<Option<SpoolRecord>, StoreError>> {
+        let _ = id;
+        Box::pin(async { Ok(Some(SpoolRecord::sample_minimal())) })
+    }
+
+    fn spools(&self, include_retired: bool) -> BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>> {
+        let _ = include_retired;
+        Box::pin(async { Ok(vec![SpoolRecord::sample_minimal()]) })
+    }
+
+    fn loaded_spools(&self) -> BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn record_file_position(
+        &self,
+        print_id: PrintId,
+        position: FilePosition,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        let _ = (print_id, position);
+        Box::pin(async { Ok(()) })
+    }
+
+    fn file_position(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<FilePosition>, StoreError>> {
+        let _ = print_id;
+        Box::pin(async { Ok(Some(FilePosition::sample_minimal())) })
+    }
+
+    fn file_tallies(&self) -> BoxFuture<'_, Result<Vec<FileTally>, StoreError>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn account_tallies(
+        &self,
+        tallies: Vec<FileTally>,
+        charges: Vec<Charge>,
+        marks: Vec<SpoolMutation>,
+        events: Vec<EventDraft>,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        let _ = (tallies, charges, marks, events);
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+impl TimelineStore for TrivialStore {
+    fn timeline(
+        &self,
+        query: TimelineQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        let _ = query;
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// A spool write that wrote nothing.
+fn empty_write() -> SpoolWrite {
+    SpoolWrite {
+        spools: Vec::new(),
+        events: Vec::new(),
+        charges: Vec::new(),
+        pending: Vec::new(),
+    }
+}
+
 /// A print identifier to drive the methods that take one.
 fn print_id() -> PrintId {
     PrintId::sample_full()
@@ -438,6 +570,109 @@ fn every_manifest_and_session_method_answers_its_declared_success_type() {
     assert_eq!(
         block_on(stores.sessions.session(print_id())),
         Ok(Some(SupervisionSession::sample_minimal()))
+    );
+}
+
+/// Every filament ledger and timeline method answers its declared success type.
+#[test]
+fn every_filament_and_timeline_method_answers_its_declared_success_type() {
+    let stores = Stores::of(Arc::new(TrivialStore));
+    let spool = NewSpool {
+        name: "shelf PLA".to_owned(),
+        material: "PLA".to_owned(),
+        color: None,
+        diameter_mm: 1.75,
+        density_g_cm3: 1.24,
+        initial_g: 1_000.0,
+        remaining_g: 1_000.0,
+        tare_g: None,
+        loaded_on_tool: None,
+        trust: printobserver_core::SpoolTrust::Verified,
+        registered_at: Timestamp::sample_full(),
+    };
+    assert_eq!(
+        block_on(stores.filament.register_spool(
+            spool,
+            EventSource::sample_full(),
+            Actor::Operator,
+            String::new()
+        )),
+        Ok((SpoolRecord::sample_minimal(), EventRecord::sample_minimal()))
+    );
+    assert_eq!(
+        block_on(
+            stores
+                .filament
+                .apply_spool_changes(Vec::new(), Vec::new(), Vec::new())
+        ),
+        Ok(empty_write())
+    );
+    assert_eq!(
+        block_on(stores.filament.settle_print(
+            print_id(),
+            PrintOutcome::Completed,
+            draft(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new()
+        )),
+        Ok(Settlement::AlreadySettled {
+            at: Timestamp::sample_full(),
+            outcome: PrintOutcome::Completed
+        })
+    );
+    assert_eq!(
+        block_on(stores.filament.print_settlement(print_id())),
+        Ok(None)
+    );
+    assert_eq!(
+        block_on(stores.filament.charges(print_id())),
+        Ok(Vec::new())
+    );
+    assert_eq!(
+        block_on(stores.filament.pending_charges(Some(0))),
+        Ok(vec![PendingCharge::sample_minimal()])
+    );
+    assert_eq!(
+        block_on(stores.filament.spool(SpoolId::sample_full())),
+        Ok(Some(SpoolRecord::sample_minimal()))
+    );
+    assert_eq!(
+        block_on(stores.filament.spools(true)),
+        Ok(vec![SpoolRecord::sample_minimal()])
+    );
+    assert_eq!(block_on(stores.filament.loaded_spools()), Ok(Vec::new()));
+    assert_eq!(
+        block_on(
+            stores
+                .filament
+                .record_file_position(print_id(), FilePosition::sample_minimal())
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        block_on(stores.filament.file_position(print_id())),
+        Ok(Some(FilePosition::sample_minimal()))
+    );
+    assert_eq!(block_on(stores.filament.file_tallies()), Ok(Vec::new()));
+    assert_eq!(
+        block_on(
+            stores
+                .filament
+                .account_tallies(Vec::new(), Vec::new(), Vec::new(), Vec::new())
+        ),
+        Ok(Vec::new())
+    );
+    assert_eq!(
+        block_on(stores.timeline.timeline(TimelineQuery {
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            spool_id: None,
+            before: None,
+            limit: None,
+        })),
+        Ok(Vec::new())
     );
 }
 

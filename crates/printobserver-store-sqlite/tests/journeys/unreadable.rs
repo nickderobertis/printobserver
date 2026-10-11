@@ -6,8 +6,11 @@
 
 use crate::block_on::block_on;
 use crate::fixture::{Store, draft, instant, request};
+use crate::ledger_records::{at, charge, ended, pend, print_key, register, tally};
 use printobserver_core::store::{HistoryQuery, StoreError};
-use printobserver_core::{ActionId, ExecutionOutcome, PolicyDecision};
+use printobserver_core::{
+    ActionId, ExecutionOutcome, FilePosition, PolicyDecision, PrintOutcome, SpoolId,
+};
 use printobserver_printer_api::Adjustable;
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MemoryStore, SqliteStore, connect};
 use printobserver_types::PrintId;
@@ -226,4 +229,137 @@ fn an_unknown_print_reads_back_as_no_print() {
         Ok(None),
         "a print with no session answered something other than none"
     );
+}
+
+/// One read of the ledger, for the walk over the ledger's columns a build
+/// cannot read.
+type LedgerRead = fn(&SqliteStore, PrintId, SpoolId) -> Result<(), StoreError>;
+
+/// A store carrying one row in every ledger table, and the directory it
+/// lives in.
+fn seeded_ledger() -> (TempDir, PrintId, SpoolId) {
+    let dir = TempDir::new().expect("a temporary state directory");
+    let store: std::sync::Arc<dyn Store> =
+        std::sync::Arc::new(SqliteStore::open(dir.path()).expect("the store opens"));
+    let print = block_on(store.open_print(None, None)).expect("a print opens");
+    let spool = register(&store, "tracked", Some(0), 500.0, at(0));
+    block_on(store.apply_spool_changes(
+        Vec::new(),
+        vec![charge(
+            print_key(print.id, 0, 0),
+            Some(print.id),
+            Some(spool.id),
+            Some(5.0),
+            at(1),
+        )],
+        vec![pend(print_key(print.id, 0, 1), print.id, at(1))],
+    ))
+    .expect("a charge and a pend are written");
+    block_on(store.record_file_position(
+        print.id,
+        FilePosition {
+            bytes: 10,
+            size_bytes: None,
+            observed_at: at(2),
+        },
+    ))
+    .expect("a position is recorded");
+    block_on(store.account_tallies(
+        vec![tally("bracket.gcode", 0, 1, at(3))],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    ))
+    .expect("a tally is accounted");
+    block_on(store.settle_print(
+        print.id,
+        PrintOutcome::Completed,
+        ended(print.id, PrintOutcome::Completed, at(4)),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    ))
+    .expect("the print settles");
+    (dir, print.id, spool.id)
+}
+
+/// Read one spool.
+fn spool_read(store: &SqliteStore, _: PrintId, spool_id: SpoolId) -> Result<(), StoreError> {
+    let port: &dyn Store = store;
+    block_on(port.spool(spool_id)).map(|_| ())
+}
+
+/// Read a print's charges.
+fn charges_read(store: &SqliteStore, print_id: PrintId, _: SpoolId) -> Result<(), StoreError> {
+    let port: &dyn Store = store;
+    block_on(port.charges(print_id)).map(|_| ())
+}
+
+/// A ledger column this build cannot read is reported rather than panicked on,
+/// and so is a charge key spelled any way but its canonical one.
+#[test]
+fn a_ledger_row_this_build_cannot_read_is_reported() {
+    // `{print}` is the seeded print's identifier: a key naming it with its
+    // segment spelled `00` reads as a key, and spells a different one again.
+    let cases: [(&str, LedgerRead); 10] = [
+        ("UPDATE spools SET trust = 'not json'", spool_read),
+        (
+            "UPDATE spools SET registered_at = 'not an instant'",
+            |store, _, _| {
+                let port: &dyn Store = store;
+                block_on(port.spools(true)).map(|_| ())
+            },
+        ),
+        (
+            "UPDATE charges SET charge_key = 'print:not-a-print:0:0'",
+            charges_read,
+        ),
+        ("UPDATE charges SET charge_key = 'refill:0'", charges_read),
+        (
+            "UPDATE charges SET charge_key = 'print:{print}:0:00'",
+            charges_read,
+        ),
+        (
+            "UPDATE charges SET charged_at = 'not an instant'",
+            charges_read,
+        ),
+        (
+            "UPDATE pending_charges SET pending = 'not json'",
+            |store, _, _| {
+                let port: &dyn Store = store;
+                block_on(port.pending_charges(None)).map(|_| ())
+            },
+        ),
+        (
+            "UPDATE print_settlements SET outcome = 'neither'",
+            |store, print_id, _| {
+                let port: &dyn Store = store;
+                block_on(port.print_settlement(print_id)).map(|_| ())
+            },
+        ),
+        ("UPDATE file_tallies SET generation = -1", |store, _, _| {
+            let port: &dyn Store = store;
+            block_on(port.file_tallies()).map(|_| ())
+        }),
+        (
+            "UPDATE print_positions SET observed_at = 'not an instant'",
+            |store, print_id, _| {
+                let port: &dyn Store = store;
+                block_on(port.file_position(print_id)).map(|_| ())
+            },
+        ),
+    ];
+
+    for (statement, read) in cases {
+        let (dir, print_id, spool_id) = seeded_ledger();
+        let statement = statement.replace("{print}", &print_id.to_string());
+        corrupt(&dir, &statement);
+        let store = SqliteStore::open(dir.path()).expect("the store opens");
+        let answer = read(&store, print_id, spool_id);
+        assert!(
+            matches!(answer, Err(StoreError::Database { .. })),
+            "after `{statement}` the read answered {answer:?} rather than saying \
+             the row could not be read"
+        );
+    }
 }

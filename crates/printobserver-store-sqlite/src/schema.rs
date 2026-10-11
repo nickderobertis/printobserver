@@ -164,13 +164,85 @@ ALTER TABLE prints ADD COLUMN job_started_at TEXT;
 ALTER TABLE prints ADD COLUMN job_print_time_s INTEGER;
 ";
 
+/// The filament ledger, and the index the printer-wide timeline is read through.
+///
+/// `spools.trust` holds the spool's trust as JSON; `charge_key`, in both
+/// `charges` and `pending_charges`, holds a charge key's canonical spelling, so
+/// that a key is recorded once whichever table it is in; `pending_charges.pending`
+/// holds the pending charge as JSON; and `print_settlements.outcome` holds the
+/// outcome's `snake_case` name. One unretired spool per tool is the partial
+/// unique index rather than a rule the code keeps. The events table is not
+/// touched: an event with no print was already one it could hold.
+const V5_FILAMENT_LEDGER: &str = "\
+CREATE TABLE spools (
+    id             TEXT    NOT NULL PRIMARY KEY,
+    name           TEXT    NOT NULL,
+    material       TEXT    NOT NULL,
+    color          TEXT,
+    diameter_mm    REAL    NOT NULL,
+    density_g_cm3  REAL    NOT NULL,
+    initial_g      REAL    NOT NULL,
+    remaining_g    REAL    NOT NULL,
+    tare_g         REAL,
+    loaded_on_tool INTEGER,
+    trust          TEXT    NOT NULL,
+    registered_at  TEXT    NOT NULL,
+    updated_at     TEXT    NOT NULL,
+    retired_at     TEXT
+) STRICT;
+CREATE UNIQUE INDEX spools_one_per_tool ON spools(loaded_on_tool)
+    WHERE loaded_on_tool IS NOT NULL AND retired_at IS NULL;
+CREATE TABLE print_positions (
+    print_id    TEXT    NOT NULL PRIMARY KEY REFERENCES prints(id),
+    bytes       INTEGER NOT NULL,
+    size_bytes  INTEGER,
+    observed_at TEXT    NOT NULL
+) STRICT;
+CREATE TABLE file_tallies (
+    file_name   TEXT    NOT NULL,
+    origin      TEXT    NOT NULL,
+    generation  INTEGER NOT NULL,
+    successes   INTEGER NOT NULL,
+    failures    INTEGER NOT NULL,
+    observed_at TEXT    NOT NULL,
+    PRIMARY KEY (file_name, origin)
+) STRICT;
+CREATE TABLE charges (
+    charge_key TEXT    NOT NULL PRIMARY KEY,
+    print_id   TEXT    REFERENCES prints(id),
+    tool       INTEGER NOT NULL,
+    spool_id   TEXT    REFERENCES spools(id),
+    length_mm  REAL    NOT NULL,
+    grams      REAL,
+    event_id   TEXT    NOT NULL REFERENCES events(id),
+    charged_at TEXT    NOT NULL
+) STRICT;
+CREATE INDEX charges_by_print ON charges(print_id, tool);
+CREATE TABLE pending_charges (
+    charge_key TEXT    NOT NULL PRIMARY KEY,
+    print_id   TEXT    NOT NULL REFERENCES prints(id),
+    tool       INTEGER NOT NULL,
+    pending    TEXT    NOT NULL,
+    event_id   TEXT    NOT NULL REFERENCES events(id),
+    pended_at  TEXT    NOT NULL
+) STRICT;
+CREATE INDEX pending_charges_by_tool ON pending_charges(tool, pended_at);
+CREATE TABLE print_settlements (
+    print_id   TEXT NOT NULL PRIMARY KEY REFERENCES prints(id),
+    outcome    TEXT NOT NULL,
+    event_id   TEXT NOT NULL REFERENCES events(id),
+    settled_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX events_by_kind_and_instant ON events(kind, received_at, id);
+";
+
 /// Every migration, in the order they are applied.
 ///
 /// Forward-only: a step is never rewritten once it has run anywhere, because a
 /// database in the field was created by the text as it stood — which is why
 /// the first two steps still spell the column the first version created it
 /// as, and the third renames it.
-pub const MIGRATIONS: [Migration; 4] = [
+pub const MIGRATIONS: [Migration; 5] = [
     Migration {
         version: 1,
         sql: V1_TABLES,
@@ -186,6 +258,10 @@ pub const MIGRATIONS: [Migration; 4] = [
     Migration {
         version: 4,
         sql: V4_JOB_SIGHTING,
+    },
+    Migration {
+        version: 5,
+        sql: V5_FILAMENT_LEDGER,
     },
 ];
 

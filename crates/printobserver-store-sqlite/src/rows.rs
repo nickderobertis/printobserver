@@ -4,11 +4,16 @@
 //! so a column added to the schema without being read shows up as a mapper that
 //! no longer matches rather than as a value silently dropped.
 
-use printobserver_core::{ActionRecord, ActionRequest, ImageRecord, Intervention, PrintRecord};
+use printobserver_core::store::{ChargeRecord, FileTally};
+use printobserver_core::{
+    ActionRecord, ActionRequest, ImageRecord, Intervention, PrintRecord, SpoolRecord,
+};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::{EventRecord, ImageRef};
 use rusqlite::Row;
+use rusqlite::types::Type;
 
+use crate::ledger::key_from_canonical;
 use crate::values::{from_json, from_json_option, from_tag, parsed, parsed_option};
 
 /// Every column of one print, in the order [`print_from_row`] reads them.
@@ -135,5 +140,75 @@ pub(crate) fn session_from_row(row: &Row<'_>) -> rusqlite::Result<SupervisionSes
         last_turn_at: parsed(row, 4)?,
         closed_at: parsed_option(row, 5)?,
         close_reason: row.get(6)?,
+    })
+}
+
+/// Every column of one spool, in the order [`spool_from_row`] reads them.
+pub(crate) const SPOOL_SELECT: &str = "SELECT id, name, material, color, diameter_mm, \
+     density_g_cm3, initial_g, remaining_g, tare_g, loaded_on_tool, trust, registered_at, \
+     updated_at, retired_at FROM spools";
+
+/// Every column of one charge, in the order [`charge_from_row`] reads them.
+pub(crate) const CHARGE_SELECT: &str = "SELECT charge_key, tool, print_id, spool_id, length_mm, \
+     grams, charged_at, event_id FROM charges";
+
+/// Every column of one file's tally, in the order [`tally_from_row`] reads them.
+pub(crate) const TALLY_SELECT: &str = "SELECT file_name, origin, generation, successes, failures, \
+     observed_at FROM file_tallies";
+
+/// One spool, as [`SPOOL_SELECT`] answers it.
+pub(crate) fn spool_from_row(row: &Row<'_>) -> rusqlite::Result<SpoolRecord> {
+    Ok(SpoolRecord {
+        id: parsed(row, 0)?,
+        name: row.get(1)?,
+        material: row.get(2)?,
+        color: row.get(3)?,
+        diameter_mm: row.get(4)?,
+        density_g_cm3: row.get(5)?,
+        initial_g: row.get(6)?,
+        remaining_g: row.get(7)?,
+        tare_g: row.get(8)?,
+        loaded_on_tool: row.get(9)?,
+        trust: from_json(row, 10)?,
+        registered_at: parsed(row, 11)?,
+        updated_at: parsed(row, 12)?,
+        retired_at: parsed_option(row, 13)?,
+    })
+}
+
+/// One charge, as [`CHARGE_SELECT`] answers it.
+pub(crate) fn charge_from_row(row: &Row<'_>) -> rusqlite::Result<ChargeRecord> {
+    let canonical: String = row.get(0)?;
+    let key = key_from_canonical(&canonical).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            Type::Text,
+            format!("{canonical} is no charge key's canonical spelling").into(),
+        )
+    })?;
+    Ok(ChargeRecord {
+        key,
+        tool: row.get(1)?,
+        print_id: parsed_option(row, 2)?,
+        spool_id: parsed_option(row, 3)?,
+        length_mm: row.get(4)?,
+        grams: row.get(5)?,
+        at: parsed(row, 6)?,
+        event_id: parsed(row, 7)?,
+    })
+}
+
+/// One file's tally, as [`TALLY_SELECT`] answers it.
+pub(crate) fn tally_from_row(row: &Row<'_>) -> rusqlite::Result<FileTally> {
+    let generation: i64 = row.get(2)?;
+    Ok(FileTally {
+        file_name: row.get(0)?,
+        origin: row.get(1)?,
+        generation: u32::try_from(generation).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(2, Type::Integer, Box::new(error))
+        })?,
+        successes: row.get(3)?,
+        failures: row.get(4)?,
+        observed_at: parsed(row, 5)?,
     })
 }

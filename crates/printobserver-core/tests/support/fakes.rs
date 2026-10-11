@@ -16,13 +16,15 @@ use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use printobserver_core::store::{
-    ActionStore, AuditPage, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
-    PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
+    ActionStore, AuditPage, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore, FileTally,
+    HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore, SettleOutcome,
+    Settlement, SpoolMutation, SpoolWrite, StoreError, TimelineQuery, TimelineStore,
+    resolve_history_limit,
 };
 use printobserver_core::{
-    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
-    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
-    PrintAction, PrintRecord,
+    ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
+    Intervention, InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing,
+    PendingCharge, PolicyDecision, PrintAction, PrintOutcome, PrintRecord, SpoolId, SpoolRecord,
 };
 use printobserver_core::{Clock, PrintContext, Supervisor};
 use printobserver_printer_api::{Adjustable, PrinterState};
@@ -34,11 +36,12 @@ use printobserver_supervisor_api::{
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::{
-    EventId, EventKind, EventRecord, FileName, ImageId, PrintId, RawBytes, Timestamp,
+    EventId, EventKind, EventRecord, EventSource, FileName, ImageId, PrintId, RawBytes, Timestamp,
 };
 use printobserver_vision_api::{FetchedImage, NormalizedAlert, VisionError, VisionPort};
 
 use crate::journal::{Call, Journal};
+use crate::ledger::{FakeLedger, LedgerWrite, timeline};
 
 /// A clock a test moves by hand, and the only time core reads.
 #[derive(Debug)]
@@ -339,6 +342,8 @@ struct Held {
     manifests: BTreeMap<PrintId, JobManifest>,
     /// Every print's session.
     sessions: BTreeMap<PrintId, SupervisionSession>,
+    /// The filament ledger.
+    ledger: FakeLedger,
 }
 
 /// How long a caller at a [`Meeting`] waits for the others before going on alone.
@@ -588,6 +593,30 @@ impl FakeStore {
             .rev()
             .filter_map(|id| held.prints.get(id).cloned())
             .collect()
+    }
+}
+
+impl FakeStore {
+    /// Run one ledger write over a copy of the ledger, keeping the copy and
+    /// the events it appended only when the whole write succeeded.
+    fn write_ledger<T>(
+        &self,
+        work: impl FnOnce(&mut LedgerWrite<'_>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let mut held = self.held.lock().expect("the store holds");
+        let (answer, ledger, events) = {
+            let mut write = LedgerWrite::new(&held.ledger, &held.prints);
+            let answer = work(&mut write)?;
+            (answer, write.ledger, write.events)
+        };
+        held.ledger = ledger;
+        held.events.extend(events);
+        Ok(answer)
+    }
+
+    /// Read the ledger.
+    fn read_ledger<T>(&self, read: impl FnOnce(&FakeLedger) -> T) -> T {
+        read(&self.held.lock().expect("the store holds").ledger)
     }
 }
 
@@ -1782,5 +1811,135 @@ impl printobserver_core::TurnAuthority for OpensTurns {
                     .retain(|_, (issued_by, _)| *issued_by != turn);
             }),
         )
+    }
+}
+
+impl FilamentStore for FakeStore {
+    fn register_spool(
+        &self,
+        spool: NewSpool,
+        source: EventSource,
+        actor: Actor,
+        reason: String,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<(SpoolRecord, EventRecord), StoreError>>
+    {
+        ready(self.write_ledger(|write| write.register(spool, source, actor, reason)))
+    }
+
+    fn apply_spool_changes(
+        &self,
+        mutations: Vec<SpoolMutation>,
+        charges: Vec<Charge>,
+        pends: Vec<Pend>,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<SpoolWrite, StoreError>> {
+        ready(self.write_ledger(|write| write.apply(mutations, charges, pends)))
+    }
+
+    fn settle_print(
+        &self,
+        print_id: PrintId,
+        outcome: PrintOutcome,
+        ended: EventDraft,
+        charges: Vec<Charge>,
+        pends: Vec<Pend>,
+        marks: Vec<SpoolMutation>,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Settlement, StoreError>> {
+        ready(
+            self.write_ledger(|write| {
+                write.settle(print_id, outcome, ended, charges, pends, marks)
+            }),
+        )
+    }
+
+    fn print_settlement(
+        &self,
+        print_id: PrintId,
+    ) -> printobserver_core::store::BoxFuture<
+        '_,
+        Result<Option<(Timestamp, PrintOutcome)>, StoreError>,
+    > {
+        ready(Ok(self.read_ledger(|ledger| ledger.settlement(print_id))))
+    }
+
+    fn charges(
+        &self,
+        print_id: PrintId,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<ChargeRecord>, StoreError>> {
+        ready(Ok(self.read_ledger(|ledger| ledger.charges(print_id))))
+    }
+
+    fn pending_charges(
+        &self,
+        tool: Option<i64>,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<PendingCharge>, StoreError>> {
+        ready(Ok(self.read_ledger(|ledger| ledger.pending(tool))))
+    }
+
+    fn spool(
+        &self,
+        id: SpoolId,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<SpoolRecord>, StoreError>> {
+        ready(Ok(self.read_ledger(|ledger| ledger.spool(id))))
+    }
+
+    fn spools(
+        &self,
+        include_retired: bool,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>> {
+        ready(Ok(self.read_ledger(|ledger| ledger.spools(include_retired))))
+    }
+
+    fn loaded_spools(
+        &self,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>> {
+        ready(Ok(self.read_ledger(FakeLedger::loaded_spools)))
+    }
+
+    fn record_file_position(
+        &self,
+        print_id: PrintId,
+        position: FilePosition,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<(), StoreError>> {
+        let mut held = self.held.lock().expect("the store holds");
+        if !held.prints.contains_key(&print_id) {
+            return ready(Err(StoreError::NotFound {
+                what: format!("print {print_id}"),
+            }));
+        }
+        held.ledger.record_position(print_id, position);
+        ready(Ok(()))
+    }
+
+    fn file_position(
+        &self,
+        print_id: PrintId,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<FilePosition>, StoreError>> {
+        ready(Ok(self.read_ledger(|ledger| ledger.position(print_id))))
+    }
+
+    fn file_tallies(
+        &self,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<FileTally>, StoreError>> {
+        ready(Ok(self.read_ledger(FakeLedger::tallies)))
+    }
+
+    fn account_tallies(
+        &self,
+        tallies: Vec<FileTally>,
+        charges: Vec<Charge>,
+        marks: Vec<SpoolMutation>,
+        events: Vec<EventDraft>,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        ready(self.write_ledger(|write| write.account(&tallies, charges, marks, events)))
+    }
+}
+
+impl TimelineStore for FakeStore {
+    fn timeline(
+        &self,
+        query: TimelineQuery,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        let held = self.held.lock().expect("the store holds");
+        ready(timeline(&held.events, &query))
     }
 }

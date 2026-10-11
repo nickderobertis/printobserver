@@ -6,7 +6,7 @@
 //! vision port, `OneHarness` behind the supervisor port, and `SQLite` behind
 //! the store traits — and `just check-repo` refuses any other crate that names
 //! one. The store is one implementation held once per aggregate: [`Stores::of`]
-//! coerces the one `SQLite` store to each of the five trait objects, and every
+//! coerces the one `SQLite` store to each of the seven trait objects, and every
 //! consumer below is handed the handle for the aggregate it names and no
 //! other.
 //!
