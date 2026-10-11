@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from held_toolchain import held_by_verb
-from repo_checks import checks_graph
+from repo_checks import checks_graph, platforms
 from repo_checks.__main__ import main
 from repo_checks.commands import (
     COVERAGE_HOST,
@@ -1260,6 +1260,81 @@ def test_the_rust_report_leaves_out_exactly_the_crates_the_run_did_not_reach() -
         describing="the reached crate's own file kept in",
     )
     equal(Measured().rust_ignored(Repo(REPO_ROOT)), None, describing="the full sweep's pattern")
+
+
+def rust_policed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, measuring: str) -> Repo:
+    """A tree whose policy measures Rust coverage on `measuring` alone.
+
+    It carries the committed supported-platform list, which is what names this
+    host, and a `cargo` that answers a report clearing every floor — so a run
+    that asks for one is seen to have asked.
+    """
+    root = tmp_path / "tree"
+    root.mkdir()
+    shutil.copy(REPO_ROOT / "AGENTS.md", root / "AGENTS.md")
+    (root / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false").replace(
+            "typescript = 95\n", f"typescript = 95\nrust_platforms = [{json.dumps(measuring)}]\n"
+        ),
+        encoding="utf-8",
+    )
+    programs = tmp_path / "bin"
+    programs.mkdir()
+    program(programs, "cargo", RUST_CLEARED)
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+    return Repo(root)
+
+
+def test_a_host_the_policy_does_not_measure_runs_rust_uninstrumented_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The crates' tests run uninstrumented here, and the report rules no Rust floor.
+
+    Its last line says Rust was not measured on this host and where it is,
+    rather than passing a floor nothing was held to.
+    """
+    here = platforms.host(Repo(REPO_ROOT)).id
+    elsewhere = next(p.id for p in platforms.supported(Repo(REPO_ROOT)) if p.id != here)
+    repo = rust_policed(tmp_path, monkeypatch, measuring=elsewhere)
+
+    equal(main(["rust-tests-uninstrumented", "--root", str(repo.root)]), 0)
+    contains(
+        capsys.readouterr().err,
+        f"Rust coverage is not measured on {here}: repo-policy.toml's "
+        f"gate.coverage.rust_platforms measures it on {elsewhere}; running the tests "
+        f"uninstrumented",
+    )
+
+    equal(coverage(repo, Measured(rust=None, python=())), 0)
+    out = capsys.readouterr().out
+    absent(out, "TOTAL", describing="a Rust report this host did not ask for")
+    contains(out, f"coverage: rust lines not measured: Rust coverage is not measured on {here}")
+
+
+def test_a_host_the_policy_measures_runs_rust_instrumented_and_rules_the_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The predicate answers no, saying nothing, and the report is ruled on as before."""
+    here = platforms.host(Repo(REPO_ROOT)).id
+    repo = rust_policed(tmp_path, monkeypatch, measuring=here)
+
+    equal(main(["rust-tests-uninstrumented", "--root", str(repo.root)]), 1)
+    equal(capsys.readouterr().err, "", describing="what a measured host's predicate prints")
+
+    equal(coverage(repo, Measured(rust=None, python=())), 0)
+    contains(capsys.readouterr().out, "coverage: rust lines 100.00% (floor 95%)")
+
+
+def test_a_policy_naming_no_rust_platforms_keeps_every_host_measured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Where nothing says otherwise, the floor is not given up by guessing."""
+    (tmp_path / "repo-policy.toml").write_text(
+        POLICY.format(command="git", install="false"), encoding="utf-8"
+    )
+
+    equal(main(["rust-tests-uninstrumented", "--root", str(tmp_path)]), 1)
+    equal(capsys.readouterr().err, "", describing="what the predicate prints")
 
 
 def test_the_affected_python_sources_are_those_under_the_reached_projects() -> None:

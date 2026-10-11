@@ -23,7 +23,7 @@
       "command": "cargo clippy -p printobserver-store-sqlite --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-store-sqlite-%p-%m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-store-sqlite --no-report --no-tests=pass'"
+      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-store-sqlite-%p-%m.profraw; fi; if uv run -q python -m repo_checks rust-tests-uninstrumented; then exec cargo nextest run -p printobserver-store-sqlite --target-dir target/uninstrumented --no-tests=pass; fi; exec cargo llvm-cov nextest -p printobserver-store-sqlite --no-report --no-tests=pass'"
     },
     "build": {
       "command": "cargo build -p printobserver-store-sqlite --locked"

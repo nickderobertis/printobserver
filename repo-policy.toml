@@ -40,6 +40,15 @@ rust = 95
 python = 95
 typescript = 95
 
+# The platforms whose gate instruments the Rust tests and holds them to the
+# Rust floor. Every other platform runs the same Rust tests under plain `cargo
+# nextest`, uninstrumented, into a target directory of its own, and its
+# coverage report states that Rust was not measured there rather than passing
+# it. AGENTS.md's coverage policy names the code compiled only for another
+# platform that this leaves out of the floor, and the measurement that put it
+# here.
+rust_platforms = ["linux-x86_64"]
+
 # One platform whose Rust toolchain cannot read the profiles its own
 # instrumentation writes. The gate there still builds, lints and runs every
 # Rust test and journey natively, uninstrumented where instrumentation is what

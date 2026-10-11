@@ -11,15 +11,21 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
-from journey import GateCopy, capture, clean_environment, plain
+from journey import HERE, GateCopy, capture, clean_environment, plain, pythonpath
+from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.model import Repo
 
 #: Every journey here runs Nx in a copy nobody will clean up after, so it runs
 #: without the daemon a local Nx would otherwise leave behind per copy.
 QUIET = {"NX_DAEMON": "false", "NX_NO_CLOUD": "true"}
+#: Where a crate's `test` target builds on a host whose Rust is not measured.
+UNINSTRUMENTED = Path("target", "uninstrumented")
 RAN = re.compile(r"^> nx run (?P<project>[^:\s]+):format-check", re.MULTILINE)
 
 
@@ -65,6 +71,44 @@ def branch_with_a_change(copy: GateCopy, relative: str) -> None:
     copy.write(relative, f"{copy.read(relative)}\n{comment} A change a contributor made.\n")
     copy.git("add", "-A")
     copy.git("commit", "-q", "-m", "feat: a change to one crate")
+
+
+def measuring(copy: GateCopy, platform: str) -> None:
+    """Commit, on the copy's `main`, a policy measuring Rust coverage on `platform` alone.
+
+    An empty commit where the committed policy already does. On `main` rather than on the change's branch, so the change stays the one
+    file a contributor touched rather than a root file no project owns.
+    """
+    copy.edit(
+        "repo-policy.toml", 'rust_platforms = ["linux-x86_64"]', f'rust_platforms = ["{platform}"]'
+    )
+    copy.git("commit", "-q", "--allow-empty", "-am", "chore: measure Rust coverage on one platform")
+
+
+def crate_tests(
+    copy: GateCopy, monkeypatch: pytest.MonkeyPatch, *crates: str
+) -> subprocess.CompletedProcess[str]:
+    """The crates' own `test` targets, run by the real Nx with no ambient coverage settings."""
+    for name in list(os.environ):
+        if name.startswith(("CARGO_LLVM_COV", "LLVM_PROFILE_FILE")) or name == "CARGO_TARGET_DIR":
+            monkeypatch.delenv(name)
+    environment = clean_environment(
+        UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), PYTHONPATH=pythonpath(), **QUIET
+    )
+    return capture(
+        [
+            "bunx",
+            "nx",
+            "run-many",
+            "-t",
+            "test",
+            f"--projects={','.join(crates)}",
+            "--output-style=stream",
+        ],
+        copy.root,
+        timeout=1800,
+        env=environment,
+    )
 
 
 def gate_eligible(copy: GateCopy) -> set[str]:
@@ -228,26 +272,10 @@ def test_the_affected_rust_report_is_over_the_crates_the_change_reaches(
     them run, the Python floor has nothing to rule on.
     """
     copy = as_a_clone(gate_copy())
+    measuring(copy, HERE.id)
     branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
-    for name in list(os.environ):
-        if name.startswith(("CARGO_LLVM_COV", "LLVM_PROFILE_FILE")) or name == "CARGO_TARGET_DIR":
-            monkeypatch.delenv(name)
-    environment = clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET)
 
-    tested = capture(
-        [
-            "bunx",
-            "nx",
-            "run-many",
-            "-t",
-            "test",
-            "--projects=printobserver-vision-api,printobserver-octoprint",
-            "--output-style=stream",
-        ],
-        copy.root,
-        timeout=1800,
-        env=environment,
-    )
+    tested = crate_tests(copy, monkeypatch, "printobserver-vision-api", "printobserver-octoprint")
     passing(tested, describing="the two crates' own `test` targets")
     reported = copy.just("coverage", environment=QUIET)
 
@@ -258,6 +286,43 @@ def test_the_affected_rust_report_is_over_the_crates_the_change_reaches(
     truth(
         "printobserver-octoprint" not in output,
         describing=f"the report leaving out the crate the change did not reach:\n{output}",
+    )
+
+
+def test_a_host_the_policy_does_not_measure_runs_the_crate_tests_uninstrumented(
+    gate_copy: Callable[..., GateCopy], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real `test` target runs plain nextest into its own directory, and Rust is unruled.
+
+    The same tests run — nextest's own summary says so — but nothing is
+    instrumented, the build lands where neither the coverage build nor the
+    program the end-to-end tier runs lives, and the report says Rust was not
+    measured on this host rather than passing a floor nothing was held to.
+    """
+    copy = as_a_clone(gate_copy())
+    elsewhere = next(p.id for p in platforms.supported(Repo(copy.root)) if p.id != HERE.id)
+    measuring(copy, elsewhere)
+    branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
+
+    tested = crate_tests(copy, monkeypatch, "printobserver-vision-api")
+
+    passing(tested, describing="the crate's own `test` target")
+    said = plain(tested.stdout + tested.stderr)
+    contains(said, f"Rust coverage is not measured on {HERE.id}")
+    contains(said, "running the tests uninstrumented")
+    contains(said, "tests run:", describing="nextest's summary of the tests it ran")
+    truth((copy.root / UNINSTRUMENTED).is_dir(), describing=f"the build under {UNINSTRUMENTED}")
+    truth(
+        not (copy.root / "target" / "llvm-cov-target").exists(),
+        describing="an instrumented build nothing asked for",
+    )
+    reported = copy.just("coverage", environment=QUIET)
+
+    # The Python suites the change reaches are left unrun, as in the journey
+    # above, so the recipe's verdict is the Python floor's and not asserted.
+    contains(
+        plain(reported.stdout),
+        f"coverage: rust lines not measured: Rust coverage is not measured on {HERE.id}",
     )
 
 
