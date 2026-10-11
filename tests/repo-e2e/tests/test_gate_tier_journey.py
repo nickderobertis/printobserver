@@ -118,10 +118,11 @@ EXERCISED_BY_THE_E2E_TIER = {
     "printer-smoke": "tools/printer-smoke/printer_smoke.py",
 }
 
-#: What the copy's `test-e2e` target says in place of running the suite: which
-#: projects the tier selects is the graph's answer, and the suite itself is the
-#: run this journey is part of.
-SELECTED = "the end-to-end tier was selected"
+#: The line Nx prints as it runs the tier's target, which is what selection
+#: means: read off Nx itself, as `RAN` reads `format-check`, rather than off what
+#: the target printed, which Nx does not always pass on for a command that
+#: finishes at once.
+SELECTED = "> nx run repo-e2e:test-e2e"
 
 
 @pytest.mark.parametrize("changed", sorted(EXERCISED_BY_THE_E2E_TIER.values()))
@@ -158,7 +159,7 @@ def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
 
 
 def standing_in_for_the_suite(copy: GateCopy) -> None:
-    """Commit, on the copy's `main`, a `test-e2e` target that says it ran and does nothing else.
+    """Commit, on the copy's `main`, a `test-e2e` target that does nothing.
 
     The project graph's edges, and so which projects a change selects, are the
     copy's own and unchanged. Only what selection would then run is replaced:
@@ -167,7 +168,7 @@ def standing_in_for_the_suite(copy: GateCopy) -> None:
     """
     project = copy.root / "tests" / "repo-e2e" / "project.json"
     declared = json.loads(project.read_text(encoding="utf-8"))
-    declared["targets"]["test-e2e"]["command"] = f"echo {SELECTED}"
+    declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
     declared["targets"]["test-e2e"].pop("dependsOn")
     project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
     copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suite")
