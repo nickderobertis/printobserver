@@ -61,22 +61,35 @@ tool-version TOOL:
 # coverage floors, the Windows-target lint, the workflow lint and the repository
 # checks — run whichever tier it is.
 #
-# The end-to-end tier starts beside the test tier rather than after every other
-# one: what it reads of this tree's build, its graph target builds first, so
-# the gate's two longest tiers overlap. Both are waited out whatever either
-# answers, so a run reports every failure of both, and fails if either failed.
+# Off Windows the end-to-end tier starts beside the test tier rather than after
+# every other one: what it reads of this tree's build, its graph target builds
+# first, so the gate's two longest tiers overlap. Both are waited out whatever
+# either answers, so a run reports every failure of both, and fails if either
+# failed. On Windows it runs last, as the other tiers do in turn: either tier
+# alone fills a 4-processor Windows runner, so beside each other they only slowed
+# both, and the gate (windows-aarch64) took 84 minutes against 68 in sequence
+# (draft runs 38165363260 and 38159308802), where every other platform gained.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
     just typecheck {{quote(tier)}}
-    just test-e2e {{quote(tier)}} & e2e=$!; status=0; \
+    status=0; if {{E2E_BESIDE_TESTS}}; then \
+    just test-e2e {{quote(tier)}} & e2e=$!; \
+    fi; \
     just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} && \
     just lint-workflows && \
     just check-repo || status=$?; \
-    wait "$e2e" || status=$?; \
+    if {{E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
+    elif [ "$status" = 0 ]; then \
+    just test-e2e {{quote(tier)}} || status=$?; \
+    fi; \
     exit "$status"
+
+# Whether `just check` starts the end-to-end tier beside the test tier: `true`
+# everywhere but Windows, for the reason the recipe above gives.
+E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any

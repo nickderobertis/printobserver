@@ -36,7 +36,16 @@ from typing import Self
 from urllib.parse import urlsplit
 
 import pytest
-from journey import COMMIT_IDENTITY, REPO_ROOT, GateCopy, capture, clean_environment, output, run
+from journey import (
+    COMMIT_IDENTITY,
+    RELEASE_DRAFTING,
+    REPO_ROOT,
+    GateCopy,
+    capture,
+    clean_environment,
+    output,
+    run,
+)
 from release_artifacts import arming, bumping
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
@@ -68,13 +77,16 @@ DETERMINING = "determining next version for"
 #: bound on a hang rather than a budget.
 DRAFT_TIMEOUT_SECONDS = 120
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("release-plz") is None,
-    reason=(
-        "release-plz is installed by `just install-tools release-plz`, which "
-        "`just test-e2e` runs before this tier"
+pytestmark = [
+    RELEASE_DRAFTING,
+    pytest.mark.skipif(
+        shutil.which("release-plz") is None,
+        reason=(
+            "release-plz is installed by `just install-tools release-plz`, which "
+            "`just test-e2e` runs before this tier"
+        ),
     ),
-)
+]
 
 
 def workspace_version() -> str:

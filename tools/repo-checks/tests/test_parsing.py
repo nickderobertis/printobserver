@@ -52,6 +52,7 @@ def test_a_line_continued_onto_the_next_names_no_backslash() -> None:
     r"""A recipe line ending in `\` runs what it names, and the backslash is not one of them."""
     equal(programs_in("just check-repo || status=$?; \\"), ["just"])
     equal(programs_in('wait "$e2e" || status=$?; \\'), [])
+    equal(programs_in("fi; \\"), [], describing="a keyword its separator ends")
 
 
 def test_shell_keywords_are_not_programs() -> None:

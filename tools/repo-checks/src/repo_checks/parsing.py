@@ -158,7 +158,7 @@ def programs_in(command: str) -> list[str]:
     first word after each pipe, minus shell keywords and builtins, minus leading
     `@`/`-` recipe prefixes and `VAR=value` assignments. A recipe line is read
     on its own, so the `\` continuing it onto the next is punctuation rather
-    than a program.
+    than a program, as is the `;` ending a word such as `fi;`.
     """
     names: list[str] = []
     for segment in command.rstrip().removesuffix("\\").split("|"):
@@ -168,7 +168,7 @@ def programs_in(command: str) -> list[str]:
             index += 1
         if index >= len(words):
             continue
-        word = words[index].lstrip("@-")
+        word = words[index].lstrip("@-").removesuffix(";")
         if not word or word in SHELL_WORDS:
             continue
         names.append(word)
