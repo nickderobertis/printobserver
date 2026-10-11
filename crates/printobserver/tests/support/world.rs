@@ -475,10 +475,11 @@ impl World {
             .clone()
     }
 
-    /// An event written after the walk's spool was registered: the
-    /// registration of a spool of its own, made the first time this is asked.
+    /// Register a spool after the walk's own, the first time this is asked,
+    /// and answer the event that registered it — the same event every time
+    /// after: a cursor a history read pages from.
     #[must_use]
-    pub fn history_cursor(&self) -> String {
+    pub fn register_history_cursor(&self) -> String {
         let _ = self.spool_id();
         self.cursor
             .get_or_init(|| {
@@ -504,7 +505,7 @@ impl World {
     /// anything else — so a load of it can be taken and a start is judged on
     /// no spool the walk left loaded — at its full figure before a correction,
     /// and a fresh spool for a retirement.
-    pub fn ledger_for(&self, command: &str) {
+    pub fn prepare_ledger_for(&self, command: &str) {
         if command == "retire-spool" {
             let fresh = self.registered("a spool to retire", "PLA", None);
             *self

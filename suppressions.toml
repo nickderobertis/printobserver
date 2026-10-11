@@ -1632,6 +1632,18 @@ site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
 
 [[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "`upload` puts a named file on the instance and leaves the job as it was."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suite that already drives that instance for `up`, beside the journeys for its other commands; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "A file put on an instance nothing started is refused naming what comes first."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suite that already drives that instance for every way `up` can fail, beside the journeys for its other commands; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/test_running_environment.py"
 site = "one sequential read of its instance"

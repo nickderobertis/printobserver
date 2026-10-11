@@ -131,7 +131,7 @@ fn spool_about(world: &World, command: &str) -> String {
 /// putting it there can replace the print the walk is about; a retirement is
 /// about a fresh spool each time. It renames and does nothing else: a caller
 /// about to run the entry puts the ledger where it needs it first, with
-/// [`World::ledger_for`], which is what lets one command be run again and
+/// [`World::prepare_ledger_for`], which is what lets one command be run again and
 /// again.
 #[must_use]
 pub fn about_now(driven: &Driven, world: &World) -> Driven {
@@ -157,7 +157,7 @@ pub fn about_now(driven: &Driven, world: &World) -> Driven {
 /// walk, or the spool already retired, keeps naming that one.
 ///
 /// It names and does nothing else: a caller about to run them puts the ledger
-/// where their command needs it first, with [`World::ledger_for`].
+/// where their command needs it first, with [`World::prepare_ledger_for`].
 #[must_use]
 pub fn naming_the_print_and_spool_now(arguments: &[String], world: &World) -> Vec<String> {
     let mut now = arguments.to_vec();
@@ -252,7 +252,7 @@ fn ledger(world: &World) -> Vec<Entry> {
     // The cursor is an event written after the walk's own spool was
     // registered, so a history read before it reaches that registration.
     let spool = world.spool_id();
-    let cursor = world.history_cursor();
+    let cursor = world.register_history_cursor();
     let acting = |command: &str, mut rest: Vec<(String, String)>| {
         rest.push(("actor".to_owned(), "operator".to_owned()));
         rest.push(("reason".to_owned(), reason_of(command)));

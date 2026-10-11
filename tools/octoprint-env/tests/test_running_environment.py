@@ -102,7 +102,7 @@ def test_the_instance_authenticates_the_tier(brought_up: dict[str, Any]) -> None
 
 def test_a_file_uploaded_to_the_running_instance_is_held_and_printed_by_nothing(
     brought_up: dict[str, Any], tmp_path: Path
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """`upload` puts a named file on the instance and leaves the job as it was."""
     url = str(brought_up["url"])
     key = key_from_record(brought_up)

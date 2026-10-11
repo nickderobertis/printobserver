@@ -121,7 +121,7 @@ def test_an_instance_that_never_answers_is_reported_by_name(
 
 def test_an_upload_to_no_running_instance_is_reported_by_name(
     state_dir: Callable[[str], str],
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """A file put on an instance nothing started is refused naming what comes first."""
     held = Path(state_dir("upload")) / "a.gcode"
     held.parent.mkdir(parents=True, exist_ok=True)
