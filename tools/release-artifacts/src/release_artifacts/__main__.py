@@ -351,17 +351,30 @@ def _tracked(arguments: argparse.Namespace) -> int:
 
     `release-broken` is handed every job's result and says which failed;
     `release-mended` closes the open issue. Both name the run.
+
+    Exits 0 having told the forge; 2 where what it was handed is not a run
+    address, or not jobs and results of which one failed — a step written
+    wrongly, which nothing on the forge would mend; and 1 where the forge could
+    not be told or the environment is not the one the forge hands a step.
     """
-    if not arguments.run_url:
-        print(
-            f"{arguments.command} takes --run-url <url>: the release workflow run it reports",
-            file=sys.stderr,
-        )
+    try:
+        if not arguments.run_url:
+            msg = f"{arguments.command} takes --run-url <url>: the release workflow run it reports"
+            raise tracking.TrackingError(msg)
+        run = tracking.run_url(arguments.run_url)
+        results = tracking.outcomes(arguments.job)
+        if (
+            arguments.command == "release-broken"
+            and tracking.Outcome.FAILURE not in results.values()
+        ):
+            msg = f"no job handed failed ({results}), so there is nothing to report"
+            raise tracking.TrackingError(msg)
+    except tracking.TrackingError as misused:
+        print(f"release-artifacts: {misused}", file=sys.stderr)
         return 2
-    run = tracking.run_url(arguments.run_url)
     forge = tracking.forge(os.environ)
     if arguments.command == "release-broken":
-        print(tracking.broken(forge, run, tracking.outcomes(arguments.job)))
+        print(tracking.broken(forge, run, results))
     else:
         print(tracking.mended(forge, run))
     return 0

@@ -203,12 +203,16 @@ def test_what_the_step_hands_is_refused_where_it_is_not_an_outcome(
     arguments: list[str],
     named: str,
 ) -> None:
-    """A job without a result, a result the forge never reports, no failure, no run."""
+    """A job without a result, a result the forge never reports, no failure, no run.
+
+    Each is a step written wrongly rather than a forge that could not be told,
+    so each exits 2, before anything is asked of the forge.
+    """
     status = main(arguments)
 
-    truth(status != 0, describing=f"the exit status for {arguments}: {status}")
+    equal(status, 2, describing=f"the exit status for {arguments}")
     contains(capsys.readouterr().err, named, describing="what it named")
-    equal(forge.issues, {}, describing="the issues opened")
+    equal(forge.asked, [], describing="what was asked of the forge")
 
 
 def test_every_result_the_forge_reports_is_an_outcome() -> None:
