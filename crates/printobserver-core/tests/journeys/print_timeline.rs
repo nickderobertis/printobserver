@@ -227,6 +227,38 @@ fn a_print_cancelled_at_the_printer_charges_the_extrusion_to_the_last_read() {
     assert_ledger_explains(&world, spool.id);
 }
 
+/// A look the agent takes while the print runs records where it had got, so a
+/// print cancelled at the printer after it is charged to that position rather
+/// than to an older one.
+#[test]
+fn a_look_records_where_the_print_had_got() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Looked At", 1_000.0);
+    let print_id = start(&world);
+    running_at(&world, 100_000);
+    world
+        .printer
+        .extrudes(FILE, 100_000, vec![on_tool(0, 480.0)]);
+    world
+        .printer
+        .extrudes(FILE, 700_000, vec![on_tool(0, 3_420.0)]);
+    world.printer.reports_position(Some(700_000), Some(SIZE));
+    block_on(
+        world
+            .core
+            .take_look(print_id, std::time::Duration::ZERO, Vec::new()),
+    )
+    .expect("the look is taken");
+    ends(&world, PrinterState::Cancelling);
+    assert_charge(
+        &charges_of(&world, print_id)[0],
+        spool.id,
+        &world,
+        ChargeMethod::GcodeExtrusion,
+        3_420.0,
+    );
+}
+
 /// A print that ended in error ends `failed`; when the file itself cannot be
 /// read, it is charged the analysed length scaled by how far in it got, with a
 /// note saying why.

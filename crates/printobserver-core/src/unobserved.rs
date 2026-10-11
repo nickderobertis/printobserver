@@ -76,6 +76,27 @@ fn unseen_between(from: (i64, i64), to: (i64, i64), settled: Settled) -> Vec<Uns
         .collect()
 }
 
+/// The prints of one file this system settled at or after an instant, or ever
+/// when there is none, by outcome.
+fn settled_since(
+    settlements: &[(String, Timestamp, PrintOutcome)],
+    file_name: &str,
+    since: Option<Timestamp>,
+) -> Settled {
+    let mut settled = Settled::default();
+    for (_, _, outcome) in settlements
+        .iter()
+        .filter(|(file, at, _)| file == file_name && since.is_none_or(|since| *at >= since))
+    {
+        if *outcome == PrintOutcome::Completed {
+            settled.successes += 1;
+        } else {
+            settled.failures += 1;
+        }
+    }
+    settled
+}
+
 /// What one run of the accounting writes.
 #[derive(Debug, Default)]
 struct Accounting {
@@ -127,13 +148,13 @@ impl Supervisor {
                 .await?);
         }
         let loaded = self.stores().filament.loaded_spools().await?;
+        let settlements = self.settlements_of(&files).await?;
         let mut accounting = Accounting::default();
         for file in &files {
             let previous = held
                 .iter()
                 .find(|tally| tally.file_name == file.file_name && tally.origin == file.origin);
-            self.account_file(file, previous, &loaded, now, &mut accounting)
-                .await?;
+            self.account_file(file, previous, &settlements, &loaded, now, &mut accounting)?;
         }
         Ok(self
             .stores()
@@ -147,45 +168,39 @@ impl Supervisor {
             .await?)
     }
 
-    /// The prints of one file this system settled at or after an instant, or
-    /// ever when there is none.
-    async fn settled_since(
+    /// Every settlement this system made of a print of one of these files:
+    /// the file, when, and with which outcome.
+    async fn settlements_of(
         &self,
-        file_name: &str,
-        since: Option<Timestamp>,
-    ) -> Result<Settled, CoreError> {
-        let mut settled = Settled::default();
+        files: &[FileFacts],
+    ) -> Result<Vec<(String, Timestamp, PrintOutcome)>, CoreError> {
+        let mut settlements = Vec::new();
         for print in self.stores().prints.prints().await? {
-            if print.file_name.as_deref() != Some(file_name) {
-                continue;
-            }
-            let Some((at, outcome)) = self.stores().filament.print_settlement(print.id).await?
+            let Some(file_name) = print
+                .file_name
+                .filter(|name| files.iter().any(|file| &file.file_name == name))
             else {
                 continue;
             };
-            if since.is_some_and(|since| at < since) {
-                continue;
-            }
-            if outcome == PrintOutcome::Completed {
-                settled.successes += 1;
-            } else {
-                settled.failures += 1;
+            if let Some((at, outcome)) = self.stores().filament.print_settlement(print.id).await? {
+                settlements.push((file_name, at, outcome));
             }
         }
-        Ok(settled)
+        Ok(settlements)
     }
 
     /// Account one file's tally against the one last held for it.
-    async fn account_file(
+    fn account_file(
         &self,
         file: &FileFacts,
         previous: Option<&FileTally>,
+        settlements: &[(String, Timestamp, PrintOutcome)],
         loaded: &[SpoolRecord],
         now: Timestamp,
         accounting: &mut Accounting,
     ) -> Result<(), CoreError> {
         let since = previous.map(|tally| tally.observed_at);
-        let settled = self.settled_since(&file.file_name, since).await?;
+        let settled = settled_since(settlements, &file.file_name, since);
         let (generation, unseen) = match previous {
             Some(held) if file.successes < held.successes || file.failures < held.failures => {
                 let generation = held.generation + 1;
