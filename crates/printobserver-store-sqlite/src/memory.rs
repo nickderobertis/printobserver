@@ -27,6 +27,10 @@ use crate::hold::{HoldPoints, settle_label};
 use crate::images::{resolve, store_bytes};
 use crate::values::{not_found, refused};
 
+mod filament;
+
+use filament::Filament;
+
 /// Every record this store holds, in the order each was written.
 #[derive(Debug, Default)]
 struct Records {
@@ -44,6 +48,8 @@ struct Records {
     manifests: Vec<(PrintId, JobManifest)>,
     /// One supervision session per print.
     sessions: Vec<SupervisionSession>,
+    /// The filament ledger.
+    filament: Filament,
 }
 
 /// The in-memory implementation of the store port.

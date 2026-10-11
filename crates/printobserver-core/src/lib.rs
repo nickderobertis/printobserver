@@ -111,9 +111,10 @@ pub use records::{
     UnverifiedReason, UnverifiedReasonKind,
 };
 pub use store::{
-    ActionStore, AuditPage, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore, HistoryQuery,
-    ImageLookup, ImageStore, MAX_HISTORY_LIMIT, PrintStore, SessionStore, SettleOutcome,
-    StoreError, Stores, resolve_history_limit,
+    ActionStore, AuditPage, Charge, ChargeRecord, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore,
+    FilamentStore, FileTally, HistoryQuery, ImageLookup, ImageStore, MAX_HISTORY_LIMIT, NewSpool,
+    Pend, PrintStore, SessionStore, SettleOutcome, Settlement, SpoolChange, SpoolMutation,
+    SpoolWrite, StoreError, Stores, TimelineQuery, TimelineStore, resolve_history_limit,
 };
 pub use supervisor::{Issued, Supervisor};
 pub use turn_access::{OpenedTurn, TurnAuthority};
