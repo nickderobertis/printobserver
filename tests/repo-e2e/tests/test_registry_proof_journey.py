@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 import yaml
 from journey import (
+    RELEASE_BUILD,
     REPO_ROOT,
     ROUTE_JOURNEY,
     capture,
@@ -42,6 +43,8 @@ from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
+
+pytestmark = RELEASE_BUILD
 
 #: The committed workflow this tier's triggers and version selection are read
 #: out of, rather than restated here.

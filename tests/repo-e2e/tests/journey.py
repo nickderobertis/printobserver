@@ -35,6 +35,34 @@ HERE = platforms.host(Repo(REPO_ROOT))
 #: read too.
 NO_ROUTE_HERE: str | None = HERE.no_route_proof
 ROUTE_JOURNEY = pytest.mark.skipif(NO_ROUTE_HERE is not None, reason=NO_ROUTE_HERE or "")
+#: The journeys that build, or run, what one checkout keeps at fixed paths of its
+#: own tree: the release program under `target/release`, the packaged client
+#: crate and its smoke consumer under `target/package` and `target/release`, and
+#: every proof and the built Node client under `dist/` — and, on Windows, the
+#: user's own `Path`, which the PowerShell install script writes. Two of these at
+#: once would build into, clear or read one another's directories, so xdist runs
+#: the whole group on one worker, one journey after another.
+RELEASE_BUILD = pytest.mark.xdist_group("repo-root-release-build")
+
+#: The journeys that build the debug program in the repository root and run it,
+#: or build into that root's `target` from a copy, and the service-manager
+#: journey, which also takes the host's one launchd label or service control
+#: manager and its machine-wide paths. Each builds with the program's default
+#: features after the tier's own `printobserver:build`, so a build here waits on
+#: cargo's lock and finds nothing to do; the group keeps them on one worker so a
+#: host without that graph target — a run of pytest by hand — never has one
+#: journey replace a program another is running, nor two service journeys
+#: register the same service.
+DEBUG_BUILD = pytest.mark.xdist_group("repo-root-debug-build")
+
+# What every other journey shares with another running beside it, it only reads
+# or syncs: the repository's `node_modules`, which a copy links to and a frozen
+# `bun install` over an unchanged lockfile leaves alone; the repository's `.venv`
+# and the tool caches, which `uv`, `cargo` and `bun` each lock themselves; and
+# the bootstrap's tools, which it installs only where a host lacks one. A copy's
+# own build, a stand-in bound to port 0, and each worker's `shared_venv` are
+# that journey's or that worker's alone.
+
 # Every escape sequence a terminal-aware program writes here: a CSI sequence —
 # introducer, numeric and private parameters, intermediates, final byte — and an
 # OSC sequence, which `nx` uses for hyperlinks and which ends at BEL or at ST.

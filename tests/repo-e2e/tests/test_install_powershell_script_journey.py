@@ -43,13 +43,15 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, clean_environment, run
+from journey import RELEASE_BUILD, REPO_ROOT, clean_environment, run
 from release_artifacts.installing import powershell
 from release_artifacts.stand_in import stand_in_program
 from repo_checks import platforms
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
+
+pytestmark = RELEASE_BUILD
 
 #: The committed script the third route fetches and runs on Windows.
 SCRIPT = "scripts/install.ps1"
