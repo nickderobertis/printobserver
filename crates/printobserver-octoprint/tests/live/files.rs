@@ -13,7 +13,8 @@
 //!
 //! It removes what it uploads before it begins, so a second run against one
 //! instance starts from files never printed, and again when it is done, so the
-//! instance holds what the bring-up left it holding.
+//! instance holds what the bring-up left it holding — and it homes the head
+//! its prints moved, so the machine reports the position the bring-up left.
 
 use std::time::Duration;
 
@@ -148,6 +149,26 @@ pub fn walk(instance: &Scripted) {
     print_inside_a_folder(instance);
 
     remove_what_this_walk_uploads(instance);
+    put_the_head_back(instance);
+}
+
+/// Put the virtual head back at the origin the bring-up left it at.
+///
+/// This walk is the only one in the tier that moves the machine, and a print
+/// cancelled mid-move leaves the virtual printer reporting a fractional
+/// position — sometimes in scientific notation, `X:2.67e-14`. `OctoPrint`
+/// records the position when a print pauses and does not read that notation,
+/// so every later pause waits out its position timeout before it lands, about
+/// ten seconds late: long enough for the next tier on this machine to read a
+/// print still on its way to paused as running and leave it paused. Draining
+/// the moves still buffered, then homing, puts every axis and the extruder back
+/// at exactly zero.
+fn put_the_head_back(instance: &Scripted) {
+    raw::post_json(
+        instance,
+        "/api/printer/command",
+        &serde_json::json!({ "commands": ["M400", "G28"] }),
+    );
 }
 
 /// Remove the fixture and the folder, selecting the environment's own hold
