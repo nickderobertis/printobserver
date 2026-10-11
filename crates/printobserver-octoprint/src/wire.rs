@@ -273,13 +273,62 @@ struct LastPrintPayload {
 struct RefsPayload {
     /// Where its bytes are downloaded from.
     #[serde(default)]
-    download: Option<String>,
+    download: Option<DownloadLink>,
+}
+
+/// The download link `OctoPrint` answered, read as what this port can do
+/// with it.
+///
+/// `OctoPrint` spells the link absolute, with whatever host the request reached
+/// it by, so its scheme and authority are dropped and the path alone is kept:
+/// the key goes to the instance the configuration names and nowhere else. A
+/// link is read when it arrives rather than when it is followed, so nothing
+/// downstream holds a link it has not been told whether it can follow — and an
+/// unfollowable one is carried, with its text, rather than refused, because it
+/// is a fault in the download alone and not in the facts read beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(from = "String")]
+pub(crate) enum DownloadLink {
+    /// A path to send to the configured instance.
+    Followable(DownloadPath),
+    /// A link whose path would change the request it lands in, as answered.
+    Unfollowable(String),
+}
+
+/// The path of a followable download link: absolute, and free of anything
+/// that would end the request line it is written into.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DownloadPath(String);
+
+impl DownloadPath {
+    /// The path, to write into a request line.
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for DownloadLink {
+    fn from(link: String) -> Self {
+        let path = match link.split_once("://") {
+            Some((_, rest)) => rest.find('/').map_or("/", |start| &rest[start..]),
+            None => link.as_str(),
+        };
+        if path.starts_with('/')
+            && !path
+                .bytes()
+                .any(|byte| byte.is_ascii_control() || byte == b' ')
+        {
+            Self::Followable(DownloadPath(path.to_owned()))
+        } else {
+            Self::Unfollowable(link)
+        }
+    }
 }
 
 impl FilePayload {
     /// The link `OctoPrint` says this file's bytes are downloaded from.
-    pub(crate) fn download(&self) -> Option<&str> {
-        self.refs.as_ref()?.download.as_deref()
+    pub(crate) fn download(&self) -> Option<&DownloadLink> {
+        self.refs.as_ref()?.download.as_ref()
     }
 
     /// The facts this entry denotes, or why they are not facts about a file.

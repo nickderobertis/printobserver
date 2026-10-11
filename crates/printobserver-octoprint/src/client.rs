@@ -59,7 +59,9 @@ use crate::convert::{
 };
 use crate::gcode::ExtrudedTo;
 use crate::http::{self, Method, Response, Sink, Transport};
-use crate::wire::{FilePayload, JobPayload, ListingPayload, PrinterPayload, TOOL_PREFIX};
+use crate::wire::{
+    DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload, TOOL_PREFIX,
+};
 
 /// Reading the printer.
 const PRINTER_PATH: &str = "/api/printer?history=false";
@@ -175,7 +177,7 @@ impl OctoPrintPrinter {
         position_bytes: i64,
     ) -> Result<Vec<ToolFilament>, PrinterError> {
         let file = self.read_file(file_name)?;
-        let link = file.download().map(ToOwned::to_owned);
+        let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
         // is followed: a folder, or a record no file could carry, is no file
         // to download.
@@ -188,18 +190,26 @@ impl OctoPrintPrinter {
                 local_file_path(file_name)
             ))
         })?;
-        let path = download_path(&link)?;
+        let followed = match link {
+            DownloadLink::Followable(path) => path,
+            DownloadLink::Unfollowable(link) => {
+                return Err(malformed(format!(
+                    "{link:?} is no download link this port can follow"
+                )));
+            }
+        };
+        let path = followed.as_str();
         let mut reader = Reader(ExtrudedTo::new(position_bytes));
         let outcome = http::stream(
             self.config.endpoint(),
             self.config.api_key(),
-            &path,
+            path,
             self.config.timeout(),
             &mut reader,
         );
         match outcome {
             Ok(None) => Ok(reader.0.fed()),
-            Ok(Some(response)) => ruled(Method::Get, &path, response).map(|_| reader.0.fed()),
+            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| reader.0.fed()),
             Err(transport) => {
                 let error = match transport {
                     Transport::Unreachable(detail) => PrinterError::Unreachable { detail },
@@ -272,30 +282,6 @@ impl Sink for Reader {
 /// The path one file of the instance's own storage is read and selected at.
 fn local_file_path(file_name: &FileName) -> String {
     format!("{LOCAL_FILE_PATH}{}", encode_segment(file_name.as_str()))
-}
-
-/// The path of the download link `OctoPrint` answered, to send to the
-/// configured instance.
-///
-/// `OctoPrint` spells the link absolute, with whatever host the request reached
-/// it by, so its scheme and authority are dropped and the path alone is kept:
-/// the key goes to the instance the configuration names and nowhere else. A
-/// path that would change the request it lands in is refused rather than sent.
-fn download_path(link: &str) -> Result<String, PrinterError> {
-    let path = match link.split_once("://") {
-        Some((_, rest)) => rest.find('/').map_or("/", |start| &rest[start..]),
-        None => link,
-    };
-    if !path.starts_with('/')
-        || path
-            .bytes()
-            .any(|byte| byte.is_ascii_control() || byte == b' ')
-    {
-        return Err(malformed(format!(
-            "{link:?} is no download link this port can follow"
-        )));
-    }
-    Ok(path.to_owned())
 }
 
 /// A malformed answer, logged.
