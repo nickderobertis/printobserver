@@ -11,8 +11,14 @@
 //! whether the instance frames it by `Content-Length`, by chunked transfer or by
 //! closing. A frame this module cannot read is a [`Transport::Malformed`],
 //! never a silently truncated body.
+//!
+//! One request is read differently: a file's download, which can be megabytes
+//! and of which the caller wants only a prefix. [`stream`] hands its body over a
+//! piece at a time, as it arrives, and stops reading — closing the connection —
+//! the moment the reader says it has enough, so the file is never held whole.
 
 use core::fmt::Write as _;
+use core::ops::ControlFlow;
 use std::io::{Read as _, Write as _};
 use std::net::{TcpStream, ToSocketAddrs as _};
 use std::time::Duration;
@@ -88,6 +94,364 @@ pub(crate) fn send(
     parse(&raw)
 }
 
+/// How much of a streamed body is read at a time.
+const STREAM_PIECE: usize = 16 * 1024;
+
+/// What reads a streamed body, a piece at a time.
+pub(crate) trait Sink {
+    /// The next piece of the body; `Break` stops reading it.
+    fn take(&mut self, bytes: &[u8]) -> ControlFlow<()>;
+    /// The body ended before the sink said it had enough.
+    fn end(&mut self);
+}
+
+/// Send one `GET` and hand a successful answer's body to a sink as it arrives.
+///
+/// Answers `None` once the sink has what it wanted or the body ended, and the
+/// whole response — read to its end — when the status is not a success, so that
+/// a refusal is ruled on exactly as [`send`]'s are.
+pub(crate) fn stream(
+    endpoint: &Endpoint,
+    api_key: &ApiKey,
+    path: &str,
+    timeout: Duration,
+    sink: &mut dyn Sink,
+) -> Result<Option<Response>, Transport> {
+    let mut stream = connect(endpoint, timeout)?;
+    let request = compose(endpoint, api_key, Method::Get, path, None);
+    stream
+        .write_all(&request)
+        .and_then(|()| stream.flush())
+        .map_err(|error| Transport::Unreachable(format!("writing to {endpoint}: {error}")))?;
+    let mut source = Source {
+        stream,
+        endpoint,
+        buffered: Vec::new(),
+    };
+
+    let head = source.head()?;
+    let (status, framing) = framing_of(&head)?;
+    if !(200..300).contains(&status) {
+        let mut raw = head;
+        raw.extend_from_slice(b"\r\n\r\n");
+        raw.append(&mut source.buffered);
+        source
+            .stream
+            .read_to_end(&mut raw)
+            .map_err(|error| Transport::Unreachable(format!("reading from {endpoint}: {error}")))?;
+        return parse(&raw).map(Some);
+    }
+    let flow = match framing {
+        Framing::Length(length) => source.length(length, sink)?,
+        Framing::Chunked => source.chunked(sink)?,
+        Framing::Close => source.until_close(sink)?,
+    };
+    if flow.is_continue() {
+        sink.end();
+    }
+    Ok(None)
+}
+
+/// How a response says where its body ends.
+enum Framing {
+    /// After this many bytes.
+    Length(usize),
+    /// At the last chunk.
+    Chunked,
+    /// When the connection closes.
+    Close,
+}
+
+/// A response's status and framing, from its header block.
+fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
+    let head = String::from_utf8_lossy(head).into_owned();
+    let mut lines = head.split("\r\n");
+    let status_line = lines
+        .next()
+        .ok_or_else(|| Transport::Malformed("the response carries no status line".to_owned()))?;
+    let status = status_of(status_line)?;
+    let mut chunked = false;
+    let mut length: Option<usize> = None;
+    for line in lines {
+        let (name, value) = field_of(line)?;
+        if name == "transfer-encoding" {
+            // Chunked must be the last coding, and no other is one this
+            // client can undo, so it is the only value read as a body.
+            if !value.eq_ignore_ascii_case("chunked") {
+                return Err(Transport::Malformed(format!(
+                    "a body transfer-encoded {value:?} is not one this port reads"
+                )));
+            }
+            chunked = true;
+        } else if name == "content-length" {
+            let declared = Some(value)
+                .filter(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(|digits| digits.parse::<usize>().ok())
+                .ok_or_else(|| Transport::Malformed(format!("{value:?} is no content length")))?;
+            if length.is_some_and(|earlier| earlier != declared) {
+                return Err(Transport::Malformed(
+                    "the response declares two different content lengths".to_owned(),
+                ));
+            }
+            length = Some(declared);
+        }
+    }
+    let framing = match (chunked, length) {
+        (true, Some(_)) => {
+            return Err(Transport::Malformed(
+                "the response declares both a length and chunks".to_owned(),
+            ));
+        }
+        (true, None) => Framing::Chunked,
+        (false, Some(length)) => Framing::Length(length),
+        (false, None) => Framing::Close,
+    };
+    Ok((status, framing))
+}
+
+/// One header or trailer field, its name lowercased and its value trimmed.
+///
+/// The name is a token — one or more of the characters HTTP allows in one, with
+/// nothing between it and the colon — and the value carries no control
+/// character but a tab, so a line that is not a field is never read as one.
+fn field_of(line: &str) -> Result<(String, &str), Transport> {
+    let refused = || Transport::Malformed(format!("{line:?} is no header field"));
+    let (name, value) = line.split_once(':').ok_or_else(refused)?;
+    if name.is_empty() || !name.bytes().all(is_token_byte) {
+        return Err(refused());
+    }
+    if value
+        .bytes()
+        .any(|byte| byte.is_ascii_control() && byte != b'\t')
+    {
+        return Err(refused());
+    }
+    Ok((name.to_ascii_lowercase(), value.trim()))
+}
+
+/// The status a status line carries, when it is an HTTP/1 status line.
+fn status_of(status_line: &str) -> Result<u16, Transport> {
+    let mut parts = status_line.split_whitespace();
+    let version = parts.next().unwrap_or_default();
+    parts
+        .next()
+        .filter(|_| matches!(version, "HTTP/1.0" | "HTTP/1.1"))
+        .filter(|code| code.len() == 3 && code.bytes().all(|byte| byte.is_ascii_digit()))
+        .and_then(|code| code.parse::<u16>().ok())
+        .filter(|code| (100..=599).contains(code))
+        .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))
+}
+
+/// A connection being read a piece at a time, with what has arrived and not
+/// yet been handed on.
+struct Source<'a> {
+    /// The connection, read only as far as the sink asks.
+    stream: TcpStream,
+    /// Where it reaches, for naming in an error.
+    endpoint: &'a Endpoint,
+    /// Bytes read off the connection and not yet consumed.
+    buffered: Vec<u8>,
+}
+
+impl Source<'_> {
+    /// Read one more piece off the connection; `false` when it has closed.
+    fn fill(&mut self) -> Result<bool, Transport> {
+        let mut piece = [0_u8; STREAM_PIECE];
+        let read = self.stream.read(&mut piece).map_err(|error| {
+            Transport::Unreachable(format!("reading from {}: {error}", self.endpoint))
+        })?;
+        self.buffered.extend_from_slice(&piece[..read]);
+        Ok(read > 0)
+    }
+
+    /// The header block, without its terminating blank line.
+    fn head(&mut self) -> Result<Vec<u8>, Transport> {
+        loop {
+            if let Some(split) = find(&self.buffered, b"\r\n\r\n") {
+                let head = self.buffered[..split].to_vec();
+                self.buffered.drain(..split + 4);
+                return Ok(head);
+            }
+            if !self.fill()? {
+                return Err(Transport::Malformed(
+                    "the response carries no header block".to_owned(),
+                ));
+            }
+        }
+    }
+
+    /// A body framed by its length.
+    fn length(&mut self, length: usize, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
+        let mut left = length;
+        while left > 0 {
+            if self.buffered.is_empty() && !self.fill()? {
+                return Err(Transport::Unreachable(format!(
+                    "the response promised {length} bytes and delivered {}",
+                    length - left
+                )));
+            }
+            let take = left.min(self.buffered.len());
+            let piece: Vec<u8> = self.buffered.drain(..take).collect();
+            left -= take;
+            if sink.take(&piece).is_break() {
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    /// A body framed by chunks.
+    fn chunked(&mut self, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
+        loop {
+            let size = chunk_size_of(&self.line()?)?;
+            if size == 0 {
+                // The trailer section: header fields, ended by a blank line.
+                loop {
+                    let trailer = self.line()?;
+                    if trailer.is_empty() {
+                        return Ok(ControlFlow::Continue(()));
+                    }
+                    field_of(&String::from_utf8_lossy(&trailer))?;
+                }
+            }
+            if self.length(size, sink)?.is_break() {
+                return Ok(ControlFlow::Break(()));
+            }
+            if !self.line()?.is_empty() {
+                return Err(Transport::Malformed(
+                    "a chunk runs past the size it declared".to_owned(),
+                ));
+            }
+        }
+    }
+
+    /// A body framed by the connection closing.
+    fn until_close(&mut self, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
+        loop {
+            if !self.buffered.is_empty() {
+                let piece = core::mem::take(&mut self.buffered);
+                if sink.take(&piece).is_break() {
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+            if !self.fill()? {
+                return Ok(ControlFlow::Continue(()));
+            }
+        }
+    }
+
+    /// One CRLF-terminated line, without its terminator.
+    fn line(&mut self) -> Result<Vec<u8>, Transport> {
+        loop {
+            if let Some(end) = find(&self.buffered, b"\r\n") {
+                let line = self.buffered[..end].to_vec();
+                self.buffered.drain(..end + 2);
+                return Ok(line);
+            }
+            if !self.fill()? {
+                return Err(Transport::Malformed(
+                    "the chunked body stops before its last chunk".to_owned(),
+                ));
+            }
+        }
+    }
+}
+
+/// The size one chunk-size line declares, its extensions held to their grammar.
+///
+/// RFC 9112 spells the line `chunk-size *( BWS ";" BWS chunk-ext-name [ BWS
+/// "=" BWS chunk-ext-val ] )`, a name being a token and a value a token or a
+/// quoted string. Nothing here reads an extension, but a line outside that
+/// grammar is not a chunk this port can trust the size of, so it is refused
+/// rather than cut at its first `;`.
+fn chunk_size_of(line: &[u8]) -> Result<usize, Transport> {
+    let refused = || {
+        Transport::Malformed(format!(
+            "{:?} is no chunk-size line",
+            String::from_utf8_lossy(line)
+        ))
+    };
+    let digits = line
+        .iter()
+        .take_while(|byte| byte.is_ascii_hexdigit())
+        .count();
+    let size = core::str::from_utf8(&line[..digits])
+        .ok()
+        .filter(|hex| !hex.is_empty())
+        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+        .ok_or_else(refused)?;
+    let mut rest = &line[digits..];
+    loop {
+        rest = skip_whitespace(rest);
+        let Some((&b';', after)) = rest.split_first() else {
+            return if rest.is_empty() {
+                Ok(size)
+            } else {
+                Err(refused())
+            };
+        };
+        let (name, after) = token_of(skip_whitespace(after));
+        if name == 0 {
+            return Err(refused());
+        }
+        rest = after;
+        let spaced = skip_whitespace(rest);
+        if let Some((&b'=', value)) = spaced.split_first() {
+            rest = extension_value_of(skip_whitespace(value)).ok_or_else(refused)?;
+        }
+    }
+}
+
+/// Whether one byte may appear in an HTTP token.
+fn is_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
+}
+
+/// The bytes after any spaces and tabs.
+fn skip_whitespace(bytes: &[u8]) -> &[u8] {
+    let blank = bytes
+        .iter()
+        .take_while(|byte| matches!(byte, b' ' | b'\t'))
+        .count();
+    &bytes[blank..]
+}
+
+/// The length of the token the bytes open with, and what follows it.
+fn token_of(bytes: &[u8]) -> (usize, &[u8]) {
+    let length = bytes
+        .iter()
+        .take_while(|byte| is_token_byte(**byte))
+        .count();
+    (length, &bytes[length..])
+}
+
+/// What follows one chunk-extension value — a token or a quoted string — or
+/// `None` when the bytes open with neither.
+fn extension_value_of(bytes: &[u8]) -> Option<&[u8]> {
+    let Some((&b'"', mut rest)) = bytes.split_first() else {
+        let (length, rest) = token_of(bytes);
+        return (length > 0).then_some(rest);
+    };
+    // qdtext is a tab, a space or any visible byte but `"` and `\`, and a
+    // quoted pair escapes a tab, a space or any visible byte; bytes above
+    // ASCII are obs-text and stand in either.
+    let quotable = |byte: u8| byte == b'\t' || byte == b' ' || !byte.is_ascii_control();
+    loop {
+        match rest.split_first()? {
+            (&b'"', after) => return Some(after),
+            (&b'\\', after) => {
+                let (&escaped, after) = after.split_first()?;
+                if !quotable(escaped) {
+                    return None;
+                }
+                rest = after;
+            }
+            (&byte, after) if quotable(byte) => rest = after,
+            _ => return None,
+        }
+    }
+}
+
 /// Open a connection to the instance, within the configured timeout.
 fn connect(endpoint: &Endpoint, timeout: Duration) -> Result<TcpStream, Transport> {
     let address = (endpoint.host(), endpoint.port())
@@ -150,11 +514,7 @@ fn parse(raw: &[u8]) -> Result<Response, Transport> {
     let status_line = lines
         .next()
         .ok_or_else(|| Transport::Malformed("the response carries no status line".to_owned()))?;
-    let status: u16 = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))?;
+    let status = status_of(status_line)?;
 
     let mut length = None;
     let mut chunked = false;

@@ -1,0 +1,19 @@
+{
+  "date": 1791683180,
+  "display": "two-tools.gcode",
+  "hash": "55846cd39057ca27f0a477d2051c30cad0671ba0",
+  "name": "two-tools.gcode",
+  "origin": "local",
+  "path": "two-tools.gcode",
+  "refs": {
+    "download": "http://127.0.0.1:53081/downloads/files/local/two-tools.gcode",
+    "resource": "http://127.0.0.1:53081/api/files/local/two-tools.gcode"
+  },
+  "size": 184,
+  "type": "machinecode",
+  "typePath": [
+    "machinecode",
+    "gcode"
+  ],
+  "user": "printobserver"
+}

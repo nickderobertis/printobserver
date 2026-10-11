@@ -175,6 +175,28 @@ fn walk_the_job(instance: &Scripted) {
         &after["progress"]["printTimeLeft"],
     );
 
+    // `file_position_bytes` — reported, in bytes, and moving while it prints.
+    reported_or_absent(
+        "file_position_bytes",
+        job.file_position_bytes.map(as_real),
+        &before["progress"]["filepos"],
+        &after["progress"]["filepos"],
+    );
+
+    // `filament` — the analysis's per-tool figure, which for the hold print,
+    // dwells and nothing else, is a map naming no tool at all.
+    let reported = before["job"]["filament"]
+        .as_object()
+        .map(serde_json::Map::len)
+        .unwrap_or_default();
+    assert_eq!(
+        job.filament.len(),
+        reported,
+        "the instance reported {} for the job's filament and this port carried {:?}",
+        before["job"]["filament"],
+        job.filament
+    );
+
     // `state` — reported, in the instance's own word.
     assert_eq!(before["state"].as_str(), Some("Printing"));
     assert_eq!(job.state, PrinterState::Printing);

@@ -19,8 +19,9 @@
 //! so the order they run in is part of what is being proven, and a runner free
 //! to interleave them would be proving something else. Reading comes first,
 //! while the environment's own print is still running; the failure walk needs
-//! that same running print for its state conflict; acting comes last, because it
-//! cancels, starts and cancels again.
+//! that same running print for its state conflict; acting comes next, because it
+//! cancels, starts and cancels again; and the files walk comes last, because it
+//! needs no print running — it prints a fixture of its own and cancels it.
 
 #[path = "support/block_on.rs"]
 mod block_on;
@@ -42,11 +43,13 @@ mod wait;
 mod acting;
 #[path = "live/failing.rs"]
 mod failing;
+#[path = "live/files.rs"]
+mod files;
 #[path = "live/reading.rs"]
 mod reading;
 
-/// Reading, pinning, failing and acting, in the one order a shared machine
-/// admits.
+/// Reading, pinning, failing, acting and the files, in the one order a shared
+/// machine admits.
 #[test]
 fn the_printer_port_is_proven_against_a_real_octoprint() {
     let instance = env::scripted();
@@ -64,5 +67,6 @@ fn the_printer_port_is_proven_against_a_real_octoprint() {
     reading::pin_completion(&instance);
     failing::walk(&instance);
     acting::walk(&instance);
+    files::walk(&instance);
     acting::hold_the_print_running(&instance);
 }

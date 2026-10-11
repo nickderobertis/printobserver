@@ -30,19 +30,137 @@ pub fn get(instance: &Scripted, path: &str) -> serde_json::Value {
 ///
 /// Panics when the instance cannot be reached, which is a broken environment.
 pub fn call(instance: &Scripted, path: &str) -> (u16, String) {
+    send(instance, "GET", path, None)
+}
+
+/// Remove one file of the instance's own storage, if it holds it.
+///
+/// # Panics
+///
+/// Panics when the instance answers anything but a removal or "no such file".
+pub fn delete_local(instance: &Scripted, name: &str) {
+    let path = format!("/api/files/local/{name}");
+    let (status, body) = send(instance, "DELETE", &path, None);
+    assert!(
+        status == 204 || status == 404,
+        "DELETE {path} answered {status}: {body}"
+    );
+}
+
+/// Upload one file to the instance's own storage, into a folder of it or to
+/// its top, as a browser would.
+///
+/// # Panics
+///
+/// Panics when the instance does not accept it.
+pub fn upload_local(instance: &Scripted, folder: Option<&str>, name: &str, content: &[u8]) {
+    let (body, content_type) = multipart(folder.map(|path| ("path", path)), Some((name, content)));
+    let (status, answer) = send(
+        instance,
+        "POST",
+        "/api/files/local",
+        Some((&content_type, &body)),
+    );
+    assert_eq!(status, 201, "uploading {name} answered {status}: {answer}");
+}
+
+/// Create one folder at the top of the instance's own storage.
+///
+/// # Panics
+///
+/// Panics when the instance does not create it.
+pub fn create_folder(instance: &Scripted, name: &str) {
+    let (body, content_type) = multipart(Some(("foldername", name)), None);
+    let (status, answer) = send(
+        instance,
+        "POST",
+        "/api/files/local",
+        Some((&content_type, &body)),
+    );
+    assert_eq!(status, 201, "creating {name} answered {status}: {answer}");
+}
+
+/// Send one JSON command, and expect it taken.
+///
+/// # Panics
+///
+/// Panics when the instance answers anything but success.
+pub fn post_json(instance: &Scripted, path: &str, json: &serde_json::Value) {
+    let body = json.to_string();
+    let (status, answer) = send(
+        instance,
+        "POST",
+        path,
+        Some(("application/json", body.as_bytes())),
+    );
+    assert!(
+        (200..300).contains(&status),
+        "POST {path} answered {status}: {answer}"
+    );
+}
+
+/// One multipart body, carrying at most one field and at most one file.
+fn multipart(field: Option<(&str, &str)>, file: Option<(&str, &[u8])>) -> (Vec<u8>, String) {
+    let boundary = "printobserver-upload-boundary";
+    let mut body = Vec::new();
+    if let Some((name, value)) = field {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n\
+                 {value}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    if let Some((name, content)) = file {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; \
+                 filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(content);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    (body, format!("multipart/form-data; boundary={boundary}"))
+}
+
+/// The status and body `OctoPrint` answers one request with.
+fn send(
+    instance: &Scripted,
+    method: &str,
+    path: &str,
+    body: Option<(&str, &[u8])>,
+) -> (u16, String) {
     let authority = instance
         .url
         .strip_prefix("http://")
         .expect("the record names an http URL");
     let mut stream = TcpStream::connect(authority)
         .unwrap_or_else(|error| panic!("connecting to {authority}: {error}"));
-    let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nX-Api-Key: {}\r\n\
-         Accept: application/json\r\nConnection: close\r\n\r\n",
+    let mut request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nX-Api-Key: {}\r\n\
+         Accept: application/json\r\nConnection: close\r\n",
         instance.api_key
-    );
+    )
+    .into_bytes();
+    match body {
+        Some((content_type, payload)) => {
+            request.extend_from_slice(
+                format!(
+                    "Content-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+                    payload.len()
+                )
+                .as_bytes(),
+            );
+            request.extend_from_slice(payload);
+        }
+        None => request.extend_from_slice(b"\r\n"),
+    }
     stream
-        .write_all(request.as_bytes())
+        .write_all(&request)
         .and_then(|()| stream.flush())
         .unwrap_or_else(|error| panic!("writing to {authority}: {error}"));
     let mut raw = Vec::new();

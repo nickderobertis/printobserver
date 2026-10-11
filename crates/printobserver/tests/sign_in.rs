@@ -522,8 +522,9 @@ fn a_harness_outside_the_table_is_refused_before_anything_runs() {
     );
 }
 
-/// A configuration signing in cannot read the two values out of is refused,
-/// naming what is missing, before anything runs.
+/// A configuration signing in cannot read the two values out of — one missing
+/// a value, one that is no document, and one that is not there — is refused,
+/// naming what is wrong, before anything runs.
 #[test]
 fn a_configuration_without_the_values_signing_in_reads_is_refused() {
     let host = Host::with_stand_ins(0);
@@ -534,10 +535,12 @@ fn a_configuration_without_the_values_signing_in_reads_is_refused() {
             host.state().display()
         ),
     );
+    let no_document = host.configuration("broken.toml", "state_dir = [\n");
     let absent = host.root.path().join("nowhere.toml");
 
     for (config, named) in [
         (without_a_harness, "supervisor.harness"),
+        (no_document, "broken.toml"),
         (absent, "nowhere.toml"),
     ] {
         let output = signing_in(&host, &config, TYPED, &[]);

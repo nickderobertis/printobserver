@@ -3,8 +3,9 @@
 //! Owns: the `OctoPrint` adapter — the one implementation of
 //! `printobserver-printer-api` that talks to an `OctoPrint` instance over its
 //! HTTP API, the narrow HTTP client it talks with, the conversions between
-//! `OctoPrint`'s units and the contract's, and the closed set of G-code
-//! commands the fan is expressed as.
+//! `OctoPrint`'s units and the contract's, the closed set of G-code
+//! commands the fan is expressed as, and the reader of a file's own G-code that
+//! turns a byte position into the filament fed up to it.
 //!
 //! May depend on: `printobserver-types` and `printobserver-printer-api`, plus
 //! whatever it needs to reach `OctoPrint`. Never another implementation crate,
@@ -49,6 +50,7 @@
 pub mod client;
 pub mod config;
 pub mod convert;
+pub mod gcode;
 mod http;
 mod wire;
 
@@ -60,3 +62,4 @@ pub use convert::{
     COMMAND_SET, FAN_PWM_PARAMETER, FAN_SET_COMMAND, fan_pwm_of_percent, fraction_of_completion,
     percent_of_multiplier,
 };
+pub use gcode::{ExtrudedTo, Extrusion, extruded_to};

@@ -398,5 +398,10 @@ async fn what_the_ingress_says_about_itself_carries_no_secret() {
         "a rendering of the ingress says nothing about what it is: {rendered}"
     );
     assert_eq!(*ingress.completions().borrow(), 0);
+
+    // Nor does either rendering of the secret itself.
+    let secret = printobserver_server::SharedSecret::new(SECRET).expect("a secret");
+    assert_eq!(secret.to_string(), printobserver_server::REDACTED);
+    assert!(!format!("{secret:?}").contains(SECRET));
     world.server.stop().await;
 }

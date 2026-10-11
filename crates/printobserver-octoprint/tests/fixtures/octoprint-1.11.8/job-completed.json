@@ -1,0 +1,34 @@
+{
+  "job": {
+    "averagePrintTime": 0.06687913602218032,
+    "estimatedPrintTime": 2.207106781186547,
+    "filament": {
+      "tool0": {
+        "length": 10.0,
+        "volume": 0.0
+      },
+      "tool1": {
+        "length": 7.0,
+        "volume": 0.0
+      }
+    },
+    "file": {
+      "date": 1791683180,
+      "display": "two-tools.gcode",
+      "name": "two-tools.gcode",
+      "origin": "local",
+      "path": "two-tools.gcode",
+      "size": 184
+    },
+    "lastPrintTime": 0.06687913602218032,
+    "user": "printobserver"
+  },
+  "progress": {
+    "completion": 100.0,
+    "filepos": 184,
+    "printTime": 0,
+    "printTimeLeft": 0,
+    "printTimeLeftOrigin": null
+  },
+  "state": "Operational"
+}

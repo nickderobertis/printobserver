@@ -32,7 +32,13 @@ mod configuring;
 mod coverage;
 #[path = "journeys/failing.rs"]
 mod failing;
+#[path = "journeys/files.rs"]
+mod files;
+#[path = "journeys/gcode.rs"]
+mod gcode;
 #[path = "journeys/reading.rs"]
 mod reading;
 #[path = "journeys/redaction.rs"]
 mod redaction;
+#[path = "journeys/streaming.rs"]
+mod streaming;
