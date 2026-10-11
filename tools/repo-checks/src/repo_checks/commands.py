@@ -12,7 +12,7 @@ from pathlib import Path
 
 from repo_checks import checks_graph, gate_tier
 from repo_checks.model import RELEASE, PolicyValueError, Repo, toolchain_tools
-from repo_checks.platforms import PlatformError, descriptor, host
+from repo_checks.platforms import PlatformError, descriptor
 from repo_checks.shell import run
 from repo_checks.windows_lint import install_target
 
@@ -377,47 +377,6 @@ def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
     return Exemption(outcome=outcome + entry.reference)
 
 
-#: Where `repo-policy.toml` names the platforms whose gate measures Rust coverage.
-RUST_PLATFORMS_KEY = "rust_platforms"
-
-
-def rust_unmeasured_here(repo: Repo) -> str | None:
-    """Why this host's gate runs the Rust tests uninstrumented, or none where it measures them.
-
-    A host the supported-platform list does not name, or a policy that names no
-    list of platforms, measures: the floor is what is lost by guessing the
-    other way.
-    """
-    declared = repo.policy["gate"]["coverage"].get(RUST_PLATFORMS_KEY)
-    if not isinstance(declared, list) or not all(isinstance(p, str) for p in declared):
-        return None
-    try:
-        here = host(repo).id
-    except PlatformError:
-        return None
-    if here in declared:
-        return None
-    return (
-        f"Rust coverage is not measured on {here}: repo-policy.toml's "
-        f"gate.coverage.{RUST_PLATFORMS_KEY} measures it on {', '.join(declared)}"
-    )
-
-
-def rust_tests_uninstrumented(repo: Repo) -> int:
-    """Answer 0, saying why, where this host runs the Rust tests uninstrumented; 1 where not.
-
-    The predicate every crate's `test` target asks before choosing `cargo
-    llvm-cov nextest` or plain `cargo nextest run`. Anything but 0 — this
-    answer, or a failure to answer at all — keeps the instrumented run, so an
-    error can only ever leave coverage measured.
-    """
-    reason = rust_unmeasured_here(repo)
-    if reason is None:
-        return 1
-    print(f"{reason}; running the tests uninstrumented", file=sys.stderr)
-    return 0
-
-
 #: What `pyproject.toml`'s coverage report reads the platform it is made on off.
 COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
 
@@ -515,10 +474,7 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
         print(f"coverage: over {scope.reason}")
 
     rust_total = "not measured: this run's tests reached no crate"
-    unmeasured = rust_unmeasured_here(repo) if scope.rust != () else None
-    if unmeasured is not None:
-        rust_total = f"not measured: {unmeasured}"
-    elif scope.rust != ():
+    if scope.rust != ():
         ignored = scope.rust_ignored(repo)
         rust = run(
             [

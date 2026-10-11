@@ -58,7 +58,6 @@ COMMANDS = (
     "commit-msg",
     "pr-title",
     "coverage",
-    "rust-tests-uninstrumented",
     "lint-windows-target",
     "docs-schemas-write",
 )
@@ -167,8 +166,6 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"coverage: refused: {error}", file=sys.stderr)
                 return gate_tier.REFUSED
             return commands.coverage(repo, measured)
-        case "rust-tests-uninstrumented":
-            return commands.rust_tests_uninstrumented(repo)
         case "lint-windows-target":
             return windows_lint.lint_windows_target(repo)
         case "pr-title":

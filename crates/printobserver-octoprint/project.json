@@ -21,7 +21,7 @@
       "command": "cargo clippy -p printobserver-octoprint --all-targets --locked -- -D warnings"
     },
     "test": {
-      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-octoprint-%p-%m.profraw; fi; if uv run -q python -m repo_checks rust-tests-uninstrumented; then exec cargo nextest run -p printobserver-octoprint --target-dir target/uninstrumented --no-tests=pass -E \"not binary(integration)\"; fi; exec cargo llvm-cov nextest -p printobserver-octoprint --no-report --no-tests=pass -E \"not binary(integration)\"'"
+      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-octoprint-%p-%m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-octoprint --no-report --no-tests=pass -E \"not binary(integration)\"'"
     },
     "build": {
       "command": "cargo build -p printobserver-octoprint --locked"
