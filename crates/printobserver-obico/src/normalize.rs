@@ -12,7 +12,9 @@ use core::time::Duration;
 use chrono::DateTime;
 use printobserver_types::serde_json::{self, Value};
 use printobserver_types::{EventBody, RawBytes, Timestamp};
-use printobserver_vision_api::{Detection, NormalizedAlert, ProviderPrint, VisionError};
+use printobserver_vision_api::{
+    Detection, NormalizedAlert, PrinterSignal, ProviderPrint, VisionError,
+};
 
 use crate::events::{
     ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload, obico_source,
@@ -144,6 +146,8 @@ struct Read {
     print: Option<ProviderPrint>,
     /// What the detector did, when the body is one of its detections.
     detection: Option<Detection>,
+    /// What the printer itself signalled, when the body relays a signal.
+    signal: Option<PrinterSignal>,
 }
 
 /// Render one payload as a body, which a payload this adapter declares never
@@ -180,6 +184,7 @@ fn read_failure_alert(parsed: Value, body: &RawBytes) -> Result<Read, VisionErro
         image_url: Some(image_url),
         print: correlation.provider_print(),
         detection: Some(detection),
+        signal: None,
     })
 }
 
@@ -196,6 +201,13 @@ fn read_printer_notification(parsed: Value, body: &RawBytes) -> Result<Read, Vis
         Some(print) => Correlation::of(print, body)?,
         None => Correlation::about_no_print(),
     };
+    // A filament change is the printer asking for its spool to be changed,
+    // which the supervision domain charges and marks the loaded spool for.
+    let signal = matches!(
+        notification.event.event_type,
+        ObicoEventType::FilamentChange
+    )
+    .then_some(PrinterSignal::FilamentChange);
     let payload = ObicoPrinterNotificationPayload {
         notification_type: notification_type_of(notification.event.event_type),
         obico_print_id: correlation.obico_print_id,
@@ -208,6 +220,7 @@ fn read_printer_notification(parsed: Value, body: &RawBytes) -> Result<Read, Vis
         image_url: notification.img_url,
         print: correlation.provider_print(),
         detection: None,
+        signal,
     })
 }
 
@@ -250,7 +263,7 @@ pub(crate) fn read(
         image_url: read.image_url,
         print: read.print,
         detection: read.detection,
-        signal: None,
+        signal: read.signal,
     })
 }
 

@@ -151,6 +151,19 @@ impl Supervisor {
         event.image.clone_from(&frame);
         let printer = self.read_snapshot().await.ok();
         let job = self.read_job().await.ok();
+        // `OctoPrint` clears a job's position when it is cancelled or fails,
+        // so every read that finds the print running is where it is next known
+        // to have stopped. The look is already written down and answered
+        // either way: a position the store would not keep costs this look
+        // nothing, and the next read records one.
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+        if let Some(job) = &job
+            && print.ended_at.is_none()
+        {
+            let _ = self
+                .record_position_from(&print, job, self.clock().now())
+                .await;
+        }
         let detector_paused = self.detector_paused(print.id)
             && printer
                 .as_ref()

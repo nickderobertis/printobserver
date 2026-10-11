@@ -16,7 +16,8 @@ use core::time::Duration;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload, system_source,
+    InterventionExpiredPayload, OperatorAcknowledgementPayload, PortFailurePayload,
+    PrintStartedPayload, system_source,
 };
 use printobserver_obico::{ObicoFailureAlertPayload, ObicoPrinterNotificationPayload};
 use printobserver_printer_api::Adjustable;
@@ -26,7 +27,7 @@ use printobserver_supervisor_api::{
 };
 use printobserver_types::contract::Sample as _;
 use printobserver_types::serde_json::{Value, json};
-use printobserver_types::{EventBody, EventKind, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventKind, EventPayload as _, PrintId, Timestamp};
 use printobserver_vision_api::MalformedExternalEventPayload;
 
 use crate::http_host::image_host;
@@ -215,14 +216,22 @@ async fn every_record_survives_a_restart_and_still_acts() {
 
     let world = world.restart().await;
 
-    // Every kind the contracts declare is still there, and the history reads
-    // back exactly as it was written.
+    // Every kind the history held before the restart is still there, and the
+    // history reads back exactly as it was written. The domain writes kinds of
+    // its own beside the ones this journey writes — the alert that opened the
+    // print records its `print_started` — so what is compared is the history
+    // before against the history after, not a count of declared kinds.
     let events_after = read_history(&world, print_id).await;
-    assert_eq!(
-        kinds(&events_after).len(),
-        DECLARED_KINDS,
-        "a restart lost a kind of event: {:?}",
-        kinds(&events_after)
+    let (kinds_before, kinds_after) = (kinds(&events_before), kinds(&events_after));
+    for kind in kinds_before.keys() {
+        assert!(
+            kinds_after.contains_key(kind),
+            "a restart lost a kind of event, {kind:?}: {kinds_after:?}"
+        );
+    }
+    assert!(
+        kinds_after.contains_key(&PrintStartedPayload::kind()),
+        "the alert that opened the print recorded no print_started: {kinds_after:?}"
     );
     // The restart writes its own adoptions into the history, so what is
     // asserted is that every event written before it is still there and still

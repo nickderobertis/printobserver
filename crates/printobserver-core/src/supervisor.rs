@@ -25,9 +25,11 @@
 //! exist. What the policy stands between is a requested
 //! [`PrintAction`](crate::records::PrintAction) and the printer.
 //!
-//! The port's two reads, `snapshot` and `job`, are outside the rule for that
-//! same reason, and are reached through [`Supervisor::read_snapshot`] and
-//! [`Supervisor::read_job`].
+//! The port's reads — `snapshot`, `job` and the three reads of the files the
+//! printer holds — are outside the rule for that same reason, and are reached
+//! through [`Supervisor::read_snapshot`], [`Supervisor::read_job`],
+//! [`Supervisor::read_file_facts`], [`Supervisor::read_printed_files`] and
+//! [`Supervisor::read_extruded_to`].
 //!
 //! # Nothing here sends a command string to a printer
 //!
@@ -36,13 +38,15 @@
 //! [`FileName`](printobserver_types::FileName) newtype, which refuses anything
 //! but a name.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use crate::records::{ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction};
-use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot};
+use printobserver_printer_api::{
+    FileFacts, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot, ToolFilament,
+};
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{PrintId, Timestamp};
+use printobserver_types::{FileName, PrintId, Timestamp};
 use printobserver_vision_api::VisionPort;
 
 use crate::context::PrintContext;
@@ -119,6 +123,19 @@ pub struct Supervisor {
     /// issued before its outcome is settled, so two expiries interleaved would
     /// each put the value back.
     expiring: TurnLocks,
+    /// One write to the spool ledger at a time.
+    ///
+    /// Every spool command, every settlement, every filament-change signal and
+    /// every accounting of the printer's tallies reads the spools it charges
+    /// and then writes them; two of them interleaved would each compute from
+    /// the same figure and one of the two would be lost. They take this lock,
+    /// under [`Supervisor::resolving_key`], for as long as that read and write
+    /// take, and never take another lock while they hold it.
+    spool_writes: TurnLocks,
+    /// The prints this supervisor has itself seen printing or paused, or
+    /// started: a print it closes out that is not among them ended while
+    /// nothing was watching it.
+    seen_running: Mutex<BTreeSet<PrintId>>,
     /// When the agent last acted on each print.
     last_agent_action: Mutex<BTreeMap<PrintId, Timestamp>>,
     /// The context collected for the turn currently running on each print.
@@ -176,6 +193,8 @@ impl Supervisor {
             resolving: TurnLocks::default(),
             resolving_key: PrintId::new(),
             expiring: TurnLocks::default(),
+            spool_writes: TurnLocks::default(),
+            seen_running: Mutex::new(BTreeSet::new()),
             last_agent_action: Mutex::new(BTreeMap::new()),
             pending_context: Mutex::new(BTreeMap::new()),
             inboxes: Inboxes::default(),
@@ -263,6 +282,27 @@ impl Supervisor {
         self.resolving.acquire(self.resolving_key).await
     }
 
+    /// Wait until no other write to the spool ledger is running, then hold it.
+    pub(crate) async fn spool_writes(&self) -> crate::turn_lock::TurnGuard<'_> {
+        self.spool_writes.acquire(self.resolving_key).await
+    }
+
+    /// Record that this supervisor saw one print's job printing or paused.
+    pub(crate) fn note_seen_running(&self, print_id: PrintId) {
+        self.seen_running
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(print_id);
+    }
+
+    /// Whether this supervisor saw one print's job printing or paused.
+    pub(crate) fn was_seen_running(&self, print_id: PrintId) -> bool {
+        self.seen_running
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&print_id)
+    }
+
     /// Record that the agent acted on one print at an instant.
     pub(crate) fn note_agent_action(&self, print_id: PrintId, at: Timestamp) {
         self.last_agent_action
@@ -318,6 +358,35 @@ impl Supervisor {
     /// A read, for the same reason [`Supervisor::read_snapshot`] is.
     pub(crate) async fn read_job(&self) -> Result<JobSnapshot, PrinterError> {
         self.printer.job().await
+    }
+
+    /// Read what the printer knows of one file it holds.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_file_facts(
+        &self,
+        file_name: FileName,
+    ) -> Result<FileFacts, PrinterError> {
+        self.printer.file_facts(file_name).await
+    }
+
+    /// Read every file the printer holds that carries a print tally.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_printed_files(&self) -> Result<Vec<FileFacts>, PrinterError> {
+        self.printer.printed_files().await
+    }
+
+    /// Read the filament each tool is fed by one file's own moves, up to a
+    /// byte position in it.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_extruded_to(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> Result<Vec<ToolFilament>, PrinterError> {
+        self.printer.extruded_to(file_name, position_bytes).await
     }
 
     /// Record the decision for one request, and — if it was accepted — issue it.
