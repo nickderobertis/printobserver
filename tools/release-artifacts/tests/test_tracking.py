@@ -9,6 +9,7 @@ open a real issue.
 
 from __future__ import annotations
 
+import json
 import secrets
 from collections.abc import Iterator
 
@@ -256,6 +257,9 @@ def test_a_repository_the_forge_does_not_carry_fails_the_step(
         ("GET", "/issues?page=x", None, CREDENTIAL, 422),
         ("POST", "/issues", b'{"title": "t", "body": "b", "labels": [1]}', CREDENTIAL, 422),
         ("POST", "/issues/1/comments", b'{"body": ""}', CREDENTIAL, 404),
+        ("POST", "/issues", b'{"title": "t", "body": "b", "labels": [], "x": 1}', CREDENTIAL, 422),
+        ("POST", "/issues", b'{"title": 5, "body": "b", "labels": []}', CREDENTIAL, 422),
+        ("POST", "/issues", b'{"title": true, "body": "b", "labels": []}', CREDENTIAL, 422),
         ("PATCH", "/issues/x", b"{}", CREDENTIAL, 404),
         ("POST", "/issues/9/comments", b'{"body": "x"}', CREDENTIAL, 404),
     ],
@@ -499,3 +503,20 @@ def test_a_refused_closing_comment_leaves_that_issue_open_for_the_next_success(
 
     equal(mended(2), 0, describing="the next success")
     equal(forge.open_labelled(LABEL), [], describing="the tracking issues left open")
+
+
+def test_the_stand_in_takes_a_null_where_the_forge_does(forge: IssuesForge) -> None:
+    """A `null` reason closes an issue without one, as the description admits it."""
+    number = forge.seed(TITLE, [LABEL])
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    answered = exchange(
+        f"{forge.api}/repos/{REPOSITORY}/issues/{number}",
+        method="PATCH",
+        body=b'{"state": "closed", "state_reason": null}',
+        content_type="application/json",
+        token=CREDENTIAL,
+    )
+
+    equal(json.loads(answered)["state"], "closed", describing="the issue's state")
+    equal(forge.issues[number].state_reason, None, describing="the reason it was closed for")

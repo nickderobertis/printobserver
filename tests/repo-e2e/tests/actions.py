@@ -26,13 +26,13 @@ where a rule modelled here wrongly would show up.
   * A job runs after every job it `needs`, and only if each of them succeeded —
     the implicit `success()` the forge applies to every job condition — and its
     `if:` expression, where it has one, is truthy. Otherwise it is skipped, and
-    what it needs from a skipped job it never reads. A job condition calling one
-    of the forge's status functions — `always()`, `success()`, `failure()` or
-    `cancelled()` — replaces that implicit `success()`, as the forge's does, so
-    such a job runs after a needed job failed and reads `needs.<job>.result`.
-    `failure()` is true where a needed job failed, and `cancelled()` never is,
-    because nothing here cancels a run. A step condition calling one is refused:
-    a job stops at its first failing step here, so a step after it never runs.
+    what it needs from a skipped job it never reads. A job condition calling
+    `always()` replaces that implicit `success()`, as the forge's does, so such
+    a job runs after a needed job failed and reads `needs.<job>.result`. It is
+    the one status function modelled, because it is the one this repository's
+    workflows call and nothing publishes the forge's in a form this could be
+    reconciled to; a call of any other — `success()`, `failure()`,
+    `cancelled()` — is refused by name, in a job condition or a step's.
     A caller may name the set of jobs to run; every job outside it is skipped
     by name, so a journey can drive a workflow's resolving jobs without the
     ones whose steps reach a real registry. The refusal of a construct outside
@@ -137,37 +137,9 @@ SECRET_REFERENCE = re.compile(r"secrets\.([A-Za-z0-9_]+)")
 
 INTERPOLATION = re.compile(r"\$\{\{(.*?)\}\}")
 
-#: The forge's status functions, which a job condition may call.
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-STATUS_FUNCTIONS = ("always", "success", "failure", "cancelled")
-
-#: A call of one of them, as a condition spells it.
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-STATUS_CALL = re.compile(rf"\b({'|'.join(STATUS_FUNCTIONS)})\s*\(")
-
-
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-@dataclass(frozen=True, slots=True)
-class Status:
-    """What each status function answers for one job, from what it needs.
-
-    `always()` is true, `success()` is true where every needed job succeeded,
-    `failure()` where one failed, and `cancelled()` never, because nothing
-    here cancels a run.
-    """
-
-    succeeded: bool
-    failed: bool
-
-    def answer(self, function: str) -> bool | None:
-        """What `function()` answers, or `None` where it is no status function."""
-        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
-        return {
-            "always": True,
-            "success": self.succeeded,
-            "failure": self.failed,
-            "cancelled": False,
-        }.get(function)
+#: The one status function modelled, and a call of it as a condition spells it.
+ALWAYS = "always"
+ALWAYS_CALL = re.compile(rf"\b{ALWAYS}\s*\(")
 
 
 class UnsupportedError(ValueError):
@@ -405,9 +377,8 @@ class Contexts:
     github: Declared = field(default_factory=dict)
     inputs: dict[str, str] = field(default_factory=dict)
     runner: dict[str, str] = field(default_factory=dict)
-    #: What each status function answers, in a job condition; `None` elsewhere,
-    #: where calling one is refused.
-    status: Status | None = None
+    #: Whether this is a job's condition, the one place `always()` is modelled.
+    judging_a_job: bool = False
 
     def resolve(self, dotted: str) -> object:
         """The value at one dotted path, or `None` where the forge would give `null`.
@@ -543,9 +514,7 @@ class _Expression:
                     raise UnsupportedError(msg)
                 return value
             case Token("name", name) if self._peek() == Token("op", "("):
-                status = self.contexts.status
-                answered = None if status is None else status.answer(name)
-                if answered is None:
+                if name != ALWAYS or not self.contexts.judging_a_job:
                     msg = (
                         f"expression `{self.text}` calls `{name}()`, which this runner does "
                         f"not model here"
@@ -556,7 +525,7 @@ class _Expression:
                     msg = f"expression `{self.text}` passes `{name}()` an argument"
                     raise UnsupportedError(msg)
                 self._take()
-                return answered
+                return True
             case Token("name", name) if name in LITERALS:
                 return LITERALS[name]
             case Token("name", name):
@@ -813,8 +782,8 @@ class Runner:
         needs = _needs(job)
         condition = job.get("if")
         succeeded = all(done[needed].result is Result.SUCCESS for needed in needs)
-        # A status function in the condition replaces the implicit `success()`.
-        if not succeeded and not STATUS_CALL.search(str(condition or "")):
+        # `always()` in the condition replaces the implicit `success()`.
+        if not succeeded and not ALWAYS_CALL.search(str(condition or "")):
             return JobRun(Result.SKIPPED)
         contexts = Contexts(
             needs={n: Needed(str(done[n].result), dict(done[n].outputs)) for n in needs},
@@ -827,10 +796,7 @@ class Runner:
             secrets=contexts.secrets,
             github=contexts.github,
             inputs=contexts.inputs,
-            status=Status(
-                succeeded=succeeded,
-                failed=any(done[needed].result is Result.FAILURE for needed in needs),
-            ),
+            judging_a_job=True,
         )
         if condition is not None and not _truthy(evaluate(str(condition), judged)):
             return JobRun(Result.SKIPPED)

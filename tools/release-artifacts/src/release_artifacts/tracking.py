@@ -7,10 +7,12 @@ exactly one open issue labelled `LABEL` while either fails: `broken` opens it on
 first failing run and comments on it, naming the run, on every one after; and
 `mended` closes it, naming the run, on the first run in which both succeed.
 
-It speaks GitHub's REST API under the run's own token, through
-`registries.exchange` — the one place this tool audits a URL's scheme and
-attaches a credential — at the API address the forge hands every step as
-`GITHUB_API_URL`, for the repository it hands as `GITHUB_REPOSITORY`.
+It speaks GitHub's REST API under the run's own token, through the operations
+`github_issues` declares and that module's drift gate holds to GitHub's
+published description, and through `registries.exchange` — the one place this
+tool audits a URL's scheme and attaches a credential — at the API address the
+forge hands every step as `GITHUB_API_URL`, for the repository it hands as
+`GITHUB_REPOSITORY`.
 `tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
 workflow's steps against a stand-in of that API and holds the sequence to it.
 """
@@ -22,13 +24,24 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import NewType
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlencode, urlsplit
 
+from release_artifacts.github_issues import (
+    CREATE_COMMENT,
+    CREATE_ISSUE,
+    CREATE_LABEL,
+    GET_LABEL,
+    INVALID,
+    LIST_ISSUES,
+    NOT_FOUND,
+    PER_PAGE_MAX,
+    UPDATE_ISSUE,
+    IssueNumber,
+    Operation,
+    Reason,
+    State,
+)
 from release_artifacts.registries import RefusedError, RegistryError, Token, exchange
-
-#: An issue's number on the forge: what it is commented on and closed by.
-IssueNumber = NewType("IssueNumber", int)
 
 #: The label the one tracking issue carries, which is how it is found again.
 LABEL = "release-broken"
@@ -43,13 +56,16 @@ LABEL_DESCRIPTION = "The release workflow on main is failing; closed when it nex
 #: What the forge hands every step, and this module reads.
 API_URL, REPOSITORY, TOKEN = "GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN"
 
-#: The media type GitHub's REST API answers in.
-MEDIA_TYPE = "application/vnd.github+json"
+#: The content type every operation `github_issues` declares answers in.
+MEDIA_TYPE = "application/json"
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class Outcome(StrEnum):
-    """What the forge reports a job as, through `needs.<job>.result`."""
+    """What the forge reports a job as, through `needs.<job>.result`.
+
+    Every one is a conclusion GitHub's REST description gives a workflow job,
+    which `test_github_issues_contract.py` holds them to.
+    """
 
     SUCCESS = "success"
     FAILURE = "failure"
@@ -62,11 +78,7 @@ REPOSITORY_NAME = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
 #: The most open issues one read of the listing asks for; a shorter page is the
 #: last one.
-PAGE = 100
-
-#: How the forge says it carries no such label, and that it already carries one
-#: of that name — which is a second run creating it at the same moment.
-NOT_FOUND, ALREADY_THERE = 404, 422
+PAGE = PER_PAGE_MAX
 
 #: What to do about a forge this module could not tell.
 NEXT = (
@@ -88,7 +100,6 @@ class TrackingError(RuntimeError):
         self.status = status
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 @dataclass(frozen=True, slots=True)
 class Forge:
     """GitHub's REST API for one repository, under one token."""
@@ -97,14 +108,36 @@ class Forge:
     repository: str
     token: Token
 
-    def ask(self, method: str, path: str, document: Mapping[str, object] | None = None) -> object:
-        """One request under `/repos/<repository>`, and the JSON document it answered.
+    def ask(
+        self,
+        operation: Operation,
+        values: Mapping[str, str] | None = None,
+        *,
+        query: Mapping[str, str] | None = None,
+        document: Mapping[str, object] | None = None,
+    ) -> object:
+        """One operation of the repository's, and the JSON document it answered.
+
+        `values` names the path's own placeholders beyond the repository's.
 
         Raises:
             TrackingError: If the forge refused the request or could not be
-                reached, in its own words.
+                reached, in its own words; or if the request carries a query
+                parameter or a field its operation does not declare, which
+                is a request nothing holds to GitHub's description.
         """
-        url = f"{self.api}/repos/{self.repository}{path}"
+        undeclared = sorted(
+            {*(query or {})} - {*operation.query} | {*(document or {})} - {*operation.sends}
+        )
+        if undeclared:
+            msg = f"`{operation.method} {operation.path}` declares no {undeclared}"
+            raise TrackingError(msg)
+        owner, name = self.repository.split("/", 1)
+        method = operation.method
+        path = operation.target({"owner": owner, "repo": name, **(values or {})})
+        if query:
+            path = f"{path}?{urlencode(query)}"
+        url = f"{self.api}{path}"
         try:
             # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
             answered = exchange(
@@ -207,7 +240,6 @@ def run_url(url: str) -> str:
     return url
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def tracking(forge: Forge) -> list[IssueNumber]:
     """Every open tracking issue, oldest first, read page by page to the last.
 
@@ -221,8 +253,10 @@ def tracking(forge: Forge) -> list[IssueNumber]:
     numbers: list[IssueNumber] = []
     page = 1
     while True:
-        query = f"labels={quote(LABEL)}&state=open&per_page={PAGE}&page={page}"
-        listed = forge.ask("GET", f"/issues?{query}")
+        listed = forge.ask(
+            LIST_ISSUES,
+            query={"labels": LABEL, "state": State.OPEN, "per_page": str(PAGE), "page": str(page)},
+        )
         if not isinstance(listed, list):
             msg = f"the forge answered its open `{LABEL}` issues with {listed!r}. {NEXT}"
             raise TrackingError(msg)
@@ -236,7 +270,6 @@ def tracking(forge: Forge) -> list[IssueNumber]:
         page += 1
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def _labelled(forge: Forge) -> None:
     """Create the tracking label where the repository does not carry it yet.
 
@@ -244,24 +277,22 @@ def _labelled(forge: Forge) -> None:
     already exists, which is the state this asks for once a read confirms it.
     """
     try:
-        forge.ask("GET", f"/labels/{quote(LABEL)}")
+        forge.ask(GET_LABEL, {"name": LABEL})
     except TrackingError as absent:
         if absent.status != NOT_FOUND:
             raise
         try:
             forge.ask(
-                "POST",
-                "/labels",
-                {"name": LABEL, "color": LABEL_COLOUR, "description": LABEL_DESCRIPTION},
+                CREATE_LABEL,
+                document={"name": LABEL, "color": LABEL_COLOUR, "description": LABEL_DESCRIPTION},
             )
         except TrackingError as raced:
-            if raced.status != ALREADY_THERE:
+            if raced.status != INVALID:
                 raise
             # A `422` is also a document refused; only a label now there is the race.
-            forge.ask("GET", f"/labels/{quote(LABEL)}")
+            forge.ask(GET_LABEL, {"name": LABEL})
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:
     """Say that `run` failed: open the tracking issue, or comment on the open one.
 
@@ -281,13 +312,12 @@ def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:
     open_now = tracking(forge)
     if open_now:
         number = open_now[0]
-        forge.ask("POST", f"/issues/{number}/comments", {"body": said})
+        forge.ask(CREATE_COMMENT, {"issue_number": str(number)}, document={"body": said})
         return f"commented on #{number}: {said}"
     _labelled(forge)
     opened = forge.ask(
-        "POST",
-        "/issues",
-        {
+        CREATE_ISSUE,
+        document={
             "title": TITLE,
             "labels": [LABEL],
             "body": (
@@ -300,7 +330,6 @@ def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:
     return f"opened #{_number(opened, 'the issue it opened')}: {said}"
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def mended(forge: Forge, run: str) -> str:
     """Say that `run` succeeded: close every open tracking issue, naming it.
 
@@ -322,9 +351,11 @@ def mended(forge: Forge, run: str) -> str:
     refused: list[str] = []
     for number in open_now:
         try:
-            forge.ask("POST", f"/issues/{number}/comments", {"body": said})
+            forge.ask(CREATE_COMMENT, {"issue_number": str(number)}, document={"body": said})
             forge.ask(
-                "PATCH", f"/issues/{number}", {"state": "closed", "state_reason": "completed"}
+                UPDATE_ISSUE,
+                {"issue_number": str(number)},
+                document={"state": State.CLOSED, "state_reason": Reason.COMPLETED},
             )
         except TrackingError as refusal:
             refused.append(f"#{number}: {refusal}")

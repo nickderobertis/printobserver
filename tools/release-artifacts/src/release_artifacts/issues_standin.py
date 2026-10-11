@@ -2,13 +2,15 @@
 
 Nothing in this repository may open an issue on the real forge to prove a
 point, so `tracking` is proven against this: one real HTTP server answering
-the requests it makes — listing a repository's open issues by label, reading
-and creating a label, opening an issue, commenting on one and closing it — in
-GitHub's own paths and shapes, under one repository and one token. What it
-holds is kept between requests, so a sequence of workflow runs driven against
-one stand-in leaves the issue each run left; every request is recorded with
-the credential it carried, and a caller can make any one path refused with a
-status and a body of its own choosing.
+exactly the operations `github_issues` declares — which that module's drift
+gate holds to GitHub's own published description — with the documents and
+refusals it declares, under one repository and one token. A request whose
+document carries a field its operation does not declare, or one of another
+type, is refused as the forge refuses it. What it holds is kept between
+requests, so a sequence of workflow runs driven against one stand-in leaves
+the issue each run left; every request is recorded with the credential it
+carried, and a caller can make any one path refused with a status and a body
+of its own choosing.
 
 Like the forge, it lists a pull request among a repository's issues, marked by
 a `pull_request` field, and a caller can seed one carrying the label.
@@ -18,50 +20,48 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Self
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from release_artifacts.github_issues import (
+    CREATE_COMMENT,
+    CREATE_ISSUE,
+    CREATE_LABEL,
+    GET_LABEL,
+    INVALID,
+    ISSUE,
+    LABEL_COLOUR_DIGITS,
+    LIST_ISSUES,
+    LISTED_STATES,
+    NOT_FOUND,
+    OPERATIONS,
+    PER_PAGE_DEFAULT,
+    PER_PAGE_MAX,
+    UPDATE_ISSUE,
+    IssueNumber,
+    Operation,
+    Reason,
+    State,
+    conforms,
+)
 from release_artifacts.registries import Token
-from release_artifacts.tracking import IssueNumber
 
 #: The most this reads of one request body; every document `tracking` sends
 #: is a few hundred bytes.
 MAX_BODY_BYTES = 1024 * 1024
 
-#: The forge's default page of a listing, and the most one page may hold.
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-DEFAULT_PAGE, MAX_PAGE = 30, 100
+#: One answer: a status, and the document sent with it.
+Answer = tuple[int, object]
 
-#: How many hexadecimal digits the forge takes a label's colour as.
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-COLOUR_DIGITS = 6
-
-#: What the forge answers a request whose document it will not take.
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-INVALID = (422, {"message": "Validation Failed"})
+#: What the forge answers a request whose document it will not take, and one
+#: naming nothing it serves.
+REFUSED_INVALID: Answer = (INVALID, {"message": "Validation Failed"})
+REFUSED_ABSENT: Answer = (NOT_FOUND, {"message": "Not Found"})
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-class State(StrEnum):
-    """Whether an issue is open, as the forge's `state` field says."""
-
-    OPEN = "open"
-    CLOSED = "closed"
-
-
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-class Reason(StrEnum):
-    """Why an issue was closed, as the forge's `state_reason` field says."""
-
-    COMPLETED = "completed"
-    NOT_PLANNED = "not_planned"
-    REOPENED = "reopened"
-
-
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 @dataclass(slots=True)
 class Issue:
     """One issue the stand-in holds, as the forge would show it."""
@@ -76,8 +76,7 @@ class Issue:
     pull_request: bool = False
 
     def document(self, html: str) -> dict[str, object]:
-        """The issue in the forge's shape."""
-        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
+        """The issue in the forge's shape: the fields `github_issues.ISSUE` declares."""
         shown: dict[str, object] = {
             "number": self.number,
             "title": self.title,
@@ -90,7 +89,7 @@ class Issue:
         }
         if self.pull_request:
             shown["pull_request"] = {"html_url": f"{html}/pull/{self.number}"}
-        return shown
+        return {name: value for name, value in shown.items() if name in ISSUE}
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +101,13 @@ class Asked:
     token: Token
 
 
-# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+#: What answers one operation: the stand-in, the path's values, the query and
+#: the document sent.
+Handler = Callable[
+    ["IssuesForge", dict[str, str], dict[str, list[str]], dict[str, object]], "Answer"
+]
+
+
 class IssuesForge:
     """GitHub's issues API for one repository, on a port the operating system chooses."""
 
@@ -150,6 +155,10 @@ class IssuesForge:
         """Answer every `method` request to `path` with a body that is not JSON from now on."""
         self._garbled.add((method, path))
 
+    def garbled(self, method: str, path: str) -> bool:
+        """Whether `method` requests to `path` are answered with a body that is not JSON."""
+        return (method, path) in self._garbled
+
     def open_labelled(self, label: str) -> list[Issue]:
         """Every open issue carrying `label`, oldest first."""
         return [
@@ -171,109 +180,134 @@ class IssuesForge:
         """Stop serving when the block ends."""
         self.stop()
 
-    def answer(self, method: str, target: str, document: dict[str, object]) -> tuple[int, object]:
-        """GitHub's status and document for one authenticated request."""
+    def answer(self, method: str, target: str, document: dict[str, object]) -> Answer:
+        """GitHub's status and document for one authenticated request.
+
+        The operation is the one of `github_issues.OPERATIONS` whose method and
+        path the request names, for this repository; anything else is `404`,
+        and a document carrying a field the operation does not declare, or one
+        of another type, is `422`.
+        """
         split = urlsplit(target)
         path = unquote(split.path)
         refused = self._refused.get((method, path))
         if refused is not None:
             return refused[0], {"message": refused[1]}
-        prefix = f"/repos/{self.repository}"
-        if not path.startswith(f"{prefix}/"):
-            return 404, {"message": "Not Found"}
-        rest = path.removeprefix(prefix).strip("/").split("/")
-        with self._lock:
-            return self._route(method, rest, parse_qs(split.query), document)
+        owner, name = self.repository.split("/", 1)
+        for operation in OPERATIONS:
+            values = operation.matched(method, path)
+            if values is None or (values["owner"], values["repo"]) != (owner, name):
+                continue
+            if not conforms(document, operation.sends):
+                return REFUSED_INVALID
+            with self._lock:
+                return HANDLERS[operation](self, values, parse_qs(split.query), document)
+        return REFUSED_ABSENT
 
-    def _route(
-        self,
-        method: str,
-        rest: list[str],
-        query: dict[str, list[str]],
-        document: dict[str, object],
-    ) -> tuple[int, object]:
-        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
-        match (method, rest):
-            case ("GET", ["issues"]):
-                return self._listed(query)
-            case ("POST", ["issues"]):
-                return self._opened(document)
-            case ("POST", ["issues", number, "comments"]) if self._held(number):
-                body = document.get("body")
-                if not isinstance(body, str) or not body:
-                    return INVALID
-                self.issues[IssueNumber(int(number))].comments.append(body)
-                taken = len(self.issues[IssueNumber(int(number))].comments)
-                return 201, {"id": taken, "body": body}
-            case ("PATCH", ["issues", number]) if self._held(number):
-                return self._updated(self.issues[IssueNumber(int(number))], document)
-            case ("GET", ["labels", name]) if name in self.labels:
-                return 200, {"name": name}
-            case ("POST", ["labels"]):
-                name, colour = document.get("name"), document.get("color")
-                if not isinstance(name, str) or not name or name in self.labels:
-                    return INVALID
-                if not isinstance(colour, str) or not _hexadecimal(colour):
-                    return INVALID
-                self.labels.add(name)
-                return 201, {"name": name, "color": colour}
-            case _:
-                return 404, {"message": "Not Found"}
+    def _held(self, values: dict[str, str]) -> Issue | None:
+        number = values.get("issue_number", "")
+        if not (number.isascii() and number.isdigit()):
+            return None
+        return self.issues.get(IssueNumber(int(number)))
 
-    def _held(self, number: str) -> bool:
-        return number.isascii() and number.isdigit() and IssueNumber(int(number)) in self.issues
-
-    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-    def _listed(self, query: dict[str, list[str]]) -> tuple[int, object]:
+    def _listed(
+        self, _: dict[str, str], query: dict[str, list[str]], __: dict[str, object]
+    ) -> Answer:
         """One page of the issues carrying every label asked for, in the state asked for."""
         wanted = {name for value in query.get("labels", []) for name in value.split(",") if name}
-        state = query.get("state", ["open"])[0]
-        if state not in {*(value.value for value in State), "all"}:
-            return INVALID
-        size, page = query.get("per_page", [str(DEFAULT_PAGE)])[0], query.get("page", ["1"])[0]
-        if not (size.isascii() and size.isdigit() and page.isascii() and page.isdigit()):
-            return INVALID
-        size_of, page_of = min(int(size), MAX_PAGE), int(page)
-        if size_of < 1 or page_of < 1:
-            return INVALID
+        state = query.get("state", [State.OPEN.value])[0]
+        size = query.get("per_page", [str(PER_PAGE_DEFAULT)])[0]
+        page = query.get("page", ["1"])[0]
+        if state not in LISTED_STATES or not all(
+            value.isascii() and value.isdigit() and int(value) > 0 for value in (size, page)
+        ):
+            return REFUSED_INVALID
+        size_of, page_of = min(int(size), PER_PAGE_MAX), int(page)
         matching = [
             issue.document(self.html)
             for _, issue in sorted(self.issues.items())
-            if (state == "all" or issue.state == state) and wanted <= set(issue.labels)
+            if state in (issue.state, "all") and wanted <= set(issue.labels)
         ]
-        return 200, matching[(page_of - 1) * size_of : page_of * size_of]
+        return LIST_ISSUES.answers, matching[(page_of - 1) * size_of : page_of * size_of]
 
-    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-    def _opened(self, document: dict[str, object]) -> tuple[int, object]:
+    def _label(
+        self, values: dict[str, str], _: dict[str, list[str]], __: dict[str, object]
+    ) -> Answer:
+        """One label, by name."""
+        if values["name"] not in self.labels:
+            return REFUSED_ABSENT
+        return GET_LABEL.answers, {"name": values["name"]}
+
+    def _labelled(
+        self, _: dict[str, str], __: dict[str, list[str]], document: dict[str, object]
+    ) -> Answer:
+        """Create a label from a name not yet taken and a colour in the forge's spelling."""
+        name, colour = document.get("name"), document.get("color")
+        if not isinstance(name, str) or not name or name in self.labels:
+            return REFUSED_INVALID
+        if not isinstance(colour, str) or not _hexadecimal(colour):
+            return REFUSED_INVALID
+        self.labels.add(name)
+        return CREATE_LABEL.answers, {"name": name, "color": colour}
+
+    def _opened(
+        self, _: dict[str, str], __: dict[str, list[str]], document: dict[str, object]
+    ) -> Answer:
         """Open an issue from a document carrying a title, a body and a list of label names."""
         title, body, labels = (document.get(key) for key in ("title", "body", "labels"))
         if not isinstance(title, str) or not title or not isinstance(body, str):
-            return INVALID
+            return REFUSED_INVALID
         if not isinstance(labels, list) or not all(isinstance(name, str) for name in labels):
-            return INVALID
+            return REFUSED_INVALID
         number = IssueNumber(len(self.issues) + 1)
         self.labels |= set(labels)
         self.issues[number] = Issue(number, title, body, list(labels))
-        return 201, self.issues[number].document(self.html)
+        return CREATE_ISSUE.answers, self.issues[number].document(self.html)
 
-    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-    def _updated(self, issue: Issue, document: dict[str, object]) -> tuple[int, object]:
-        """Move an issue to the state, and for the reason, a document names."""
+    def _commented(
+        self, values: dict[str, str], _: dict[str, list[str]], document: dict[str, object]
+    ) -> Answer:
+        """Leave a comment on an issue it holds."""
+        issue = self._held(values)
+        if issue is None:
+            return REFUSED_ABSENT
+        body = document.get("body")
+        if not isinstance(body, str) or not body:
+            return REFUSED_INVALID
+        issue.comments.append(body)
+        return CREATE_COMMENT.answers, {"id": len(issue.comments), "body": body}
+
+    def _updated(
+        self, values: dict[str, str], _: dict[str, list[str]], document: dict[str, object]
+    ) -> Answer:
+        """Move an issue it holds to the state, and for the reason, a document names."""
+        issue = self._held(values)
+        if issue is None:
+            return REFUSED_ABSENT
         state, reason = document.get("state"), document.get("state_reason")
-        known_states = {value.value for value in State}
-        known_reasons = {value.value for value in Reason}
-        if not isinstance(state, str) or state not in known_states:
-            return INVALID
-        if reason is not None and (not isinstance(reason, str) or reason not in known_reasons):
-            return INVALID
-        issue.state = State(state)
-        issue.state_reason = Reason(reason) if isinstance(reason, str) else None
-        return 200, issue.document(self.html)
+        if state not in {value.value for value in State}:
+            return REFUSED_INVALID
+        if reason is not None and reason not in {value.value for value in Reason}:
+            return REFUSED_INVALID
+        issue.state = State(str(state))
+        issue.state_reason = Reason(str(reason)) if reason is not None else None
+        return UPDATE_ISSUE.answers, issue.document(self.html)
+
+
+#: The answer to each operation `github_issues` declares, and to no other.
+HANDLERS: dict[Operation, Handler] = {
+    LIST_ISSUES: IssuesForge._listed,
+    GET_LABEL: IssuesForge._label,
+    CREATE_LABEL: IssuesForge._labelled,
+    CREATE_ISSUE: IssuesForge._opened,
+    CREATE_COMMENT: IssuesForge._commented,
+    UPDATE_ISSUE: IssuesForge._updated,
+}
 
 
 def _hexadecimal(colour: str) -> bool:
-    """Whether `colour` is the six hexadecimal digits the forge takes a label's colour as."""
-    return len(colour) == COLOUR_DIGITS and all(
+    """Whether `colour` is the hexadecimal digits the forge takes a label's colour as."""
+    return len(colour) == LABEL_COLOUR_DIGITS and all(
         digit in "0123456789abcdefABCDEF" for digit in colour
     )
 
@@ -308,7 +342,7 @@ def _handler(forge: IssuesForge) -> type[BaseHTTPRequestHandler]:
                 code, answered = 400, {"message": "Problems parsing JSON"}
             else:
                 code, answered = forge.answer(self.command, self.path, document)
-            garbled = (self.command, unquote(urlsplit(self.path).path)) in forge._garbled
+            garbled = forge.garbled(self.command, unquote(urlsplit(self.path).path))
             payload = b"<html>not JSON</html>" if garbled else json.dumps(answered).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")

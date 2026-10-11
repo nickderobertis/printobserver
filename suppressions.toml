@@ -2381,11 +2381,6 @@ file = "tools/release-artifacts/tests/test_tracking.py"
 site = "exchange("
 reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
 
-[[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tools/release-artifacts/src/release_artifacts/issues_standin.py"
-site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
-reason = "Every directive for this rule in this file sits on part of one restatement: the stand-in reproduces the slice of GitHub's REST issues API `tracking` uses, its page sizes, label colour, validation answer, issue states and reasons, issue document and routes included, — the listing by label, a label read and creation, an issue opened, commented on and closed — in GitHub's documented paths and fields, and it is the only copy of that slice in this repository. It has no drift gate against the live API because the only way to exercise those writes is to open and close an issue on a real repository, which no tier here may do. What reconciles it is the reporting job's own run on `main`: `tracking` validates the two things it reads off the forge — that a listing is a list and that each issue names a positive integer `number` — so a shape that moved fails that step naming what the forge answered, rather than reading as nothing open."
 
 
 [[suppression]]
@@ -2395,11 +2390,6 @@ site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."
 
 
-[[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tools/release-artifacts/src/release_artifacts/tracking.py"
-site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
-reason = "The client half of the slice of GitHub's REST issues API that `issues_standin.py` stands in for — the listing, label, issue, comment and closure requests every directive for this rule in this file sits on — on the ground that file's entry for this rule states: GitHub's documented paths, with no live drift gate because exercising them opens and closes an issue on a real repository. Every answer the forge gives is validated where it is read, so a route or a shape that moved fails the reporting job on `main` naming what the forge said, which is the reconciliation."
 
 
 [[suppression]]

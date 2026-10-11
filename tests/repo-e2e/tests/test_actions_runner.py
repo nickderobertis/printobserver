@@ -10,9 +10,9 @@ and what a step reads as `GITHUB_EVENT_NAME` whatever its caller ran under;
 a `uses:` boundary is recorded with the inputs it was given; the two artifact
 actions move files through a store keyed by run id, and a download of what
 nothing uploaded fails the step; a caller's set of jobs to run skips the rest
-by name; a status function in a job's condition replaces the implicit
-`success()`; and a construct outside the modelled set is refused by name rather
-than run as something else.
+by name; `always()` in a job's condition replaces the implicit `success()`;
+and a construct outside the modelled set is refused by name rather than run as
+something else.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -278,8 +278,8 @@ def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
     equal(run.result("cells"), Result.SUCCESS, describing="an ungated job after a success")
 
 
-#: Jobs after a failure: three whose conditions call a status function, and one
-#: whose condition does not.
+#: Jobs after a failure: one whose condition calls `always()`, and one whose
+#: condition calls no status function.
 AFTER_A_FAILURE = """
 on: push
 jobs:
@@ -302,18 +302,6 @@ jobs:
         run: echo "reported $FELL in run $GITHUB_RUN_ID"
       - if: needs.falls.result == 'success'
         run: exit 3
-  on-failure:
-    needs: falls
-    if: failure()
-    runs-on: x
-    steps:
-      - run: "true"
-  on-success:
-    needs: falls
-    if: success()
-    runs-on: x
-    steps:
-      - run: exit 3
   implicit:
     needs: falls
     if: github.ref == 'refs/heads/main'
@@ -323,14 +311,11 @@ jobs:
 """
 
 
-def test_a_status_function_in_a_job_condition_replaces_the_implicit_success(
-    tmp_path: Path,
-) -> None:
-    """`always()` and `failure()` run a job after a failed one, which reads its result.
+def test_always_in_a_job_condition_replaces_the_implicit_success(tmp_path: Path) -> None:
+    """`always()` runs a job after a failed one, which reads its result.
 
-    `success()` and a condition calling no status function skip it, as the
-    forge's implicit `success()` does; the step reads `GITHUB_RUN_ID` as the
-    forge hands it.
+    A condition calling no status function skips it, as the forge's implicit
+    `success()` does; the step reads `GITHUB_RUN_ID` as the forge hands it.
     """
     workflow = tmp_path / "after.yml"
     workflow.write_text(AFTER_A_FAILURE, encoding="utf-8")
@@ -347,8 +332,6 @@ def test_a_status_function_in_a_job_condition_replaces_the_implicit_success(
             "falls": "failure",
             "stands": "success",
             "always": "success",
-            "on-failure": "success",
-            "on-success": "skipped",
             "implicit": "skipped",
         },
         describing="what the forge would report each job as",
@@ -360,21 +343,42 @@ def test_a_status_function_in_a_job_condition_replaces_the_implicit_success(
     )
 
 
-def test_a_status_function_in_a_step_condition_is_refused_by_name(tmp_path: Path) -> None:
-    """A step stops a job at its first failure here, so a step after it is never modelled."""
-    workflow = tmp_path / "step.yml"
-    workflow.write_text(
-        "on: push\njobs:\n  one:\n    runs-on: x\n    steps:\n"
-        "      - if: always()\n        run: 'true'\n",
-        encoding="utf-8",
-    )
+#: One job of one step, with a condition at the job or at the step.
+STATUS_CALLED = """
+on: push
+jobs:
+  one:
+    runs-on: x
+    {job_if}
+    steps:
+      - run: "true"
+        {step_if}
+"""
+
+
+@pytest.mark.parametrize(
+    ("condition", "where", "called"),
+    [
+        ("always()", "step", "always()"),
+        ("failure()", "job", "failure()"),
+        ("success()", "job", "success()"),
+        ("cancelled()", "job", "cancelled()"),
+    ],
+)
+def test_a_status_function_outside_the_modelled_one_is_refused_by_name(
+    tmp_path: Path, condition: str, where: str, called: str
+) -> None:
+    """`always()` in a step, and every other status function anywhere, are not guessed at."""
+    workflow = tmp_path / "status.yml"
+    job_if, step_if = (f"if: {condition}", "") if where == "job" else ("", f"if: {condition}")
+    workflow.write_text(STATUS_CALLED.format(job_if=job_if, step_if=step_if), encoding="utf-8")
     (tmp_path / "stand-ins").mkdir()
     runner = Runner(workflow, tmp_path, path_first=tmp_path / "stand-ins", env=clean_environment())
 
     with pytest.raises(UnsupportedError) as refused:
         runner.run()
 
-    contains(str(refused.value), "always()", describing="what the refusal named")
+    contains(str(refused.value), called, describing="what the refusal named")
 
 
 @pytest.mark.parametrize(
