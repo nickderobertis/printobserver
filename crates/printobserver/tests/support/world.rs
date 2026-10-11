@@ -506,6 +506,12 @@ impl World {
     /// no spool the walk left loaded — at its full figure before a correction,
     /// and a fresh spool for a retirement.
     pub fn prepare_ledger_for(&self, command: &str) {
+        // A spool command names the print it was taken during, so one asked
+        // while the supervisor still holds the last print open answers a
+        // different record from the same command asked a moment later.
+        if command.ends_with("-spool") {
+            self.no_print_is_open();
+        }
         if command == "retire-spool" {
             let fresh = self.registered("a spool to retire", "PLA", None);
             *self
@@ -630,6 +636,47 @@ impl World {
         if let Some(active) = listing.get("active").and_then(Value::as_str) {
             self.follows(active);
         }
+    }
+
+    /// Wait until the supervisor holds no print open, reading the listing that
+    /// closes every print the machine shows is over.
+    ///
+    /// The machine reporting idle is not the supervisor having seen it: a
+    /// print closes on the next read of the machine, and not while a
+    /// supervision turn still holds it, which on a slow host outlasts a
+    /// command or two.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a print is still open after every look, naming it.
+    fn no_print_is_open(&self) {
+        let mut open = Vec::new();
+        for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
+            let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+                .args(["prints", "--json", "--config"])
+                .arg(self.client_config())
+                .output()
+                .expect("a listing runs");
+            let listing: Value =
+                printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null);
+            open = listing
+                .get("prints")
+                .and_then(Value::as_array)
+                .map(|prints| {
+                    prints
+                        .iter()
+                        .filter(|print| print.get("ended_at").is_none_or(Value::is_null))
+                        .filter_map(|print| print.get("id").and_then(Value::as_str))
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            if read.status.success() && open.is_empty() {
+                return;
+            }
+            std::thread::sleep(SETTLING_PAUSE);
+        }
+        panic!("the supervisor still holds {open:?} open with the machine idle");
     }
 
     /// Put the machine in one state, through whatever drives it.
