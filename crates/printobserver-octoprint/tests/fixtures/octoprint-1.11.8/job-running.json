@@ -1,0 +1,30 @@
+{
+  "job": {
+    "averagePrintTime": null,
+    "estimatedPrintTime": 179.70710678118616,
+    "filament": {
+      "tool0": {
+        "length": 300.0,
+        "volume": 0.0
+      }
+    },
+    "file": {
+      "date": 1791683181,
+      "display": "extrusion.gcode",
+      "name": "extrusion.gcode",
+      "origin": "local",
+      "path": "extrusion.gcode",
+      "size": 4372
+    },
+    "lastPrintTime": null,
+    "user": "printobserver"
+  },
+  "progress": {
+    "completion": 21.935041171088745,
+    "filepos": 959,
+    "printTime": 8,
+    "printTimeLeft": 28,
+    "printTimeLeftOrigin": "linear"
+  },
+  "state": "Printing"
+}

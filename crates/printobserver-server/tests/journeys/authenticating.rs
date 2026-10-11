@@ -1162,6 +1162,13 @@ async fn neither_rendering_of_a_credential_shows_it() {
     assert!(credential.admits(CONFIGURED.as_bytes()));
     assert!(!credential.admits(STALE.as_bytes()));
     assert!(!credential.admits(&CONFIGURED.as_bytes()[1..]));
+    // Two credentials are the same credential exactly when one admits the
+    // other's text, which is the one comparison there is.
+    assert_eq!(
+        credential,
+        ApiCredential::new(CONFIGURED).expect("a credential")
+    );
+    assert_ne!(credential, ApiCredential::new(STALE).expect("a credential"));
 
     let rooted = Rooted::with(|configured| {
         set(

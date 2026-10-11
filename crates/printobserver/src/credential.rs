@@ -286,6 +286,12 @@ fn staged_beside(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
     options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, PRIVATE_FILE);
+    // Windows answers a name whose file another issue has just removed, while
+    // that removal is still pending, with "access denied" rather than "already
+    // exists", so a refused name is passed over like a taken one; the first
+    // refusal is what is answered if every name is refused, as every name is
+    // in a folder that cannot be written.
+    let mut refused = None;
     for attempt in 0..STAGING_NAMES {
         let mut name = std::ffi::OsString::from(".");
         name.push(&target);
@@ -295,8 +301,14 @@ fn staged_beside(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
         match options.open(&staged) {
             Ok(file) => return Ok((staged, file)),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                refused.get_or_insert(error);
+            }
             Err(error) => return Err(error),
         }
+    }
+    if let Some(error) = refused {
+        return Err(error);
     }
     Err(std::io::Error::new(
         std::io::ErrorKind::AlreadyExists,
