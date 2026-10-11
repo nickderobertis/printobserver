@@ -418,11 +418,61 @@ async fn a_spool_command_body_carries_its_own_fields_and_no_others() {
     let (status, refused) = world.post(&plain(&world, "register_spool"), &short).await;
     assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
 
+    // A body that is no document of fields, one naming no actor, and one
+    // naming an actor this system does not have: each refused before the
+    // claim, the grants or the ledger are asked anything.
+    let register = plain(&world, "register_spool");
+    let (status, refused) = world.post(&register, &json!(["a list of fields"])).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("a document of its fields"),
+        "{refused}"
+    );
+    let mut nobody = spool_body(ActionKind::RegisterSpool);
+    nobody
+        .as_object_mut()
+        .expect("a body is a document")
+        .remove("actor");
+    let (status, refused) = world.post(&register, &nobody).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("needs `actor`"),
+        "{refused}"
+    );
+    let mut stranger = spool_body(ActionKind::RegisterSpool);
+    stranger["actor"] = json!("a passer-by");
+    let (status, refused) = world.post(&register, &stranger).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("not an actor this system has"),
+        "{refused}"
+    );
+
     let (_, listing) = world.get(&plain(&world, "spools")).await;
     assert_eq!(
         listing["spools"].as_array().map(Vec::len),
         Some(1),
         "a refused body registered a spool: {listing}"
+    );
+    let (_, history) = world
+        .get(&format!(
+            "{}?kinds=spool_command_rejected",
+            plain(&world, "printer_history")
+        ))
+        .await;
+    assert_eq!(
+        history["events"],
+        json!([]),
+        "a body refused before the grants was recorded as a refused command: {history}"
     );
     world.server.stop().await;
 }

@@ -65,8 +65,8 @@ pub use operations::{
 /// the one edge it has to the adapter.
 pub use printobserver_oneharness::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use reconcile::{
-    ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload, overdue,
-    reconcile,
+    ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload,
+    UnobservedAccounting, overdue, reconcile,
 };
 pub use server::{
     API_CREDENTIAL_FILE, API_CREDENTIAL_VERIFIER_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM,

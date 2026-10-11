@@ -26,7 +26,7 @@
 //! read and every print they counted that this system never saw is charged to
 //! the spools loaded ([`Supervisor::account_unobserved_prints`]), which writes
 //! its own record of what it found. A printer that cannot be read skips this
-//! rather than refusing the start, and [`Reconciliation::accounting_skipped`]
+//! rather than refusing the start, and [`Reconciliation::unobserved`]
 //! says why; the next start that reaches the printer accounts what this one
 //! could not, because the tallies only grow.
 //!
@@ -143,12 +143,46 @@ pub struct Reconciliation {
     pub resumed: Vec<PrintId>,
     /// Every intervention that had outlived its bound and was expired.
     pub expired: Vec<InterventionId>,
-    /// Every event accounting the prints the printer counted and nobody saw
-    /// wrote, in the order they were written; empty when it found nothing new.
-    pub accounted: Vec<EventId>,
-    /// Why that accounting was skipped, when it was: the printer could not be
-    /// read, so its tallies could not be.
-    pub accounting_skipped: Option<String>,
+    /// What accounting the prints the printer counted and nobody saw came to.
+    pub unobserved: UnobservedAccounting,
+}
+
+/// What one start's accounting of the prints nobody watched came to: done,
+/// writing these events, or skipped, for this reason — and never both.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnobservedAccounting {
+    /// It was made, writing these events in this order; none when it found
+    /// nothing new.
+    Accounted(Vec<EventId>),
+    /// It was skipped, because the printer could not be read, so its tallies
+    /// could not be.
+    Skipped(String),
+}
+
+impl Default for UnobservedAccounting {
+    fn default() -> Self {
+        Self::Accounted(Vec::new())
+    }
+}
+
+impl UnobservedAccounting {
+    /// The events it wrote; none when it found nothing new or was skipped.
+    #[must_use]
+    pub fn accounted(&self) -> &[EventId] {
+        match self {
+            Self::Accounted(written) => written,
+            Self::Skipped(_) => &[],
+        }
+    }
+
+    /// Why it was skipped, when it was.
+    #[must_use]
+    pub fn skipped(&self) -> Option<&str> {
+        match self {
+            Self::Accounted(_) => None,
+            Self::Skipped(why) => Some(why),
+        }
+    }
 }
 
 /// The interventions already past their expiry, read before the supervisor
@@ -199,9 +233,12 @@ pub async fn reconcile(
     // After the close-out, so a print the printer shows ended is settled by it
     // before its tally is read and is not counted as one nobody saw.
     match supervisor.account_unobserved_prints().await {
-        Ok(written) => found.accounted = written.iter().map(|event| event.id).collect(),
+        Ok(written) => {
+            found.unobserved =
+                UnobservedAccounting::Accounted(written.iter().map(|event| event.id).collect());
+        }
         Err(CoreError::Printer(error)) => {
-            found.accounting_skipped = Some(format!(
+            found.unobserved = UnobservedAccounting::Skipped(format!(
                 "the printer could not be read ({error}), so the prints it counted while \
                  nothing was watching were not accounted on this start; the next start that \
                  reaches it accounts them"

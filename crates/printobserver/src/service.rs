@@ -206,7 +206,7 @@ pub async fn run<R: StatusReporter>(
     for warning in running.warnings() {
         eprintln!("printobserver: warning: {warning}");
     }
-    if let Some(skipped) = &running.reconciliation().accounting_skipped {
+    if let Some(skipped) = running.reconciliation().unobserved.skipped() {
         eprintln!("printobserver: {skipped}");
     }
     eprintln!("printobserver is serving on {}", running.address());

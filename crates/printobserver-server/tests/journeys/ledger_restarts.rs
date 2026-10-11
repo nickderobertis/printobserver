@@ -338,7 +338,12 @@ async fn an_unseen_print_whose_debit_committed_and_died_is_charged_once() {
         .await;
     assert!(refused.contains(DETAIL), "{refused}");
     assert!(
-        world.server.reconciliation().accounted.is_empty(),
+        world
+            .server
+            .reconciliation()
+            .unobserved
+            .accounted()
+            .is_empty(),
         "the start after the one that died accounted the print again: {:?}",
         world.server.reconciliation()
     );
@@ -365,7 +370,12 @@ async fn the_startup_accounting_writes_nothing_over_tallies_that_did_not_move() 
 
     let world = world.restart().await;
     assert!(
-        !world.server.reconciliation().accounted.is_empty(),
+        !world
+            .server
+            .reconciliation()
+            .unobserved
+            .accounted()
+            .is_empty(),
         "the start after a print nobody saw accounted nothing"
     );
     let first = the_ledger_balances(&world).await;
@@ -373,9 +383,14 @@ async fn the_startup_accounting_writes_nothing_over_tallies_that_did_not_move() 
     for start in 2..=3 {
         world = world.restart().await;
         assert!(
-            world.server.reconciliation().accounted.is_empty(),
+            world
+                .server
+                .reconciliation()
+                .unobserved
+                .accounted()
+                .is_empty(),
             "start {start} over unmoved tallies wrote {:?}",
-            world.server.reconciliation().accounted
+            world.server.reconciliation().unobserved.accounted()
         );
         assert_eq!(the_ledger_balances(&world).await, first, "start {start}");
     }
@@ -393,7 +408,7 @@ async fn a_start_that_cannot_read_the_printer_skips_the_accounting_and_starts() 
     let spool = registered(&world, "PLA white", FULL_G).await;
     loaded(&world, &spool, 0).await;
     let world = world.restart().await;
-    assert_eq!(world.server.reconciliation().accounting_skipped, None);
+    assert_eq!(world.server.reconciliation().unobserved.skipped(), None);
 
     world.printer.counts_print(FILE, true, Timestamp::now());
     world.printer.unreadable(true);
@@ -401,20 +416,35 @@ async fn a_start_that_cannot_read_the_printer_skips_the_accounting_and_starts() 
     let skipped = world
         .server
         .reconciliation()
-        .accounting_skipped
-        .clone()
+        .unobserved
+        .skipped()
+        .map(str::to_owned)
         .expect("a start that could not read the printer says it skipped the accounting");
     assert!(
         skipped.contains("could not be read") && skipped.contains("switched off"),
         "{skipped}"
     );
-    assert!(world.server.reconciliation().accounted.is_empty());
+    assert!(
+        world
+            .server
+            .reconciliation()
+            .unobserved
+            .accounted()
+            .is_empty()
+    );
     assert!(debited(&the_ledger_balances(&world).await, &spool).is_empty());
 
     world.printer.unreadable(false);
     let world = world.restart().await;
-    assert_eq!(world.server.reconciliation().accounting_skipped, None);
-    assert!(!world.server.reconciliation().accounted.is_empty());
+    assert_eq!(world.server.reconciliation().unobserved.skipped(), None);
+    assert!(
+        !world
+            .server
+            .reconciliation()
+            .unobserved
+            .accounted()
+            .is_empty()
+    );
     let charges = debited(&the_ledger_balances(&world).await, &spool);
     assert_eq!(charges.len(), 1, "{charges:?}");
     world.server.stop().await;
