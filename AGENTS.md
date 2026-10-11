@@ -1127,6 +1127,23 @@ that step *answered* it released, never on its exit status. `just check-repo`'s
 `tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
+**Every release is a release of all twelve crates, at one version.** They
+inherit one `[workspace.package] version`, so `release-plz.toml` puts every
+crate in one `version_group`, and every requirement one crate makes of another
+is inherited from its `[workspace.dependencies]` entry rather than written in
+the crate's own manifest. Without both, a change touching some crates drafts a
+version every crate moves to while the others' requirements stay behind, and
+`cargo update` refuses the draft — which is how nothing released from 2026-10-03
+to 2026-10-11. `tests/repo-e2e/tests/test_release_path_journey.py` drafts a
+release of one crate in the required gate to hold this.
+
+**A release path that fails on `main` says so.** The workflow's `release-health`
+job keeps one open issue labelled `release-broken` while drafting or publishing
+fails — opened by the first failing run and commented on by each after it — and
+closes it on the first run in which both succeed. An open one is the first thing
+to read when nothing is releasing. `just check-repo`'s `release-tracking` holds
+the job's shape.
+
 **A publish that stopped partway has two recoveries, and neither is a
 hand-run.** A failed `publish` job of a release published under the resumable
 publisher is re-run — GitHub's own re-run, with nothing cleaned up and nothing

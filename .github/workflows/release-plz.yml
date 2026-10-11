@@ -160,6 +160,37 @@ jobs:
           name: dispatched-release
           path: ${{ runner.temp }}/dispatched-release
 
+  # Loud on `main`. A failing run of this workflow is one red mark among every
+  # push's, and in October 2026 the drafting job failed on every push for eight
+  # days with nothing anybody read saying so. So once both halves of the release
+  # program have run, this job keeps one open issue labelled `release-broken`
+  # while either fails — opened by the first failing run and commented on by
+  # each after it, naming the run — and closes it on the first run in which both
+  # succeed. `always()` because the forge otherwise skips a job when a job it
+  # needs failed, which is exactly the run this one exists for. `issues: write`
+  # is the one permission it adds, and no other job holds it. `just check-repo`'s
+  # `release-tracking` holds this shape.
+  release-health:
+    name: release-health
+    needs: [release-pr, release]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      DRAFTING: ${{ needs.release-pr.result }}
+      PUBLISHING: ${{ needs.release.result }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - if: needs.release-pr.result == 'failure' || needs.release.result == 'failure'
+        run: just release-broken "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "release-pr=$DRAFTING" "release=$PUBLISHING"
+      - if: needs.release-pr.result == 'success' && needs.release.result == 'success'
+        run: just release-mended "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
   artifacts:
     name: artifacts (${{ matrix.platform.id }})
     # One build per supported platform: each of the three end-user routes ships

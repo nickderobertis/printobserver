@@ -26,17 +26,25 @@ where a rule modelled here wrongly would show up.
   * A job runs after every job it `needs`, and only if each of them succeeded —
     the implicit `success()` the forge applies to every job condition — and its
     `if:` expression, where it has one, is truthy. Otherwise it is skipped, and
-    what it needs from a skipped job it never reads. A caller may name the set
-    of jobs to run; every job outside it is skipped by name, so a journey can
-    drive a workflow's resolving jobs without the ones whose steps reach a real
-    registry. The refusal of a construct outside the modelled set still reaches
-    every job that runs, and nothing that is skipped by name is approximated.
+    what it needs from a skipped job it never reads. A job condition calling one
+    of the forge's status functions — `always()`, `success()`, `failure()` or
+    `cancelled()` — replaces that implicit `success()`, as the forge's does, so
+    such a job runs after a needed job failed and reads `needs.<job>.result`.
+    `failure()` is true where a needed job failed, and `cancelled()` never is,
+    because nothing here cancels a run. A step condition calling one is refused:
+    a job stops at its first failing step here, so a step after it never runs.
+    A caller may name the set of jobs to run; every job outside it is skipped
+    by name, so a journey can drive a workflow's resolving jobs without the
+    ones whose steps reach a real registry. The refusal of a construct outside
+    the modelled set still reaches every job that runs, and nothing that is
+    skipped by name is approximated.
   * A step runs only if its `if:` expression, where it has one, is truthy; a
     skipped step answers no outputs under its `id`, exactly as the forge's.
   * `if:` and `${{ }}` expressions are the forge's grammar over the contexts
     this repository's workflows read: `needs.<job>.outputs.<name>`,
     `steps.<id>.outputs.<name>`, `secrets.<NAME>`, `matrix.<...>`,
-    `github.event_name`, `github.event.workflow_run.<field>`, `github.ref`,
+    `needs.<job>.result`, `github.event_name`, `github.event.workflow_run.<field>`,
+    `github.ref`,
     `github.run_id`, `github.token`, `inputs.<name>`, `runner.temp`, string literals, `==`,
     `!=`, `&&`, `||`, `!` and parentheses. String comparison is
     case-insensitive, as the forge's is. The event a run is under is the
@@ -45,7 +53,8 @@ where a rule modelled here wrongly would show up.
   * A `run:` step is `bash -e` over the step's text, in the checkout, with the
     job's `env` and then the step's on top of the caller's, `GITHUB_OUTPUT` a
     file of its own and `RUNNER_TEMP` the job's one directory. The forge's own
-    `GITHUB_EVENT_NAME` and `GITHUB_REF` are this run's event's, and
+    `GITHUB_EVENT_NAME` and `GITHUB_REF` are this run's event's, `GITHUB_RUN_ID`
+    is this run's number, and
     `GITHUB_HEAD_REF` and `GITHUB_BASE_REF` are empty, as the forge leaves them
     on every event but a pull request's, which is not modelled — so a runner
     started inside a real job never hands its steps that job's event; `name=value`
@@ -127,6 +136,12 @@ STEP_TIMEOUT_SECONDS = 600
 SECRET_REFERENCE = re.compile(r"secrets\.([A-Za-z0-9_]+)")
 
 INTERPOLATION = re.compile(r"\$\{\{(.*?)\}\}")
+
+#: The forge's status functions, which a job condition may call.
+STATUS_FUNCTIONS = ("always", "success", "failure", "cancelled")
+
+#: A call of one of them, as a condition spells it.
+STATUS_CALL = re.compile(rf"\b({'|'.join(STATUS_FUNCTIONS)})\s*\(")
 
 
 class UnsupportedError(ValueError):
@@ -364,6 +379,9 @@ class Contexts:
     github: Declared = field(default_factory=dict)
     inputs: dict[str, str] = field(default_factory=dict)
     runner: dict[str, str] = field(default_factory=dict)
+    #: What each status function answers, in a job condition; `None` elsewhere,
+    #: where calling one is refused.
+    status: dict[str, bool] | None = None
 
     def resolve(self, dotted: str) -> object:
         """The value at one dotted path, or `None` where the forge would give `null`.
@@ -499,8 +517,19 @@ class _Expression:
                     raise UnsupportedError(msg)
                 return value
             case Token("name", name) if self._peek() == Token("op", "("):
-                msg = f"expression `{self.text}` calls `{name}()`, which this runner does not model"
-                raise UnsupportedError(msg)
+                status = self.contexts.status
+                if status is None or name not in status:
+                    msg = (
+                        f"expression `{self.text}` calls `{name}()`, which this runner does "
+                        f"not model here"
+                    )
+                    raise UnsupportedError(msg)
+                self._take()
+                if self._peek() != Token("op", ")"):
+                    msg = f"expression `{self.text}` passes `{name}()` an argument"
+                    raise UnsupportedError(msg)
+                self._take()
+                return status[name]
             case Token("name", name) if name in LITERALS:
                 return LITERALS[name]
             case Token("name", name):
@@ -755,7 +784,10 @@ class Runner:
 
     def _job(self, name: str, job: Declared, done: dict[str, JobRun]) -> JobRun:
         needs = _needs(job)
-        if any(done[needed].result is not Result.SUCCESS for needed in needs):
+        condition = job.get("if")
+        succeeded = all(done[needed].result is Result.SUCCESS for needed in needs)
+        # A status function in the condition replaces the implicit `success()`.
+        if not succeeded and not STATUS_CALL.search(str(condition or "")):
             return JobRun(Result.SKIPPED)
         contexts = Contexts(
             needs={n: Needed(str(done[n].result), dict(done[n].outputs)) for n in needs},
@@ -763,8 +795,19 @@ class Runner:
             github=self.event.github(self.run_id),
             inputs=dict(self.event.inputs),
         )
-        condition = job.get("if")
-        if condition is not None and not _truthy(evaluate(str(condition), contexts)):
+        judged = Contexts(
+            needs=contexts.needs,
+            secrets=contexts.secrets,
+            github=contexts.github,
+            inputs=contexts.inputs,
+            status={
+                "always": True,
+                "success": succeeded,
+                "failure": any(done[needed].result is Result.FAILURE for needed in needs),
+                "cancelled": False,
+            },
+        )
+        if condition is not None and not _truthy(evaluate(str(condition), judged)):
             return JobRun(Result.SKIPPED)
 
         run = JobRun(Result.SUCCESS)
@@ -884,6 +927,7 @@ class Runner:
             env["RUNNER_TEMP"] = str(runner_temp)
             env["GITHUB_EVENT_NAME"] = self.event.name
             env["GITHUB_REF"] = self.event.ref
+            env["GITHUB_RUN_ID"] = self.run_id
             env["GITHUB_HEAD_REF"] = ""
             env["GITHUB_BASE_REF"] = ""
             env.update(_environment(job.get("env"), step.get("env"), contexts=contexts))

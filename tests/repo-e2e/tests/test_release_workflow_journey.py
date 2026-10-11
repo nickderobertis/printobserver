@@ -27,6 +27,12 @@ Each defect the gating rule refuses is then run rather than read: the
 publishing job chained behind drafting publishes nothing whatever was cut, and
 a downstream job with its gate removed runs on a push that cut nothing.
 
+Its last job, which keeps the one `release-broken` issue, is run the same way:
+the real `just release-broken` and `just release-mended` against a stand-in of
+GitHub's issues API (`release_artifacts.issues_standin`), which every run of a
+sequence shares — so a first failing push opens the issue, a second comments
+on it and a succeeding one closes it, each naming its own run.
+
 The workflow's second shape is run the same way. The copy is a git repository
 already, and its commit is tagged `v<X>` where `X` is its own workspace version,
 so `just release-dispatched` runs for real against a real tag: a dispatch
@@ -53,6 +59,8 @@ from actions import ArtifactStore, Event, Result, Runner, WorkflowRun
 from journey import REPO_ROOT, GateCopy, clean_environment
 from release_artifacts import targets
 from release_artifacts.arming import ARM, DRAFTED_SAMPLE, SQUASH_BODY
+from release_artifacts.arming import repository as declared_repository
+from release_artifacts.issues_standin import IssuesForge
 from release_artifacts.publishing import PRINTOBSERVER_PUBLISH_VERSION
 from release_artifacts.registries import (
     PRINTOBSERVER_PROOF_VERSION,
@@ -60,6 +68,7 @@ from release_artifacts.registries import (
     RELEASED_FIELD,
     VERSION_FIELD,
 )
+from release_artifacts.tracking import LABEL
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo, toolchain_tools
 from repo_checks.shell import run as shell_run
@@ -72,6 +81,17 @@ DRAFTING = "release-pr"
 PUBLISHING = "release"
 ARTIFACTS = "artifacts"
 PUBLISH = "publish"
+REPORTING = "release-health"
+
+#: The repository the forge hands every step as `GITHUB_REPOSITORY`, as this
+#: repository's policy declares it, and the forge's own address.
+OURS = declared_repository(Repo(REPO_ROOT))
+REPOSITORY = f"{OURS.owner}/{OURS.name}"
+SERVER = "https://github.com"
+
+#: The token the runner hands a step for `github.token`, which is the one the
+#: stand-in of GitHub's API takes. Read off the runner's own `github` context.
+RUN_TOKEN = str(Event().github("").get("token"))
 
 #: The install-path workflow's jobs a journey drives: the one resolving the
 #: version, and the three proving a route with it. The three installing a route
@@ -140,6 +160,14 @@ ARTIFACTS_UNGATED = (
 PUBLISH_UNGATED = (
     "    needs: [release, artifacts]\n    if: needs.release.outputs.released != ''\n",
     "    needs: [release, artifacts]\n",
+)
+
+#: The edit that puts back the defect the `release-tracking` rule refuses: a
+#: reporting job without `always()`, which the forge skips on exactly the run
+#: it exists for.
+REPORTING_WITHOUT_ALWAYS = (
+    "    if: always() && github.ref == 'refs/heads/main'\n",
+    "    if: github.ref == 'refs/heads/main'\n",
 )
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
@@ -282,6 +310,8 @@ class Driven:
     invoked: list[str]
     #: Every invocation of the forge's CLI, in order.
     armed: list[Armed] = field(default_factory=list)
+    #: The stand-in of GitHub's issues API the run spoke to.
+    tracker: IssuesForge | None = None
 
     @property
     def reached(self) -> list[str]:
@@ -341,6 +371,7 @@ def driven(
     only: set[str] | None = None,
     drafted: str = "",
     refusal: str = "",
+    tracker: IssuesForge | None = None,
 ) -> Driven:
     """Run one committed workflow over `copy` under `event`, the stand-ins first on the PATH.
 
@@ -349,6 +380,8 @@ def driven(
     of its own. `drafted` is what its drafting answers it opened or refreshed —
     where it is empty, drafting fails as the wedged one did — and `refusal` is
     what the forge's CLI says refusing to arm a pull request, where it refuses.
+    `tracker` is the stand-in of GitHub's issues API the run speaks to — one a
+    sequence of runs shares, or one of this run's own.
     """
     stand_ins = tmp_path / f"stand-ins-{run_id}"
     stand_ins.mkdir()
@@ -371,6 +404,9 @@ def driven(
     real_just = shutil.which("just")
     truth(real_just is not None, describing="`just` to be on the PATH")
     store = store or ArtifactStore(tmp_path / "store")
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    owned = tracker is None
+    tracker = tracker or IssuesForge(REPOSITORY, RUN_TOKEN)
 
     runner = Runner(
         copy.root / workflow,
@@ -391,12 +427,20 @@ def driven(
             RELEASE_STANDIN_RECORD=str(record),
             RELEASE_STANDIN_RECORDED=" ".join(RECORDED),
             RELEASE_STANDIN_REAL_JUST=str(real_just),
+            # What the forge hands every step, the API pointed at the stand-in.
+            GITHUB_API_URL=tracker.api,
+            GITHUB_REPOSITORY=REPOSITORY,
+            GITHUB_SERVER_URL=SERVER,
         ),
         event=event,
         artifacts=store,
         run_id=run_id,
     )
-    run = runner.run(only)
+    try:
+        run = runner.run(only)
+    finally:
+        if owned:
+            tracker.stop()
     recorded = [
         Recorded(*line.split("\t"))
         for line in record.read_text(encoding="utf-8").splitlines()
@@ -408,7 +452,7 @@ def driven(
         for line in armings.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    return Driven(run, copy, store, run_id, recorded, invoked, armed)
+    return Driven(run, copy, store, run_id, recorded, invoked, armed, tracker)
 
 
 def released(
@@ -489,6 +533,7 @@ def test_a_drafting_failure_does_not_stop_a_cut_release_from_reaching_its_artifa
             PUBLISHING: Result.SUCCESS,
             ARTIFACTS: Result.SUCCESS,
             PUBLISH: Result.SUCCESS,
+            REPORTING: Result.SUCCESS,
         },
         describing="what the forge would report each job as",
     )
@@ -549,6 +594,7 @@ def test_a_push_that_cut_nothing_builds_and_publishes_nothing(
             PUBLISHING: Result.SUCCESS,
             ARTIFACTS: Result.SKIPPED,
             PUBLISH: Result.SKIPPED,
+            REPORTING: Result.SUCCESS,
         },
         describing="what the forge would report each job as",
     )
@@ -582,6 +628,7 @@ def test_a_publishing_job_chained_behind_drafting_publishes_nothing_whatever_was
             PUBLISHING: Result.SKIPPED,
             ARTIFACTS: Result.SKIPPED,
             PUBLISH: Result.SKIPPED,
+            REPORTING: Result.SUCCESS,
         },
         describing="what the forge would report each job as",
     )
@@ -656,6 +703,7 @@ def test_a_dispatch_naming_an_existing_tag_builds_its_tree_and_publishes_its_ver
             PUBLISHING: Result.SUCCESS,
             ARTIFACTS: Result.SUCCESS,
             PUBLISH: Result.SUCCESS,
+            REPORTING: Result.SUCCESS,
         },
         describing="what the forge would report each job as",
     )
@@ -707,6 +755,7 @@ def test_a_dispatch_naming_a_tag_the_checkout_does_not_carry_is_refused_at_relea
             PUBLISHING: Result.FAILURE,
             ARTIFACTS: Result.SKIPPED,
             PUBLISH: Result.SKIPPED,
+            REPORTING: Result.SUCCESS,
         },
         describing="what the forge would report each job as",
     )
@@ -747,6 +796,7 @@ def test_a_dispatch_on_any_ref_but_main_is_refused_at_release(
             PUBLISHING: Result.FAILURE,
             ARTIFACTS: Result.SKIPPED,
             PUBLISH: Result.SKIPPED,
+            REPORTING: Result.SKIPPED,
         },
         describing="what the forge would report each job as",
     )
@@ -919,3 +969,139 @@ def test_a_drafting_job_that_drafted_nothing_arms_nothing(
 
     equal(done.run.result(DRAFTING), Result.SUCCESS, describing="the drafting job")
     equal(done.armed, [], describing="the calls the job made to the forge's CLI")
+
+
+def run_url(run_id: str) -> str:
+    """The address the forge gives run `run_id` of this repository's workflow."""
+    return f"{SERVER}/{REPOSITORY}/actions/runs/{run_id}"
+
+
+def pushed(
+    copy: GateCopy,
+    tmp_path: Path,
+    tracker: IssuesForge,
+    run_id: str,
+    *,
+    drafted: str = "",
+) -> Driven:
+    """One push-triggered run of the release workflow, reporting to `tracker`.
+
+    Drafting fails as the wedged one did where `drafted` is empty, and succeeds
+    answering it otherwise; publishing cuts nothing either way.
+    """
+    # llmlint: ignore[tests_mirror_real_usage, e2e_not_mocked] suppressions.toml has the reason.
+    return driven(
+        copy,
+        tmp_path,
+        WORKFLOW,
+        answered=answer(),
+        run_id=run_id,
+        drafted=drafted,
+        tracker=tracker,
+    )
+
+
+#: What a drafting run that drafted nothing answers.
+DRAFTED_NOTHING = '{"prs":[]}'
+
+
+def test_a_failing_push_opens_the_issue_a_second_comments_and_a_success_closes_it(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """Three pushes over one forge: the issue is opened, kept, and closed, each naming its run."""
+    copy = gate_copy()
+
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    with IssuesForge(REPOSITORY, RUN_TOKEN) as tracker:
+        first = pushed(copy, tmp_path, tracker, "41")
+
+        equal(
+            results(first.run),
+            {
+                DRAFTING: Result.FAILURE,
+                PUBLISHING: Result.SUCCESS,
+                ARTIFACTS: Result.SKIPPED,
+                PUBLISH: Result.SKIPPED,
+                REPORTING: Result.SUCCESS,
+            },
+            describing="what the forge would report each job of the first run as",
+        )
+        opened = tracker.open_labelled(LABEL)
+        equal(len(opened), 1, describing="the open `release-broken` issues after a first failure")
+        contains(opened[0].body, run_url("41"), describing="the run the issue names")
+        contains(opened[0].body, f"`{DRAFTING}`", describing="the job the issue names as failed")
+        contains(
+            first.run.jobs[REPORTING].steps[-1].output,
+            f"opened #{opened[0].number}",
+            describing="what the reporting step said",
+        )
+
+        second = pushed(copy, tmp_path, tracker, "42")
+
+        equal(second.run.result(REPORTING), Result.SUCCESS, describing="the second report")
+        equal(
+            [issue.number for issue in tracker.open_labelled(LABEL)],
+            [opened[0].number],
+            describing="the open `release-broken` issues after a second failure",
+        )
+        comments = tracker.issues[opened[0].number].comments
+        equal(len(comments), 1, describing="the comments the second failure left")
+        contains(comments[0], run_url("42"), describing="the run the comment names")
+
+        third = pushed(copy, tmp_path, tracker, "43", drafted=DRAFTED_NOTHING)
+
+        equal(
+            results(third.run),
+            {
+                DRAFTING: Result.SUCCESS,
+                PUBLISHING: Result.SUCCESS,
+                ARTIFACTS: Result.SKIPPED,
+                PUBLISH: Result.SKIPPED,
+                REPORTING: Result.SUCCESS,
+            },
+            describing="what the forge would report each job of the succeeding run as",
+        )
+        equal(tracker.open_labelled(LABEL), [], describing="the open issues after a success")
+        closed = tracker.issues[opened[0].number]
+        equal(closed.state, "closed", describing="the issue's state after a success")
+        contains(closed.comments[-1], run_url("43"), describing="the run the closing names")
+        equal(len(tracker.issues), 1, describing="the issues the three runs opened between them")
+        truth(
+            all(asked.token == RUN_TOKEN for asked in tracker.asked),
+            describing=f"every request to carry the run's own token: {tracker.asked}",
+        )
+
+
+def test_a_succeeding_push_with_nothing_open_writes_nothing(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """The ordinary push: the reporting job reads, finds nothing open, and changes nothing."""
+    copy = gate_copy()
+
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    with IssuesForge(REPOSITORY, RUN_TOKEN) as tracker:
+        done = pushed(copy, tmp_path, tracker, "51", drafted=DRAFTED_NOTHING)
+
+    equal(done.run.result(REPORTING), Result.SUCCESS, describing="the reporting job")
+    equal(
+        [asked.method for asked in tracker.asked],
+        ["GET"],
+        describing="what the reporting job asked of the forge",
+    )
+    equal(tracker.issues, {}, describing="the issues opened")
+
+
+def test_a_reporting_job_without_always_is_skipped_on_the_run_it_exists_for(
+    gate_copy: Callable[..., GateCopy], tmp_path: Path
+) -> None:
+    """The defect `release-tracking` refuses, run: drafting fails, and nothing says so."""
+    copy = gate_copy()
+    copy.edit(WORKFLOW, *REPORTING_WITHOUT_ALWAYS)
+
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    with IssuesForge(REPOSITORY, RUN_TOKEN) as tracker:
+        done = pushed(copy, tmp_path, tracker, "61")
+
+    equal(done.run.result(DRAFTING), Result.FAILURE, describing="the drafting job")
+    equal(done.run.result(REPORTING), Result.SKIPPED, describing="the reporting job")
+    equal(tracker.asked, [], describing="what was asked of the forge")

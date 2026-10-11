@@ -2340,3 +2340,33 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/unobserved.rs"
 site = "settlements: &[(String, Timestamp, PrintOutcome)],"
 reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."
+
+# --- the release workflow's tracking issue -----------------------------------
+#
+# `release_artifacts.tracking` opens, comments on and closes one issue on the
+# forge, and nothing here may do that on the real one. These are the sites that
+# stand GitHub's issues API in, and the helper that runs the workflow over it.
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "IssuesForge(REPOSITORY, RUN_TOKEN)"
+reason = "What stands in is GitHub's REST API for issues, and only it: the release workflow's reporting job opens, comments on and closes an issue, and a journey that did that on github.com would leave a real `release-broken` issue on this repository — or on whatever repository a token reached — every time the gate ran. Everything under test is real: the committed workflow's own text run under the forge's documented scheduling rules by `actions.py`, its `always()` condition and its two step conditions evaluated over what the real drafting and publishing jobs answered, the real `just release-broken` and `just release-mended` recipes and the real `release_artifacts` command speaking HTTP to the stand-in, which keeps what each run left so a sequence of runs reads as the forge's would. The stand-in is `release_artifacts.issues_standin`, whose own refusals `tools/release-artifacts/tests/test_tracking.py` proves over real connections."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "return driven("
+reason = "The helper the three tracking journeys run the committed workflow through, on the ground `driven`'s own entries and the entry at `IssuesForge(REPOSITORY, RUN_TOKEN)` state: the programs stood in are the ones that would reach a registry or the real forge, and the issues API is the stand-in a sequence of runs shares, so the issue a first failing run opens is the one a second comments on and a succeeding one closes."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "return driven("
+reason = "The same ground as `driven`'s own entry: a journey cannot fire the forge, so the committed workflow's text is run under the forge's documented rules by `actions.py`, every `run:` step executed for real over a copy of the tree. This helper names one push-triggered run of it, which is how the forge starts every run the reporting job acts on."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "with IssuesForge(REPOSITORY, CREDENTIAL) as standing:"
+reason = "GitHub's issues API, stood in because the real one would open a real issue on github.com, which no test may do. What is under test is this repository's own tracking command, driven through its real command line with the environment the forge hands a step, speaking real HTTP through `registries.exchange` — the one place this tool audits a URL and attaches a credential. The stand-in keeps what each call left, records the credential every request carried, and refuses where told, so the open-comment-close sequence and every refusal are proven over a real connection. The journey over the committed workflow's reporting job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."

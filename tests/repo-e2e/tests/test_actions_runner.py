@@ -10,7 +10,8 @@ and what a step reads as `GITHUB_EVENT_NAME` whatever its caller ran under;
 a `uses:` boundary is recorded with the inputs it was given; the two artifact
 actions move files through a store keyed by run id, and a download of what
 nothing uploaded fails the step; a caller's set of jobs to run skips the rest
-by name; and a construct outside the modelled set is refused by name rather
+by name; a status function in a job's condition replaces the implicit
+`success()`; and a construct outside the modelled set is refused by name rather
 than run as something else.
 """
 
@@ -275,6 +276,105 @@ def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
 
     equal(run.result("gated-open"), Result.SKIPPED, describing="a gate on an empty output")
     equal(run.result("cells"), Result.SUCCESS, describing="an ungated job after a success")
+
+
+#: Jobs after a failure: three whose conditions call a status function, one
+#: whose condition does not, and one calling a status function in a step.
+AFTER_A_FAILURE = """
+on: push
+jobs:
+  falls:
+    runs-on: x
+    steps:
+      - run: exit 3
+  stands:
+    runs-on: x
+    steps:
+      - run: "true"
+  always:
+    needs: [falls, stands]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: x
+    env:
+      FELL: ${{ needs.falls.result }}
+    steps:
+      - if: needs.falls.result == 'failure' && needs.stands.result == 'success'
+        run: echo "reported $FELL in run $GITHUB_RUN_ID"
+      - if: needs.falls.result == 'success'
+        run: exit 3
+  on-failure:
+    needs: falls
+    if: failure()
+    runs-on: x
+    steps:
+      - run: "true"
+  on-success:
+    needs: falls
+    if: success()
+    runs-on: x
+    steps:
+      - run: exit 3
+  implicit:
+    needs: falls
+    if: github.ref == 'refs/heads/main'
+    runs-on: x
+    steps:
+      - run: exit 3
+"""
+
+
+def test_a_status_function_in_a_job_condition_replaces_the_implicit_success(
+    tmp_path: Path,
+) -> None:
+    """`always()` and `failure()` run a job after a failed one, which reads its result.
+
+    `success()` and a condition calling no status function skip it, as the
+    forge's implicit `success()` does; the step reads `GITHUB_RUN_ID` as the
+    forge hands it.
+    """
+    workflow = tmp_path / "after.yml"
+    workflow.write_text(AFTER_A_FAILURE, encoding="utf-8")
+    (tmp_path / "stand-ins").mkdir()
+    runner = Runner(
+        workflow, tmp_path, path_first=tmp_path / "stand-ins", env=clean_environment(), run_id="7"
+    )
+
+    run = runner.run()
+
+    equal(
+        {name: str(job.result) for name, job in run.jobs.items()},
+        {
+            "falls": "failure",
+            "stands": "success",
+            "always": "success",
+            "on-failure": "success",
+            "on-success": "skipped",
+            "implicit": "skipped",
+        },
+        describing="what the forge would report each job as",
+    )
+    equal(
+        [step.output.strip() for step in run.jobs["always"].steps],
+        ["reported failure in run 7"],
+        describing="the steps the job ran, reading what it needed",
+    )
+
+
+def test_a_status_function_in_a_step_condition_is_refused_by_name(tmp_path: Path) -> None:
+    """A step stops a job at its first failure here, so a step after it is never modelled."""
+    workflow = tmp_path / "step.yml"
+    workflow.write_text(
+        "on: push\njobs:\n  one:\n    runs-on: x\n    steps:\n"
+        "      - if: always()\n        run: 'true'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "stand-ins").mkdir()
+    runner = Runner(workflow, tmp_path, path_first=tmp_path / "stand-ins", env=clean_environment())
+
+    with pytest.raises(UnsupportedError) as refused:
+        runner.run()
+
+    contains(str(refused.value), "always()", describing="what the refusal named")
 
 
 @pytest.mark.parametrize(
