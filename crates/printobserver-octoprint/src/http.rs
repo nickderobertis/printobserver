@@ -217,8 +217,7 @@ fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
 fn field_of(line: &str) -> Result<(String, &str), Transport> {
     let refused = || Transport::Malformed(format!("{line:?} is no header field"));
     let (name, value) = line.split_once(':').ok_or_else(refused)?;
-    let token = |byte: u8| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte);
-    if name.is_empty() || !name.bytes().all(token) {
+    if name.is_empty() || !name.bytes().all(is_token_byte) {
         return Err(refused());
     }
     if value
@@ -304,13 +303,7 @@ impl Source<'_> {
     /// A body framed by chunks.
     fn chunked(&mut self, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
         loop {
-            let line = self.line()?;
-            let header = String::from_utf8_lossy(&line).into_owned();
-            let size_text = header.split(';').next().unwrap_or_default().trim();
-            let size = Some(size_text)
-                .filter(|hex| !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit()))
-                .and_then(|hex| usize::from_str_radix(hex, 16).ok())
-                .ok_or_else(|| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
+            let size = chunk_size_of(&self.line()?)?;
             if size == 0 {
                 // The trailer section: header fields, ended by a blank line.
                 loop {
@@ -360,6 +353,101 @@ impl Source<'_> {
                     "the chunked body stops before its last chunk".to_owned(),
                 ));
             }
+        }
+    }
+}
+
+/// The size one chunk-size line declares, its extensions held to their grammar.
+///
+/// RFC 9112 spells the line `chunk-size *( BWS ";" BWS chunk-ext-name [ BWS
+/// "=" BWS chunk-ext-val ] )`, a name being a token and a value a token or a
+/// quoted string. Nothing here reads an extension, but a line outside that
+/// grammar is not a chunk this port can trust the size of, so it is refused
+/// rather than cut at its first `;`.
+fn chunk_size_of(line: &[u8]) -> Result<usize, Transport> {
+    let refused = || {
+        Transport::Malformed(format!(
+            "{:?} is no chunk-size line",
+            String::from_utf8_lossy(line)
+        ))
+    };
+    let digits = line
+        .iter()
+        .take_while(|byte| byte.is_ascii_hexdigit())
+        .count();
+    let size = core::str::from_utf8(&line[..digits])
+        .ok()
+        .filter(|hex| !hex.is_empty())
+        .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+        .ok_or_else(refused)?;
+    let mut rest = &line[digits..];
+    loop {
+        rest = skip_whitespace(rest);
+        let Some((&b';', after)) = rest.split_first() else {
+            return if rest.is_empty() {
+                Ok(size)
+            } else {
+                Err(refused())
+            };
+        };
+        let (name, after) = token_of(skip_whitespace(after));
+        if name == 0 {
+            return Err(refused());
+        }
+        rest = after;
+        let spaced = skip_whitespace(rest);
+        if let Some((&b'=', value)) = spaced.split_first() {
+            rest = extension_value_of(skip_whitespace(value)).ok_or_else(refused)?;
+        }
+    }
+}
+
+/// Whether one byte may appear in an HTTP token.
+fn is_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
+}
+
+/// The bytes after any spaces and tabs.
+fn skip_whitespace(bytes: &[u8]) -> &[u8] {
+    let blank = bytes
+        .iter()
+        .take_while(|byte| matches!(byte, b' ' | b'\t'))
+        .count();
+    &bytes[blank..]
+}
+
+/// The length of the token the bytes open with, and what follows it.
+fn token_of(bytes: &[u8]) -> (usize, &[u8]) {
+    let length = bytes
+        .iter()
+        .take_while(|byte| is_token_byte(**byte))
+        .count();
+    (length, &bytes[length..])
+}
+
+/// What follows one chunk-extension value — a token or a quoted string — or
+/// `None` when the bytes open with neither.
+fn extension_value_of(bytes: &[u8]) -> Option<&[u8]> {
+    let Some((&b'"', mut rest)) = bytes.split_first() else {
+        let (length, rest) = token_of(bytes);
+        return (length > 0).then_some(rest);
+    };
+    // qdtext is a tab, a space or any visible byte but `"` and `\`, and a
+    // quoted pair escapes a tab, a space or any visible byte; bytes above
+    // ASCII are obs-text and stand in either.
+    let quotable = |byte: u8| byte == b'\t' || byte == b' ' || !byte.is_ascii_control();
+    loop {
+        match rest.split_first()? {
+            (&b'"', after) => return Some(after),
+            (&b'\\', after) => {
+                let (&escaped, after) = after.split_first()?;
+                if !quotable(escaped) {
+                    return None;
+                }
+                rest = after;
+            }
+            (&byte, after) if quotable(byte) => rest = after,
+            _ => return None,
         }
     }
 }

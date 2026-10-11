@@ -55,6 +55,9 @@ enum Download {
     },
     /// These bytes exactly, and then the connection closes.
     Raw(Vec<u8>),
+    /// Nothing: the stand-in stops listening before it answers the facts, so
+    /// the download's connection is refused.
+    Gone,
 }
 
 /// A file's facts and its download, served by a real server.
@@ -84,7 +87,7 @@ impl StandIn {
             let released = Arc::clone(&released);
             thread::spawn(move || {
                 serve(
-                    &listener,
+                    listener,
                     &facts_body,
                     &download,
                     &recorded,
@@ -104,10 +107,15 @@ impl StandIn {
 
     /// A printer configured against this stand-in.
     fn printer(&self) -> OctoPrintPrinter {
+        self.printer_timing_out(Duration::from_secs(20))
+    }
+
+    /// The same, giving up on a silent connection after `timeout`.
+    fn printer_timing_out(&self, timeout: Duration) -> OctoPrintPrinter {
         OctoPrintPrinter::new(
             OctoPrintConfig::new(&format!("http://{}", self.address), "test-key")
                 .expect("a configuration")
-                .with_timeout(Duration::from_secs(20)),
+                .with_timeout(timeout),
         )
     }
 
@@ -135,7 +143,7 @@ impl Drop for StandIn {
 
 /// The stand-in's two answers, in order.
 fn serve(
-    listener: &TcpListener,
+    listener: TcpListener,
     facts_body: &str,
     download: &Download,
     recorded: &Mutex<Vec<Recorded>>,
@@ -151,17 +159,18 @@ fn serve(
         };
         recorded.lock().expect("not poisoned").push(request);
         if answer == 0 {
-            let _ = connection.write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                     Content-Length: {}\r\nConnection: close\r\n\r\n{facts_body}",
-                    facts_body.len()
-                )
-                .as_bytes(),
-            );
+            if matches!(download, Download::Gone) {
+                // Closed before the facts go out, so nothing the client does
+                // after reading them can reach a listener.
+                drop(listener);
+                let _ = connection.write_all(&answered(facts_body));
+                return;
+            }
+            let _ = connection.write_all(&answered(facts_body));
             continue;
         }
         match download {
+            Download::Gone => {}
             Download::Raw(bytes) => {
                 let _ = connection.write_all(bytes);
             }
@@ -183,6 +192,16 @@ fn serve(
             }
         }
     }
+}
+
+/// A JSON body, answered whole.
+fn answered(body: &str) -> Vec<u8> {
+    format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .into_bytes()
 }
 
 /// The header block of a download framed one way.
@@ -403,7 +422,7 @@ fn a_link_spelled_as_a_path_is_followed_as_it_stands() {
 }
 
 /// Downloads that are not framed as HTTP/1 frames a body, each with what it is.
-const MALFORMED_DOWNLOADS: [(&str, &[u8]); 20] = [
+const MALFORMED_DOWNLOADS: [(&str, &[u8]); 25] = [
     (
         "a chunk size that is no number",
         b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nM83\r\n0\r\n\r\n",
@@ -480,6 +499,26 @@ const MALFORMED_DOWNLOADS: [(&str, &[u8]); 20] = [
     (
         "a trailer that is no field",
         b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\nnonsense\r\n\r\n",
+    ),
+    (
+        "a chunk extension with no name",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk extension carrying a control character",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;a\x01b\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk extension with no value after its `=`",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;a=\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk extension whose quoted value never closes",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4;a=\"b\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk size followed by something that is no extension",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4 x\r\nM83\n\r\n0\r\n\r\n",
     ),
     (
         "a last chunk with no blank line after it",
@@ -591,6 +630,84 @@ fn a_chunked_download_with_trailer_fields_is_read_whole() {
     let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
 
     assert_eq!(fed, extruded_to(b"M83\nG1 E2\n", 1_000));
+}
+
+/// Chunk extensions in RFC 9112's grammar — bare, valued with a token, valued
+/// with a quoted string carrying an escape, spaced — are passed over, and the
+/// chunks they ride on are read.
+#[test]
+fn a_chunked_download_with_extensions_is_read_whole() {
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n\
+              4;bare\r\nM83\n\r\n\
+              6 ; name = value ;q=\"a \\\"b\\\" c\"\r\nG1 E2\n\r\n\
+              0;last\r\n\r\n"
+                .to_vec(),
+        ),
+    );
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
+
+    assert_eq!(fed, extruded_to(b"M83\nG1 E2\n", 1_000));
+}
+
+/// A download the instance stops taking connections for, after it answered
+/// the file's facts, is a machine that is not there.
+#[test]
+fn a_download_whose_connection_is_refused_is_unreachable() {
+    let stand_in = StandIn::start(facts(), Download::Gone);
+
+    let error = block_on(stand_in.printer().extruded_to(print_gcode(), 10)).expect_err("a refusal");
+
+    match error {
+        PrinterError::Unreachable { detail } => {
+            assert!(detail.contains("connecting to"), "{detail}");
+        }
+        other => panic!("expected the download unreachable, found {other:?}"),
+    }
+    assert_eq!(
+        stand_in.requests().len(),
+        1,
+        "the facts were answered and nothing more"
+    );
+}
+
+/// A download that goes silent part-way, short of the position, is given up on
+/// at the configured timeout rather than waited on, and is a machine that
+/// stopped answering.
+#[test]
+fn a_download_that_stalls_short_of_the_position_is_unreachable() {
+    let bytes = program();
+    let position = bytes.len() / 2;
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Held {
+            framing: Framing::Length,
+            bytes,
+            sent_first: position / 2,
+        },
+    );
+    let position = i64::try_from(position).expect("a position");
+
+    let error = block_on(
+        stand_in
+            .printer_timing_out(Duration::from_millis(300))
+            .extruded_to(print_gcode(), position),
+    )
+    .expect_err("a refusal");
+
+    match error {
+        PrinterError::Unreachable { detail } => {
+            assert!(detail.contains("reading from"), "{detail}");
+        }
+        other => panic!("expected the download unreachable, found {other:?}"),
+    }
+    assert!(
+        !stand_in.released(),
+        "the answer waited for the held rest of the body"
+    );
 }
 
 /// A download whose last line has no newline counts that line once the body
