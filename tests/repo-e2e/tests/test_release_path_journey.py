@@ -542,6 +542,11 @@ def test_a_release_of_one_crate_moves_every_crate_and_every_requirement_together
     """
     released = gate_copy(node_modules=False)
     drafted_copy = gate_copy(node_modules=False)
+    # The version the group drafts is read off the commits, not off the API:
+    # with the semver check on, a release of all twelve crates builds each one's
+    # documentation twice to compare, which is minutes this journey proves
+    # nothing with. The configuration it holds — the group — is left as it is.
+    drafted_copy.edit("release-plz.toml", "semver_check = true", "semver_check = false")
     touched = drafted_copy.root / "crates" / PARTIALLY_RELEASED / "src" / "touched_by_fix.rs"
     touched.write_text("//! A change the release carries.\n", encoding="utf-8")
     shell_run(["git", "add", "-A"], cwd=drafted_copy.root, check=True)
