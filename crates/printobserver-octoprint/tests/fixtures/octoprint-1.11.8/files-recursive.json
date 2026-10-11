@@ -1,0 +1,283 @@
+{
+  "files": [
+    {
+      "date": 1791683181,
+      "display": "extrusion.gcode",
+      "gcodeAnalysis": {
+        "dimensions": {
+          "depth": 30.0,
+          "height": 0.0,
+          "width": 30.0
+        },
+        "estimatedPrintTime": 179.70710678118616,
+        "filament": {
+          "tool0": {
+            "length": 300.0,
+            "volume": 0.0
+          }
+        },
+        "printingArea": {
+          "maxX": 30.0,
+          "maxY": 30.0,
+          "maxZ": 0.0,
+          "minX": 0.0,
+          "minY": 0.0,
+          "minZ": 0.0
+        },
+        "travelArea": {
+          "maxX": 30.0,
+          "maxY": 30.0,
+          "maxZ": 0.0,
+          "minX": 0.0,
+          "minY": 0.0,
+          "minZ": 0.0
+        },
+        "travelDimensions": {
+          "depth": 30.0,
+          "height": 0.0,
+          "width": 30.0
+        }
+      },
+      "hash": "4d14cbecb029d01e1906d106ea4533b46c53c5ff",
+      "name": "extrusion.gcode",
+      "origin": "local",
+      "path": "extrusion.gcode",
+      "prints": {
+        "failure": 1,
+        "last": {
+          "date": 1791683203.4057045,
+          "success": false
+        },
+        "success": 0
+      },
+      "refs": {
+        "download": "http://127.0.0.1:53081/downloads/files/local/extrusion.gcode",
+        "resource": "http://127.0.0.1:53081/api/files/local/extrusion.gcode"
+      },
+      "size": 4372,
+      "statistics": {
+        "averagePrintTime": {},
+        "lastPrintTime": {}
+      },
+      "type": "machinecode",
+      "typePath": [
+        "machinecode",
+        "gcode"
+      ],
+      "user": "printobserver"
+    },
+    {
+      "children": [
+        {
+          "date": 1791683181,
+          "display": "extrusion.gcode",
+          "gcodeAnalysis": {
+            "dimensions": {
+              "depth": 30.0,
+              "height": 0.0,
+              "width": 30.0
+            },
+            "estimatedPrintTime": 179.70710678118616,
+            "filament": {
+              "tool0": {
+                "length": 300.0,
+                "volume": 0.0
+              }
+            },
+            "printingArea": {
+              "maxX": 30.0,
+              "maxY": 30.0,
+              "maxZ": 0.0,
+              "minX": 0.0,
+              "minY": 0.0,
+              "minZ": 0.0
+            },
+            "travelArea": {
+              "maxX": 30.0,
+              "maxY": 30.0,
+              "maxZ": 0.0,
+              "minX": 0.0,
+              "minY": 0.0,
+              "minZ": 0.0
+            },
+            "travelDimensions": {
+              "depth": 30.0,
+              "height": 0.0,
+              "width": 30.0
+            }
+          },
+          "hash": "4d14cbecb029d01e1906d106ea4533b46c53c5ff",
+          "name": "extrusion.gcode",
+          "origin": "local",
+          "path": "fixtures/extrusion.gcode",
+          "refs": {
+            "download": "http://127.0.0.1:53081/downloads/files/local/fixtures/extrusion.gcode",
+            "resource": "http://127.0.0.1:53081/api/files/local/fixtures/extrusion.gcode"
+          },
+          "size": 4372,
+          "type": "machinecode",
+          "typePath": [
+            "machinecode",
+            "gcode"
+          ],
+          "user": "printobserver"
+        }
+      ],
+      "date": 1791683184,
+      "display": "fixtures",
+      "name": "fixtures",
+      "origin": "local",
+      "path": "fixtures",
+      "prints": {
+        "failure": 0,
+        "success": 0
+      },
+      "refs": {
+        "resource": "http://127.0.0.1:53081/api/files/local/fixtures"
+      },
+      "size": 4372,
+      "type": "folder",
+      "typePath": [
+        "folder"
+      ]
+    },
+    {
+      "date": 1791683151,
+      "display": "hold.gcode",
+      "gcodeAnalysis": {
+        "_empty": true,
+        "dimensions": {
+          "depth": 0,
+          "height": 0,
+          "width": 0
+        },
+        "filament": {},
+        "printingArea": {
+          "maxX": 0,
+          "maxY": 0,
+          "maxZ": 0,
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0
+        },
+        "travelArea": {
+          "maxX": 0,
+          "maxY": 0,
+          "maxZ": 0,
+          "minX": 0,
+          "minY": 0,
+          "minZ": 0
+        },
+        "travelDimensions": {
+          "depth": 0,
+          "height": 0,
+          "width": 0
+        }
+      },
+      "hash": "6977a344efaa8c129eddb52bc5d93e0426298c6a",
+      "name": "hold.gcode",
+      "origin": "local",
+      "path": "hold.gcode",
+      "prints": {
+        "failure": 1,
+        "last": {
+          "date": 1791683177.9045532,
+          "success": false
+        },
+        "success": 0
+      },
+      "refs": {
+        "download": "http://127.0.0.1:53081/downloads/files/local/hold.gcode",
+        "resource": "http://127.0.0.1:53081/api/files/local/hold.gcode"
+      },
+      "size": 4405,
+      "statistics": {
+        "averagePrintTime": {},
+        "lastPrintTime": {}
+      },
+      "type": "machinecode",
+      "typePath": [
+        "machinecode",
+        "gcode"
+      ],
+      "user": "printobserver"
+    },
+    {
+      "date": 1791683180,
+      "display": "two-tools.gcode",
+      "gcodeAnalysis": {
+        "dimensions": {
+          "depth": 20.0,
+          "height": 0.0,
+          "width": 20.0
+        },
+        "estimatedPrintTime": 2.207106781186547,
+        "filament": {
+          "tool0": {
+            "length": 10.0,
+            "volume": 0.0
+          },
+          "tool1": {
+            "length": 7.0,
+            "volume": 0.0
+          }
+        },
+        "printingArea": {
+          "maxX": 20.0,
+          "maxY": 20.0,
+          "maxZ": 0.0,
+          "minX": 0.0,
+          "minY": 0.0,
+          "minZ": 0.0
+        },
+        "travelArea": {
+          "maxX": 20.0,
+          "maxY": 20.0,
+          "maxZ": 0.0,
+          "minX": 0.0,
+          "minY": 0.0,
+          "minZ": 0.0
+        },
+        "travelDimensions": {
+          "depth": 20.0,
+          "height": 0.0,
+          "width": 20.0
+        }
+      },
+      "hash": "55846cd39057ca27f0a477d2051c30cad0671ba0",
+      "name": "two-tools.gcode",
+      "origin": "local",
+      "path": "two-tools.gcode",
+      "prints": {
+        "failure": 0,
+        "last": {
+          "date": 1791683207.6402683,
+          "printTime": 0.06687913602218032,
+          "success": true
+        },
+        "success": 1
+      },
+      "refs": {
+        "download": "http://127.0.0.1:53081/downloads/files/local/two-tools.gcode",
+        "resource": "http://127.0.0.1:53081/api/files/local/two-tools.gcode"
+      },
+      "size": 184,
+      "statistics": {
+        "averagePrintTime": {
+          "_default": 0.06687913602218032
+        },
+        "lastPrintTime": {
+          "_default": 0.06687913602218032
+        }
+      },
+      "type": "machinecode",
+      "typePath": [
+        "machinecode",
+        "gcode"
+      ],
+      "user": "printobserver"
+    }
+  ],
+  "free": 304532586496,
+  "total": 1901254856704
+}

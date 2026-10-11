@@ -42,6 +42,22 @@ fn succeeding(request: &Recorded) -> Reply {
                 "temperature": {"tool0": {"actual": 210.0, "target": 210.0}}}"#
                 .to_owned(),
         )
+    } else if request.method == "GET" && request.path == "/api/files/local/hold.gcode" {
+        Reply::Body(
+            200,
+            r#"{"name": "hold.gcode", "origin": "local", "size": 12,
+                "refs": {"download": "http://127.0.0.1:1/downloads/files/local/hold.gcode"}}"#
+                .to_owned(),
+        )
+    } else if request.method == "GET" && request.path == "/downloads/files/local/hold.gcode" {
+        Reply::Body(200, "M83\nG1 E1.5\n".to_owned())
+    } else if request.method == "GET" && request.path == "/api/files?recursive=true" {
+        Reply::Body(
+            200,
+            r#"{"files": [{"name": "hold.gcode", "origin": "local", "type": "machinecode",
+                           "prints": {"success": 1, "failure": 0}}]}"#
+                .to_owned(),
+        )
     } else if request.method == "GET" && request.path == "/api/job" {
         Reply::Body(
             200,
@@ -69,6 +85,14 @@ fn drive_every_method(printer: &OctoPrintPrinter) {
     drop(block_on(printer.set_tool_target_c(0, 210.0)));
     drop(block_on(printer.set_bed_target_c(60.0)));
     drop(block_on(printer.set_fan_percent(75.0)));
+    drop(block_on(printer.file_facts(
+        FileName::new("hold.gcode").expect("a file name"),
+    )));
+    drop(block_on(printer.printed_files()));
+    drop(block_on(printer.extruded_to(
+        FileName::new("hold.gcode").expect("a file name"),
+        8,
+    )));
 }
 
 /// A value of every variant `PrinterError` declares, constructed in turn.

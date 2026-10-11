@@ -30,19 +30,80 @@ pub fn get(instance: &Scripted, path: &str) -> serde_json::Value {
 ///
 /// Panics when the instance cannot be reached, which is a broken environment.
 pub fn call(instance: &Scripted, path: &str) -> (u16, String) {
+    send(instance, "GET", path, None)
+}
+
+/// Remove one file of the instance's own storage, if it holds it.
+///
+/// # Panics
+///
+/// Panics when the instance answers anything but a removal or "no such file".
+pub fn delete_local(instance: &Scripted, name: &str) {
+    let path = format!("/api/files/local/{name}");
+    let (status, body) = send(instance, "DELETE", &path, None);
+    assert!(
+        status == 204 || status == 404,
+        "DELETE {path} answered {status}: {body}"
+    );
+}
+
+/// Upload one file to the instance's own storage, as a browser would.
+///
+/// # Panics
+///
+/// Panics when the instance does not accept it.
+pub fn upload_local(instance: &Scripted, name: &str, content: &[u8]) {
+    let boundary = "printobserver-upload-boundary";
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n\
+         Content-Type: application/octet-stream\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(content);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let (status, answer) = send(
+        instance,
+        "POST",
+        "/api/files/local",
+        Some((&format!("multipart/form-data; boundary={boundary}"), &body)),
+    );
+    assert_eq!(status, 201, "uploading {name} answered {status}: {answer}");
+}
+
+/// The status and body `OctoPrint` answers one request with.
+fn send(
+    instance: &Scripted,
+    method: &str,
+    path: &str,
+    body: Option<(&str, &[u8])>,
+) -> (u16, String) {
     let authority = instance
         .url
         .strip_prefix("http://")
         .expect("the record names an http URL");
     let mut stream = TcpStream::connect(authority)
         .unwrap_or_else(|error| panic!("connecting to {authority}: {error}"));
-    let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nX-Api-Key: {}\r\n\
-         Accept: application/json\r\nConnection: close\r\n\r\n",
+    let mut request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nX-Api-Key: {}\r\n\
+         Accept: application/json\r\nConnection: close\r\n",
         instance.api_key
-    );
+    )
+    .into_bytes();
+    match body {
+        Some((content_type, payload)) => {
+            request.extend_from_slice(
+                format!(
+                    "Content-Type: {content_type}\r\nContent-Length: {}\r\n\r\n",
+                    payload.len()
+                )
+                .as_bytes(),
+            );
+            request.extend_from_slice(payload);
+        }
+        None => request.extend_from_slice(b"\r\n"),
+    }
     stream
-        .write_all(request.as_bytes())
+        .write_all(&request)
         .and_then(|()| stream.flush())
         .unwrap_or_else(|error| panic!("writing to {authority}: {error}"));
     let mut raw = Vec::new();

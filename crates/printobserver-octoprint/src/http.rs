@@ -11,8 +11,14 @@
 //! whether the instance frames it by `Content-Length`, by chunked transfer or by
 //! closing. A frame this module cannot read is a [`Transport::Malformed`],
 //! never a silently truncated body.
+//!
+//! One request is read differently: a file's download, which can be megabytes
+//! and of which the caller wants only a prefix. [`stream`] hands its body over a
+//! piece at a time, as it arrives, and stops reading — closing the connection —
+//! the moment the reader says it has enough, so the file is never held whole.
 
 use core::fmt::Write as _;
+use core::ops::ControlFlow;
 use std::io::{Read as _, Write as _};
 use std::net::{TcpStream, ToSocketAddrs as _};
 use std::time::Duration;
@@ -86,6 +92,217 @@ pub(crate) fn send(
         .read_to_end(&mut raw)
         .map_err(|error| Transport::Unreachable(format!("reading from {endpoint}: {error}")))?;
     parse(&raw)
+}
+
+/// How much of a streamed body is read at a time.
+const STREAM_PIECE: usize = 16 * 1024;
+
+/// What reads a streamed body, a piece at a time.
+pub(crate) trait Sink {
+    /// The next piece of the body; `Break` stops reading it.
+    fn take(&mut self, bytes: &[u8]) -> ControlFlow<()>;
+    /// The body ended before the sink said it had enough.
+    fn end(&mut self);
+}
+
+/// Send one `GET` and hand a successful answer's body to a sink as it arrives.
+///
+/// Answers `None` once the sink has what it wanted or the body ended, and the
+/// whole response — read to its end — when the status is not a success, so that
+/// a refusal is ruled on exactly as [`send`]'s are.
+pub(crate) fn stream(
+    endpoint: &Endpoint,
+    api_key: &ApiKey,
+    path: &str,
+    timeout: Duration,
+    sink: &mut dyn Sink,
+) -> Result<Option<Response>, Transport> {
+    let mut stream = connect(endpoint, timeout)?;
+    let request = compose(endpoint, api_key, Method::Get, path, None);
+    stream
+        .write_all(&request)
+        .and_then(|()| stream.flush())
+        .map_err(|error| Transport::Unreachable(format!("writing to {endpoint}: {error}")))?;
+    let mut source = Source {
+        stream,
+        endpoint,
+        buffered: Vec::new(),
+    };
+
+    let head = source.head()?;
+    let (status, framing) = framing_of(&head)?;
+    if !(200..300).contains(&status) {
+        let mut raw = head;
+        raw.extend_from_slice(b"\r\n\r\n");
+        raw.append(&mut source.buffered);
+        source
+            .stream
+            .read_to_end(&mut raw)
+            .map_err(|error| Transport::Unreachable(format!("reading from {endpoint}: {error}")))?;
+        return parse(&raw).map(Some);
+    }
+    let flow = match framing {
+        Framing::Length(length) => source.length(length, sink)?,
+        Framing::Chunked => source.chunked(sink)?,
+        Framing::Close => source.until_close(sink)?,
+    };
+    if flow.is_continue() {
+        sink.end();
+    }
+    Ok(None)
+}
+
+/// How a response says where its body ends.
+enum Framing {
+    /// After this many bytes.
+    Length(usize),
+    /// At the last chunk.
+    Chunked,
+    /// When the connection closes.
+    Close,
+}
+
+/// A response's status and framing, from its header block.
+fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
+    let head = String::from_utf8_lossy(head).into_owned();
+    let mut lines = head.split("\r\n");
+    let status_line = lines
+        .next()
+        .ok_or_else(|| Transport::Malformed("the response carries no status line".to_owned()))?;
+    let status: u16 = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))?;
+    let mut framing = Framing::Close;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim();
+        if name == "transfer-encoding" && value.to_ascii_lowercase().contains("chunked") {
+            framing = Framing::Chunked;
+        } else if name == "content-length"
+            && !matches!(framing, Framing::Chunked)
+            && let Ok(length) = value.parse::<usize>()
+        {
+            framing = Framing::Length(length);
+        }
+    }
+    Ok((status, framing))
+}
+
+/// A connection being read a piece at a time, with what has arrived and not
+/// yet been handed on.
+struct Source<'a> {
+    /// The connection.
+    stream: TcpStream,
+    /// Where it reaches, for naming in an error.
+    endpoint: &'a Endpoint,
+    /// Bytes read off the connection and not yet consumed.
+    buffered: Vec<u8>,
+}
+
+impl Source<'_> {
+    /// Read one more piece off the connection; `false` when it has closed.
+    fn fill(&mut self) -> Result<bool, Transport> {
+        let mut piece = [0_u8; STREAM_PIECE];
+        let read = self.stream.read(&mut piece).map_err(|error| {
+            Transport::Unreachable(format!("reading from {}: {error}", self.endpoint))
+        })?;
+        self.buffered.extend_from_slice(&piece[..read]);
+        Ok(read > 0)
+    }
+
+    /// The header block, without its terminating blank line.
+    fn head(&mut self) -> Result<Vec<u8>, Transport> {
+        loop {
+            if let Some(split) = find(&self.buffered, b"\r\n\r\n") {
+                let head = self.buffered[..split].to_vec();
+                self.buffered.drain(..split + 4);
+                return Ok(head);
+            }
+            if !self.fill()? {
+                return Err(Transport::Malformed(
+                    "the response carries no header block".to_owned(),
+                ));
+            }
+        }
+    }
+
+    /// A body framed by its length.
+    fn length(&mut self, length: usize, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
+        let mut left = length;
+        while left > 0 {
+            if self.buffered.is_empty() && !self.fill()? {
+                return Err(Transport::Unreachable(format!(
+                    "the response promised {length} bytes and delivered {}",
+                    length - left
+                )));
+            }
+            let take = left.min(self.buffered.len());
+            let piece: Vec<u8> = self.buffered.drain(..take).collect();
+            left -= take;
+            if sink.take(&piece).is_break() {
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    /// A body framed by chunks.
+    fn chunked(&mut self, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
+        loop {
+            let line = self.line()?;
+            let header = String::from_utf8_lossy(&line).into_owned();
+            let size_text = header.split(';').next().unwrap_or_default().trim();
+            let size = usize::from_str_radix(size_text, 16)
+                .map_err(|_| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
+            if size == 0 {
+                return Ok(ControlFlow::Continue(()));
+            }
+            if self.length(size, sink)?.is_break() {
+                return Ok(ControlFlow::Break(()));
+            }
+            if !self.line()?.is_empty() {
+                return Err(Transport::Malformed(
+                    "a chunk runs past the size it declared".to_owned(),
+                ));
+            }
+        }
+    }
+
+    /// A body framed by the connection closing.
+    fn until_close(&mut self, sink: &mut dyn Sink) -> Result<ControlFlow<()>, Transport> {
+        loop {
+            if !self.buffered.is_empty() {
+                let piece = core::mem::take(&mut self.buffered);
+                if sink.take(&piece).is_break() {
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+            if !self.fill()? {
+                return Ok(ControlFlow::Continue(()));
+            }
+        }
+    }
+
+    /// One CRLF-terminated line, without its terminator.
+    fn line(&mut self) -> Result<Vec<u8>, Transport> {
+        loop {
+            if let Some(end) = find(&self.buffered, b"\r\n") {
+                let line = self.buffered[..end].to_vec();
+                self.buffered.drain(..end + 2);
+                return Ok(line);
+            }
+            if !self.fill()? {
+                return Err(Transport::Malformed(
+                    "a chunk carries no size line".to_owned(),
+                ));
+            }
+        }
+    }
 }
 
 /// Open a connection to the instance, within the configured timeout.

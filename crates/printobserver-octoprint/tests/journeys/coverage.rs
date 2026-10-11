@@ -24,18 +24,6 @@ const READING_METHODS: [&str; 5] = [
     "extruded_to",
 ];
 
-/// The port methods and job fields the filament ledger declares, which this
-/// adapter does not implement yet: the port answers the three reads with its
-/// own refusal and the job carries neither field until the change that reads
-/// them from `OctoPrint`, which walks each and removes it from here.
-const DECLARED_AHEAD_OF_THIS_ADAPTER: [&str; 5] = [
-    "file_facts",
-    "printed_files",
-    "extruded_to",
-    "file_position_bytes",
-    "filament",
-];
-
 /// Everything declared that the journey does not cover.
 fn uncovered(declared: &[String], covered: &BTreeSet<String>) -> Vec<String> {
     declared
@@ -45,34 +33,12 @@ fn uncovered(declared: &[String], covered: &BTreeSet<String>) -> Vec<String> {
         .collect()
 }
 
-/// Everything declared that this adapter is held to covering now.
-fn implemented(declared: Vec<String>) -> Vec<String> {
-    declared
-        .into_iter()
-        .filter(|name| !DECLARED_AHEAD_OF_THIS_ADAPTER.contains(&name.as_str()))
-        .collect()
-}
-
-/// Each name excused as declared ahead of this adapter is one the port or a
-/// snapshot contract actually declares, so the excuse cannot outlive it.
-#[test]
-fn every_name_declared_ahead_of_this_adapter_is_declared() {
-    let mut declared = trait_methods(&port(), "PrinterPort");
-    declared.extend(snapshot_fields());
-    for ahead in DECLARED_AHEAD_OF_THIS_ADAPTER {
-        assert!(
-            declared.iter().any(|name| name == ahead),
-            "{ahead} is excused and neither the port nor a snapshot declares it"
-        );
-    }
-}
-
 /// The redaction journey drives every method the printer port declares.
 #[test]
 fn the_redaction_universe_drives_every_method_the_port_declares() {
-    let declared = implemented(trait_methods(&port(), "PrinterPort"));
+    let declared = trait_methods(&port(), "PrinterPort");
     assert!(
-        declared.len() >= 11,
+        declared.len() >= 14,
         "the reader found only {} port methods, which is not the port",
         declared.len()
     );
@@ -164,9 +130,9 @@ fn snapshot_fields() -> Vec<String> {
 /// The reading walk covers every field the two snapshot contracts declare.
 #[test]
 fn the_reading_walk_covers_every_field_the_snapshot_contracts_declare() {
-    let declared = implemented(snapshot_fields());
+    let declared = snapshot_fields();
     assert!(
-        declared.len() >= 20,
+        declared.len() >= 22,
         "the reader found only {} snapshot fields, which is not the contracts",
         declared.len()
     );
