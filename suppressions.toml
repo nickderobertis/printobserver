@@ -2316,3 +2316,27 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/spools.rs"
 site = "pub async fn spools(&self, include_retired: bool)"
 reason = "The filament-accounting task states this exact signature, `spools(&self, include_retired: bool) -> Vec<SpoolRecord>`, as the surface the server node consumes, mirroring `FilamentStore::spools(include_retired: bool)` that the spool-store node already landed; a selection enum here would redecide an agreed public shape that the server, command line and clients are built against. Both values of the flag are valid selections — unretired spools, or every spool — so no invalid state is representable through it."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/accounting.rs"
+site = "pub(crate) async fn record_print_started("
+reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/unobserved.rs"
+site = "fn settled_since("
+reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/unobserved.rs"
+site = "async fn settlements_of("
+reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/unobserved.rs"
+site = "settlements: &[(String, Timestamp, PrintOutcome)],"
+reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."

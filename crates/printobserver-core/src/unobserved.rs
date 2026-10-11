@@ -98,6 +98,7 @@ fn unseen_between(from: (i64, i64), to: (i64, i64), settled: Settled) -> Vec<Uns
 
 /// The prints of one file this system settled at or after an instant, or ever
 /// when there is none, by outcome.
+// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 fn settled_since(
     settlements: &[(String, Timestamp, PrintOutcome)],
     file_name: &str,
@@ -192,6 +193,7 @@ impl Supervisor {
 
     /// Every settlement this system made of a print of one of these files:
     /// the file, when, and with which outcome.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     async fn settlements_of(
         &self,
         files: &[FileFacts],
@@ -216,6 +218,7 @@ impl Supervisor {
         &self,
         file: &FileFacts,
         previous: Option<&FileTally>,
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         settlements: &[(String, Timestamp, PrintOutcome)],
         loaded: &[SpoolRecord],
         now: Timestamp,

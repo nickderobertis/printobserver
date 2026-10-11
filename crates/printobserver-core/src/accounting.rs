@@ -655,6 +655,7 @@ impl Supervisor {
     }
 
     /// Write a print's `print_started`, naming the spool on each tool now.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub(crate) async fn record_print_started(
         &self,
         print_id: PrintId,
