@@ -4,8 +4,10 @@
 //! exposing both a correct paged read and an unbounded one satisfies every
 //! assertion the paged read is held to. So this enumerates every method the
 //! crate's store types expose and every method the store traits declare, and refuses
-//! one whose answer carries a collection of events under neither bound — a
-//! limit the declared maximum bounds, or a page size answered with a cursor.
+//! one whose answer carries a collection of events under none of three bounds —
+//! a limit the declared maximum bounds, a page size answered with a cursor, or
+//! the call's own drafts: a write answering the events it appended answers one
+//! per draft it was handed, and a draft is what it takes.
 
 use std::collections::BTreeSet;
 
@@ -57,30 +59,48 @@ fn answers_events(returns: &str, carriers: &BTreeSet<String>) -> bool {
             .any(|name| carriers.contains(name))
 }
 
-/// Whether a method's answer of events is bounded, and by which of the two.
-fn bounded(method: &Method, cursors: &BTreeSet<String>, limited: &BTreeSet<String>) -> bool {
+/// The types a method's answer of events may be bounded by.
+struct Bounds {
+    /// Answers carrying the cursor a next page follows.
+    cursors: BTreeSet<String>,
+    /// Queries carrying a limit.
+    limited: BTreeSet<String>,
+    /// Parts of a write carrying the draft of an event it appends.
+    drafted: BTreeSet<String>,
+}
+
+/// Whether a method's answer of events is bounded, and by which of the three.
+fn bounded(method: &Method, bounds: &Bounds) -> bool {
     let takes_limit = method.params.iter().any(|param| {
         param.name == "limit"
             || named_types(&param.ty)
                 .iter()
-                .any(|name| limited.contains(name))
+                .any(|name| bounds.limited.contains(name))
     });
     let paged = method.params.iter().any(|param| param.name == "page_size")
         && named_types(&method.returns)
             .iter()
-            .any(|name| cursors.contains(name));
-    takes_limit || paged
+            .any(|name| bounds.cursors.contains(name));
+    let writes_its_answer = method.params.iter().any(|param| {
+        named_types(&param.ty)
+            .iter()
+            .any(|name| name == "EventDraft" || bounds.drafted.contains(name))
+    });
+    takes_limit || paged || writes_its_answer
 }
 
-/// Every enumerated method answering events under neither bound.
+/// Every enumerated method answering events under no bound.
 fn unbounded(files: &[syn::File]) -> Vec<String> {
     let carriers = declaring(files, Some("events"), "Vec<EventRecord>");
-    let cursors = declaring(files, Some("next"), "Option<EventId>");
-    let limited = declaring(files, Some("limit"), "Option<u32>");
+    let bounds = Bounds {
+        cursors: declaring(files, Some("next"), "Option<EventId>"),
+        limited: declaring(files, Some("limit"), "Option<u32>"),
+        drafted: declaring(files, None, "EventDraft"),
+    };
     enumerated(files)
         .into_iter()
         .filter(|method| answers_events(&method.returns, &carriers))
-        .filter(|method| !bounded(method, &cursors, &limited))
+        .filter(|method| !bounded(method, &bounds))
         .map(|method| format!("{}::{}", method.owner, method.name))
         .collect()
 }
@@ -123,6 +143,31 @@ impl SqliteStore {
     }
 }
 ";
+
+/// A read answering events that takes a part of a write, but no draft of one.
+const FIXTURE_UNBOUNDED_READ_BESIDE_A_WRITE: &str = r"
+impl MemoryStore {
+    pub fn spool_history(
+        &self,
+        spool_id: SpoolId,
+        tally: FileTally,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        unimplemented!()
+    }
+}
+";
+
+/// The third bound is the call's own drafts, and nothing a write merely takes.
+#[test]
+fn a_read_taking_no_draft_is_refused_however_near_a_write_it_is() {
+    let mut files = sources();
+    files.push(parse(FIXTURE_UNBOUNDED_READ_BESIDE_A_WRITE));
+    assert_eq!(
+        unbounded(&files),
+        vec!["MemoryStore::spool_history".to_owned()],
+        "the enumeration took a part of a write carrying no draft as a bound"
+    );
+}
 
 /// The enumeration refuses such a method added to this crate.
 #[test]

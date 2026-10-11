@@ -7,7 +7,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use printobserver_core::store::{
-    ActionStore, EventDraft, EventStore, ImageStore, PrintStore, SessionStore,
+    ActionStore, EventDraft, EventStore, FilamentStore, ImageStore, PrintStore, SessionStore,
+    TimelineStore,
 };
 use printobserver_core::{ActionRequest, Actor, JobManifest, PrintAction};
 use printobserver_store_sqlite::{HoldPoints, MemoryStore, SqliteStore};
@@ -22,11 +23,24 @@ use tempfile::TempDir;
 ///
 /// The domain declares one trait per aggregate so that a consumer names only
 /// the aggregates it touches; a conformance journey is the one consumer that
-/// touches all of them, and this is how it holds an implementation of all five
-/// behind one trait object. Every type implementing the five implements this.
-pub trait Store: PrintStore + EventStore + ImageStore + ActionStore + SessionStore {}
+/// touches all of them, and this is how it holds an implementation of all seven
+/// behind one trait object. Every type implementing the seven implements this.
+pub trait Store:
+    PrintStore + EventStore + ImageStore + ActionStore + SessionStore + FilamentStore + TimelineStore
+{
+}
 
-impl<S: PrintStore + EventStore + ImageStore + ActionStore + SessionStore + ?Sized> Store for S {}
+impl<S> Store for S where
+    S: PrintStore
+        + EventStore
+        + ImageStore
+        + ActionStore
+        + SessionStore
+        + FilamentStore
+        + TimelineStore
+        + ?Sized
+{
+}
 
 /// Which implementation a fixture is holding.
 enum Backing {

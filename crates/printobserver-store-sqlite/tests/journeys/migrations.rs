@@ -443,3 +443,384 @@ fn the_migrations_are_versioned_ascending_and_forward_only() {
         );
     }
 }
+
+/// The version before the filament ledger.
+const BEFORE_THE_LEDGER: u32 = 4;
+
+/// A database at version 4 gains the ledger, empty, and keeps every record.
+#[test]
+fn a_database_at_version_4_gains_an_empty_ledger_and_keeps_every_record() {
+    let dir = TempDir::new().expect("a temporary state directory");
+    let path = dir.path().join(DATABASE_FILE_NAME);
+    drop(database_at(&path, BEFORE_THE_LEDGER));
+
+    let store = SqliteStore::open(dir.path()).expect("a version 4 database opens");
+    read_every_seeded_record_back(&store);
+    let port: &dyn Store = &store;
+    let print_id: PrintId = identifier(PRINT);
+    assert_eq!(block_on(port.spools(true)), Ok(Vec::new()));
+    assert_eq!(block_on(port.charges(print_id)), Ok(Vec::new()));
+    assert_eq!(block_on(port.pending_charges(None)), Ok(Vec::new()));
+    assert_eq!(block_on(port.print_settlement(print_id)), Ok(None));
+    assert_eq!(block_on(port.file_position(print_id)), Ok(None));
+    assert_eq!(block_on(port.file_tallies()), Ok(Vec::new()));
+    assert_eq!(
+        block_on(port.timeline(printobserver_core::store::TimelineQuery {
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            spool_id: None,
+            before: None,
+            limit: None,
+        })),
+        Ok(Vec::new()),
+        "the events written before the ledger are of no timeline kind"
+    );
+}
+
+/// The digest of each step written before the ledger, as it was first written.
+///
+/// A step runs once per database and is never run again, so a step edited after
+/// it shipped is a schema the databases in the field never got. These pin the
+/// text every one of them was created by.
+const SHIPPED_STEPS: [(u32, &str); 4] = [
+    (
+        1,
+        "3a97ca0441e9aeec21c2220ed1bb70e30ccd0787ac0792c25519f3b711f81cb6",
+    ),
+    (
+        2,
+        "3c1c382a343805f46613d4dfe8c0a2a5b91a8196496cd00987cd06e90fd7444d",
+    ),
+    (
+        3,
+        "ade92c2f7b5506b8805358dcefe9371bfd156d83cce18ea2e4839b901c4f4e32",
+    ),
+    (
+        4,
+        "445808843155665fcc47cf56ac654b3655d46ab1d3f0039a6f763e00de025af7",
+    ),
+];
+
+/// The steps that shipped before the ledger are the text they shipped as.
+#[test]
+fn the_steps_that_shipped_before_the_ledger_are_unchanged() {
+    for (version, digest) in SHIPPED_STEPS {
+        let step = MIGRATIONS
+            .iter()
+            .find(|step| step.version == version)
+            .unwrap_or_else(|| panic!("no step brings a database to version {version}"));
+        assert_eq!(
+            printobserver_store_sqlite::digest_of(step.sql.as_bytes()),
+            digest,
+            "migration {version} was edited after it shipped"
+        );
+    }
+}
+
+/// One column, as `PRAGMA table_info` reads it: its name, its declared type,
+/// whether it is `NOT NULL`, and its place in the primary key.
+type Column = (String, String, bool, i64);
+
+/// One column the ledger's step is stated to create.
+fn column(name: &str, ty: &str, not_null: bool, key: i64) -> Column {
+    (name.to_owned(), ty.to_owned(), not_null, key)
+}
+
+/// Every column one table holds.
+fn table_columns(connection: &Connection, table: &str) -> Vec<Column> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .expect("the pragma prepares");
+    statement
+        .query_map([], |row| {
+            Ok((
+                row.get("name")?,
+                row.get("type")?,
+                row.get::<_, i64>("notnull")? == 1,
+                row.get("pk")?,
+            ))
+        })
+        .expect("the pragma answers")
+        .map(|row| row.expect("a pragma row"))
+        .collect()
+}
+
+/// Every foreign key one table declares, as `column -> table(column)`.
+fn table_keys(connection: &Connection, table: &str) -> Vec<String> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA foreign_key_list({table})"))
+        .expect("the pragma prepares");
+    let mut keys: Vec<String> = statement
+        .query_map([], |row| {
+            Ok(format!(
+                "{} -> {}({})",
+                row.get::<_, String>("from")?,
+                row.get::<_, String>("table")?,
+                row.get::<_, String>("to")?
+            ))
+        })
+        .expect("the pragma answers")
+        .map(|row| row.expect("a pragma row"))
+        .collect();
+    keys.sort();
+    keys
+}
+
+/// Every named index on one table: its name, whether it is unique, whether it
+/// is partial, and its columns in order.
+fn table_indexes(connection: &Connection, table: &str) -> Vec<(String, bool, bool, Vec<String>)> {
+    let mut statement = connection
+        .prepare(&format!("PRAGMA index_list({table})"))
+        .expect("the pragma prepares");
+    let listed: Vec<(String, bool, bool)> = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>("name")?,
+                row.get::<_, i64>("unique")? == 1,
+                row.get::<_, i64>("partial")? == 1,
+            ))
+        })
+        .expect("the pragma answers")
+        .map(|row| row.expect("a pragma row"))
+        .filter(|(name, _, _)| !name.starts_with("sqlite_autoindex"))
+        .collect();
+    let mut indexes: Vec<(String, bool, bool, Vec<String>)> = listed
+        .into_iter()
+        .map(|(name, unique, partial)| {
+            let mut info = connection
+                .prepare(&format!("PRAGMA index_info({name})"))
+                .expect("the pragma prepares");
+            let columns = info
+                .query_map([], |row| row.get::<_, String>("name"))
+                .expect("the pragma answers")
+                .map(|row| row.expect("a pragma row"))
+                .collect();
+            (name, unique, partial, columns)
+        })
+        .collect();
+    indexes.sort();
+    indexes
+}
+
+/// Every table and named index a database holds.
+fn objects(connection: &Connection) -> Vec<String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT type || ' ' || name FROM sqlite_master \
+             WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+        )
+        .expect("the catalogue prepares");
+    statement
+        .query_map([], |row| row.get(0))
+        .expect("the catalogue answers")
+        .map(|row| row.expect("a catalogue row"))
+        .collect()
+}
+
+/// Every table the ledger's step is stated to create, with its columns and its
+/// foreign keys.
+fn stated_ledger_tables() -> [(&'static str, Vec<Column>, Vec<&'static str>); 6] {
+    [
+        (
+            "spools",
+            vec![
+                column("id", "TEXT", true, 1),
+                column("name", "TEXT", true, 0),
+                column("material", "TEXT", true, 0),
+                column("color", "TEXT", false, 0),
+                column("diameter_mm", "REAL", true, 0),
+                column("density_g_cm3", "REAL", true, 0),
+                column("initial_g", "REAL", true, 0),
+                column("remaining_g", "REAL", true, 0),
+                column("tare_g", "REAL", false, 0),
+                column("loaded_on_tool", "INTEGER", false, 0),
+                column("trust", "TEXT", true, 0),
+                column("registered_at", "TEXT", true, 0),
+                column("updated_at", "TEXT", true, 0),
+                column("retired_at", "TEXT", false, 0),
+            ],
+            vec![],
+        ),
+        (
+            "print_positions",
+            vec![
+                column("print_id", "TEXT", true, 1),
+                column("bytes", "INTEGER", true, 0),
+                column("size_bytes", "INTEGER", false, 0),
+                column("observed_at", "TEXT", true, 0),
+            ],
+            vec!["print_id -> prints(id)"],
+        ),
+        (
+            "file_tallies",
+            vec![
+                column("file_name", "TEXT", true, 1),
+                column("origin", "TEXT", true, 2),
+                column("generation", "INTEGER", true, 0),
+                column("successes", "INTEGER", true, 0),
+                column("failures", "INTEGER", true, 0),
+                column("observed_at", "TEXT", true, 0),
+            ],
+            vec![],
+        ),
+        (
+            "charges",
+            vec![
+                column("charge_key", "TEXT", true, 1),
+                column("print_id", "TEXT", false, 0),
+                column("tool", "INTEGER", true, 0),
+                column("spool_id", "TEXT", false, 0),
+                column("length_mm", "REAL", true, 0),
+                column("grams", "REAL", false, 0),
+                column("event_id", "TEXT", true, 0),
+                column("charged_at", "TEXT", true, 0),
+            ],
+            vec![
+                "event_id -> events(id)",
+                "print_id -> prints(id)",
+                "spool_id -> spools(id)",
+            ],
+        ),
+        (
+            "pending_charges",
+            vec![
+                column("charge_key", "TEXT", true, 1),
+                column("print_id", "TEXT", true, 0),
+                column("tool", "INTEGER", true, 0),
+                column("pending", "TEXT", true, 0),
+                column("event_id", "TEXT", true, 0),
+                column("pended_at", "TEXT", true, 0),
+            ],
+            vec!["event_id -> events(id)", "print_id -> prints(id)"],
+        ),
+        (
+            "print_settlements",
+            vec![
+                column("print_id", "TEXT", true, 1),
+                column("outcome", "TEXT", true, 0),
+                column("event_id", "TEXT", true, 0),
+                column("settled_at", "TEXT", true, 0),
+            ],
+            vec!["event_id -> events(id)", "print_id -> prints(id)"],
+        ),
+    ]
+}
+
+/// The ledger's step creates exactly the stated indexes.
+fn assert_the_ledger_indexes(after: &Connection) {
+    let index = |name: &str, unique: bool, partial: bool, columns: &[&str]| {
+        (
+            name.to_owned(),
+            unique,
+            partial,
+            columns.iter().map(|column| (*column).to_owned()).collect(),
+        )
+    };
+    assert_eq!(
+        table_indexes(after, "spools"),
+        vec![index(
+            "spools_one_per_tool",
+            true,
+            true,
+            &["loaded_on_tool"]
+        )]
+    );
+    assert_eq!(
+        table_indexes(after, "charges"),
+        vec![index(
+            "charges_by_print",
+            false,
+            false,
+            &["print_id", "tool"]
+        )]
+    );
+    assert_eq!(
+        table_indexes(after, "pending_charges"),
+        vec![index(
+            "pending_charges_by_tool",
+            false,
+            false,
+            &["tool", "pended_at"]
+        )]
+    );
+    assert!(
+        table_indexes(after, "events").contains(&index(
+            "events_by_kind_and_instant",
+            false,
+            false,
+            &["kind", "received_at", "id"]
+        )),
+        "the timeline's index is not on events"
+    );
+    let partial: String = after
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE name = 'spools_one_per_tool'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the index is catalogued");
+    assert!(
+        partial
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .ends_with("WHERE loaded_on_tool IS NOT NULL AND retired_at IS NULL"),
+        "one spool per tool is not held of unretired loaded spools alone: {partial}"
+    );
+}
+
+/// The ledger's step creates exactly the tables, columns, keys and indexes the
+/// ledger is stated to have, and nothing beside them.
+#[test]
+fn the_ledger_step_creates_exactly_the_stated_schema() {
+    let dir = TempDir::new().expect("a temporary state directory");
+    let before = Connection::open(dir.path().join("before.sqlite3")).expect("a database opens");
+    for step in MIGRATIONS
+        .iter()
+        .filter(|step| step.version <= BEFORE_THE_LEDGER)
+    {
+        before.execute_batch(step.sql).expect("the step applies");
+    }
+    drop(SqliteStore::open(dir.path()).expect("the store opens"));
+    let after = Connection::open(dir.path().join(DATABASE_FILE_NAME)).expect("a database opens");
+
+    let added: Vec<String> = objects(&after)
+        .into_iter()
+        .filter(|name| !objects(&before).contains(name))
+        .collect();
+    assert_eq!(
+        added,
+        [
+            "index charges_by_print",
+            "index events_by_kind_and_instant",
+            "index pending_charges_by_tool",
+            "index spools_one_per_tool",
+            "table charges",
+            "table file_tallies",
+            "table pending_charges",
+            "table print_positions",
+            "table print_settlements",
+            "table spools",
+        ],
+        "the ledger's step created another set of objects"
+    );
+
+    for (table, columns, keys) in stated_ledger_tables() {
+        assert_eq!(table_columns(&after, table), columns, "{table}'s columns");
+        assert_eq!(table_keys(&after, table), keys, "{table}'s foreign keys");
+        let strict: String = after
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [table],
+                |row| row.get(0),
+            )
+            .expect("the table is catalogued");
+        assert!(
+            strict.trim_end().ends_with("STRICT"),
+            "{table} is not STRICT"
+        );
+    }
+
+    assert_the_ledger_indexes(&after);
+}

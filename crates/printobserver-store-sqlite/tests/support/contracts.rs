@@ -20,7 +20,7 @@ use crate::surface::{
 /// This is naming rather than relationship: the references below are derived,
 /// and a derived record kind with no table here fails the check that walks
 /// them rather than being passed over.
-pub const RECORD_TABLES: [(&str, &str); 7] = [
+pub const RECORD_TABLES: [(&str, &str); 10] = [
     ("PrintRecord", "prints"),
     ("EventRecord", "events"),
     ("ImageRecord", "images"),
@@ -28,15 +28,19 @@ pub const RECORD_TABLES: [(&str, &str); 7] = [
     ("Intervention", "interventions"),
     ("JobManifest", "manifests"),
     ("SupervisionSession", "sessions"),
+    ("SpoolRecord", "spools"),
+    ("PendingCharge", "pending_charges"),
+    ("FilePosition", "print_positions"),
 ];
 
 /// The table each identifier newtype identifies a row of.
-pub const IDENTIFIER_TABLES: [(&str, &str); 5] = [
+pub const IDENTIFIER_TABLES: [(&str, &str); 6] = [
     ("PrintId", "prints"),
     ("EventId", "events"),
     ("ImageId", "images"),
     ("ActionId", "actions"),
     ("InterventionId", "interventions"),
+    ("SpoolId", "spools"),
 ];
 
 /// One reference a record makes to another record.
@@ -68,13 +72,15 @@ pub fn record_sources() -> Vec<syn::File> {
     sources
 }
 
-/// The five store traits, in the order the supervision domain declares them.
-pub const STORE_TRAITS: [&str; 5] = [
+/// The seven store traits, in the order the supervision domain declares them.
+pub const STORE_TRAITS: [&str; 7] = [
     "PrintStore",
     "EventStore",
     "ImageStore",
     "ActionStore",
     "SessionStore",
+    "FilamentStore",
+    "TimelineStore",
 ];
 
 /// The supervision domain's `store` module, where the traits are declared.
@@ -94,16 +100,19 @@ pub fn store_trait_methods(file: &syn::File) -> Vec<Method> {
 
 /// Every record kind the contracts declare that this store persists.
 ///
-/// A record kind is a struct one of the record sources declares that a method
-/// of a store trait answers: the trait answering it is what makes it a record
-/// this store holds, and a record module declaring it is what makes it a
-/// contract rather than a shape of the trait's own.
+/// A record kind is a struct with named fields one of the record sources
+/// declares that a method of a store trait answers: the trait answering it is
+/// what makes it a record this store holds, and a record module declaring it is
+/// what makes it a contract rather than a shape of the trait's own. A struct
+/// wrapping one value — an instant, an identifier — is a value a record
+/// carries rather than a record, whichever method answers it.
 pub fn record_kinds() -> BTreeSet<String> {
-    let declared = struct_names(&record_sources());
+    let sources = record_sources();
+    let declared = struct_names(&sources);
     let mut kinds = BTreeSet::new();
     for method in store_trait_methods(&store_source()) {
         for name in named_types(&method.returns) {
-            if declared.contains(&name) {
+            if declared.contains(&name) && !struct_fields(&sources, &name).is_empty() {
                 kinds.insert(name);
             }
         }

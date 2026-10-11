@@ -8,8 +8,12 @@
 use crate::block_on::block_on;
 use crate::contracts::{Reference, record_kinds, references};
 use crate::fixture::{Store, draft, instant, manifest, request, session};
+use crate::ledger_records::{at, charge, ended, new_spool, pend, print_key, tally};
+use printobserver_core::kinds::operator_source;
 use printobserver_core::store::StoreError;
-use printobserver_core::{ActionId, ExecutionOutcome, PolicyDecision};
+use printobserver_core::{
+    ActionId, Actor, ExecutionOutcome, FilePosition, PolicyDecision, PrintOutcome,
+};
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_store_sqlite::{DATABASE_FILE_NAME, MIGRATIONS, SqliteStore, connect};
 use printobserver_types::serde_json::{self, json};
@@ -59,7 +63,57 @@ fn seeded() -> TempDir {
     block_on(port.put_manifest(print.id, manifest())).expect("a manifest is stored");
     block_on(port.put_session(session(print.id, instant("2026-03-01T11:59:00Z"))))
         .expect("a session is stored");
+    seed_the_ledger(port, print.id);
     dir
+}
+
+/// One row in every table the filament ledger is held in.
+fn seed_the_ledger(port: &dyn Store, print_id: PrintId) {
+    let spool = block_on(port.register_spool(
+        new_spool("shelf PLA", Some(0), 800.0, at(0)),
+        operator_source(),
+        Actor::Operator,
+        "a new spool on the shelf".to_owned(),
+    ))
+    .expect("a spool registers")
+    .0;
+    block_on(port.apply_spool_changes(
+        Vec::new(),
+        vec![charge(
+            print_key(print_id, 0, 0),
+            Some(print_id),
+            Some(spool.id),
+            Some(5.0),
+            at(1),
+        )],
+        vec![pend(print_key(print_id, 0, 1), print_id, at(2))],
+    ))
+    .expect("a charge and a pend are written");
+    block_on(port.record_file_position(
+        print_id,
+        FilePosition {
+            bytes: 100,
+            size_bytes: Some(1_000),
+            observed_at: at(3),
+        },
+    ))
+    .expect("a position is recorded");
+    block_on(port.account_tallies(
+        vec![tally("bracket.gcode", 0, 1, at(4))],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    ))
+    .expect("a tally is accounted");
+    block_on(port.settle_print(
+        print_id,
+        PrintOutcome::Completed,
+        ended(print_id, PrintOutcome::Completed, at(5)),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    ))
+    .expect("the print settles");
 }
 
 /// The connection this crate opens onto a seeded database.

@@ -13,8 +13,12 @@ use crate::block_on::block_on;
 use crate::child;
 use crate::contracts::record_kinds;
 use crate::fixture::{Store, draft, instant, manifest, request, session};
+use crate::ledger_records::{new_spool, pend, print_key};
+use printobserver_core::kinds::operator_source;
 use printobserver_core::store::{HistoryQuery, ImageLookup};
-use printobserver_core::{ActionId, ExecutionOutcome, InterventionId, PolicyDecision};
+use printobserver_core::{
+    ActionId, Actor, ExecutionOutcome, FilePosition, InterventionId, PolicyDecision, SpoolId,
+};
 use printobserver_printer_api::Adjustable;
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{self, Value, json};
@@ -112,6 +116,9 @@ fn read_one_back(port: &dyn Store, kind: &str, reported: &Value) {
         "Intervention" => read_intervention_back(port, record(reported, kind)),
         "JobManifest" => read_manifest_back(port, record(reported, kind)),
         "SupervisionSession" => read_session_back(port, record(reported, kind)),
+        "SpoolRecord" => read_spool_back(port, record(reported, kind)),
+        "PendingCharge" => read_pending_back(port, record(reported, kind)),
+        "FilePosition" => read_position_back(port, record(reported, kind)),
         other => panic!("the walk reported {other}, which this read-back does not know"),
     }
 }
@@ -212,6 +219,40 @@ fn read_session_back(port: &dyn Store, reported: &Value) {
     assert_eq!(watch.created_at, instant(WRITTEN_AT));
 }
 
+/// The spool survives, at the instant it was registered.
+fn read_spool_back(port: &dyn Store, reported: &Value) {
+    let id: SpoolId = parsed(reported, "id");
+    let spool = block_on(port.spool(id))
+        .expect("the spool reads")
+        .expect("the spool survived the process that wrote it");
+    assert_eq!(spool.registered_at, instant(WRITTEN_AT));
+    assert_eq!(spool.loaded_on_tool, Some(0));
+}
+
+/// The pending charge survives, under its key.
+fn read_pending_back(port: &dyn Store, reported: &Value) {
+    let print_id: PrintId = parsed(reported, "print_id");
+    let pending = block_on(port.pending_charges(Some(0))).expect("the pending charges read");
+    assert_eq!(
+        pending
+            .iter()
+            .map(|held| (held.charge_key.clone(), held.pended_at))
+            .collect::<Vec<_>>(),
+        vec![(print_key(print_id, 0, 1), instant(WRITTEN_AT))],
+        "the pending charge did not survive the process that wrote it"
+    );
+}
+
+/// The file position survives, at the instant it was read.
+fn read_position_back(port: &dyn Store, reported: &Value) {
+    let print_id: PrintId = parsed(reported, "print_id");
+    let position = block_on(port.file_position(print_id))
+        .expect("the position reads")
+        .expect("the position survived the process that wrote it");
+    assert_eq!(position.observed_at, instant(WRITTEN_AT));
+    assert_eq!(position.bytes, 4_096);
+}
+
 /// The coverage check refuses a walk that misses a record kind.
 #[test]
 fn the_coverage_check_refuses_a_walk_that_misses_a_record_kind() {
@@ -264,6 +305,29 @@ fn the_child_writes_one_of_every_record_kind() {
     .expect("an intervention opens");
     block_on(port.put_manifest(print.id, manifest())).expect("a manifest is stored");
     block_on(port.put_session(session(print.id, at))).expect("a session is stored");
+    let spool = block_on(port.register_spool(
+        new_spool("surviving", Some(0), 800.0, at),
+        operator_source(),
+        Actor::Operator,
+        "a new spool on the shelf".to_owned(),
+    ))
+    .expect("a spool registers")
+    .0;
+    block_on(port.apply_spool_changes(
+        Vec::new(),
+        Vec::new(),
+        vec![pend(print_key(print.id, 0, 1), print.id, at)],
+    ))
+    .expect("a pend is held");
+    block_on(port.record_file_position(
+        print.id,
+        FilePosition {
+            bytes: 4_096,
+            size_bytes: None,
+            observed_at: at,
+        },
+    ))
+    .expect("a position is recorded");
 
     let reported = json!({
         "PrintRecord": {"id": print.id.to_string(), "opened_at": print.opened_at.to_string()},
@@ -280,6 +344,9 @@ fn the_child_writes_one_of_every_record_kind() {
         },
         "JobManifest": {"print_id": print.id.to_string()},
         "SupervisionSession": {"print_id": print.id.to_string()},
+        "SpoolRecord": {"id": spool.id.to_string()},
+        "PendingCharge": {"print_id": print.id.to_string()},
+        "FilePosition": {"print_id": print.id.to_string()},
     });
     println!("{MARKER}{reported}");
 }
