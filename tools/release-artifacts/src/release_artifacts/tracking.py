@@ -201,7 +201,7 @@ def run_url(url: str) -> str:
         TrackingError: If it is not an `http` or `https` address.
     """
     parsed = urlsplit(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         msg = f"{url!r} is not the address of a workflow run. {NEXT}"
         raise TrackingError(msg)
     return url

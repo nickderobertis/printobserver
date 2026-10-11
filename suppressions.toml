@@ -2407,3 +2407,9 @@ rule = "e2e_not_mocked"
 file = "tools/release-artifacts/tests/test_tracking.py"
 site = "with RacedForge(REPOSITORY, CREDENTIAL) as raced:"
 reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to answer as the forge does when a second run creates the label between this run's read and its creation. That interleaving cannot be caused on demand against the real forge, and the step's handling of it is what the test proves, through the real command line and real HTTP."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "with MislistingForge(REPOSITORY, CREDENTIAL) as mislisting:"
+reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to list an issue by a number no issue carries. The real forge cannot be made to answer that, and what the test proves is the step's refusal of it, through the real command line and real HTTP, before it writes anything."

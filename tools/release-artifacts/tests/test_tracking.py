@@ -192,6 +192,7 @@ def test_an_environment_the_forge_did_not_hand_is_refused_before_anything_is_ask
         (["release-broken", "--run-url", RUN.format(1), "--job=release=red"], "<job>=<result>"),
         (["release-broken", "--run-url", RUN.format(1), "--job=release=success"], "nothing to"),
         (["release-broken", "--run-url", "not-a-url", "--job=release=failure"], "not-a-url"),
+        (["release-broken", "--run-url", "https://:", "--job=release=failure"], "https://:"),
         (["release-mended"], "--run-url"),
     ],
 )
@@ -444,3 +445,57 @@ def test_a_forge_answer_that_is_not_the_document_asked_for_fails_the_step(
 
     equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
     contains(capsys.readouterr().err, named, describing="what it said")
+
+
+class MislistingForge(IssuesForge):
+    """A forge whose listing names an issue by something that is no issue number."""
+
+    def answer(self, method: str, target: str, document: dict[str, object]) -> tuple[int, object]:
+        """Answer the listing with one entry numbered `0`, and everything else as the forge."""
+        if method == "GET" and target.startswith(f"/repos/{self.repository}/issues?"):
+            return 200, [{"number": 0, "title": TITLE}]
+        return super().answer(method, target, document)
+
+
+def test_a_listed_issue_naming_no_number_is_refused_before_anything_is_written(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An entry this could not comment on or close fails the step having written nothing."""
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    with MislistingForge(REPOSITORY, CREDENTIAL) as mislisting:
+        monkeypatch.setenv("GITHUB_API_URL", mislisting.api)
+        monkeypatch.setenv("GITHUB_REPOSITORY", REPOSITORY)
+        monkeypatch.setenv("GITHUB_TOKEN", CREDENTIAL)
+
+        equal(broken(1, "release-pr=failure"), 1, describing="a failure's exit status")
+        equal(mended(2), 1, describing="a success's exit status")
+        contains(capsys.readouterr().err, "names no issue", describing="what it said")
+        equal(
+            [asked.method for asked in mislisting.asked],
+            ["GET", "GET"],
+            describing="what was asked of the forge",
+        )
+
+
+def test_a_refused_closing_comment_leaves_that_issue_open_for_the_next_success(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The issue whose comment was refused stays open, the next is still closed, and then both."""
+    first = forge.seed(TITLE, [LABEL])
+    second = forge.seed(TITLE, [LABEL])
+    commenting = f"/repos/{REPOSITORY}/issues/{first}/comments"
+    forge.refuse("POST", commenting, 503, "Service Unavailable")
+
+    equal(mended(1), 1, describing="the partly refused close")
+    said = capsys.readouterr().err
+    contains(said, "503", describing="the forge's status")
+    contains(said, f"Closed: #{second}", describing="the issue it did close")
+    equal(
+        [issue.number for issue in forge.open_labelled(LABEL)],
+        [first],
+        describing="the tracking issues left open",
+    )
+    forge.accept("POST", commenting)
+
+    equal(mended(2), 0, describing="the next success")
+    equal(forge.open_labelled(LABEL), [], describing="the tracking issues left open")
