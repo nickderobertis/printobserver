@@ -173,11 +173,7 @@ fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
     let mut chunked = false;
     let mut length: Option<usize> = None;
     for line in lines {
-        let Some((name, value)) = line.split_once(':') else {
-            return Err(Transport::Malformed(format!("{line:?} is no header")));
-        };
-        let name = name.trim().to_ascii_lowercase();
-        let value = value.trim();
+        let (name, value) = field_of(line)?;
         if name == "transfer-encoding" {
             // Chunked must be the last coding, and no other is one this
             // client can undo, so it is the only value read as a body.
@@ -210,6 +206,27 @@ fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
         (false, None) => Framing::Close,
     };
     Ok((status, framing))
+}
+
+/// One header or trailer field, its name lowercased and its value trimmed.
+///
+/// The name is a token — one or more of the characters HTTP allows in one, with
+/// nothing between it and the colon — and the value carries no control
+/// character but a tab, so a line that is not a field is never read as one.
+fn field_of(line: &str) -> Result<(String, &str), Transport> {
+    let refused = || Transport::Malformed(format!("{line:?} is no header field"));
+    let (name, value) = line.split_once(':').ok_or_else(refused)?;
+    let token = |byte: u8| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte);
+    if name.is_empty() || !name.bytes().all(token) {
+        return Err(refused());
+    }
+    if value
+        .bytes()
+        .any(|byte| byte.is_ascii_control() && byte != b'\t')
+    {
+        return Err(refused());
+    }
+    Ok((name.to_ascii_lowercase(), value.trim()))
 }
 
 /// The status a status line carries, when it is an HTTP/1 status line.
@@ -297,12 +314,7 @@ impl Source<'_> {
                     if trailer.is_empty() {
                         return Ok(ControlFlow::Continue(()));
                     }
-                    if !trailer.contains(&b':') {
-                        return Err(Transport::Malformed(format!(
-                            "{:?} is no trailer field",
-                            String::from_utf8_lossy(&trailer)
-                        )));
-                    }
+                    field_of(&String::from_utf8_lossy(&trailer))?;
                 }
             }
             if self.length(size, sink)?.is_break() {

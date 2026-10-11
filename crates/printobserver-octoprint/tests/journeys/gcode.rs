@@ -274,3 +274,17 @@ fn a_piece_ending_mid_line_at_the_position_waits_for_the_next_byte() {
     ends.end();
     assert_eq!(lengths(&ends.fed()), vec![(0, 5.0)]);
 }
+
+/// An `E` word that is no number, or no length a file could feed — past ten
+/// kilometres, or so long it reads as infinity — is skipped: the move is read as
+/// carrying none, and what follows is read as before.
+#[test]
+fn an_e_word_that_is_no_length_is_skipped() {
+    let infinite = format!("1{}", "0".repeat(400));
+    let relative =
+        format!("M83\nG1 E1\nG1 E1.2.3\nG1 E\nG1 E-\nG1 E{infinite}\nG1 E20000000\nG1 E2\n");
+    feeds(&whole(&relative), &[(0, 3.0)]);
+
+    let absolute = format!("M82\nG92 E0\nG1 E5\nG1 E99999999999\nG1 E-{infinite}\nG1 E6\n");
+    feeds(&whole(&absolute), &[(0, 6.0)]);
+}

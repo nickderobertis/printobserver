@@ -409,7 +409,7 @@ type BrokenDownload = (&'static str, &'static [u8], fn(&PrinterError) -> bool);
 /// it says, is not answered as though it were the file.
 #[test]
 fn a_broken_download_is_not_read_as_the_file() {
-    let cases: [BrokenDownload; 14] = [
+    let cases: [BrokenDownload; 17] = [
         (
             "a length it does not deliver",
             b"HTTP/1.1 200 OK\r\nContent-Length: 500\r\n\r\nM83\nG1 E1\n",
@@ -466,6 +466,21 @@ fn a_broken_download_is_not_read_as_the_file() {
             |error| matches!(error, PrinterError::Malformed { .. }),
         ),
         (
+            "a header field name carrying a space",
+            b"HTTP/1.1 200 OK\r\nContent Length: 4\r\n\r\nM83\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
+            "a header field value carrying a control character",
+            b"HTTP/1.1 200 OK\r\nX-Note: a\x01b\r\nContent-Length: 4\r\n\r\nM83\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
+            "a trailer field with no name",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n: x\r\n\r\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
             "both a length and chunks",
             b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n\
               4\r\nM83\n\r\n0\r\n\r\n",
@@ -513,7 +528,9 @@ fn every_rule_of_the_reader_holds_through_the_download() {
                    G1 X1 E3\n\
                    G1 E-1\n\
                    G1 E1\n\
-                   G1X2E0.25\n";
+                   G1X2E0.25\n\
+                   G1 E1.2.3\n\
+                   G1 E99999999999\n";
     let stand_in = StandIn::start(
         facts(),
         Download::Raw(
@@ -530,7 +547,8 @@ fn every_rule_of_the_reader_holds_through_the_download() {
     // Tool 0: 2, a retraction of 0.8 and its unretraction, a bare reset, an arc
     // of 1.5 in absolute and one of 0.5 relative under G91 — 4. Tool 1: 3, a
     // retraction and its unretraction, and 0.25 written without spaces — 3.25.
-    // Neither the commented G1 E100 nor M221 counts.
+    // Neither the commented G1 E100, nor M221, nor an E word that is no length
+    // counts.
     let expected = [(0, 4.0), (1, 3.25)];
     assert_eq!(fed.len(), expected.len(), "{fed:?}");
     for (tool, (want_tool, want_length)) in fed.iter().zip(expected) {

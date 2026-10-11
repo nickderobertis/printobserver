@@ -50,6 +50,11 @@ use printobserver_printer_api::ToolFilament;
 /// being held in memory a line at a time.
 const LINE_LIMIT: usize = 4096;
 
+/// The largest `E` word read as a length, in millimetres: ten kilometres of
+/// filament, far past any spool. A word beyond it is no position a file feeds
+/// to, and summing such words could reach infinity rather than a figure.
+const E_LIMIT: f64 = 1e7;
+
 /// How a coordinate is read: as a place, or as a distance from the last one.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 enum Positioning {
@@ -145,13 +150,15 @@ impl Extrusion {
     }
 }
 
-/// The number one word carries, when the line has that word and it is one.
+/// The number one word carries, when the line has that word and it is a
+/// length: a word that is no number, or one past [`E_LIMIT`], is skipped, and
+/// the move is read as though it carried none.
 fn number_of(words: &[(char, String)], letter: char) -> Option<f64> {
     words
         .iter()
         .find(|(found, _)| *found == letter)
         .and_then(|(_, value)| value.parse::<f64>().ok())
-        .filter(|value| value.is_finite())
+        .filter(|value| value.abs() <= E_LIMIT)
 }
 
 /// One line's words, each a letter and the text after it, with its line
