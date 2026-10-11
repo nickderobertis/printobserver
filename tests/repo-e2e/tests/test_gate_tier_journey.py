@@ -76,8 +76,9 @@ def branch_with_a_change(copy: GateCopy, relative: str) -> None:
 def measuring(copy: GateCopy, platform: str) -> None:
     """Commit, on the copy's `main`, a policy measuring Rust coverage on `platform` alone.
 
-    An empty commit where the committed policy already does. On `main` rather than on the change's branch, so the change stays the one
-    file a contributor touched rather than a root file no project owns.
+    An empty commit where the committed policy already does. On `main` rather
+    than on the change's branch, so the change stays the one file a contributor
+    touched rather than a root file no project owns.
     """
     copy.edit(
         "repo-policy.toml", 'rust_platforms = ["linux-x86_64"]', f'rust_platforms = ["{platform}"]'
