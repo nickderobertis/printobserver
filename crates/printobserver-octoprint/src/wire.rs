@@ -14,7 +14,7 @@ use printobserver_printer_api::{
     HeaterSnapshot, JobSnapshot, PrinterSnapshot,
 };
 use printobserver_printer_api::{FileFacts, FilePrint, PrinterState, ToolFilament};
-use printobserver_types::{Reported, Timestamp};
+use printobserver_types::{FileName, Reported, Timestamp};
 use serde::Deserialize;
 
 use crate::convert::{fraction_of_completion, whole_seconds};
@@ -144,10 +144,10 @@ struct ProgressBody {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FilePayload {
-    /// Its name.
-    name: String,
-    /// Where it lives: `local` or `sdcard`.
-    origin: String,
+    /// Its name, which a separator, a NUL or nothing at all is refused as.
+    name: FileName,
+    /// Where it lives.
+    origin: Origin,
     /// Whether it is a file or a folder.
     #[serde(rename = "type", default)]
     kind: EntryKind,
@@ -166,6 +166,49 @@ pub(crate) struct FilePayload {
     /// What a folder holds.
     #[serde(default)]
     children: Vec<FilePayload>,
+}
+
+/// Where `OctoPrint` keeps a file: its own storage, or the printer's card.
+///
+/// The two are all `OctoPrint`'s file API has, so a third is a malformed
+/// answer rather than a file to pass on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Origin {
+    /// `local`: the instance's own storage.
+    Local,
+    /// `sdcard`: the printer's card.
+    Sdcard,
+}
+
+impl Origin {
+    /// `OctoPrint`'s own word for it, which is what the contract carries.
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Sdcard => "sdcard",
+        }
+    }
+}
+
+/// How a print ended, as the last print of a file reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(from = "bool")]
+enum Outcome {
+    /// It completed.
+    Completed,
+    /// It was cancelled, or failed.
+    NotCompleted,
+}
+
+impl From<bool> for Outcome {
+    fn from(success: bool) -> Self {
+        if success {
+            Self::Completed
+        } else {
+            Self::NotCompleted
+        }
+    }
 }
 
 /// What one entry of `OctoPrint`'s storage is.
@@ -220,9 +263,9 @@ struct LastPrintPayload {
     /// When it ended, in seconds since the epoch, fractional.
     #[serde(default)]
     date: Option<f64>,
-    /// Whether it completed.
+    /// How it ended.
     #[serde(default)]
-    success: Option<bool>,
+    success: Option<Outcome>,
 }
 
 /// The links of a file.
@@ -244,6 +287,9 @@ impl FilePayload {
     /// A size or a tally below zero is no count of anything, so an entry
     /// carrying one is refused rather than passed on as though it were.
     pub(crate) fn facts(self) -> Result<FileFacts, String> {
+        if self.kind == EntryKind::Folder {
+            return Err(format!("{} is a folder rather than a file", self.name));
+        }
         let prints = self.prints.unwrap_or_default();
         let successes = prints.success.unwrap_or(0);
         let failures = prints.failure.unwrap_or(0);
@@ -255,8 +301,8 @@ impl FilePayload {
             ));
         }
         Ok(FileFacts {
-            file_name: self.name,
-            origin: self.origin,
+            file_name: self.name.as_str().to_owned(),
+            origin: self.origin.as_str().to_owned(),
             size_bytes: self.size,
             filament: self
                 .gcode_analysis
@@ -270,7 +316,7 @@ impl FilePayload {
                 let at = Timestamp::from_unix_seconds(epoch_seconds(last.date?)?).ok()?;
                 Some(FilePrint {
                     at,
-                    success: last.success?,
+                    success: last.success? == Outcome::Completed,
                 })
             }),
         })
@@ -310,18 +356,20 @@ fn epoch_seconds(date: f64) -> Option<i64> {
 
 /// The filament every tool `OctoPrint` reports a length for, in tool order.
 ///
-/// A tool whose length is null is omitted, and a key naming no tool — one
-/// whose number is not a whole number from zero — is skipped.
+/// A tool whose length is null, or is no length of anything — below zero, or
+/// not a number — is omitted, and so is a key naming no tool, one whose number
+/// is not a whole number from zero. A volume below zero is no volume.
 fn filament_of(filament: &FilamentPayload) -> Vec<ToolFilament> {
     let mut tools: Vec<ToolFilament> = filament
         .iter()
         .filter_map(|(name, value)| {
             let tool = i64::from(name.strip_prefix(TOOL_PREFIX)?.parse::<u32>().ok()?);
             let payload: ToolFilamentPayload = serde_json::from_value(value.clone()).ok()?;
+            let measured = |value: &f64| value.is_finite() && *value >= 0.0;
             Some(ToolFilament {
                 tool,
-                length_mm: payload.length?,
-                volume_cm3: payload.volume,
+                length_mm: payload.length.filter(measured)?,
+                volume_cm3: payload.volume.filter(measured),
             })
         })
         .collect();

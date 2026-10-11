@@ -358,3 +358,40 @@ fn a_negative_size_or_tally_is_malformed() {
         }
     }
 }
+
+/// What is not a file — a folder, an entry with no name, or one kept somewhere
+/// `OctoPrint` keeps nothing — is refused as malformed rather than answered as
+/// one.
+#[test]
+fn what_is_not_a_file_is_malformed() {
+    for entry in [
+        r#"{"name": "parts", "origin": "local", "type": "folder", "children": []}"#,
+        r#"{"name": "", "origin": "local", "type": "machinecode"}"#,
+        r#"{"name": "a.gcode", "origin": "cloud", "type": "machinecode"}"#,
+    ] {
+        let (_stub, printer) = answering_body(entry);
+
+        let error = block_on(printer.file_facts(file("a.gcode"))).expect_err("a refusal");
+
+        assert!(
+            matches!(error, PrinterError::Malformed { .. }),
+            "{entry}: {error:?}"
+        );
+    }
+}
+
+/// A length below zero, or a volume below zero, is no figure of anything.
+#[test]
+fn a_negative_filament_figure_is_not_reported() {
+    let (_stub, printer) = answering_body(
+        r#"{"name": "a.gcode", "origin": "sdcard", "type": "machinecode",
+            "gcodeAnalysis": {"filament": {
+              "tool0": {"length": -3.0, "volume": 1.0},
+              "tool1": {"length": 3.0, "volume": -1.0}}}}"#,
+    );
+
+    let facts = block_on(printer.file_facts(file("a.gcode"))).expect("the facts");
+
+    assert_eq!(facts.origin, "sdcard");
+    assert_eq!(facts.filament, Some(vec![tool(1, 3.0, None)]));
+}

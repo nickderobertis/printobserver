@@ -218,7 +218,7 @@ fn status_of(status_line: &str) -> Result<u16, Transport> {
     let version = parts.next().unwrap_or_default();
     parts
         .next()
-        .filter(|_| version.starts_with("HTTP/1."))
+        .filter(|_| matches!(version, "HTTP/1.0" | "HTTP/1.1"))
         .and_then(|code| code.parse::<u16>().ok())
         .filter(|code| (100..=599).contains(code))
         .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))
@@ -291,9 +291,19 @@ impl Source<'_> {
             let size = usize::from_str_radix(size_text, 16)
                 .map_err(|_| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
             if size == 0 {
-                // The trailer section, ended by its blank line.
-                while !self.line()?.is_empty() {}
-                return Ok(ControlFlow::Continue(()));
+                // The trailer section: header fields, ended by a blank line.
+                loop {
+                    let trailer = self.line()?;
+                    if trailer.is_empty() {
+                        return Ok(ControlFlow::Continue(()));
+                    }
+                    if !trailer.contains(&b':') {
+                        return Err(Transport::Malformed(format!(
+                            "{:?} is no trailer field",
+                            String::from_utf8_lossy(&trailer)
+                        )));
+                    }
+                }
             }
             if self.length(size, sink)?.is_break() {
                 return Ok(ControlFlow::Break(()));
