@@ -1,10 +1,13 @@
 """The recipes that bracket the printer integration tier, run for real.
 
 `just octoprint-up` starts a real OctoPrint under a copy of the committed tree,
-`just test-integration` runs the tier against what it started, and `just
-octoprint-down` stops it. The assertion at the end is the one that matters on a
-machine that runs this repeatedly: nothing the bring-up recipe started is still
-there afterwards.
+and `just octoprint-down` stops it. The assertion at the end is the one that
+matters on a machine that runs this repeatedly: nothing the bring-up recipe
+started is still there afterwards.
+
+The tier itself, `just test-integration`, is not run here: the required
+`integration (<platform>)` jobs run it between these same two recipes on every
+pull request, and a second run inside the gate would only repeat theirs.
 """
 
 from __future__ import annotations
@@ -20,13 +23,6 @@ from repo_checks.expect import equal, passing, truth
 from repo_checks.shell import start
 
 STATE = ".octoprint-env"
-
-#: OctoPrint's own log under the bring-up's state directory: where a printer the
-#: tier left disconnected says why.
-OCTOPRINT_LOG = f"{STATE}/instance/logs/octoprint.log"
-
-#: How much of that log a failing tier prints.
-LOG_TAIL_LINES = 200
 
 #: The access a Windows process handle is opened with: enough to read its exit
 #: code, and nothing that could change it.
@@ -86,10 +82,10 @@ def _windows_exit_code(pid: int) -> int | None:
         kernel32.CloseHandle(handle)
 
 
-def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
+def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """Up, the tier, down — and no process left behind."""
+    """Up, running, down — and no process left behind."""
     copy = gate_copy()
 
     brought_up = copy.just("octoprint-up", timeout=1200)
@@ -99,15 +95,8 @@ def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
     pid = int(record["pid"])
     truth(running(pid), describing=f"the process {pid} the bring-up recipe started")
 
-    tier = copy.just("test-integration", timeout=2400)
-    if tier.returncode != 0 and (copy.root / OCTOPRINT_LOG).is_file():
-        # Read before the bring-down, and printed rather than asserted: what the
-        # printer last said is the diagnosis the tier's own failure cannot give.
-        said = copy.read(OCTOPRINT_LOG).splitlines()[-LOG_TAIL_LINES:]
-        print(f"the last {len(said)} lines of {OCTOPRINT_LOG}:", *said, sep="\n")
     brought_down = copy.just("octoprint-down", timeout=600)
 
-    passing(tier, describing="`just test-integration` against what the bring-up started")
     passing(brought_down, describing="`just octoprint-down`")
     truth(
         not running(pid),

@@ -546,8 +546,8 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
-site = "Keep the OctoPrint journey in the required gate"
-reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
+site = "The OctoPrint tier runs in the required `integration` jobs, not in the gate"
+reason = "This is a repository-wide gate and merge-protection statement spanning the e2e project and CI workflows; neither project subtree alone owns which required job runs the OctoPrint tier."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
@@ -558,8 +558,8 @@ reason = "Required content rather than session history. The release-path repair 
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
-site = "Keep the OctoPrint journey in the required gate"
-reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
+site = "The OctoPrint tier runs in the required `integration` jobs, not in the gate"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection statement is scanned through this path too; neither the e2e nor CI subtree alone owns it."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"

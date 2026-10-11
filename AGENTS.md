@@ -1216,13 +1216,12 @@ the gate gates. Structural wiring has one deterministic proof instead:
 `check` to invoke every tier in `repo-policy.toml` and refuses empty tiers.
 
 <!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs. -->
-**Keep the OctoPrint journey in the required gate.**
-`test_octoprint_tier.py` asserts that bring-down leaves no process from bring-up.
-The separate `integration` job runs the same three recipes but has no cleanup
-assertion, so it does not catch that silent leak. These jobs run in parallel;
-relocation saves only their critical-path difference. Keep the journey in the
-required gate unless `integration` first becomes required through a coordinated
-repository-setting and merge-path inventory change.
+**The OctoPrint tier runs in the required `integration` jobs, not in the gate.**
+Every `integration (<platform>)` context is a required check, and each runs
+`just octoprint-up`, `just test-integration` and `just octoprint-down` on every
+pull request. The gate's `test_octoprint_tier.py` keeps only what that job does
+not assert: from a clean copy of the tree, the process the bring-up started is
+running, and the bring-down leaves it gone. It runs no second copy of the tier.
 
 ### The one journey, in three clients
 
