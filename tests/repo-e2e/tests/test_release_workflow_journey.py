@@ -67,6 +67,7 @@ from release_artifacts.registries import (
     RELEASE_ANSWER_SAMPLE,
     RELEASED_FIELD,
     VERSION_FIELD,
+    Token,
 )
 from release_artifacts.tracking import LABEL
 from repo_checks.expect import absent, contains, equal, truth
@@ -91,7 +92,7 @@ SERVER = "https://github.com"
 
 #: The token the runner hands a step for `github.token`, which is the one the
 #: stand-in of GitHub's API takes. Read off the runner's own `github` context.
-RUN_TOKEN = str(Event().github("").get("token"))
+RUN_TOKEN = Token(str(Event().github("").get("token")))
 
 #: The install-path workflow's jobs a journey drives: the one resolving the
 #: version, and the three proving a route with it. The three installing a route

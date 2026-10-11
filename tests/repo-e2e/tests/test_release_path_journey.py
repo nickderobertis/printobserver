@@ -519,8 +519,8 @@ PARTIALLY_RELEASED = "printobserver-core"
     ("subject", "bump"),
     [
         ("fix(core): a change to the supervision domain alone", "patch"),
-        # The bump run 38129622045 wedged on: a breaking change in some crates
-        # moves a pre-1.0 workspace a minor, past every `^0.3.0` left behind.
+        # A breaking change in some crates moves a pre-1.0 workspace a minor,
+        # past every requirement of the version before it left behind.
         ("fix(core)!: a breaking change to the supervision domain alone", "minor"),
     ],
 )

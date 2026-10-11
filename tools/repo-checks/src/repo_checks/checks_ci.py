@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks.checks_release import Workflow
 from repo_checks.checks_service import installers
 from repo_checks.model import (
     PolicyValueError,
@@ -1228,7 +1229,7 @@ def merge_model(repo: Repo) -> list[str]:
     return findings
 
 
-def _built_in_token_findings(file_name: str, workflow: dict[str, Any]) -> list[str]:
+def _built_in_token_findings(file_name: str, workflow: Workflow) -> list[str]:
     """The release workflow's built-in token reaches no job running the release program.
 
     The release program opens the release change request and pushes the

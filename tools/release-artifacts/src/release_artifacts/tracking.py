@@ -22,9 +22,13 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import NewType
 from urllib.parse import quote, urlsplit
 
 from release_artifacts.registries import RefusedError, RegistryError, Token, exchange
+
+#: An issue's number on the forge: what it is commented on and closed by.
+IssueNumber = NewType("IssueNumber", int)
 
 #: The label the one tracking issue carries, which is how it is found again.
 LABEL = "release-broken"
@@ -43,6 +47,7 @@ API_URL, REPOSITORY, TOKEN = "GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKE
 MEDIA_TYPE = "application/vnd.github+json"
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class Outcome(StrEnum):
     """What the forge reports a job as, through `needs.<job>.result`."""
 
@@ -83,6 +88,7 @@ class TrackingError(RuntimeError):
         self.status = status
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 @dataclass(frozen=True, slots=True)
 class Forge:
     """GitHub's REST API for one repository, under one token."""
@@ -142,7 +148,8 @@ def forge(environment: Mapping[str, str]) -> Forge:
             f"set from `github.token`."
         )
         raise TrackingError(msg)
-    if urlsplit(api).scheme not in {"http", "https"}:
+    parsed = urlsplit(api)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         msg = f"`{API_URL}` is {api!r}, which is not an `http` or `https` address. {NEXT}"
         raise TrackingError(msg)
     if not REPOSITORY_NAME.fullmatch(repository):
@@ -173,7 +180,7 @@ def outcomes(given: list[str]) -> dict[str, Outcome]:
     return named
 
 
-def _number(entry: object, what: str) -> int:
+def _number(entry: object, what: str) -> IssueNumber:
     """The issue number one document of the forge's carries.
 
     Raises:
@@ -184,7 +191,7 @@ def _number(entry: object, what: str) -> int:
     if not isinstance(number, int) or isinstance(number, bool) or number < 1:
         msg = f"the forge answered {what} with {entry!r}, which names no issue. {NEXT}"
         raise TrackingError(msg)
-    return number
+    return IssueNumber(number)
 
 
 def run_url(url: str) -> str:
@@ -200,7 +207,7 @@ def run_url(url: str) -> str:
     return url
 
 
-def tracking(forge: Forge) -> list[int]:
+def tracking(forge: Forge) -> list[IssueNumber]:
     """Every open tracking issue, oldest first, read page by page to the last.
 
     The forge lists a pull request among a repository's issues; one carrying
@@ -210,7 +217,7 @@ def tracking(forge: Forge) -> list[int]:
         TrackingError: If a page is not the forge's list of issues, or an entry
             names no issue.
     """
-    numbers: list[int] = []
+    numbers: list[IssueNumber] = []
     page = 1
     while True:
         query = f"labels={quote(LABEL)}&state=open&per_page={PAGE}&page={page}"
@@ -232,7 +239,7 @@ def _labelled(forge: Forge) -> None:
     """Create the tracking label where the repository does not carry it yet.
 
     A second run creating it at the same moment is refused as a label that
-    already exists, which is the state this asks for.
+    already exists, which is the state this asks for once a read confirms it.
     """
     try:
         forge.ask("GET", f"/labels/{quote(LABEL)}")
@@ -248,6 +255,8 @@ def _labelled(forge: Forge) -> None:
         except TrackingError as raced:
             if raced.status != ALREADY_THERE:
                 raise
+            # A `422` is also a document refused; only a label now there is the race.
+            forge.ask("GET", f"/labels/{quote(LABEL)}")
 
 
 def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:

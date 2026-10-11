@@ -144,6 +144,7 @@ STATUS_FUNCTIONS = ("always", "success", "failure", "cancelled")
 STATUS_CALL = re.compile(rf"\b({'|'.join(STATUS_FUNCTIONS)})\s*\(")
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 @dataclass(frozen=True, slots=True)
 class Status:
     """What each status function answers for one job, from what it needs.

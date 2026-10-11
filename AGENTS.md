@@ -1137,12 +1137,9 @@ version every crate moves to while the others' requirements stay behind, and
 `tests/repo-e2e/tests/test_release_path_journey.py` drafts a release of one
 crate in the required gate to hold this.
 
-**A release path that fails on `main` says so.** The workflow's `release-health`
-job keeps one open issue labelled `release-broken` while drafting or publishing
-fails — opened by the first failing run and commented on by each after it — and
-closes it on the first run in which both succeed. An open one is the first thing
-to read when nothing is releasing. `just check-repo`'s `release-tracking` holds
-the job's shape.
+**When nothing is releasing, read the open `release-broken` issue first.** The
+release workflow keeps it open, naming every failing run, while drafting or
+publishing fails on `main`.
 
 **A publish that stopped partway has two recoveries, and neither is a
 hand-run.** A failed `publish` job of a release published under the resumable

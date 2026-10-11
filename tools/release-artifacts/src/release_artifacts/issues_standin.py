@@ -24,6 +24,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Self
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from release_artifacts.registries import Token
+from release_artifacts.tracking import IssueNumber
+
 #: The most this reads of one request body; every document `tracking` sends
 #: is a few hundred bytes.
 MAX_BODY_BYTES = 1024 * 1024
@@ -53,11 +56,12 @@ class Reason(StrEnum):
     REOPENED = "reopened"
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 @dataclass(slots=True)
 class Issue:
     """One issue the stand-in holds, as the forge would show it."""
 
-    number: int
+    number: IssueNumber
     title: str
     body: str
     labels: list[str]
@@ -66,7 +70,6 @@ class Issue:
     comments: list[str] = field(default_factory=list)
     pull_request: bool = False
 
-    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def document(self, html: str) -> dict[str, object]:
         """The issue in the forge's shape."""
         shown: dict[str, object] = {
@@ -90,16 +93,17 @@ class Asked:
 
     method: str
     path: str
-    token: str
+    token: Token
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class IssuesForge:
     """GitHub's issues API for one repository, on a port the operating system chooses."""
 
-    def __init__(self, repository: str, token: str) -> None:
+    def __init__(self, repository: str, token: Token) -> None:
         """Start answering for `repository` (`owner/name`), under `token` alone."""
         self.repository, self.token = repository, token
-        self.issues: dict[int, Issue] = {}
+        self.issues: dict[IssueNumber, Issue] = {}
         self.labels: set[str] = set()
         self.asked: list[Asked] = []
         self._refused: dict[tuple[str, str], tuple[int, str]] = {}
@@ -120,10 +124,10 @@ class IssuesForge:
         """The repository's address on the forge, which every document links to."""
         return f"https://github.com/{self.repository}"
 
-    def seed(self, title: str, labels: list[str], *, pull_request: bool = False) -> int:
+    def seed(self, title: str, labels: list[str], *, pull_request: bool = False) -> IssueNumber:
         """Hold an open issue or pull request before anything asks, answering its number."""
         with self._lock:
-            number = len(self.issues) + 1
+            number = IssueNumber(len(self.issues) + 1)
             self.issues[number] = Issue(number, title, "", list(labels), pull_request=pull_request)
             self.labels |= set(labels)
             return number
@@ -175,7 +179,6 @@ class IssuesForge:
         with self._lock:
             return self._route(method, rest, parse_qs(split.query), document)
 
-    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def _route(
         self,
         method: str,
@@ -192,17 +195,18 @@ class IssuesForge:
                 body = document.get("body")
                 if not isinstance(body, str) or not body:
                     return INVALID
-                self.issues[int(number)].comments.append(body)
-                return 201, {"id": len(self.issues[int(number)].comments), "body": body}
+                self.issues[IssueNumber(int(number))].comments.append(body)
+                taken = len(self.issues[IssueNumber(int(number))].comments)
+                return 201, {"id": taken, "body": body}
             case ("PATCH", ["issues", number]) if self._held(number):
-                return self._updated(self.issues[int(number)], document)
+                return self._updated(self.issues[IssueNumber(int(number))], document)
             case ("GET", ["labels", name]) if name in self.labels:
                 return 200, {"name": name}
             case ("POST", ["labels"]):
                 name, colour = document.get("name"), document.get("color")
                 if not isinstance(name, str) or not name or name in self.labels:
                     return INVALID
-                if not isinstance(colour, str) or len(colour) != COLOUR_DIGITS:
+                if not isinstance(colour, str) or not _hexadecimal(colour):
                     return INVALID
                 self.labels.add(name)
                 return 201, {"name": name, "color": colour}
@@ -210,12 +214,14 @@ class IssuesForge:
                 return 404, {"message": "Not Found"}
 
     def _held(self, number: str) -> bool:
-        return number.isascii() and number.isdigit() and int(number) in self.issues
+        return number.isascii() and number.isdigit() and IssueNumber(int(number)) in self.issues
 
     def _listed(self, query: dict[str, list[str]]) -> tuple[int, object]:
         """One page of the issues carrying every label asked for, in the state asked for."""
         wanted = {name for value in query.get("labels", []) for name in value.split(",") if name}
         state = query.get("state", ["open"])[0]
+        if state not in {*(value.value for value in State), "all"}:
+            return INVALID
         size, page = query.get("per_page", [str(DEFAULT_PAGE)])[0], query.get("page", ["1"])[0]
         if not (size.isascii() and size.isdigit() and page.isascii() and page.isdigit()):
             return INVALID
@@ -236,7 +242,7 @@ class IssuesForge:
             return INVALID
         if not isinstance(labels, list) or not all(isinstance(name, str) for name in labels):
             return INVALID
-        number = len(self.issues) + 1
+        number = IssueNumber(len(self.issues) + 1)
         self.labels |= set(labels)
         self.issues[number] = Issue(number, title, body, list(labels))
         return 201, self.issues[number].document(self.html)
@@ -253,6 +259,13 @@ class IssuesForge:
         issue.state = State(state)
         issue.state_reason = Reason(reason) if isinstance(reason, str) else None
         return 200, issue.document(self.html)
+
+
+def _hexadecimal(colour: str) -> bool:
+    """Whether `colour` is the six hexadecimal digits the forge takes a label's colour as."""
+    return len(colour) == COLOUR_DIGITS and all(
+        digit in "0123456789abcdefABCDEF" for digit in colour
+    )
 
 
 def _handler(forge: IssuesForge) -> type[BaseHTTPRequestHandler]:
@@ -276,7 +289,7 @@ def _handler(forge: IssuesForge) -> type[BaseHTTPRequestHandler]:
             return parsed if isinstance(parsed, dict) else None
 
         def _any(self) -> None:
-            carried = self.headers.get("Authorization", "").removeprefix("Bearer ")
+            carried = Token(self.headers.get("Authorization", "").removeprefix("Bearer "))
             forge.asked.append(Asked(self.command, self.path, carried))
             document = self._document()
             if carried != forge.token:

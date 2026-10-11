@@ -278,8 +278,8 @@ def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
     equal(run.result("cells"), Result.SUCCESS, describing="an ungated job after a success")
 
 
-#: Jobs after a failure: three whose conditions call a status function, one
-#: whose condition does not, and one calling a status function in a step.
+#: Jobs after a failure: three whose conditions call a status function, and one
+#: whose condition does not.
 AFTER_A_FAILURE = """
 on: push
 jobs:

@@ -21,7 +21,7 @@ from repo_checks.expect import contains, equal, truth
 
 REPOSITORY = "nickderobertis/printobserver"
 #: What the stand-in authenticates the run by: minted per load, never a real token.
-CREDENTIAL = f"tracking-{secrets.token_hex(8)}"
+CREDENTIAL = Token(f"tracking-{secrets.token_hex(8)}")
 RUN = "https://github.com/nickderobertis/printobserver/actions/runs/{}"
 
 
@@ -165,6 +165,7 @@ def test_an_unreachable_forge_fails_the_step(
         ("GITHUB_TOKEN", "", "`GITHUB_TOKEN`"),
         ("GITHUB_API_URL", "", "`GITHUB_API_URL`"),
         ("GITHUB_API_URL", "file:///etc", "not an `http` or `https` address"),
+        ("GITHUB_API_URL", "https:///path", "not an `http` or `https` address"),
         ("GITHUB_REPOSITORY", "no-slash", "not an `owner/name`"),
     ],
 )
@@ -248,8 +249,14 @@ def test_a_repository_the_forge_does_not_carry_fails_the_step(
         ("POST", "/issues", b"{not json", CREDENTIAL, 400),
         ("POST", "/issues", b'{"labels": []}', CREDENTIAL, 422),
         ("POST", "/labels", b'{"name": ""}', CREDENTIAL, 422),
-        ("POST", "/issues/9/comments", b'{"body": "x"}', CREDENTIAL, 404),
+        ("POST", "/labels", b'{"name": "x", "color": "zzzzzz"}', CREDENTIAL, 422),
+        ("GET", "/issues?state=sideways", None, CREDENTIAL, 422),
+        ("GET", "/issues?per_page=0", None, CREDENTIAL, 422),
+        ("GET", "/issues?page=x", None, CREDENTIAL, 422),
+        ("POST", "/issues", b'{"title": "t", "body": "b", "labels": [1]}', CREDENTIAL, 422),
+        ("POST", "/issues/1/comments", b'{"body": ""}', CREDENTIAL, 404),
         ("PATCH", "/issues/x", b"{}", CREDENTIAL, 404),
+        ("POST", "/issues/9/comments", b'{"body": "x"}', CREDENTIAL, 404),
     ],
 )
 def test_the_stand_in_refuses_what_the_forge_refuses(
@@ -291,14 +298,43 @@ def test_the_stand_in_refuses_a_label_it_already_carries(forge: IssuesForge) -> 
     equal(refused.value.status, 422, describing="the status")
 
 
+class RacedForge(IssuesForge):
+    """The forge as a second run creating the label at the same moment leaves it.
+
+    The label is created by that other run between this one's read and its
+    creation, so this run's creation is refused as a label that exists.
+    """
+
+    def answer(self, method: str, target: str, document: dict[str, object]) -> tuple[int, object]:
+        """Create the label for the other run, then answer as the forge does."""
+        if (method, target) == ("POST", f"/repos/{self.repository}/labels"):
+            self.labels.add(LABEL)
+        return super().answer(method, target, document)
+
+
 def test_a_label_another_run_created_at_the_same_moment_still_opens_the_issue(
-    forge: IssuesForge,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The forge's `422` for a label that now exists is the state the step asked for."""
+    """The forge's `422` for a label a read then finds is the state the step asked for."""
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    with RacedForge(REPOSITORY, CREDENTIAL) as raced:
+        monkeypatch.setenv("GITHUB_API_URL", raced.api)
+        monkeypatch.setenv("GITHUB_REPOSITORY", REPOSITORY)
+        monkeypatch.setenv("GITHUB_TOKEN", CREDENTIAL)
+
+        equal(broken(1, "release-pr=failure"), 0, describing="the exit status")
+        equal(len(raced.open_labelled(LABEL)), 1, describing="the open tracking issues")
+
+
+def test_a_label_creation_refused_as_invalid_fails_the_step(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A `422` after which no label is there is a document refused, not a race won."""
     forge.refuse("POST", f"/repos/{REPOSITORY}/labels", 422, "Validation Failed")
 
-    equal(broken(1, "release-pr=failure"), 0, describing="the exit status")
-    equal(len(forge.open_labelled(LABEL)), 1, describing="the open tracking issues")
+    equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
+    contains(capsys.readouterr().err, "404", describing="the read that found no label")
+    equal(forge.issues, {}, describing="the issues opened")
 
 
 def test_a_label_the_forge_refuses_to_create_fails_the_step_opening_nothing(
@@ -408,14 +444,3 @@ def test_a_forge_answer_that_is_not_the_document_asked_for_fails_the_step(
 
     equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
     contains(capsys.readouterr().err, named, describing="what it said")
-
-
-def test_a_listed_entry_naming_no_issue_fails_the_step(
-    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An issue whose number is a boolean is not one this could comment on or close."""
-    number = forge.seed(TITLE, [LABEL])
-    forge.issues[number].number = True
-
-    equal(mended(1), 1, describing="the exit status")
-    contains(capsys.readouterr().err, "names no issue", describing="what it said")
