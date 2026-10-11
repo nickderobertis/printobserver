@@ -513,6 +513,7 @@ class _Expression:
                     msg = f"expression `{self.text}` opens a parenthesis it does not close"
                     raise UnsupportedError(msg)
                 return value
+            # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
             case Token("name", name) if self._peek() == Token("op", "("):
                 if name != ALWAYS or not self.contexts.judging_a_job:
                     msg = (
@@ -783,6 +784,7 @@ class Runner:
         condition = job.get("if")
         succeeded = all(done[needed].result is Result.SUCCESS for needed in needs)
         # `always()` in the condition replaces the implicit `success()`.
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
         if not succeeded and not ALWAYS_CALL.search(str(condition or "")):
             return JobRun(Result.SKIPPED)
         contexts = Contexts(
