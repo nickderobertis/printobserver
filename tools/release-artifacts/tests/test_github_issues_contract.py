@@ -27,8 +27,8 @@ from release_artifacts.github_issues import (
     DESCRIPTION_FILE,
     DESCRIPTION_SHA256,
     DESCRIPTION_URL,
+    HEXADECIMAL_DIGITS,
     ISSUE,
-    LABEL_COLOUR_DIGITS,
     LIST_ISSUES,
     LISTED_STATES,
     OPERATIONS,
@@ -62,6 +62,7 @@ def description() -> Described:
     if CACHED.is_file() and hashlib.sha256(CACHED.read_bytes()).hexdigest() == DESCRIPTION_SHA256:
         payload = CACHED.read_bytes()
     else:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         payload = verified(
             DESCRIPTION_URL,
             name=DESCRIPTION_FILE,
@@ -184,6 +185,24 @@ def test_every_field_an_operation_sends_and_reads_is_described_with_its_type(
 
 
 @pytest.mark.parametrize("operation", OPERATIONS, ids=named)
+def test_every_field_sent_as_null_is_one_the_description_admits_null_for(
+    description: Described, operation: Operation
+) -> None:
+    """A `nullable` field is one the description marks `nullable`, or types as `null`."""
+    if not operation.nullable:
+        return
+    request = resolved(description, operation_in(description, operation)["requestBody"])
+    declared = properties(description, request["content"]["application/json"]["schema"])
+    for name in operation.nullable:
+        branches = list(alternatives(description, declared[name]))
+        truth(
+            any(branch.get("nullable") is True for branch in branches)
+            or "null" in types(description, declared[name]),
+            describing=f"`{name}` of {named(operation)} to admit `null`",
+        )
+
+
+@pytest.mark.parametrize("operation", OPERATIONS, ids=named)
 def test_every_status_an_operation_is_answered_with_is_described(
     description: Described, operation: Operation
 ) -> None:
@@ -239,7 +258,11 @@ def test_every_enumerated_value_is_one_the_description_names(description: Descri
     said = str(resolved(description, colour).get("description", ""))
     contains(said, "hexadecimal color code", describing="how a label's colour is written")
     contains(said, "without the leading `#`", describing="how a label's colour is written")
-    truth(len("b60205") == LABEL_COLOUR_DIGITS, describing="a colour's hexadecimal digits")
+    equal(
+        HEXADECIMAL_DIGITS,
+        frozenset("0123456789abcdefABCDEF"),
+        describing="the digits a hexadecimal colour is written in",
+    )
 
 
 def test_every_job_outcome_is_a_described_job_conclusion(description: Described) -> None:

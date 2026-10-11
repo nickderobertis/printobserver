@@ -31,9 +31,9 @@ from release_artifacts.github_issues import (
     CREATE_ISSUE,
     CREATE_LABEL,
     GET_LABEL,
+    HEXADECIMAL_DIGITS,
     INVALID,
     ISSUE,
-    LABEL_COLOUR_DIGITS,
     LIST_ISSUES,
     LISTED_STATES,
     NOT_FOUND,
@@ -198,7 +198,7 @@ class IssuesForge:
             values = operation.matched(method, path)
             if values is None or (values["owner"], values["repo"]) != (owner, name):
                 continue
-            if not conforms(document, operation.sends):
+            if not conforms(document, operation):
                 return REFUSED_INVALID
             with self._lock:
                 return HANDLERS[operation](self, values, parse_qs(split.query), document)
@@ -306,10 +306,8 @@ HANDLERS: dict[Operation, Handler] = {
 
 
 def _hexadecimal(colour: str) -> bool:
-    """Whether `colour` is the hexadecimal digits the forge takes a label's colour as."""
-    return len(colour) == LABEL_COLOUR_DIGITS and all(
-        digit in "0123456789abcdefABCDEF" for digit in colour
-    )
+    """Whether `colour` is written in the hexadecimal digits the forge takes a colour in."""
+    return bool(colour) and set(colour) <= HEXADECIMAL_DIGITS
 
 
 def _handler(forge: IssuesForge) -> type[BaseHTTPRequestHandler]:

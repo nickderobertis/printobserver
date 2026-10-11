@@ -318,6 +318,7 @@ def merged_release(
     version = bumping.next_minor(bumping.workspace_version(copy.root))
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     bumping.bump_workspace_version(copy.root, version)
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     for changelog in sorted(copy.root.glob("crates/*/CHANGELOG.md")):
         with changelog.open("a", encoding="utf-8") as handle:
             handle.write(f"\n## [{version}]\n\n- The release this merge carries.\n")

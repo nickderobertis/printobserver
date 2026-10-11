@@ -65,6 +65,7 @@ class Operation:
     the document it is sent; `reads`, every field read off the document it
     answers — of each entry, where the answer is a list. `answers` is the
     status it succeeds with, and `refusals` the statuses a caller acts on.
+    `nullable` names each field it sends that may be sent as `null`.
     Each is one of the constants below and is compared as itself, which is
     what lets the stand-in key its answers by operation.
     """
@@ -76,6 +77,7 @@ class Operation:
     sends: Mapping[str, JsonType] = field(default_factory=dict)
     reads: Mapping[str, JsonType] = field(default_factory=dict)
     refusals: tuple[int, ...] = ()
+    nullable: frozenset[str] = frozenset()
 
     def target(self, values: Mapping[str, str]) -> str:
         """The path with each `{name}` replaced by its value, quoted as one segment."""
@@ -145,6 +147,7 @@ UPDATE_ISSUE = Operation(
     200,
     sends={"state": JsonType.STRING, "state_reason": JsonType.STRING},
     refusals=(NOT_FOUND, INVALID),
+    nullable=frozenset({"state_reason"}),
 )
 
 #: Every operation, which is every request `tracking` makes and every one the
@@ -187,21 +190,22 @@ class Reason(StrEnum):
 #: The `state` a listing is asked for: either state, or both.
 LISTED_STATES = ("open", "closed", "all")
 
-#: How the description says a label's colour is written: hexadecimal digits, as
-#: many as this, with no leading `#`.
-LABEL_COLOUR_DIGITS = 6
+#: The digits the description says a label's colour is written in, with no
+#: leading `#`.
+HEXADECIMAL_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 #: The listing's page: how many entries one holds unless asked otherwise, and
 #: the most it holds however it is asked.
 PER_PAGE_DEFAULT, PER_PAGE_MAX = 30, 100
 
 
-def conforms(document: Mapping[str, object], fields: Mapping[str, JsonType]) -> bool:
-    """Whether every field of `document` is one `fields` declares, of the JSON type it declares.
+def conforms(document: Mapping[str, object], operation: Operation) -> bool:
+    """Whether every field of `document` is one `operation` sends, of the JSON type it declares.
 
-    `null` is admitted for any field, as the description admits it for the
-    ones this slice sends; a boolean is not an integer.
+    `null` is admitted for a field the operation declares `nullable`, and for
+    no other; a boolean is not an integer.
     """
+    fields = operation.sends
     shapes: dict[JsonType, type | tuple[type, ...]] = {
         JsonType.STRING: str,
         JsonType.INTEGER: int,
@@ -213,6 +217,8 @@ def conforms(document: Mapping[str, object], fields: Mapping[str, JsonType]) -> 
         if declared is None:
             return False
         if value is None:
+            if name not in operation.nullable:
+                return False
             continue
         if isinstance(value, bool) or not isinstance(value, shapes[declared]):
             return False

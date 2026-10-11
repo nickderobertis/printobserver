@@ -270,6 +270,18 @@ def tracking(forge: Forge) -> list[IssueNumber]:
         page += 1
 
 
+def _named(answered: object) -> None:
+    """Confirm the forge answered the tracking label itself.
+
+    Raises:
+        TrackingError: If the answer is not a label named `LABEL`, which no
+            read of that label answers.
+    """
+    if not (isinstance(answered, dict) and answered.get("name") == LABEL):
+        msg = f"the forge answered the `{LABEL}` label with {answered!r}. {NEXT}"
+        raise TrackingError(msg)
+
+
 def _labelled(forge: Forge) -> None:
     """Create the tracking label where the repository does not carry it yet.
 
@@ -277,7 +289,7 @@ def _labelled(forge: Forge) -> None:
     already exists, which is the state this asks for once a read confirms it.
     """
     try:
-        forge.ask(GET_LABEL, {"name": LABEL})
+        _named(forge.ask(GET_LABEL, {"name": LABEL}))
     except TrackingError as absent:
         if absent.status != NOT_FOUND:
             raise
@@ -290,7 +302,7 @@ def _labelled(forge: Forge) -> None:
             if raced.status != INVALID:
                 raise
             # A `422` is also a document refused; only a label now there is the race.
-            forge.ask(GET_LABEL, {"name": LABEL})
+            _named(forge.ask(GET_LABEL, {"name": LABEL}))
 
 
 def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:

@@ -260,6 +260,7 @@ def test_a_repository_the_forge_does_not_carry_fails_the_step(
         ("POST", "/issues", b'{"title": "t", "body": "b", "labels": [], "x": 1}', CREDENTIAL, 422),
         ("POST", "/issues", b'{"title": 5, "body": "b", "labels": []}', CREDENTIAL, 422),
         ("POST", "/issues", b'{"title": true, "body": "b", "labels": []}', CREDENTIAL, 422),
+        ("POST", "/issues", b'{"title": null, "body": "b", "labels": []}', CREDENTIAL, 422),
         ("PATCH", "/issues/x", b"{}", CREDENTIAL, 404),
         ("POST", "/issues/9/comments", b'{"body": "x"}', CREDENTIAL, 404),
     ],
