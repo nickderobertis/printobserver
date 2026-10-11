@@ -69,6 +69,55 @@ fn the_installed_command_runs_and_exits_zero() {
     }
 }
 
+/// The surface marks the one value that may be given more than once, and the
+/// program takes it more than once while refusing any other given twice.
+///
+/// Both runs name a configuration file that is not there, so a run the parser
+/// accepted stops at the configuration rather than reaching a server.
+#[test]
+fn the_one_repeatable_value_is_marked_in_the_surface_and_taken_more_than_once() {
+    let (code, said) = run(&["--help"]);
+    assert_eq!(code, Some(0), "{said}");
+    let marked: Vec<&str> = said.lines().filter(|line| line.contains("]...")).collect();
+    assert_eq!(
+        marked.len(),
+        1,
+        "the surface marks other than one repeatable value: {said}"
+    );
+    assert!(
+        marked[0].contains("printobserver printer-history [--kinds <value>]..."),
+        "the repeatable value is not printer-history's --kinds: {said}"
+    );
+
+    let absent = std::env::temp_dir().join("printobserver-no-such-config.toml");
+    let absent = absent.display().to_string();
+    let (code, said) = run(&[
+        "printer-history",
+        "--kinds",
+        "print_started",
+        "--kinds",
+        "print_ended",
+        "--config",
+        &absent,
+    ]);
+    assert_eq!(
+        code,
+        Some(i32::from(Exit::Unconfigured.status())),
+        "--kinds given twice was not taken: {said}"
+    );
+    let (code, said) = run(&[
+        "printer-history",
+        "--limit",
+        "1",
+        "--limit",
+        "2",
+        "--config",
+        &absent,
+    ]);
+    assert_eq!(code, Some(i32::from(Exit::Usage.status())), "{said}");
+    assert!(said.contains("given twice"), "{said}");
+}
+
 /// The program prints its own version and exits zero.
 #[test]
 fn the_program_prints_its_own_version() {

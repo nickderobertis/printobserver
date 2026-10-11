@@ -169,7 +169,10 @@ def _rejection(status: int, said: str) -> Exception:
     """The policy's own refusal, as the answer to it carries it."""
     document = _document(status, said)
     # An action's answer carries its decision in its record; a spool command's
-    # carries it at the top.
+    # carries it at the top. Each `cast` below names the type `operations.json`
+    # declares for the refusal the match has just told apart: `_document` hands
+    # back the server's JSON untyped, and the match is the check this client
+    # makes of its shape before naming it.
     answer: ActionAnswer | SpoolCommandAnswer
     match document:
         case {"record": {"decision": {"rejected": refused}}}:
@@ -182,6 +185,8 @@ def _rejection(status: int, said: str) -> Exception:
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
+    # What `rejected` holds is the contracts' `RejectionReason`, which the
+    # server serializes it from; the match bound it untyped.
     reason = cast(RejectionReason, refused)
     requested: float | None = None
     allowed: Range | None = None

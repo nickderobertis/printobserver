@@ -387,3 +387,48 @@ pub fn refusal(failure: &Failure) -> Outcome {
         exit: failure.exit,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use printobserver_types::serde_json::json;
+
+    use super::rejection_note;
+
+    /// A start refused for a short spool says the spool, its figures and the
+    /// next steps — and, when the short spool is also in doubt, its mark.
+    #[test]
+    fn a_short_spool_note_carries_its_figures_and_its_mark_when_it_has_one() {
+        let short = |unverified: Option<&str>| {
+            let mut refused = json!({
+                "tool": 0,
+                "spool_id": "01a12bd0-e46a-7a32-8d69-82a6f9ca508f",
+                "spool_name": "PLA nearly empty",
+                "required_g": 5.96,
+                "buffer_g": 5.0,
+                "remaining_g": 1.0,
+            });
+            if let Some(mark) = unverified {
+                refused["unverified"] = json!({ "reason": mark, "print_id": "x" });
+            }
+            json!({ "record": { "decision": { "rejected": { "insufficient_filament": refused } } } })
+        };
+
+        let doubted = rejection_note(&short(Some("uncharged_print")));
+        for said in [
+            "insufficient_filament",
+            "Spool `PLA nearly empty` on tool 0 holds 1.0 g",
+            "needs 6.0 g plus a 5.0 g buffer, and its figure is unverified (uncharged_print)",
+            "adjust-spool",
+            "--override-filament-check true",
+        ] {
+            assert!(doubted.contains(said), "{doubted}");
+        }
+
+        let verified = rejection_note(&short(None));
+        assert!(!verified.contains("unverified"), "{verified}");
+        assert!(
+            verified.contains("needs 6.0 g plus a 5.0 g buffer. Load"),
+            "{verified}"
+        );
+    }
+}
