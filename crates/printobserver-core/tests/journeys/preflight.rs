@@ -383,3 +383,23 @@ fn the_check_read_reports_each_tool_and_records_nothing() {
     assert_eq!(timeline(&world).len(), events_before);
     assert_eq!(world.journal.store_writes().len(), writes_before);
 }
+
+/// A file whose facts cannot be read is a file with no analysis: the check
+/// reads it so, naming the spool on each tool loaded.
+#[test]
+fn a_file_that_cannot_be_read_is_checked_as_having_no_analysis() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Unread", 1_000.0);
+    world.printer.fails(
+        crate::fakes::PrinterMethod::FileFacts,
+        printobserver_printer_api::PrinterError::Unreachable {
+            detail: "the printer is unreachable".to_owned(),
+        },
+    );
+    let preflight = block_on(world.core.preflight(&FileName::new(FILE).expect("a name")))
+        .expect("the check is read");
+    assert_eq!(preflight.verdict, PreflightVerdict::NoAnalysis);
+    assert_eq!(preflight.tools.len(), 1);
+    assert_eq!(preflight.tools[0].spool_id, Some(spool.id));
+    assert_eq!(preflight.tools[0].required_g, None);
+}

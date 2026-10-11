@@ -274,3 +274,29 @@ fn an_interrupted_run_accounts_each_print_once() {
         );
     }
 }
+
+/// A printer whose files cannot be listed is answered as the printer's own
+/// error, and the run records nothing and advances no tally.
+#[test]
+fn a_printer_that_cannot_list_its_files_is_answered_and_nothing_is_recorded() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Unlisted", 1_000.0);
+    tally(&world, 1, 0, true);
+    account(&world);
+    tally(&world, 2, 0, true);
+    let refusal = printobserver_printer_api::PrinterError::Unreachable {
+        detail: "the printer is unreachable".to_owned(),
+    };
+    world
+        .printer
+        .fails(crate::fakes::PrinterMethod::PrintedFiles, refusal.clone());
+    assert_eq!(
+        block_on(world.core.account_unobserved_prints()),
+        Err(printobserver_core::CoreError::Printer(refusal))
+    );
+    assert!(every::<UnaccountedPrintPayload>(&world).is_empty());
+    world.printer.heals();
+    account(&world);
+    assert_eq!(every::<UnaccountedPrintPayload>(&world).len(), 1);
+    assert_eq!(charges_to(&world, spool.id).len(), 1);
+}

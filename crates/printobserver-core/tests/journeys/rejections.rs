@@ -139,10 +139,12 @@ fn refuse(reason: &RejectionReason) -> Refused {
     }
 }
 
-/// The rejections the filament ledger declares, which no supervisor path
-/// reaches yet: the preflight before a start and the spool commands that
-/// produce them land after the vocabulary does, and each is walked here by the
-/// change that first produces it, which removes it from this list.
+/// The rejections the filament ledger declares, which this walk does not
+/// drive because they are not reached as it reaches the others: the three a
+/// start's filament check makes are written down beside the check itself, and
+/// `spool_refused` answers a spool command rather than a print action. Each is
+/// walked by the journeys of its own path — `preflight` and `spool_commands` —
+/// which assert the printer is never asked and the refusal is recorded.
 const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 4] = [
     "InsufficientFilament",
     "UnverifiedSpool",
