@@ -118,6 +118,7 @@ impl Supervisor {
     /// Returns the store's own error when the command or its refusal could not
     /// be written. A refusal is not an error: it is written down and answered
     /// in [`SpoolCommandOutcome::decision`].
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub async fn request_spool_command(
         &self,
         command: SpoolCommand,

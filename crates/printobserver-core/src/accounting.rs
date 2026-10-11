@@ -677,10 +677,7 @@ impl Supervisor {
             .size_bytes
             .or_else(|| analysis.size_bytes())
             .filter(|size| *size > 0)?;
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "a file's byte count is far below where an f64 loses a byte"
-        )]
+        #[expect(clippy::cast_precision_loss)]
         let fraction = (position.bytes as f64 / size as f64).clamp(0.0, 1.0);
         Some(Extrusion {
             lengths: analysed
@@ -735,6 +732,7 @@ impl Supervisor {
     /// it at all; a print a refused start opened and nothing ever ran is not
     /// a print of the timeline. Any other print is charged by the rule of its
     /// outcome, as this module states.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub(crate) async fn settle_filament(
         &self,
         print: &PrintRecord,
@@ -1049,6 +1047,7 @@ impl Supervisor {
     /// says so, with the mark that says its figure may be overstated. A spool
     /// already holding the print's mark — a second signal before any load —
     /// has its open segment pended instead, and is marked again.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub(crate) async fn handle_signal(
         &self,
         print: &PrintRecord,

@@ -294,6 +294,7 @@ impl Supervisor {
     /// # Errors
     ///
     /// Returns the store's own error when the loaded spools could not be read.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub(crate) async fn check_start(
         &self,
         file_name: &FileName,

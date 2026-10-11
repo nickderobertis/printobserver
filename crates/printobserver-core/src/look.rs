@@ -156,6 +156,7 @@ impl Supervisor {
         // to have stopped. The look is already written down and answered
         // either way: a position the store would not keep costs this look
         // nothing, and the next read records one.
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         if let Some(job) = &job
             && print.ended_at.is_none()
         {

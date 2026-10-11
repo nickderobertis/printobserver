@@ -132,17 +132,24 @@ mod tests {
             Poll::Pending
         );
         assert_eq!(
-            pinned.as_mut().poll(&mut Context::from_waker(&latest_waker)),
+            pinned
+                .as_mut()
+                .poll(&mut Context::from_waker(&latest_waker)),
             Poll::Pending
         );
         let deadline = Instant::now() + Duration::from_secs(10);
         while !latest.0.load(Ordering::SeqCst) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(2));
         }
-        assert!(latest.0.load(Ordering::SeqCst), "the latest waker was not woken");
+        assert!(
+            latest.0.load(Ordering::SeqCst),
+            "the latest waker was not woken"
+        );
         assert!(!first.0.load(Ordering::SeqCst), "a stale waker was woken");
         assert_eq!(
-            pinned.as_mut().poll(&mut Context::from_waker(&latest_waker)),
+            pinned
+                .as_mut()
+                .poll(&mut Context::from_waker(&latest_waker)),
             Poll::Ready(())
         );
     }

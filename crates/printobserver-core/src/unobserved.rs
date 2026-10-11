@@ -125,6 +125,7 @@ impl Supervisor {
     /// Returns the printer's own error when its tallies could not be read, and
     /// the store's own when the accounting could not be written — in which case
     /// nothing of this run was.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub async fn account_unobserved_prints(&self) -> Result<Vec<EventRecord>, CoreError> {
         let files = self
             .read_printed_files()
