@@ -48,9 +48,12 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
     }
 }
 
-/// The port's file reads, which nothing in this crate calls yet: the filament
-/// ledger that reads them lands after the port declares them, and each joins
-/// this walk in the change that first calls it, which removes it from here.
+/// The port's file reads, which this walk does not reach: none is an action,
+/// and a failing one is not recorded as a port failure against the event being
+/// handled — the filament ledger answers it where it reads it, a charge falling
+/// back to the file's fraction with a note saying why (`print_timeline`), a
+/// file read as having no analysis (`preflight`), an accounting answered as the
+/// printer's own error (`unobserved`) — and those journeys walk it there.
 const NOT_YET_CALLED: [PrinterMethod; 3] = [
     PrinterMethod::FileFacts,
     PrinterMethod::PrintedFiles,

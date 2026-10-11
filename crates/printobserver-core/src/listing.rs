@@ -324,7 +324,12 @@ impl Supervisor {
             let reason = reached_reason(&observed.job.state);
             for print in open {
                 if self
-                    .close_out_from_read(print.id, &observed.job.state, &reason)
+                    .close_out_from_read(
+                        print.id,
+                        &observed.job.state,
+                        &reason,
+                        Some(&observed.job),
+                    )
                     .await?
                 {
                     settled.closed.push(print.id);
@@ -350,13 +355,20 @@ impl Supervisor {
                 // The earlier job ended before this one began, and a printer
                 // begins a job only from idle.
                 if self
-                    .close_out_from_read(print.id, &PrinterState::Operational, REPLACED_REASON)
+                    .close_out_from_read(
+                        print.id,
+                        &PrinterState::Operational,
+                        REPLACED_REASON,
+                        None,
+                    )
                     .await?
                 {
                     settled.closed.push(print.id);
                 }
             } else if settled.running.is_none() {
-                settled.running = Some(self.record_sighting(print, observed).await?);
+                let running = self.record_sighting(print, observed).await?;
+                self.note_running(&running, observed).await?;
+                settled.running = Some(running);
             }
         }
         Ok(settled)
@@ -406,22 +418,48 @@ impl Supervisor {
             .prints
             .open_print(None, Some(file_name.to_owned()))
             .await?;
-        self.record_sighting(opened, observed).await
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+        let opened = self.record_sighting(opened, observed).await?;
+        self.record_print_started(opened.id, Some(file_name.to_owned()), None, None)
+            .await?;
+        self.note_running(&opened, observed).await?;
+        Ok(opened)
+    }
+
+    /// Note that a read found a print's job printing or paused, and record how
+    /// far into its file the job had got: `OctoPrint` clears a job's position
+    /// when it is cancelled or fails, so every read that finds it running is
+    /// where the print is next known to have stopped.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+    async fn note_running(
+        &self,
+        print: &PrintRecord,
+        observed: &ObservedJob,
+    ) -> Result<(), CoreError> {
+        self.note_seen_running(print.id);
+        self.record_position_from(print, &observed.job, observed.observed_at)
+            .await?;
+        Ok(())
     }
 
     /// Close one print a read found over, unless a supervision turn holds it.
     ///
     /// Answers whether this closed it: a print a turn holds is that turn's, and
     /// one already ended has nothing left to close.
+    ///
+    /// `closing_job` is the read that found it over, when that read was of
+    /// this print's job rather than of a later one.
     pub(crate) async fn close_out_from_read(
         &self,
         print_id: PrintId,
         state: &PrinterState,
         reason: &str,
+        closing_job: Option<&JobSnapshot>,
     ) -> Result<bool, CoreError> {
         let Some(_turn) = self.turns().try_acquire(print_id) else {
             return Ok(false);
         };
-        self.close_out_print(print_id, state, reason).await
+        self.close_out_print(print_id, state, reason, closing_job)
+            .await
     }
 }

@@ -47,6 +47,7 @@
 //!   in the closure its parameters reach is the one
 //!   [`FileName`](printobserver_types::FileName) wraps.
 
+pub mod accounting;
 pub mod actions;
 pub mod block_on;
 pub mod bounds;
@@ -54,6 +55,7 @@ pub mod clock;
 pub mod config;
 pub mod context;
 pub mod decision;
+mod delay;
 pub mod detector;
 pub mod error;
 pub mod events;
@@ -64,12 +66,16 @@ pub mod kinds;
 pub mod listing;
 pub mod look;
 pub mod observation;
+pub mod preflight;
 pub mod records;
+pub mod spools;
 pub mod store;
 pub mod supervisor;
 pub mod turn_access;
 pub mod turn_lock;
+pub mod unobserved;
 
+pub use accounting::UNTRACKED_REASON;
 pub use actions::{ActionOutcome, reported_value};
 pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
@@ -101,6 +107,7 @@ pub use kinds::{
 };
 pub use look::Look;
 pub use observation::Observed;
+pub use preflight::ANALYSIS_POLL;
 pub use records::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
     ActorClass, ChargeKey, ChargeMethod, ClearedMark, EffectiveBounds, ExecutionOutcome,
@@ -110,6 +117,7 @@ pub use records::{
     SafetyEnvelope, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust, UnverifiedMark,
     UnverifiedReason, UnverifiedReasonKind,
 };
+pub use spools::SpoolCommandOutcome;
 pub use store::{
     ActionStore, AuditPage, Charge, ChargeRecord, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore,
     FilamentStore, FileTally, HistoryQuery, ImageLookup, ImageStore, MAX_HISTORY_LIMIT, NewSpool,

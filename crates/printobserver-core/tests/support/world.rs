@@ -87,6 +87,8 @@ pub struct World {
     pub clock: Arc<FakeClock>,
     /// Where each turn's runs take their credentials from.
     pub turns: Arc<crate::fakes::FakeTurnAuthority>,
+    /// The configuration the supervisor was built with.
+    pub config: CoreConfig,
 }
 
 impl World {
@@ -119,6 +121,34 @@ impl World {
         })
     }
 
+    /// A world under one envelope and a configuration one journey edits, its
+    /// turn authority installed.
+    #[must_use]
+    pub fn with_config(envelope: SafetyEnvelope, edit: impl FnOnce(&mut CoreConfig)) -> Self {
+        Self::configured(envelope, true, edit)
+    }
+
+    /// A second supervisor over this world's same store, printer, ports and
+    /// clock, built as a restart builds one: holding nothing in memory of what
+    /// the first saw.
+    #[must_use]
+    pub fn restarted(&self) -> Arc<Supervisor> {
+        let core = Supervisor::new(
+            self.config.clone(),
+            Arc::clone(&self.printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
+            printobserver_core::store::Stores::of(Arc::clone(&self.store)),
+            Arc::clone(&self.vision) as Arc<dyn printobserver_vision_api::VisionPort>,
+            Arc::clone(&self.agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+            Arc::clone(&self.clock) as Arc<dyn printobserver_core::Clock>,
+        );
+        assert!(
+            core.install_turn_authority(Arc::new(crate::fakes::OpensTurns(Arc::clone(
+                &self.turns
+            ))))
+        );
+        core
+    }
+
     /// A world under one envelope, its turn authority installed or not.
     fn built(envelope: SafetyEnvelope, authority: bool) -> Self {
         Self::configured(envelope, authority, |_| {})
@@ -149,7 +179,7 @@ impl World {
         config.expiry_poll = Duration::from_millis(5);
         edit(&mut config);
         let core = Supervisor::new(
-            config,
+            config.clone(),
             Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
             printobserver_core::store::Stores::of(Arc::clone(&store)),
             Arc::clone(&vision) as Arc<dyn printobserver_vision_api::VisionPort>,
@@ -173,6 +203,7 @@ impl World {
             agent,
             clock,
             turns,
+            config,
         }
     }
 
