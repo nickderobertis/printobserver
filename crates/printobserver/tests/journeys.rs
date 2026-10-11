@@ -79,6 +79,8 @@ mod materializing;
 mod redaction;
 #[path = "journeys/running.rs"]
 mod running;
+#[path = "journeys/spooling.rs"]
+mod spooling;
 #[path = "journeys/tainting.rs"]
 mod tainting;
 #[path = "journeys/tier.rs"]
@@ -108,6 +110,39 @@ fn a_print_started_at_the_printer_is_found_and_joined_by_its_alert() {
     let world = World::open(world::STOOD_IN);
 
     finding::a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(&world);
+}
+
+/// An operator keeps the spool ledger through this program, and reads all of
+/// it back through the same program.
+///
+/// A world of its own, because the journey's spools are the only ones the
+/// assertions about the listing and the history are about.
+#[test]
+fn an_operator_keeps_the_spool_ledger_through_this_program() {
+    let world = World::open(world::STOOD_IN);
+
+    spooling::an_operator_keeps_the_ledger_through_this_program(&world);
+}
+
+/// The listing opens with one line per spool, and a start the filament check
+/// refuses says what to do about the spool or the file it was refused for.
+///
+/// A world of its own, whose starts wait a second for an analysis rather than
+/// the five minutes a supervisor waits by default.
+#[test]
+fn the_listing_and_a_refused_start_say_what_each_spool_holds() {
+    let world = World::configured(
+        world::STOOD_IN,
+        &world::committed_skill(),
+        None,
+        |document| {
+            document["spools"] = printobserver_types::serde_json::json!({
+                "analysis_wait_seconds": spooling::ANALYSIS_WAIT_S,
+            });
+        },
+    );
+
+    spooling::the_listing_and_the_start_say_what_each_spool_holds(&world);
 }
 
 /// Every command example the reference documents show, run against a real

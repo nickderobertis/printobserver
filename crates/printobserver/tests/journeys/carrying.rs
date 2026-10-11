@@ -32,7 +32,7 @@ use super::{failures, running};
 pub fn every_output_carries_only_what_the_answer_carried(world: &World) {
     for one in walk::walk(world) {
         on_this_path(world, &one, &failures::succeeding(&one), one.reports);
-        if one.operation().action_kind().is_some() {
+        if one.operation().granted_as().is_some() {
             on_this_path(
                 world,
                 &one,

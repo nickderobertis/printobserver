@@ -147,8 +147,21 @@ pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> 
 /// value that was asked for beside the range that is allowed. All three are
 /// read out of the answer rather than restated here, because a caller that
 /// cannot see the range cannot ask again for something inside it.
+///
+/// A start the filament check refused, and a spool command the ledger could not
+/// carry out, are answered with what to do about them instead: the spool, its
+/// figures and its mark, read out of the answer in the same way, and the
+/// commands that settle them. Asking again inside a range is not the next step
+/// for a spool that is short.
 fn rejection_note(document: &Value) -> String {
-    let refusal = document.pointer("/record/decision/rejected");
+    // A print action's answer carries its decision in its record; a spool
+    // command's answer carries it at the top.
+    let refusal = document
+        .pointer("/record/decision/rejected")
+        .or_else(|| document.pointer("/decision/rejected"));
+    if let Some(note) = refusal.and_then(spool_note) {
+        return note;
+    }
     let named = |at: &str| {
         refusal
             .and_then(|rejected| rejected.pointer(at))
@@ -171,6 +184,74 @@ fn rejection_note(document: &Value) -> String {
         "the supervisor's policy refused this action{why}{ruled}. Ask again inside what the \
          answer says is allowed"
     )
+}
+
+/// The option a start goes ahead despite the filament check with, as it is
+/// written on a command line.
+const OVERRIDE: &str = "--override-filament-check true";
+
+/// What a refusal of the filament check or of the spool ledger says to do
+/// next, read out of the refusal; nothing for any other refusal.
+fn spool_note(refusal: &Value) -> Option<String> {
+    let (reason, said) = refusal.as_object()?.iter().next()?;
+    let text = |at: &str| {
+        said.get(at)
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_owned()
+    };
+    let grams = |at: &str| {
+        said.get(at)
+            .and_then(Value::as_f64)
+            .map_or_else(|| "?".to_owned(), |grams| format!("{grams:.1}"))
+    };
+    let tool = said
+        .get("tool")
+        .map_or_else(|| "?".to_owned(), ToString::to_string);
+    // A mark is its own reason, named the way the ledger names it.
+    let mark = |at: &str| {
+        said.get(at)
+            .and_then(|mark| mark.get("reason"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
+    Some(match reason.as_str() {
+        "insufficient_filament" => {
+            let doubt = mark("unverified").map_or_else(String::new, |mark| {
+                format!(", and its figure is unverified ({mark})")
+            });
+            format!(
+                "the supervisor's filament check refused this start: insufficient_filament. Spool \
+                 `{}` on tool {tool} holds {} g, and this print needs {} g plus a {} g buffer{doubt}. \
+                 Load a spool holding enough, weigh this one and run `adjust-spool`, or start \
+                 again with `{OVERRIDE}`",
+                text("spool_name"),
+                grams("remaining_g"),
+                grams("required_g"),
+                grams("buffer_g"),
+            )
+        }
+        "unverified_spool" => format!(
+            "the supervisor's filament check refused this start: unverified_spool. Spool `{}` on \
+             tool {tool} is unverified ({}). Weigh it and run `adjust-spool`, or start again with \
+             `{OVERRIDE}`",
+            text("spool_name"),
+            mark("reason").unwrap_or_else(|| "?".to_owned()),
+        ),
+        "analysis_unavailable" => format!(
+            "the supervisor's filament check refused this start: analysis_unavailable. OctoPrint \
+             had no analysis of `{}` after this start waited {} s for one. Start again once \
+             OctoPrint has analysed the file, or with `{OVERRIDE}`",
+            text("file_name"),
+            said.get("waited_s")
+                .map_or_else(|| "?".to_owned(), ToString::to_string),
+        ),
+        "spool_refused" => format!(
+            "the supervisor's spool ledger refused this command: spool_refused. {}",
+            text("detail")
+        ),
+        _ => return None,
+    })
 }
 
 /// What a program the supervisor would not authenticate is told.

@@ -27,7 +27,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 
-use printobserver_server::Located;
+use printobserver_server::{Located, ValueKind};
 use printobserver_types::serde_json::{Map, Value};
 
 use crate::machine::Reports;
@@ -122,7 +122,9 @@ fn expected_target(one: &Driven) -> String {
     let mut target = one.operation().full_path();
     let mut asked = Vec::new();
     for field in &one.command.fields {
-        let text = one.text(&field.parameter.name);
+        let Some(text) = one.given(&field.parameter.name) else {
+            continue;
+        };
         match field.parameter.located {
             Located::Path => {
                 target = target.replace(&format!("{{{}}}", field.parameter.name), &text);
@@ -148,11 +150,13 @@ fn expected_body(one: &Driven) -> Value {
         .fields
         .iter()
         .filter(|field| field.parameter.located == Located::Body)
-        .map(|field| {
-            (
-                field.parameter.name.clone(),
-                as_sent(field.parameter.kind, &one.text(&field.parameter.name)),
-            )
+        .filter_map(|field| {
+            one.given(&field.parameter.name).map(|text| {
+                (
+                    field.parameter.name.clone(),
+                    as_sent(field.parameter.kind, &text),
+                )
+            })
         })
         .collect();
     Value::Object(carried)
@@ -225,8 +229,187 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
                 the_manifest_it_answers_is_the_one_that_was_written(world, &written);
             }
         }
+        "spools" => the_listing_names_the_walks_spool(world, &said),
+        "spool" => {
+            assert_eq!(at(&said, "spool.id"), world.spool_id(), "{said:#?}");
+            assert_eq!(
+                at(&said, "spool.name"),
+                crate::world::WALK_SPOOL,
+                "{said:#?}"
+            );
+            assert!(said.contains_key("recent.0.kind"), "{said:#?}");
+        }
+        "printer-history" => the_history_answers_the_walks_registration(world, &said),
+        "preflight" => assert_eq!(
+            at(&said, "preflight.file_name"),
+            world.printable_file(),
+            "{said:#?}"
+        ),
+        "register-spool" | "load-spool" | "unload-spool" | "adjust-spool" | "retire-spool" => {
+            the_ledger_carried_it_out(world, one, &said);
+        }
         _ => the_action_was_carried_out(world, one, &said),
     }
+}
+
+/// The spools listing names the walk's spool, with one line for every spool
+/// it lists, in its order.
+fn the_listing_names_the_walks_spool(world: &World, said: &BTreeMap<String, String>) {
+    let listed: Vec<&String> = said
+        .iter()
+        .filter(|(key, _)| key.starts_with("spools.") && key.split('.').nth(2) == Some("id"))
+        .map(|(_, id)| id)
+        .collect();
+    let lines = said
+        .keys()
+        .filter(|key| key.starts_with("at_a_glance."))
+        .count();
+    assert_eq!(
+        lines,
+        listed.len(),
+        "the listing carries a line for other than every spool it lists: {said:#?}"
+    );
+    let at = listed
+        .iter()
+        .position(|id| **id == world.spool_id())
+        .unwrap_or_else(|| panic!("the listing does not carry the walk's spool: {said:#?}"));
+    assert!(
+        at_line(said, at).starts_with(&format!("{} | PLA |", crate::world::WALK_SPOOL)),
+        "the walk's spool's line is not its own: {said:#?}"
+    );
+}
+
+/// One line of a listing's `at_a_glance`, by its place.
+fn at_line(said: &BTreeMap<String, String>, index: usize) -> String {
+    said.iter()
+        .find(|(key, _)| {
+            key.strip_prefix("at_a_glance.")
+                .and_then(|place| place.parse::<usize>().ok())
+                == Some(index)
+        })
+        .map(|(_, line)| line.clone())
+        .unwrap_or_default()
+}
+
+/// The printer history narrowed to the walk's spool's registration, before a
+/// cursor minted after it, answers exactly that one event.
+fn the_history_answers_the_walks_registration(world: &World, said: &BTreeMap<String, String>) {
+    assert_eq!(at(said, "events.0.kind"), "spool_registered", "{said:#?}");
+    assert_eq!(
+        at(said, "events.0.payload.spool.id"),
+        world.spool_id(),
+        "{said:#?}"
+    );
+    assert!(
+        !said.keys().any(|key| key.starts_with("events.1.")) && !said.contains_key("next"),
+        "the history answered more than the walk's spool was registered: {said:#?}"
+    );
+}
+
+/// The event one spool command writes, by the command.
+fn event_of(command: &str) -> &'static str {
+    match command {
+        "register-spool" => "spool_registered",
+        "load-spool" => "spool_loaded",
+        "unload-spool" => "spool_unloaded",
+        "adjust-spool" => "spool_adjusted",
+        "retire-spool" => "spool_retired",
+        other => panic!("`{other}` is no spool command"),
+    }
+}
+
+/// A spool command was carried out: the spool read back holds what its caller
+/// gave, and the printer's history carries the event, with the caller's reason
+/// and the operator as its actor.
+fn the_ledger_carried_it_out(world: &World, one: &Driven, said: &BTreeMap<String, String>) {
+    let spool = at(said, "spool.id");
+    let read = running::read(world, &["spool", "--spool-id", &spool]);
+    let held = |field: &str| read.pointer(&format!("/spool/{field}")).cloned();
+    let number = |field: &str| {
+        one.given(field)
+            .map(|text| as_sent(ValueKind::Number, &text))
+    };
+    match one.command.name.as_str() {
+        "register-spool" => {
+            for field in ["name", "material", "color"] {
+                assert_eq!(
+                    held(field),
+                    one.given(field).map(Value::String),
+                    "`register-spool` registered `{field}` other than its caller gave: {read}"
+                );
+            }
+            for field in [
+                "diameter_mm",
+                "density_g_cm3",
+                "initial_g",
+                "remaining_g",
+                "tare_g",
+            ] {
+                assert_eq!(
+                    held(field),
+                    number(field),
+                    "`register-spool` registered `{field}` other than its caller gave: {read}"
+                );
+            }
+        }
+        "load-spool" => assert_eq!(
+            held("loaded_on_tool"),
+            one.given("tool")
+                .map(|tool| as_sent(ValueKind::Integer, &tool)),
+            "`load-spool` did not put the spool on the tool its caller named: {read}"
+        ),
+        "unload-spool" => assert_eq!(
+            held("loaded_on_tool"),
+            None,
+            "`unload-spool` left the spool on its tool: {read}"
+        ),
+        "adjust-spool" => {
+            let expected = match (one.given("remaining_g"), one.given("gross_g")) {
+                (Some(remaining), _) => remaining.parse::<f64>().expect("a figure"),
+                (None, Some(gross)) => {
+                    gross.parse::<f64>().expect("a figure") - crate::world::SPOOL_TARE_G
+                }
+                (None, None) => panic!("an adjustment the walk drives gives one figure"),
+            };
+            assert_eq!(
+                held("remaining_g").and_then(|value| value.as_f64()),
+                Some(expected),
+                "`adjust-spool` left the spool holding other than its caller's figure: {read}"
+            );
+        }
+        _ => assert!(
+            held("retired_at").is_some(),
+            "`retire-spool` left the spool unretired: {read}"
+        ),
+    }
+    let kind = event_of(&one.command.name);
+    let history = running::read(
+        world,
+        &[
+            "printer-history",
+            "--spool-id",
+            &spool,
+            "--kinds",
+            kind,
+            "--limit",
+            "1",
+        ],
+    );
+    let event = history
+        .pointer("/events/0")
+        .unwrap_or_else(|| panic!("`{}` left no `{kind}`: {history}", one.command.name));
+    assert_eq!(
+        event.pointer("/payload/reason").and_then(Value::as_str),
+        Some(walk::reason_of(&one.command.name).as_str()),
+        "`{}` wrote its event with a reason its caller did not give: {event}",
+        one.command.name
+    );
+    assert_eq!(
+        event.pointer("/payload/actor"),
+        Some(&Value::String("operator".to_owned())),
+        "`{}` wrote its event as somebody other than its caller: {event}",
+        one.command.name
+    );
 }
 
 /// A heater one command adjusts, and where the machine reports it.

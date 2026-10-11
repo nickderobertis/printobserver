@@ -410,7 +410,7 @@ fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, S
             format!("{name} against a refused configuration"),
             refused_configuration(world, &arguments, credential),
         ));
-        if one.operation().action_kind().is_some() {
+        if one.operation().granted_as().is_some() {
             world.wants(failures::rejected_from(&one));
             let rejected = failures::rejected(world, &one);
             said.push((
