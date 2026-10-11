@@ -62,11 +62,21 @@
 //! to `Obico`, which re-arms its detection. Each address must be an `http` or
 //! `https` URL, and the token is held in a type whose debug form never shows
 //! it, so no refusal or log line this program writes can carry it.
+//!
+//! # The spool check
+//!
+//! `[spools]` is optional, and so is every key in it: `preflight` is what a
+//! start does when the loaded spool is short, unverified or the file has no
+//! analysis — `refuse`, `warn` or `off` — `buffer_percent` and `buffer_min_g`
+//! the margin asked beyond what a print needs, and `analysis_wait_seconds` how
+//! long a start waits for `OctoPrint`'s analysis of a file that has none yet.
+//! Each left out takes the supervision core's own default, and a negative
+//! figure or a mode outside the three is refused naming its key.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use printobserver_core::SafetyEnvelope;
+use printobserver_core::{PreflightMode, SafetyEnvelope, SpoolPolicy};
 use printobserver_obico::{AccessToken, ObicoApi};
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
@@ -159,11 +169,19 @@ pub enum ConfigField {
     ObicoUrl,
     /// The bearer token `Obico`'s API is reached with.
     ObicoAccessToken,
+    /// What a start does when the spool check finds a problem.
+    SpoolsPreflight,
+    /// The margin asked beyond a print's requirement, as a percentage of it.
+    SpoolsBufferPercent,
+    /// The least margin asked, in grams.
+    SpoolsBufferMinG,
+    /// How long a start waits for a file's analysis, in seconds.
+    SpoolsAnalysisWaitSeconds,
 }
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 22] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -182,6 +200,10 @@ impl ConfigField {
         Self::CameraSnapshotUrl,
         Self::ObicoUrl,
         Self::ObicoAccessToken,
+        Self::SpoolsPreflight,
+        Self::SpoolsBufferPercent,
+        Self::SpoolsBufferMinG,
+        Self::SpoolsAnalysisWaitSeconds,
     ];
 
     /// The dotted key this field is spelled under in the configuration file.
@@ -206,6 +228,10 @@ impl ConfigField {
             Self::CameraSnapshotUrl => "camera.snapshot_url",
             Self::ObicoUrl => "obico.url",
             Self::ObicoAccessToken => "obico.access_token",
+            Self::SpoolsPreflight => "spools.preflight",
+            Self::SpoolsBufferPercent => "spools.buffer_percent",
+            Self::SpoolsBufferMinG => "spools.buffer_min_g",
+            Self::SpoolsAnalysisWaitSeconds => "spools.analysis_wait_seconds",
         }
     }
 }
@@ -481,6 +507,36 @@ impl core::fmt::Debug for ObicoSection {
     }
 }
 
+/// How spools are checked before a print, as written down.
+///
+/// Every key is optional, and one left out takes the supervision core's own
+/// default. The mode is read as text rather than as the core's own type so
+/// that a mode outside the three is refused naming its key rather than by the
+/// parser in words of its own.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SpoolsSection {
+    /// What a start does when the loaded spool is short, unverified, or the
+    /// file has no analysis: `refuse`, `warn` or `off`. Left out, `refuse`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preflight: Option<String>,
+    /// The margin asked beyond what a print needs, as a percentage of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffer_percent: Option<f64>,
+    /// The least margin asked, in grams, however small the print.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffer_min_g: Option<f64>,
+    /// How long a start waits for `OctoPrint`'s analysis of a file that has
+    /// none yet, in whole seconds; zero waits not at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_wait_seconds: Option<i64>,
+}
+
 /// The whole configuration file, exactly as it is written down.
 ///
 /// This is the parsed document rather than the validated configuration:
@@ -521,6 +577,9 @@ pub struct ConfigFile {
     /// Where `Obico`'s own API answers.
     #[serde(default)]
     pub obico: ObicoSection,
+    /// How spools are checked before a print.
+    #[serde(default)]
+    pub spools: SpoolsSection,
 }
 
 /// The shared secret the ingress requires of every post.
@@ -836,6 +895,8 @@ pub struct ServerConfig {
     pub camera_snapshot_url: Option<WebAddress>,
     /// `Obico`'s own API, when configured; its debug form omits the token.
     pub obico_api: Option<ObicoApi>,
+    /// How spools are checked before a print, and the margin asked for.
+    pub spools: SpoolPolicy,
 }
 
 impl ServerConfig {
@@ -923,6 +984,7 @@ impl ServerConfig {
             .map(|url| web_address(ConfigField::CameraSnapshotUrl, &url))
             .transpose()?;
         let obico_api = obico_api(file.obico)?;
+        let spools = spool_policy(&file.spools)?;
         Ok(Self {
             state_dir,
             listen,
@@ -939,6 +1001,7 @@ impl ServerConfig {
             api_credential_verifier,
             camera_snapshot_url,
             obico_api,
+            spools,
         })
     }
 
@@ -1233,6 +1296,57 @@ fn skill(named: Option<&Path>) -> Result<PathBuf, ConfigError> {
                 ),
             )
         })
+}
+
+/// How spools are checked, each key left out taking the core's own default.
+fn spool_policy(section: &SpoolsSection) -> Result<SpoolPolicy, ConfigError> {
+    let defaults = SpoolPolicy::default();
+    let preflight = match section.preflight.as_deref() {
+        None => defaults.preflight,
+        Some("refuse") => PreflightMode::Refuse,
+        Some("warn") => PreflightMode::Warn,
+        Some("off") => PreflightMode::Off,
+        Some(_) => {
+            return Err(ConfigError::about(
+                ConfigField::SpoolsPreflight,
+                "the spool check is one of `refuse`, `warn` or `off`",
+            ));
+        }
+    };
+    let grams = |field: ConfigField, value: Option<f64>, default: f64| match value {
+        None => Ok(default),
+        Some(value) if value.is_finite() && value >= 0.0 => Ok(value),
+        Some(_) => Err(ConfigError::about(
+            field,
+            "a margin is a figure at or above zero; a negative one asks a spool for less \
+             than the print needs",
+        )),
+    };
+    let buffer_percent = grams(
+        ConfigField::SpoolsBufferPercent,
+        section.buffer_percent,
+        defaults.buffer_percent,
+    )?;
+    let buffer_min_g = grams(
+        ConfigField::SpoolsBufferMinG,
+        section.buffer_min_g,
+        defaults.buffer_min_g,
+    )?;
+    let analysis_wait_s = match section.analysis_wait_seconds {
+        None => defaults.analysis_wait_s,
+        Some(seconds) => u64::try_from(seconds).map_err(|_| {
+            ConfigError::about(
+                ConfigField::SpoolsAnalysisWaitSeconds,
+                "a wait is a number of seconds at or above zero",
+            )
+        })?,
+    };
+    Ok(SpoolPolicy {
+        preflight,
+        buffer_percent,
+        buffer_min_g,
+        analysis_wait_s,
+    })
 }
 
 /// The observation interval, refused at zero.

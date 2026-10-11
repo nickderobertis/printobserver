@@ -82,10 +82,22 @@ async fn every_operation_answers_this_servers_own_failure_when_the_store_has() {
                     "{image_id}",
                     &printobserver_types::ImageId::new().to_string()
                 )
+                .replace(
+                    "{spool_id}",
+                    &printobserver_core::SpoolId::new().to_string()
+                )
         );
+        let url = if operation.name == "preflight" {
+            format!("{url}?file_name=benchy.gcode")
+        } else {
+            url
+        };
         let request = match operation.method {
             Method::Get => client.get(&url),
-            Method::Post => client.post(&url).json(&body(operation.action_kind())),
+            Method::Post => match operation.command_kind() {
+                Some(kind) => client.post(&url).json(&crate::world::spool_body(kind)),
+                None => client.post(&url).json(&body(operation.action_kind())),
+            },
             Method::Put => client.put(&url).json(&manifest_write(&manifest())),
         };
         let response = request.send().await.expect("the server answers");

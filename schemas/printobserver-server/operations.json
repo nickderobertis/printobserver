@@ -237,6 +237,158 @@
       ]
     },
     {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "spools",
+      "parameters": [
+        {
+          "kind": "boolean",
+          "located": "query",
+          "name": "include_retired",
+          "required": false,
+          "shape": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "path": "/v1/spools",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolsAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "spool",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "spool_id",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/spools/{spool_id}",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "printer_history",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "kinds",
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "since",
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "until",
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "spool_id",
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "before",
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "limit",
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/history",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "TimelineAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "preflight",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "file_name",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/preflight",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "PreflightAnswer"
+        }
+      ]
+    },
+    {
       "accepts": "application/json",
       "answers": "application/json",
       "effect": "mutating:pause",
@@ -919,6 +1071,386 @@
         {
           "answer": "rejected",
           "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:register_spool",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "register_spool",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "color",
+          "required": false,
+          "shape": {
+            "description": "The filament's colour.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "density_g_cm3",
+          "required": false,
+          "shape": {
+            "description": "The material's density, in grams per cubic centimetre; the known\ndensity of the material when absent, and a material with none known\nis refused.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "diameter_mm",
+          "required": false,
+          "shape": {
+            "description": "The filament's diameter, in millimetres; 1.75 when absent.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "initial_g",
+          "required": true,
+          "shape": {
+            "description": "The net filament on the spool when full, in grams.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "material",
+          "required": true,
+          "shape": {
+            "description": "The material, such as `PLA`.",
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "name",
+          "required": true,
+          "shape": {
+            "description": "The operator's own label for it.",
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "remaining_g",
+          "required": false,
+          "shape": {
+            "description": "The filament on it now, in grams; the full figure when absent.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "tare_g",
+          "required": false,
+          "shape": {
+            "description": "The empty spool's own weight, in grams.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      ],
+      "path": "/v1/spools/actions/register_spool",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolCommandAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "SpoolCommandAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:load_spool",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "load_spool",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "spool_id",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "tool",
+          "required": true,
+          "shape": {
+            "description": "The tool, in the printer's own numbering.",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/load_spool",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolCommandAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "SpoolCommandAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:unload_spool",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "unload_spool",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "spool_id",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/unload_spool",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolCommandAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "SpoolCommandAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:adjust_spool",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "adjust_spool",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "spool_id",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "gross_g",
+          "required": false,
+          "shape": {
+            "description": "A scale reading of the spool, in grams, which needs its tare.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "remaining_g",
+          "required": false,
+          "shape": {
+            "description": "The filament left, in grams.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/adjust_spool",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolCommandAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "SpoolCommandAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:retire_spool",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "retire_spool",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "spool_id",
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/retire_spool",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "SpoolCommandAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "SpoolCommandAnswer"
         }
       ]
     }

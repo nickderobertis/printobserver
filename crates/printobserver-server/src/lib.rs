@@ -46,19 +46,19 @@ pub mod server;
 pub mod turns;
 pub mod wire;
 
-pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, router};
+pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, DEFAULT_OBSERVATION_INTERVAL_S,
     FAN_VOCABULARY, GENERATED_CREDENTIAL_BYTES, IngressSection, OBICO_POSTING_TIMEOUT_MS,
     OctoprintSection, REDACTED, SKILL_INSTALL, ServerConfig, SharedSecret, SignInConfig,
-    SupervisorSection, VERIFIER_PREFIX, plainly_written,
+    SpoolsSection, SupervisorSection, VERIFIER_PREFIX, plainly_written,
 };
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
-    Answer, BESIDE_THE_ACTIONS, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect, IMAGE_PATH_FIELD,
-    INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter, VERSION_PREFIX,
-    ValueKind, command_for, operation,
+    Answer, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
+    IMAGE_PATH_FIELD, INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter,
+    VERSION_PREFIX, ValueKind, command_for, operation,
 };
 /// The harness identities this program can sign in, as the adapter declares
 /// them: the command-line program reads the table through this crate, which is
@@ -77,5 +77,7 @@ pub use server::{
 pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
 pub use wire::{
     ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer, reason_of,
+    IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer,
+    SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, at_a_glance,
+    claimed_actor, reason_of, spool_command_of,
 };

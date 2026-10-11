@@ -20,6 +20,16 @@
 //! is adopted as it is. An intervention past its expiry on a print closed here
 //! was expired by that close-out, and is not expired a second time.
 //!
+//! # Then the prints nobody watched are accounted
+//!
+//! With the open prints settled, the printer's own per-file print tallies are
+//! read and every print they counted that this system never saw is charged to
+//! the spools loaded ([`Supervisor::account_unobserved_prints`]), which writes
+//! its own record of what it found. A printer that cannot be read skips this
+//! rather than refusing the start, and [`Reconciliation::accounting_skipped`]
+//! says why; the next start that reaches the printer accounts what this one
+//! could not, because the tallies only grow.
+//!
 //! Each of the three is **recorded** as having happened at startup, under the
 //! [`StartupReconciliationPayload`] kind this module declares and alone writes,
 //! because a print that carried on across a restart and one that was started
@@ -43,7 +53,7 @@ use printobserver_printer_api::Adjustable;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventBody, EventPayload, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventId, EventPayload, PrintId, Timestamp};
 
 /// What one restart put back the way it found it.
 ///
@@ -133,6 +143,12 @@ pub struct Reconciliation {
     pub resumed: Vec<PrintId>,
     /// Every intervention that had outlived its bound and was expired.
     pub expired: Vec<InterventionId>,
+    /// Every event accounting the prints the printer counted and nobody saw
+    /// wrote, in the order they were written; empty when it found nothing new.
+    pub accounted: Vec<EventId>,
+    /// Why that accounting was skipped, when it was: the printer could not be
+    /// read, so its tallies could not be.
+    pub accounting_skipped: Option<String>,
 }
 
 /// The interventions already past their expiry, read before the supervisor
@@ -179,6 +195,20 @@ pub async fn reconcile(
         closed: supervisor.settle_with_printer().await?.closed,
         ..Reconciliation::default()
     };
+
+    // After the close-out, so a print the printer shows ended is settled by it
+    // before its tally is read and is not counted as one nobody saw.
+    match supervisor.account_unobserved_prints().await {
+        Ok(written) => found.accounted = written.iter().map(|event| event.id).collect(),
+        Err(CoreError::Printer(error)) => {
+            found.accounting_skipped = Some(format!(
+                "the printer could not be read ({error}), so the prints it counted while \
+                 nothing was watching were not accounted on this start; the next start that \
+                 reaches it accounts them"
+            ));
+        }
+        Err(error) => return Err(error),
+    }
 
     for print in stores.prints.open_prints().await? {
         record(&stores.events, print.id, StartupOutcome::PrintAdopted).await?;

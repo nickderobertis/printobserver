@@ -38,6 +38,9 @@ async fn serve(config: PathBuf) -> Result<(), String> {
     for warning in running.warnings() {
         eprintln!("printobserver: warning: {warning}");
     }
+    if let Some(skipped) = &running.reconciliation().accounting_skipped {
+        eprintln!("printobserver: {skipped}");
+    }
     eprintln!("printobserver is serving on {}", running.address());
     running
         .serve_until_signalled()

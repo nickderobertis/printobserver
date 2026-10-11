@@ -87,7 +87,10 @@ fn described(operation: &Operation) -> Value {
         "effect": match operation.effect {
             Effect::Read => "read".to_owned(),
             Effect::Write => "write".to_owned(),
-            Effect::Mutating(kind) => format!(
+            // A spool command is an action of the same vocabulary of kinds, and
+            // is described as one: it carries a reason and an actor, and is
+            // answered with its rejection.
+            Effect::Mutating(kind) | Effect::Command(kind) => format!(
                 "mutating:{}",
                 printobserver_types::serde_json::to_value(kind)
                     .ok()
@@ -152,6 +155,26 @@ fn answer_schemas() -> Vec<(String, Value)> {
         (
             "StatusAnswer.json".to_owned(),
             schema_of::<printobserver_server::StatusAnswer>(),
+        ),
+        (
+            "PreflightAnswer.json".to_owned(),
+            schema_of::<printobserver_server::PreflightAnswer>(),
+        ),
+        (
+            "SpoolAnswer.json".to_owned(),
+            schema_of::<printobserver_server::SpoolAnswer>(),
+        ),
+        (
+            "SpoolCommandAnswer.json".to_owned(),
+            schema_of::<printobserver_server::SpoolCommandAnswer>(),
+        ),
+        (
+            "SpoolsAnswer.json".to_owned(),
+            schema_of::<printobserver_server::SpoolsAnswer>(),
+        ),
+        (
+            "TimelineAnswer.json".to_owned(),
+            schema_of::<printobserver_server::TimelineAnswer>(),
         ),
     ]
 }
@@ -306,7 +329,7 @@ fn every_mutating_operation_is_described_as_answering_a_rejection() {
             })
             .collect();
         match operation.effect {
-            Effect::Mutating(_) => assert_eq!(
+            Effect::Mutating(_) | Effect::Command(_) => assert_eq!(
                 answers,
                 vec!["success".to_owned(), "rejected".to_owned()],
                 "`{}`",
