@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks.checks_release import Workflow
 from repo_checks.checks_service import installers
 from repo_checks.model import (
     PolicyValueError,
@@ -52,6 +53,10 @@ PROVE_PREFIX = "prove-"
 
 SECRET_REFERENCE = re.compile(r"secrets\.([A-Z0-9_]+)")
 BUILT_IN_TOKEN = re.compile(r"secrets\.GITHUB_TOKEN|github\.token")
+
+#: What a job runs to draft or publish a release: the jobs the built-in token
+#: is refused to.
+RELEASE_PROGRAM = "release-plz release"
 JUDGE_SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY")
 HALTS_FOR_A_PERSON = ("manual-approval", "wait-for-approval", "approval-action")
 
@@ -1224,6 +1229,38 @@ def merge_model(repo: Repo) -> list[str]:
     return findings
 
 
+def _built_in_token_findings(file_name: str, workflow: Workflow) -> list[str]:
+    """The release workflow's built-in token reaches no job running the release program.
+
+    The release program opens the release change request and pushes the
+    release's tag, and the forge starts no workflow for what its built-in token
+    does: a change request opened by it is gated by nothing, and a tag pushed
+    by it starts nothing that follows a release. So no job running the program
+    names that token, and nothing outside the jobs names it either, because
+    what the workflow itself declares reaches every job. A job that runs no
+    part of the program — the one keeping the `release-broken` issue, which
+    opens and closes an issue under `issues: write` — may hand it to a step.
+    """
+    import json
+
+    jobs = jobs_of(workflow)
+    findings = [
+        f"{file_name}: job `{name}` runs the release program and names the workflow's "
+        f"built-in token; a change request opened or a tag pushed by it triggers none of "
+        f"the workflows that gate or follow it"
+        for name, job in jobs.items()
+        if any(command.startswith(RELEASE_PROGRAM) for command in run_commands(job))
+        and BUILT_IN_TOKEN.search(json.dumps(job, default=str))
+    ]
+    outside = {str(key): value for key, value in workflow.items() if key != "jobs"}
+    if BUILT_IN_TOKEN.search(json.dumps(outside, default=str)):
+        findings.append(
+            f"{file_name} names the workflow's built-in token outside its jobs, which reaches "
+            f"every job — the ones running the release program among them"
+        )
+    return findings
+
+
 def secrets(repo: Repo) -> list[str]:
     """Every secret a workflow names is one `gh-secrets.json` declares."""
     import json
@@ -1254,11 +1291,7 @@ def secrets(repo: Repo) -> list[str]:
             findings.append(
                 f"{file_name} does not open its release change request under `RELEASE_PLZ_TOKEN`"
             )
-        if BUILT_IN_TOKEN.search(text):
-            findings.append(
-                f"{file_name} names the workflow's built-in token; a change request "
-                f"opened by it does not trigger the workflows that gate it"
-            )
+        findings.extend(_built_in_token_findings(file_name, workflow))
         if "CARGO_REGISTRY_TOKEN" not in names:
             findings.append(f"{file_name} names no crate-publishing credential")
 

@@ -206,15 +206,22 @@ def drafted(copy: GateCopy, registry: EmptyIndex) -> tuple[int, str]:
 def test_the_workspace_declares_one_version_no_occupied_version_names() -> None:
     """Every crate, every inter-crate requirement and the lockfile agree on one version.
 
-    Read through `cargo metadata --locked`, which refuses a lockfile the
-    manifests have moved away from, so the committed lockfile is proven to
-    resolve the committed manifests without being amended.
+    The committed lockfile is proven to resolve the committed manifests without
+    being amended.
     """
     version = workspace_version()
     absent(OCCUPIED, version, describing="the versions the registry or a tag already occupies")
+    at_one_version(REPO_ROOT, version, describing="the committed tree")
 
-    result = run(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=REPO_ROOT)
-    passing(result, describing="`cargo metadata --locked` over the committed tree")
+
+def at_one_version(root: Path, version: str, *, describing: str) -> None:
+    """Every crate at `root`, and every requirement one makes of another, is at `version`.
+
+    Read through `cargo metadata --locked`, which refuses a lockfile the
+    manifests have moved away from.
+    """
+    result = run(["cargo", "metadata", "--locked", "--format-version", "1"], cwd=root)
+    passing(result, describing=f"`cargo metadata --locked` over {describing}")
     metadata = json.loads(result.stdout)
     members = [package for package in metadata["packages"] if package["source"] is None]
     names = {package["name"] for package in members}
@@ -309,15 +316,24 @@ def merged_release(
     """A copy whose `main` ends at a merged release pull request, then at `after`.
 
     The copy's own history is one `chore:` commit; on it lands exactly what the
-    release pull request carries — the workspace moved as release-plz moves it —
-    under the subject that pull request is merged as and the body the arming
-    names for it. Each subject in `after` then lands as a commit touching one
-    crate's sources.
+    release pull request carries — the workspace moved as release-plz moves it,
+    and a section in every crate's changelog — under the subject that pull
+    request is merged as and the body the arming names for it. Each subject in
+    `after` then lands as a commit touching one crate's sources.
+
+    The changelogs are what put the merge in every crate's own history: the
+    workspace's requirements are inherited from its root manifest, so the
+    version alone moves no file under a crate's directory, and the drafting tool
+    reads a crate's commits off the files under it.
     """
     copy = gate_copy(node_modules=False)
     version = bumping.next_minor(bumping.workspace_version(copy.root))
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     bumping.bump_workspace_version(copy.root, version)
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
+    for changelog in sorted(copy.root.glob("crates/*/CHANGELOG.md")):
+        with changelog.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n## [{version}]\n\n- The release this merge carries.\n")
     shell_run(
         ["git", *COMMIT_IDENTITY, "commit", "-qam", f"{subject.format(version=version)}\n\n{body}"],
         cwd=copy.root,
@@ -506,6 +522,88 @@ def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes(
         [],
         describing=f"the files the helper moved to {version} otherwise than the tool:\n{moved}",
     )
+
+
+#: The one crate a partial release's commit touches.
+PARTIALLY_RELEASED = "printobserver-core"
+
+
+@pytest.mark.parametrize(
+    ("subject", "bump"),
+    [
+        ("fix(core): a change to the supervision domain alone", "patch"),
+        # A breaking change in some crates moves a pre-1.0 workspace a minor,
+        # past every requirement of the version before it left behind.
+        ("fix(core)!: a breaking change to the supervision domain alone", "minor"),
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_a_release_of_one_crate_moves_every_crate_and_every_requirement_together(
+    gate_copy: Callable[..., GateCopy], subject: str, bump: str
+) -> None:
+    """A `fix` touching one crate drafts one new version for all twelve.
+
+    Every crate inherits the one workspace version, so a release of some of
+    them moves all of them; what this holds is that the drafting tool moves
+    every requirement one crate makes of another with it. The drafting tool is
+    driven for real over a copy whose `main` carries one commit touching
+    `printobserver-core` alone, against an untouched copy standing where the
+    registry's packages would — so every other crate is one the tool finds
+    unchanged. The draft must succeed, and the copy must then resolve its own
+    lock file at one new version, every requirement naming it.
+    """
+    released = gate_copy(node_modules=False)
+    drafted_copy = gate_copy(node_modules=False)
+    touched = drafted_copy.root / "crates" / PARTIALLY_RELEASED / "src" / "touched_by_fix.rs"
+    touched.write_text("//! A change the release carries.\n", encoding="utf-8")
+    shell_run(["git", "add", "-A"], cwd=drafted_copy.root, check=True)
+    shell_run(
+        ["git", *COMMIT_IDENTITY, "commit", "-qm", subject], cwd=drafted_copy.root, check=True
+    )
+    changed = shell_run(
+        ["git", "diff", "--name-only", "HEAD~1", "HEAD"], cwd=drafted_copy.root, check=True
+    ).stdout.split()
+    truth(
+        bool(changed) and all(path.startswith(f"crates/{PARTIALLY_RELEASED}/") for path in changed),
+        describing=f"the fix commit to touch `{PARTIALLY_RELEASED}` alone: {changed}",
+    )
+    shell_run(["git", "repack", "-ad"], cwd=drafted_copy.root, check=True)
+    was = bumping.workspace_version(released.root)
+    major, minor, patch = (int(part) for part in was.split("."))
+    expected = f"{major}.{minor}.{patch + 1}" if bump == "patch" else bumping.next_minor(was)
+
+    result = capture(
+        [
+            "release-plz",
+            "update",
+            "--no-changelog",
+            "--registry-manifest-path",
+            str(released.root / "Cargo.toml"),
+        ],
+        drafted_copy.root,
+        timeout=DRAFT_TIMEOUT_SECONDS,
+        env=clean_environment(),
+    )
+
+    passing(
+        (result.returncode, output(result)),
+        describing=f"drafting a release of `{PARTIALLY_RELEASED}` alone",
+    )
+    equal(
+        bumping.workspace_version(drafted_copy.root),
+        expected,
+        describing=f"the {bump} release the tool drafted after {was}",
+    )
+    with (drafted_copy.root / "Cargo.toml").open("rb") as handle:
+        inherited = tomllib.load(handle)["workspace"]["dependencies"]
+    for name, declared in sorted(inherited.items()):
+        if isinstance(declared, dict) and "path" in declared:
+            equal(
+                declared.get("version"),
+                expected,
+                describing=f"the workspace's requirement of `{name}` after the draft",
+            )
+    at_one_version(drafted_copy.root, expected, describing="the drafted copy")
 
 
 #: The most the drafting forge stand-in reads of one request body. The largest

@@ -2340,3 +2340,78 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/unobserved.rs"
 site = "settlements: &[(String, Timestamp, PrintOutcome)],"
 reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."
+
+# `release_artifacts.tracking` opens, comments on and closes one issue on the
+# forge, and nothing here may do that on the real one. These are the sites that
+# stand GitHub's issues API in, and the helper that runs the workflow over it.
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "IssuesForge(REPOSITORY, RUN_TOKEN)"
+reason = "What stands in is GitHub's REST API for issues, and only it: the release workflow's reporting job opens, comments on and closes an issue, and a journey that did that on github.com would leave a real `release-broken` issue on this repository — or on whatever repository a token reached — every time the gate ran. Everything under test is real: the committed workflow's own text run under the forge's documented scheduling rules by `actions.py`, its `always()` condition and its two step conditions evaluated over what the real drafting and publishing jobs answered, the real `just release-broken` and `just release-mended` recipes and the real `release_artifacts` command speaking HTTP to the stand-in, which keeps what each run left so a sequence of runs reads as the forge's would. The stand-in is `release_artifacts.issues_standin`, whose own refusals `tools/release-artifacts/tests/test_tracking.py` proves over real connections."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "return driven("
+reason = "The helper the three tracking journeys run the committed workflow through, on the ground `driven`'s own entries and the entry at `IssuesForge(REPOSITORY, RUN_TOKEN)` state: the programs stood in are the ones that would reach a registry or the real forge, and the issues API is the stand-in a sequence of runs shares, so the issue a first failing run opens is the one a second comments on and a succeeding one closes."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "return driven("
+reason = "The same ground as `driven`'s own entry: a journey cannot fire the forge, so the committed workflow's text is run under the forge's documented rules by `actions.py`, every `run:` step executed for real over a copy of the tree. This helper names one push-triggered run of it, which is how the forge starts every run the reporting job acts on."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "with IssuesForge(REPOSITORY, CREDENTIAL) as standing:"
+reason = "GitHub's issues API, stood in because the real one would open a real issue on github.com, which no test may do. What is under test is this repository's own tracking command, driven through its real command line with the environment the forge hands a step, speaking real HTTP through `registries.exchange` — the one place this tool audits a URL and attaches a credential. The stand-in keeps what each call left, records the credential every request carried, and refuses where told, so the open-comment-close sequence and every refusal are proven over a real connection. The journey over the committed workflow's reporting job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/tracking.py"
+site = "answered = exchange("
+reason = "The same ground as the entry for this rule at `urllib.request.Request(` in `registries.py`, whose `exchange` this calls rather than opening a second HTTP site. The typed half is answered rather than suppressed: every answer the forge gives is narrowed where it is read — a listing must be a list, each entry must name a positive integer issue, an opened issue must name its number — and anything else fails the step naming what the forge said. The async half does not apply: this is a command-line step a `just` recipe runs to completion, asking the forge one ordered question at a time (list, then label, then open or comment, then close), with nothing to overlap and no event loop anywhere in the program."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "exchange("
+reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
+
+
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."
+
+
+
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "with RacedForge(REPOSITORY, CREDENTIAL) as raced:"
+reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to answer as the forge does when a second run creates the label between this run's read and its creation. That interleaving cannot be caused on demand against the real forge, and the step's handling of it is what the test proves, through the real command line and real HTTP."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "with MislistingForge(REPOSITORY, CREDENTIAL) as mislisting:"
+reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to list an issue by a number no issue carries. The real forge cannot be made to answer that, and what the test proves is the step's refusal of it, through the real command line and real HTTP, before it writes anything."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/tests/test_github_issues_contract.py"
+site = "payload = verified("
+reason = "The drift gate's one download: GitHub's published REST description, fetched through `repo_checks.verified_download.verified` — the one place this repository downloads a pinned artifact from the forge, refuses an address nothing vouches for and compares the bytes against the pinned SHA-256 before anything reads them. It is a single blocking fetch at the start of a test module, cached by revision afterwards, with nothing to overlap it with; the entry for this rule in `verified_download.py` states why that helper is synchronous, and a second, asynchronous client here would be a download path nothing verifies."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_path_journey.py"
+site = "for changelog in sorted(copy.root.glob(\"crates/*/CHANGELOG.md\")):"
+reason = "The fixture writes a section into every crate's changelog because a merged release pull request touches every crate's changelog, and that touch is what the drafting tool attributes the merge commit to each crate by: it reads a crate's history off the files under the crate's directory, and with every internal requirement inherited from the root manifest the version move alone touches none of them. What the section says is not read by anything under test — the loop guard and its control turn on the merge commit's subject and body. Having the drafting tool write them would need a release-worthy history before the merge and a full semver-checked draft of all twelve crates per journey, each well over a minute, to produce text these journeys then ignore; the version half the same fixture writes is held to what the held release-plz writes by `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes`."

@@ -289,6 +289,22 @@ release-answer ANSWER:
 release-pr-arm ANSWER:
     @uv run -q python -m release_artifacts arm-release-pr --answer {{quote(ANSWER)}}
 
+# Say on the forge that the release path on `main` is broken, naming RUN.
+#
+# JOBS are the release workflow's jobs as `<job>=<result>`, as the forge
+# reports each. The first failing run opens one issue labelled `release-broken`;
+# every failing run after it comments on that issue, naming the run and the
+# jobs that failed. Speaks GitHub's API at `GITHUB_API_URL`, for
+# `GITHUB_REPOSITORY`, under `GITHUB_TOKEN` — what the forge hands every step.
+release-broken RUN +JOBS:
+    @uv run -q python -m release_artifacts release-broken --run-url {{quote(RUN)}} {{prepend("--job ", JOBS)}}
+
+# Close the open `release-broken` issue, naming RUN as the run that succeeded.
+#
+# Nothing is asked of the forge but the read where no such issue is open.
+release-mended RUN:
+    @uv run -q python -m release_artifacts release-mended --run-url {{quote(RUN)}}
+
 # Which release a hand-dispatched run publishes, as `released=<tag>`, off TAG.
 #
 # The same line `release-answer` prints for a cut release, so the artifact

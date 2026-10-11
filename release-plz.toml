@@ -59,12 +59,66 @@ git_release_name = "v{{ version }}"
 git_tag_enable = false
 git_release_enable = false
 
+# One version group holding every crate of the workspace, so a release of any
+# of them is a release of all twelve at one version — the one `[workspace.
+# package] version` every crate inherits and the one `v<version>` tag below.
+# Without it release-plz decides each crate apart: a release of some writes the
+# next version into that shared field, which moves every crate, but rewrites
+# the requirements of only the crates it released, and `cargo update` then
+# refuses a sibling requiring the version just moved past.
+# `tests/repo-e2e/tests/test_release_path_journey.py` holds this by drafting a
+# release of one crate and requiring every crate to move with it.
+[[package]]
+name = "printobserver-types"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-printer-api"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-supervisor-api"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-vision-api"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-core"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-obico"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-octoprint"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-oneharness"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-store-sqlite"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-sdk"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-server"
+version_group = "printobserver"
+
 # `printobserver` depends — directly or through `printobserver-server` — on
 # every other publishable crate, so release-plz's dependency ordering publishes
 # it last, and the tag and release it creates land after the last `cargo
 # publish`.
 [[package]]
 name = "printobserver"
+version_group = "printobserver"
 git_tag_enable = true
 git_release_enable = true
 

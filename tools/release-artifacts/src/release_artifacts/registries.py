@@ -773,8 +773,13 @@ def exchange(
     content_type: str = "",
     accept: str = ACCEPT,
     token: Token | None = None,
+    expect: int | None = None,
 ) -> bytes:
     """One request to a registry, and what it answered.
+
+    `expect`, where given, is the one status the caller takes as success; any
+    other status that is not a refusal is refused as though it were one, so
+    that an answer the caller did not ask for is never read as the one it did.
 
     Every read this proof makes and every write the publisher makes over HTTP
     goes through here, so there is one place a scheme is audited and one place
@@ -810,6 +815,7 @@ def exchange(
         # llmlint: ignore[async_typed_clients_at_boundaries] The same one site as above.
         with urllib.request.urlopen(request, timeout=ASK_TIMEOUT_SECONDS) as answer:  # noqa: S310
             read: bytes = answer.read()
+            status = int(answer.status)
     except urllib.error.HTTPError as refused:
         said = refused.read().decode("utf-8", errors="replace").strip()
         raise RefusedError(url, refused.code, refused.reason, said) from refused
@@ -819,6 +825,9 @@ def exchange(
             f"disproven here: re-run this once that registry answers."
         )
         raise RegistryError(msg) from unreachable
+    if expect is not None and status != expect:
+        said = read.decode("utf-8", errors="replace").strip()
+        raise RefusedError(url, status, f"where {expect} was expected", said)
     return read
 
 
