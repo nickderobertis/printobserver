@@ -184,9 +184,10 @@ fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
             }
             chunked = true;
         } else if name == "content-length" {
-            let declared = value
-                .parse::<usize>()
-                .map_err(|_| Transport::Malformed(format!("{value:?} is no content length")))?;
+            let declared = Some(value)
+                .filter(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(|digits| digits.parse::<usize>().ok())
+                .ok_or_else(|| Transport::Malformed(format!("{value:?} is no content length")))?;
             if length.is_some_and(|earlier| earlier != declared) {
                 return Err(Transport::Malformed(
                     "the response declares two different content lengths".to_owned(),
@@ -236,6 +237,7 @@ fn status_of(status_line: &str) -> Result<u16, Transport> {
     parts
         .next()
         .filter(|_| matches!(version, "HTTP/1.0" | "HTTP/1.1"))
+        .filter(|code| code.len() == 3 && code.bytes().all(|byte| byte.is_ascii_digit()))
         .and_then(|code| code.parse::<u16>().ok())
         .filter(|code| (100..=599).contains(code))
         .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))
@@ -305,8 +307,10 @@ impl Source<'_> {
             let line = self.line()?;
             let header = String::from_utf8_lossy(&line).into_owned();
             let size_text = header.split(';').next().unwrap_or_default().trim();
-            let size = usize::from_str_radix(size_text, 16)
-                .map_err(|_| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
+            let size = Some(size_text)
+                .filter(|hex| !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+                .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+                .ok_or_else(|| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
             if size == 0 {
                 // The trailer section: header fields, ended by a blank line.
                 loop {

@@ -166,9 +166,15 @@ fn number_of(words: &[(char, String)], letter: char) -> Option<f64> {
 ///
 /// Read whether or not the words are spaced, because `G1X10E2` is a line a
 /// firmware reads exactly as `G1 X10 E2`.
+///
+/// A number is one run of characters: a space ends it, so `E1 2` is not `E12`
+/// but an `E` word that is no number, which the move is then read without.
 fn words(raw: &[u8]) -> Vec<(char, String)> {
+    /// What no number is spelled with, so that a value carrying it never parses.
+    const BROKEN: char = ' ';
     let mut words: Vec<(char, String)> = Vec::new();
     let mut in_parenthesis = false;
+    let mut ended = false;
     for &byte in raw {
         let c = char::from(byte);
         if in_parenthesis {
@@ -178,12 +184,19 @@ fn words(raw: &[u8]) -> Vec<(char, String)> {
         match c {
             ';' | '*' => break,
             '(' => in_parenthesis = true,
-            c if c.is_ascii_alphabetic() => words.push((c.to_ascii_uppercase(), String::new())),
-            c if c.is_ascii_whitespace() => {}
+            c if c.is_ascii_alphabetic() => {
+                words.push((c.to_ascii_uppercase(), String::new()));
+                ended = false;
+            }
+            c if c.is_ascii_whitespace() => ended = true,
             c => {
                 if let Some((_, value)) = words.last_mut() {
+                    if ended && !value.is_empty() {
+                        value.push(BROKEN);
+                    }
                     value.push(c);
                 }
+                ended = false;
             }
         }
     }

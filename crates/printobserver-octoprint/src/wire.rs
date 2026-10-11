@@ -230,8 +230,8 @@ enum EntryKind {
 /// What `GET /api/files?recursive=true` answers with.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ListingPayload {
-    /// Every entry at the top of every origin, folders holding their own.
-    #[serde(default)]
+    /// Every entry at the top of every origin, folders holding their own; a
+    /// listing without it is no listing.
     files: Vec<FilePayload>,
 }
 

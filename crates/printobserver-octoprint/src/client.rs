@@ -175,13 +175,20 @@ impl OctoPrintPrinter {
         position_bytes: i64,
     ) -> Result<Vec<ToolFilament>, PrinterError> {
         let file = self.read_file(file_name)?;
-        let link = file.download().ok_or_else(|| {
+        let link = file.download().map(ToOwned::to_owned);
+        // The record is held to what `file_facts` holds it to before its link
+        // is followed: a folder, or a record no file could carry, is no file
+        // to download.
+        file.facts().map_err(|detail| {
+            malformed(format!("{} answered {detail}", local_file_path(file_name)))
+        })?;
+        let link = link.ok_or_else(|| {
             malformed(format!(
                 "{} answered no download link for {file_name}",
                 local_file_path(file_name)
             ))
         })?;
-        let path = download_path(link)?;
+        let path = download_path(&link)?;
         let mut reader = Reader(ExtrudedTo::new(position_bytes));
         let outcome = http::stream(
             self.config.endpoint(),

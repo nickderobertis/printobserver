@@ -402,109 +402,124 @@ fn a_link_spelled_as_a_path_is_followed_as_it_stands() {
     assert_eq!(rooted.requests()[1].path, "/");
 }
 
-/// A broken download, what it is, and what it should be refused as.
-type BrokenDownload = (&'static str, &'static [u8], fn(&PrinterError) -> bool);
-
-/// A download that stops short of what it promised, or that is not framed as
-/// it says, is not answered as though it were the file.
-#[test]
-fn a_broken_download_is_not_read_as_the_file() {
-    let cases: [BrokenDownload; 17] = [
-        (
-            "a length it does not deliver",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 500\r\n\r\nM83\nG1 E1\n",
-            |error| matches!(error, PrinterError::Unreachable { .. }),
-        ),
-        (
-            "a chunk size that is no number",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nM83\r\n0\r\n\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a chunk longer than it declared",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nM83\r\n0\r\n\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "chunks that stop without a last one",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "no header block",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a status line that is not HTTP's",
-            b"garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a length that is no number",
-            b"HTTP/1.1 200 OK\r\nContent-Length: lots\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "two lengths that disagree",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nContent-Length: 9\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a coding this client cannot undo",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "an HTTP version that is not one",
-            b"HTTP/1.garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a header line with no field name",
-            b"HTTP/1.1 200 OK\r\nContent-Length 4\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a header field name carrying a space",
-            b"HTTP/1.1 200 OK\r\nContent Length: 4\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a header field value carrying a control character",
-            b"HTTP/1.1 200 OK\r\nX-Note: a\x01b\r\nContent-Length: 4\r\n\r\nM83\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a trailer field with no name",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n: x\r\n\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "both a length and chunks",
-            b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n\
+/// Downloads that are not framed as HTTP/1 frames a body, each with what it is.
+const MALFORMED_DOWNLOADS: [(&str, &[u8]); 20] = [
+    (
+        "a chunk size that is no number",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nM83\r\n0\r\n\r\n",
+    ),
+    (
+        "a chunk longer than it declared",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nM83\r\n0\r\n\r\n",
+    ),
+    (
+        "chunks that stop without a last one",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n",
+    ),
+    (
+        "no header block",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n",
+    ),
+    (
+        "a status line that is not HTTP's",
+        b"garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a length that is no number",
+        b"HTTP/1.1 200 OK\r\nContent-Length: lots\r\n\r\nM83\n",
+    ),
+    (
+        "two lengths that disagree",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nContent-Length: 9\r\n\r\nM83\n",
+    ),
+    (
+        "a coding this client cannot undo",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nM83\n",
+    ),
+    (
+        "an HTTP version that is not one",
+        b"HTTP/1.garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a header line with no field name",
+        b"HTTP/1.1 200 OK\r\nContent-Length 4\r\n\r\nM83\n",
+    ),
+    (
+        "a header field name carrying a space",
+        b"HTTP/1.1 200 OK\r\nContent Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a header field value carrying a control character",
+        b"HTTP/1.1 200 OK\r\nX-Note: a\x01b\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a trailer field with no name",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n: x\r\n\r\n",
+    ),
+    (
+        "a status that is not three digits",
+        b"HTTP/1.1 0200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a status carrying a sign",
+        b"HTTP/1.1 +20 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+    ),
+    (
+        "a length carrying a sign",
+        b"HTTP/1.1 200 OK\r\nContent-Length: +4\r\n\r\nM83\n",
+    ),
+    (
+        "a chunk size carrying a sign",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n+4\r\nM83\n\r\n0\r\n\r\n",
+    ),
+    (
+        "both a length and chunks",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n\
               4\r\nM83\n\r\n0\r\n\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a trailer that is no field",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\nnonsense\r\n\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-        (
-            "a last chunk with no blank line after it",
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n",
-            |error| matches!(error, PrinterError::Malformed { .. }),
-        ),
-    ];
-    for (describing, raw, expected) in cases {
+    ),
+    (
+        "a trailer that is no field",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\nnonsense\r\n\r\n",
+    ),
+    (
+        "a last chunk with no blank line after it",
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n",
+    ),
+];
+
+/// A download that is not framed as it says is refused as malformed rather
+/// than read as though it were the file.
+#[test]
+fn a_misframed_download_is_malformed() {
+    for (describing, raw) in MALFORMED_DOWNLOADS {
         let stand_in = StandIn::start(facts(), Download::Raw(raw.to_vec()));
 
         let error =
             block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect_err("a refusal");
 
-        assert!(expected(&error), "{describing}: {error:?}");
+        assert!(
+            matches!(error, PrinterError::Malformed { .. }),
+            "{describing}: {error:?}"
+        );
     }
+}
+
+/// A download that stops short of the length it promised is not the file:
+/// the instance stopped answering part-way.
+#[test]
+fn a_download_short_of_its_length_is_unreachable() {
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(b"HTTP/1.1 200 OK\r\nContent-Length: 500\r\n\r\nM83\nG1 E1\n".to_vec()),
+    );
+
+    let error =
+        block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect_err("a refusal");
+
+    assert!(
+        matches!(error, PrinterError::Unreachable { .. }),
+        "{error:?}"
+    );
 }
 
 /// Every rule the G-code reader keeps, in one program, read through the
@@ -576,4 +591,42 @@ fn a_chunked_download_with_trailer_fields_is_read_whole() {
     let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
 
     assert_eq!(fed, extruded_to(b"M83\nG1 E2\n", 1_000));
+}
+
+/// A download whose last line has no newline counts that line once the body
+/// ends — and a length declared twice alike is one length.
+#[test]
+fn a_last_line_without_a_newline_counts_once_the_download_ends() {
+    let program = b"M83\nG1 E1\nG1 E4";
+    let mut response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {0}\r\nContent-Length: {0}\r\n\r\n",
+        program.len()
+    )
+    .into_bytes();
+    response.extend_from_slice(program);
+    let stand_in = StandIn::start(facts(), Download::Raw(response));
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect("the feed");
+
+    assert_eq!(fed.len(), 1, "{fed:?}");
+    assert!(
+        (fed[0].length_mm - 5.0).abs() < 1e-9,
+        "the unterminated last line was not counted: {fed:?}"
+    );
+}
+
+/// A record `file_facts` refuses — here a folder — has no link followed.
+#[test]
+fn a_record_that_is_no_file_is_not_downloaded() {
+    let stand_in = StandIn::start(
+        r#"{"name": "print.gcode", "origin": "local", "type": "folder",
+            "refs": {"download": "/downloads/files/local/print.gcode"}}"#
+            .to_owned(),
+        Download::Raw(Vec::new()),
+    );
+
+    let error = block_on(stand_in.printer().extruded_to(print_gcode(), 10)).expect_err("a refusal");
+
+    assert!(matches!(error, PrinterError::Malformed { .. }), "{error:?}");
+    assert_eq!(stand_in.requests().len(), 1, "a download was sent");
 }

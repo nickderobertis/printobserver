@@ -256,14 +256,18 @@ fn a_printed_file_inside_a_folder_is_answered() {
 /// A listing this port cannot read is malformed, naming the path.
 #[test]
 fn a_listing_this_port_cannot_read_is_malformed() {
-    let stub = Stub::always(Reply::Body(200, r#"{"files": "nothing"}"#.to_owned()));
-    let printer = OctoPrintPrinter::new(
-        OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration"),
-    );
+    for body in [r#"{"files": "nothing"}"#, "{}"] {
+        let stub = Stub::always(Reply::Body(200, body.to_owned()));
+        let printer = OctoPrintPrinter::new(
+            OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration"),
+        );
 
-    match block_on(printer.printed_files()).expect_err("a refusal") {
-        PrinterError::Malformed { detail } => assert!(detail.contains("/api/files"), "{detail}"),
-        other => panic!("expected a malformed answer, found {other:?}"),
+        match block_on(printer.printed_files()).expect_err("a refusal") {
+            PrinterError::Malformed { detail } => {
+                assert!(detail.contains("/api/files"), "{body}: {detail}");
+            }
+            other => panic!("{body}: expected a malformed answer, found {other:?}"),
+        }
     }
 }
 
@@ -319,6 +323,7 @@ fn an_incomplete_last_print_is_no_last_print() {
         r#"{"success": true}"#,
         r#"{"date": 1700000000.0}"#,
         r#"{"date": 1e300, "success": false}"#,
+        r#"{"date": 100000000000000.0, "success": false}"#,
     ] {
         let (_stub, printer) = answering_body(&format!(
             r#"{{"name": "a.gcode", "origin": "local", "type": "machinecode",

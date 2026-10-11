@@ -288,3 +288,25 @@ fn an_e_word_that_is_no_length_is_skipped() {
     let absolute = format!("M82\nG92 E0\nG1 E5\nG1 E99999999999\nG1 E-{infinite}\nG1 E6\n");
     feeds(&whole(&absolute), &[(0, 6.0)]);
 }
+
+/// `G90` hands `E` back to what `M82`/`M83` last said: after `M83`, `E` stays
+/// relative through a `G91` and the `G90` that ends it.
+#[test]
+fn absolute_axes_leave_relative_extrusion_relative() {
+    feeds(&whole("M83\nG91\nG1 E2\nG90\nG1 E2\nG1 E2\n"), &[(0, 6.0)]);
+}
+
+/// A `G92` naming only another axis leaves the extruder's position where it was.
+#[test]
+fn a_reset_of_another_axis_keeps_the_extruder_position() {
+    feeds(
+        &whole("M82\nG92 E0\nG1 E5\nG92 X10 Y0\nG1 E6\n"),
+        &[(0, 6.0)],
+    );
+}
+
+/// A space ends a number, so two runs of digits are not read as one.
+#[test]
+fn a_number_split_by_a_space_is_no_number() {
+    feeds(&whole("M83\nG1 E1 2\nG1 E 3\nG1 E1\n"), &[(0, 4.0)]);
+}
