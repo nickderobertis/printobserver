@@ -46,14 +46,29 @@ authors = ["Nick DeRobertis"]
 # the version, the features, or the path of a sibling crate. Inheriting is
 # opt-in per crate, so a crate that still pins its own is unaffected by this
 # table and builds exactly as it did.
+#
+# Every crate of this workspace another one depends on is named here and
+# nowhere else, and every manifest inherits it. Release automation moves the
+# one shared version and these requirements together, so a release of any
+# subset of the crates cannot leave a sibling requiring a version it has moved
+# past, which `cargo update` refuses.
 [workspace.dependencies]
 base64 = "0.22"
 jsonschema ={ version = "0.34", default-features = false }
 oneharness-core = "0.12.3"
 oneharness = "0.11.4"
 plist = { version = "1.10.1", default-features = false }
+printobserver-core = { path = "crates/printobserver-core", version = "0.3.0" }
+printobserver-obico = { path = "crates/printobserver-obico", version = "0.3.0" }
+printobserver-octoprint = { path = "crates/printobserver-octoprint", version = "0.3.0" }
+printobserver-oneharness = { path = "crates/printobserver-oneharness", version = "0.3.0" }
+printobserver-printer-api = { path = "crates/printobserver-printer-api", version = "0.3.0" }
+printobserver-sdk = { path = "crates/printobserver-sdk", version = "0.3.0" }
+printobserver-server = { path = "crates/printobserver-server", version = "0.3.0" }
+printobserver-store-sqlite = { path = "crates/printobserver-store-sqlite", version = "0.3.0" }
 printobserver-supervisor-api = { path = "crates/printobserver-supervisor-api", version = "0.3.0" }
 printobserver-types = { path = "crates/printobserver-types", version = "0.3.0" }
+printobserver-vision-api = { path = "crates/printobserver-vision-api", version = "0.3.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

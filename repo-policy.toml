@@ -658,6 +658,16 @@ record_recipe = "release-version-dispatched"
 record_artifact = "dispatched-release"
 publish_version_env = "PRINTOBSERVER_PUBLISH_VERSION"
 publish_version_source = "tools/release-artifacts/src/release_artifacts/publishing.py"
+# Loud on `main`. Once both halves of the release program have run, the
+# release workflow's reporting job hands their results to `broken_recipe`, which
+# opens one issue labelled `release-broken` on the first failing run and
+# comments on it on every one after, and to `mended_recipe`, which closes it on
+# the first run in which both succeed. `just check-repo`'s `release-tracking`
+# holds the workflow to that job: it waits on both halves under `always()` on
+# `main`, runs each recipe under the condition that names the outcome, and is
+# the one job granted `issues: write`, beside `contents: read` and nothing else.
+broken_recipe = "release-broken"
+mended_recipe = "release-mended"
 
 [manifests]
 # The only manifests permitted to carry a version field, because release
