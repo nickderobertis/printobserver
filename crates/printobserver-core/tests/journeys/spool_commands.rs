@@ -177,6 +177,8 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
 
     let loaded = loaded_spool(&world, "On The Printer", 1_000.0);
     refused_with(&world, &load_command(loaded.id, 0), "already on tool 0");
+    refused_with(&world, &load_command(loaded.id, -1), "there is no tool -1");
+    assert_eq!(spool_now(&world, loaded.id).loaded_on_tool, Some(0));
 
     let both = SpoolCommand::AdjustSpool {
         spool_id: loaded.id,
@@ -619,4 +621,74 @@ fn a_spool_unloaded_mid_print_is_charged_to_the_unload() {
     assert_eq!(unload.len(), 1);
     let _ = print_id;
     assert_ledger_explains(&world, spool.id);
+}
+
+/// The spool commands these journeys drive, and the kinds the spool envelope
+/// grants, are exactly the vocabulary `SpoolCommand` declares, read off its own
+/// declaration: a command added there cannot go ungranted or undriven here.
+#[test]
+fn the_commands_driven_here_are_the_whole_declared_vocabulary() {
+    let declared = crate::source::enum_variant_names(
+        &crate::source::parse(&crate::source::read(
+            &crate::source::crate_dir("printobserver-core")
+                .join("src")
+                .join("records")
+                .join("spool_command.rs"),
+        )),
+        "SpoolCommand",
+    );
+    let driven: Vec<String> = each_command(SpoolId::new(), &Actor::Operator)
+        .iter()
+        .map(|asked| format!("{:?}", asked.kind()))
+        .collect();
+    let granted: Vec<String> = crate::shelf::SPOOL_KINDS
+        .iter()
+        .map(|kind| format!("{kind:?}"))
+        .collect();
+    assert_eq!(driven, declared);
+    assert_eq!(granted, declared);
+}
+
+/// A spool retired while it is loaded is still charged for what it fed: a
+/// spool loaded over it mid-print charges the retired spool up to the swap and
+/// the incoming one only the remainder.
+#[test]
+fn a_spool_retired_while_loaded_is_charged_for_what_it_fed_before_a_swap() {
+    let world = spool_world();
+    let retired = loaded_spool(&world, "Retired On The Printer", 1_000.0);
+    let incoming = register(&world, "Loaded Over It", 1_000.0);
+    start(&world);
+    running_at(&world, 400_000);
+    world
+        .printer
+        .extrudes(FILE, 400_000, vec![on_tool(0, 2_000.0)]);
+    let retire = command(
+        &world,
+        SpoolCommand::RetireSpool {
+            spool_id: retired.id,
+            reason: "nearly empty, finishing this print".to_owned(),
+            actor: Actor::Operator,
+        },
+    );
+    assert_eq!(retire.decision, PolicyDecision::Accepted);
+    assert_eq!(
+        load(&world, incoming.id, 0).decision,
+        PolicyDecision::Accepted
+    );
+    running_at(&world, SIZE);
+    ends(&world, PrinterState::Operational);
+
+    let to_retired = charges_to(&world, retired.id);
+    assert_eq!(to_retired.len(), 1);
+    assert_close(to_retired[0].length_mm, 2_000.0);
+    let to_incoming = charges_to(&world, incoming.id);
+    assert_eq!(to_incoming.len(), 1);
+    assert_close(to_incoming[0].length_mm, TOTAL_MM - 2_000.0);
+    assert!(
+        every::<FilamentConsumedPayload>(&world)
+            .iter()
+            .all(|charge| charge.spool_id.is_some()),
+        "a charge went to no spool"
+    );
+    assert_ledger_explains(&world, retired.id);
 }

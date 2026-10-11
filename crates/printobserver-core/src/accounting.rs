@@ -129,7 +129,7 @@ impl PrintLedger {
     }
 
     /// The spool the latest charged segment on one tool was charged to.
-    fn last_spool(&self, tool: i64) -> Option<SpoolId> {
+    pub(crate) fn last_spool(&self, tool: i64) -> Option<SpoolId> {
         self.charges
             .iter()
             .filter(|charge| charge.tool == tool)
@@ -352,8 +352,8 @@ struct Ending<'a> {
     state: &'a PrinterState,
     /// The last job read, when one was made.
     job: Option<&'a JobSnapshot>,
-    /// The print's file, when it is known.
-    file_name: Option<&'a str>,
+    /// The print's file, when it is known as a name a file API takes.
+    file_name: Option<&'a FileName>,
     /// The last position recorded.
     position: Option<&'a FilePosition>,
     /// The file's size, when it is known.
@@ -373,7 +373,7 @@ impl Ending<'_> {
         });
         let reported_complete = self.job.is_some_and(|job| {
             self.file_name
-                .is_none_or(|file| job.file_name.as_deref() == Some(file))
+                .is_none_or(|file| job.file_name.as_deref() == Some(file.as_str()))
                 && job
                     .completion
                     .is_some_and(|completion| completion.value() >= 1.0)
@@ -814,10 +814,13 @@ impl Supervisor {
             .as_ref()
             .and_then(|facts| facts.last_print.as_ref())
             .is_some_and(|last| last.success && last.at >= began);
+        let named = file_name
+            .as_deref()
+            .and_then(|name| FileName::new(name).ok());
         let outcome = Ending {
             state,
             job,
-            file_name: file_name.as_deref(),
+            file_name: named.as_ref(),
             position: position.as_ref(),
             size_bytes: analysis.size_bytes(),
             tally_success,
@@ -907,8 +910,8 @@ impl Supervisor {
         Ok((charges, pends, marks))
     }
 
-    /// Settle a print with no `print_started`: no charge, one `print_ended`
-    /// and one `print_untracked`, when a job was ever seen for it.
+    /// Settle a print with no `print_started`: no charge, one `print_untracked`
+    /// and one `print_ended`, when a job was ever seen for it.
     async fn settle_untracked(
         &self,
         print: &PrintRecord,
@@ -922,16 +925,45 @@ impl Supervisor {
         if !ran {
             return Ok(());
         }
+        let named = print
+            .file_name
+            .as_deref()
+            .and_then(|name| FileName::new(name).ok());
         let outcome = Ending {
             state,
             job: closing_job,
-            file_name: print.file_name.as_deref(),
+            file_name: named.as_ref(),
             position: None,
             size_bytes: None,
             tally_success: false,
             own_cancel: false,
         }
         .outcome();
+        // The `print_untracked` goes first, once: a close-out replayed after
+        // it — the settlement refused, or committed with its answer lost —
+        // finds it written and writes no second, and one replayed after the
+        // settlement finds that and writes nothing at all.
+        let written = self
+            .stores()
+            .events
+            .history(HistoryQuery {
+                print_id: print.id,
+                kinds: vec![PrintUntrackedPayload::kind()],
+                since: None,
+                until: None,
+                limit: Some(1),
+            })
+            .await?;
+        if written.is_empty() {
+            let draft = self.draft_of(
+                Some(print.id),
+                system_source(),
+                &PrintUntrackedPayload {
+                    reason: UNTRACKED_REASON.to_owned(),
+                },
+            )?;
+            self.stores().events.append_event(draft).await?;
+        }
         let ended = self.draft_of(
             Some(print.id),
             system_source(),
@@ -942,21 +974,10 @@ impl Supervisor {
                 last_position: None,
             },
         )?;
-        let settled = self
-            .stores()
+        self.stores()
             .filament
             .settle_print(print.id, outcome, ended, Vec::new(), Vec::new(), Vec::new())
             .await?;
-        if matches!(settled, crate::store::Settlement::Settled { .. }) {
-            let draft = self.draft_of(
-                Some(print.id),
-                system_source(),
-                &PrintUntrackedPayload {
-                    reason: UNTRACKED_REASON.to_owned(),
-                },
-            )?;
-            self.stores().events.append_event(draft).await?;
-        }
         Ok(())
     }
 

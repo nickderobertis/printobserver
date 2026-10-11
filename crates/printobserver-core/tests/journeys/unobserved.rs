@@ -319,3 +319,27 @@ fn a_print_this_system_cancelled_is_not_flagged_when_the_tally_counts_it_failed(
     assert!(account(&world).is_empty());
     assert_eq!(spool_now(&world, spool.id).trust, SpoolTrust::Verified);
 }
+
+/// An unseen completed print of a file with no analysis cannot be charged a
+/// length, so it marks the loaded spool instead and says it was not charged.
+#[test]
+fn an_unseen_completed_print_with_no_analysis_marks_the_spool() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "No Analysis", 1_000.0);
+    world.printer.holds_file(crate::shelf::facts(None));
+    tally(&world, 1, 0, true);
+    account(&world);
+    tally(&world, 2, 0, true);
+    account(&world);
+    let unaccounted = every::<UnaccountedPrintPayload>(&world);
+    assert_eq!(unaccounted.len(), 1);
+    assert!(unaccounted[0].success && !unaccounted[0].charged);
+    assert!(charges_to(&world, spool.id).is_empty());
+    let SpoolTrust::Unverified { marks } = spool_now(&world, spool.id).trust else {
+        panic!("the spool is unverified");
+    };
+    assert!(matches!(
+        marks[0].reason,
+        UnverifiedReason::UnaccountedPrint { .. }
+    ));
+}

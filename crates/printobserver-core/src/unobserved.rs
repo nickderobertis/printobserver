@@ -41,8 +41,8 @@ use crate::supervisor::Supervisor;
 struct Unseen {
     /// Its ordinal in the file's tally, within the generation.
     print_number: i64,
-    /// Whether it completed.
-    success: bool,
+    /// How it ended, by the tally: completed, or not.
+    outcome: PrintOutcome,
 }
 
 /// The prints of one file this system settled in a window, by outcome.
@@ -71,7 +71,11 @@ fn unseen_between(from: (i64, i64), to: (i64, i64), settled: Settled) -> Vec<Uns
     (0..successes + failures)
         .map(|offset| Unseen {
             print_number: first + offset,
-            success: offset < successes,
+            outcome: if offset < successes {
+                PrintOutcome::Completed
+            } else {
+                PrintOutcome::Failed
+            },
         })
         .collect()
 }
@@ -282,8 +286,8 @@ impl Supervisor {
         let printed_at = file.last_print.as_ref().map(|last| last.at);
         let analysed: Option<BTreeMap<i64, f64>> = file.filament.as_deref().map(lengths_of);
         let mut charged = false;
-        match (&analysed, print.success) {
-            (Some(lengths), true) => {
+        match (&analysed, print.outcome) {
+            (Some(lengths), PrintOutcome::Completed) => {
                 for (tool, length) in lengths {
                     if *length <= NOTHING_MM {
                         continue;
@@ -334,7 +338,7 @@ impl Supervisor {
             &UnaccountedPrintPayload {
                 file_name: file.file_name.clone(),
                 printed_at,
-                success: print.success,
+                success: print.outcome == PrintOutcome::Completed,
                 charged,
             },
         )?);

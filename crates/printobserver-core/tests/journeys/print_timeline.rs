@@ -666,3 +666,85 @@ fn a_restart_after_a_mid_print_swap_charges_only_the_remainder() {
     assert_ledger_explains(&world, outgoing.id);
     assert_ledger_explains(&world, incoming.id);
 }
+
+/// A close-out of a print from before spool tracking, replayed after its
+/// settlement was refused — or committed with its answer lost — still writes
+/// exactly one `print_untracked`, and the print ends.
+#[test]
+fn an_untracked_close_out_replayed_writes_one_print_untracked() {
+    for lost in [false, true] {
+        let world = spool_world();
+        let print = world.open_print(7);
+        running_at(&world, SIZE / 2);
+        let error = StoreError::Database {
+            detail: "the connection dropped".to_owned(),
+        };
+        if lost {
+            world
+                .store
+                .loses_the_answer_to(StoreMethod::SettlePrint, error);
+        } else {
+            world.store.fails(StoreMethod::SettlePrint, error);
+        }
+        world
+            .printer
+            .reports_job(Some(FILE), PrinterState::Operational);
+        block_on(world.core.list_and_adopt_prints()).expect_err("the settlement failed");
+        world.store.heals();
+        ends(&world, PrinterState::Operational);
+
+        assert_eq!(
+            every_of::<PrintUntrackedPayload>(&world, print.id).len(),
+            1,
+            "lost={lost}"
+        );
+        assert_eq!(every_of::<PrintEndedPayload>(&world, print.id).len(), 1);
+        assert!(
+            world
+                .store
+                .print_now(print.id)
+                .expect("held")
+                .ended_at
+                .is_some()
+        );
+    }
+}
+
+/// A look whose position the store will not keep is still answered, and the
+/// next read that finds the print running records where it had got.
+#[test]
+fn a_look_whose_position_is_refused_is_answered_and_a_later_read_records_it() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Looked At Twice", 1_000.0);
+    let print_id = start(&world);
+    world
+        .printer
+        .extrudes(FILE, 500_000, vec![on_tool(0, 2_500.0)]);
+    world.printer.reports_position(Some(500_000), Some(SIZE));
+    world.store.fails(
+        StoreMethod::RecordFilePosition,
+        StoreError::Database {
+            detail: "the disk is full".to_owned(),
+        },
+    );
+    let look = block_on(
+        world
+            .core
+            .take_look(print_id, std::time::Duration::ZERO, Vec::new()),
+    )
+    .expect("the look is answered");
+    assert_eq!(
+        look.job.and_then(|job| job.file_position_bytes),
+        Some(500_000)
+    );
+    world.store.heals();
+    running_at(&world, 500_000);
+    ends(&world, PrinterState::Cancelling);
+    assert_charge(
+        &charges_of(&world, print_id)[0],
+        spool.id,
+        &world,
+        ChargeMethod::GcodeExtrusion,
+        2_500.0,
+    );
+}

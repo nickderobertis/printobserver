@@ -386,6 +386,11 @@ impl Supervisor {
         tool: i64,
         during: Option<PrintId>,
     ) -> Result<Result<SpoolCommandOutcome, RejectionReason>, CoreError> {
+        if tool < 0 {
+            return Ok(Err(refused(format!(
+                "there is no tool {tool}; tools are numbered from 0, as the printer numbers them"
+            ))));
+        }
         let incoming = match self.live_spool(spool_id).await? {
             Ok(spool) => spool,
             Err(reason) => return Ok(Err(reason)),
@@ -401,9 +406,13 @@ impl Supervisor {
             ))));
         }
         let spools = self.stores().filament.spools(true).await?;
-        let outgoing = spool_on_tool(&spools, tool)
-            .filter(|spool| spool.id != incoming.id && spool.retired_at.is_none())
+        // The spool that was feeding the tool, retired or not — a spool retired
+        // while it was loaded is still charged for what it fed — and the one
+        // the load takes off it, which only an unretired spool can be.
+        let feeding = spool_on_tool(&spools, tool)
+            .filter(|spool| spool.id != incoming.id)
             .cloned();
+        let outgoing = feeding.clone().filter(|spool| spool.retired_at.is_none());
         let (mut charges, took_pending) =
             self.take_pending(&pending, &incoming, &mut figures, &source)?;
         if !already_there && let Some(print_id) = during {
@@ -411,7 +420,7 @@ impl Supervisor {
                 self.close_segment(
                     print_id,
                     tool,
-                    outgoing.as_ref(),
+                    feeding.as_ref(),
                     Some(&incoming),
                     &mut figures,
                     &source,
@@ -668,7 +677,17 @@ impl Supervisor {
         else {
             return Ok(Vec::new());
         };
-        let charged = if outgoing.is_some_and(|spool| holds_change_mark(spool, print_id)) {
+        // The spool judged for the open segment: the one feeding the tool, or
+        // — a tool emptied since — the one its last segment was charged to.
+        let judged = match (outgoing, ledger.last_spool(tool)) {
+            (Some(spool), _) => Some(spool.clone()),
+            (None, Some(last)) => self.stores().filament.spool(last).await?,
+            (None, None) => None,
+        };
+        let charged = if judged
+            .as_ref()
+            .is_some_and(|spool| holds_change_mark(spool, print_id))
+        {
             let Some(incoming) = incoming else {
                 // Unloading the spool an unconfirmed change left takes
                 // nothing: the open segment is still the next spool's.

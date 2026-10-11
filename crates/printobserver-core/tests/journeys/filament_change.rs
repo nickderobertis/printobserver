@@ -836,3 +836,87 @@ fn a_change_with_no_spool_loaded_charges_nothing() {
     assert!(signals[0].position_read_at_signal);
     assert!(every_of::<FilamentConsumedPayload>(&world, print_id).is_empty());
 }
+
+/// A signal whose ledger write was refused — or committed with its answer
+/// lost — and whose alert then arrives again charges the spool to the stop
+/// point once and marks it once.
+#[test]
+fn a_signal_replayed_after_its_write_failed_charges_once() {
+    for lost in [false, true] {
+        let world = spool_world_with(|_| {});
+        world.clock.advance(80_000_000);
+        let spool = loaded_spool(&world, "Replayed Signal", 1_000.0);
+        let print_id = start(&world);
+        world
+            .printer
+            .extrudes(FILE, STOPPED_AT, vec![on_tool(0, STOPPED_MM)]);
+        paused_at(&world, STOPPED_AT);
+        let error = StoreError::Database {
+            detail: "the connection dropped".to_owned(),
+        };
+        if lost {
+            world
+                .store
+                .loses_the_answer_to(StoreMethod::ApplySpoolChanges, error);
+        } else {
+            world.store.fails(StoreMethod::ApplySpoolChanges, error);
+        }
+        world
+            .handle(obico_filament_change(&world))
+            .expect_err("the ledger write failed");
+        world.store.heals();
+        world
+            .handle(obico_filament_change(&world))
+            .expect("the alert arriving again is handled");
+
+        let charges = every_of::<FilamentConsumedPayload>(&world, print_id);
+        assert_eq!(charges.len(), 1, "lost={lost}");
+        assert_close(charges[0].length_mm, STOPPED_MM);
+        assert!(
+            every::<ChargePendedPayload>(&world).is_empty(),
+            "lost={lost}"
+        );
+        assert_eq!(
+            reasons(&spool_now(&world, spool.id)),
+            vec![UnverifiedReason::FilamentChangeUnconfirmed { print_id }]
+        );
+        assert_ledger_explains(&world, spool.id);
+    }
+}
+
+/// A tool emptied after an unconfirmed change and loaded again during the
+/// print charges the spool loaded what the tool fed since the signal, rather
+/// than recording it against no spool.
+#[test]
+fn a_load_onto_a_tool_emptied_after_a_change_takes_what_was_fed_since() {
+    let change = signalled(true, false);
+    let world = &change.world;
+    let unloaded = command(
+        world,
+        SpoolCommand::UnloadSpool {
+            spool_id: change.spool.id,
+            reason: "took the old spool off".to_owned(),
+            actor: printobserver_core::Actor::Operator,
+        },
+    );
+    assert_eq!(unloaded.decision, PolicyDecision::Accepted);
+    let next = register(world, "Onto The Empty Tool", 1_000.0);
+    running_at(world, 600_000);
+    world
+        .printer
+        .extrudes(FILE, 600_000, vec![on_tool(0, 3_000.0)]);
+    assert_eq!(load(world, next.id, 0).decision, PolicyDecision::Accepted);
+    change.completes();
+
+    let to_next = charges_to(world, next.id);
+    assert_eq!(to_next.len(), 2);
+    assert_close(to_next[0].length_mm, 3_000.0 - STOPPED_MM);
+    assert!(
+        change
+            .charges()
+            .iter()
+            .all(|charge| charge.spool_id.is_some()),
+        "a charge went to no spool"
+    );
+    assert_close(change.accounted_mm(), TOTAL_MM);
+}

@@ -444,6 +444,8 @@ pub enum StoreMethod {
     ApplySpoolChanges,
     /// `account_tallies`.
     AccountTallies,
+    /// `record_file_position`.
+    RecordFilePosition,
 }
 
 /// Everything the fake store holds.
@@ -2071,6 +2073,9 @@ impl FilamentStore for FakeStore {
         print_id: PrintId,
         position: FilePosition,
     ) -> printobserver_core::store::BoxFuture<'_, Result<(), StoreError>> {
+        if let Some(error) = self.induced(StoreMethod::RecordFilePosition) {
+            return ready(Err(error));
+        }
         let mut held = self.held.lock().expect("the store holds");
         if !held.prints.contains_key(&print_id) {
             return ready(Err(StoreError::NotFound {
