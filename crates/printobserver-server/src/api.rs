@@ -384,7 +384,8 @@ async fn nothing_here() -> Response {
 
 /// The route one declared operation is served by.
 fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
-    if let Effect::Command(kind) = operation.effect {
+    if let Effect::Command(spool_command) = operation.effect {
+        let kind = spool_command.action_kind();
         if operation.path.contains("{spool_id}") {
             return post(
                 move |state: State<ApiState>,

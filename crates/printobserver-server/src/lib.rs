@@ -58,7 +58,7 @@ pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
     Answer, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
     IMAGE_PATH_FIELD, INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation, Parameter,
-    VERSION_PREFIX, ValueKind, command_for, operation,
+    SpoolCommandKind, VERSION_PREFIX, ValueKind, command_for, operation,
 };
 /// The harness identities this program can sign in, as the adapter declares
 /// them: the command-line program reads the table through this crate, which is

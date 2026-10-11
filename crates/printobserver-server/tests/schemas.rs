@@ -97,7 +97,14 @@ fn described(operation: &Operation) -> Value {
             // A spool command is an action of the same vocabulary of kinds, and
             // is described as one: it carries a reason and an actor, and is
             // answered with its rejection.
-            Effect::Mutating(kind) | Effect::Command(kind) => format!(
+            Effect::Command(command) => format!(
+                "mutating:{}",
+                printobserver_types::serde_json::to_value(command.action_kind())
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .expect("a spool command renders as the tag it is spelled by")
+            ),
+            Effect::Mutating(kind) => format!(
                 "mutating:{}",
                 printobserver_types::serde_json::to_value(kind)
                     .ok()

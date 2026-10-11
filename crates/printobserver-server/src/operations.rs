@@ -233,10 +233,53 @@ pub enum Effect {
     Mutating(ActionKind),
     /// It asks the spool ledger for one command, so it carries a reason and
     /// passes the grants every action passes — and asks nothing of the
-    /// machine.
-    Command(ActionKind),
+    /// machine. Its kind is one of the ledger's five and no print action.
+    Command(SpoolCommandKind),
     /// It writes a record without asking anything of the machine.
     Write,
+}
+
+/// One command of the spool ledger's vocabulary, and nothing else.
+///
+/// A kind of its own rather than the whole [`ActionKind`], so that an
+/// operation declared as a spool command cannot name a print action: the
+/// grants rule on the [`ActionKind`] it answers, and the body is read from the
+/// `SpoolCommand` variant that kind tags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SpoolCommandKind {
+    /// Register a spool.
+    RegisterSpool,
+    /// Load a spool onto a tool.
+    LoadSpool,
+    /// Unload a spool from its tool.
+    UnloadSpool,
+    /// Correct a spool's figure.
+    AdjustSpool,
+    /// Retire a spool.
+    RetireSpool,
+}
+
+impl SpoolCommandKind {
+    /// Every command of the ledger, in the order the contracts declare them.
+    pub const ALL: [Self; 5] = [
+        Self::RegisterSpool,
+        Self::LoadSpool,
+        Self::UnloadSpool,
+        Self::AdjustSpool,
+        Self::RetireSpool,
+    ];
+
+    /// The action kind the envelope grants this command under.
+    #[must_use]
+    pub const fn action_kind(self) -> ActionKind {
+        match self {
+            Self::RegisterSpool => ActionKind::RegisterSpool,
+            Self::LoadSpool => ActionKind::LoadSpool,
+            Self::UnloadSpool => ActionKind::UnloadSpool,
+            Self::AdjustSpool => ActionKind::AdjustSpool,
+            Self::RetireSpool => ActionKind::RetireSpool,
+        }
+    }
 }
 
 /// One public operation: what it is called, how it is reached, and what it does.
@@ -293,7 +336,7 @@ impl Operation {
     #[must_use]
     pub const fn command_kind(&self) -> Option<ActionKind> {
         match self.effect {
-            Effect::Command(kind) => Some(kind),
+            Effect::Command(kind) => Some(kind.action_kind()),
             _ => None,
         }
     }
@@ -303,7 +346,8 @@ impl Operation {
     #[must_use]
     pub const fn granted_as(&self) -> Option<ActionKind> {
         match self.effect {
-            Effect::Mutating(kind) | Effect::Command(kind) => Some(kind),
+            Effect::Mutating(kind) => Some(kind),
+            Effect::Command(kind) => Some(kind.action_kind()),
             Effect::Read | Effect::Write => None,
         }
     }
@@ -514,7 +558,7 @@ impl Vocabulary {
     const fn of(effect: Effect) -> Option<(Self, ActionKind)> {
         match effect {
             Effect::Mutating(kind) => Some((Self::Actions, kind)),
-            Effect::Command(kind) => Some((Self::Commands, kind)),
+            Effect::Command(kind) => Some((Self::Commands, kind.action_kind())),
             Effect::Read | Effect::Write => None,
         }
     }
@@ -711,10 +755,10 @@ const fn action(name: &'static str, path: &'static str, kind: ActionKind) -> Ope
 }
 
 /// One spool command, at the path its command is asked for under.
-const fn command(name: &'static str, path: &'static str, kind: ActionKind) -> Operation {
+const fn command(name: &'static str, path: &'static str, kind: SpoolCommandKind) -> Operation {
     Operation {
         effect: Effect::Command(kind),
-        ..action(name, path, kind)
+        ..action(name, path, kind.action_kind())
     }
 }
 
@@ -873,27 +917,27 @@ pub const OPERATIONS: [Operation; 27] = [
     command(
         "register_spool",
         "/spools/actions/register_spool",
-        ActionKind::RegisterSpool,
+        SpoolCommandKind::RegisterSpool,
     ),
     command(
         "load_spool",
         "/spools/{spool_id}/actions/load_spool",
-        ActionKind::LoadSpool,
+        SpoolCommandKind::LoadSpool,
     ),
     command(
         "unload_spool",
         "/spools/{spool_id}/actions/unload_spool",
-        ActionKind::UnloadSpool,
+        SpoolCommandKind::UnloadSpool,
     ),
     command(
         "adjust_spool",
         "/spools/{spool_id}/actions/adjust_spool",
-        ActionKind::AdjustSpool,
+        SpoolCommandKind::AdjustSpool,
     ),
     command(
         "retire_spool",
         "/spools/{spool_id}/actions/retire_spool",
-        ActionKind::RetireSpool,
+        SpoolCommandKind::RetireSpool,
     ),
 ];
 
@@ -971,8 +1015,8 @@ mod tests {
                 }
                 Effect::Command(kind) => {
                     assert_eq!(declared.action_kind(), None);
-                    assert_eq!(declared.command_kind(), Some(kind));
-                    assert_eq!(declared.granted_as(), Some(kind));
+                    assert_eq!(declared.command_kind(), Some(kind.action_kind()));
+                    assert_eq!(declared.granted_as(), Some(kind.action_kind()));
                     assert!(declared.is_mutating());
                 }
                 Effect::Write => {
@@ -1042,6 +1086,39 @@ mod tests {
                 .all(|parameter| parameter.name != super::COMMAND_TAG
                     && parameter.located == super::Located::Body)
         );
+    }
+
+    /// The ledger's own kind names exactly the commands the contracts' own
+    /// `SpoolCommand` declares, each by the tag it is spelled with, and every
+    /// spool command operation is declared under one of them.
+    #[test]
+    fn the_ledgers_kinds_are_the_commands_the_contracts_declare() {
+        let schema = super::Vocabulary::Commands.schema();
+        let declared: Vec<String> = schema["oneOf"]
+            .as_array()
+            .expect("the spool vocabulary is a union")
+            .iter()
+            .filter_map(|variant| variant.pointer("/properties/command/const"))
+            .filter_map(|tag| tag.as_str().map(str::to_owned))
+            .collect();
+        let kinds: Vec<String> = super::SpoolCommandKind::ALL
+            .iter()
+            .map(|kind| {
+                printobserver_types::serde_json::to_value(kind.action_kind())
+                    .ok()
+                    .and_then(|tag| tag.as_str().map(str::to_owned))
+                    .expect("an action kind renders as its tag")
+            })
+            .collect();
+        assert_eq!(kinds, declared);
+        let served: Vec<super::SpoolCommandKind> = OPERATIONS
+            .iter()
+            .filter_map(|operation| match operation.effect {
+                Effect::Command(kind) => Some(kind),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(served, super::SpoolCommandKind::ALL.to_vec());
     }
 
     /// A value a request may carry more than once is described as a list.

@@ -176,3 +176,56 @@ fn the_artifact_names_every_command_the_surface_has() {
         "{MANIFEST} does not name the surface's own commands"
     );
 }
+
+/// The command surface's document, which restates two facts of the server's.
+const COMMAND_SURFACE: &str = "skills/printobserver/reference/command-surface.md";
+
+/// The API document, which restates one of them too.
+const API_AND_CLIENTS: &str = "skills/printobserver/reference/api-and-clients.md";
+
+/// How many of a spool's own events its read carries, as the documents write
+/// the number. A server that changed the window is a document that has to say
+/// so, and a window with no word here is a finding naming the one to add.
+fn spoken(count: u32) -> &'static str {
+    match count {
+        10 => "ten",
+        20 => "twenty",
+        50 => "fifty",
+        other => panic!("the documents have no word for a window of {other}; add it here"),
+    }
+}
+
+/// The two facts the reference documents restate rather than generate — the
+/// printer history's kinds, and how many events a spool's read carries — are
+/// the server's own: the kinds its timeline takes, and the window its spool
+/// read answers.
+#[test]
+fn the_documents_restate_the_timeline_kinds_and_the_spool_window_as_the_server_has_them() {
+    let surface = std::fs::read_to_string(repo_root().join(COMMAND_SURFACE))
+        .unwrap_or_else(|error| panic!("{COMMAND_SURFACE} reads: {error}"));
+    let (listed, _) = surface
+        .split_once("The kinds are ")
+        .and_then(|(_, rest)| rest.split_once("; any other is refused"))
+        .unwrap_or_else(|| panic!("{COMMAND_SURFACE} lists no printer history kinds"));
+    let mut documented: Vec<&str> = listed.split('`').skip(1).step_by(2).collect();
+    documented.sort_unstable();
+    let mut served: Vec<&str> = printobserver_core::TIMELINE_KINDS.to_vec();
+    served.sort_unstable();
+    assert_eq!(
+        documented, served,
+        "{COMMAND_SURFACE} lists other printer history kinds than the timeline takes"
+    );
+
+    let window = format!(
+        "newest {}",
+        spoken(printobserver_server::SPOOL_RECENT_EVENTS)
+    );
+    for document in [COMMAND_SURFACE, API_AND_CLIENTS] {
+        let text = std::fs::read_to_string(repo_root().join(document))
+            .unwrap_or_else(|error| panic!("{document} reads: {error}"));
+        assert!(
+            text.contains(&window),
+            "{document} does not say a spool's read carries the {window} of its events"
+        );
+    }
+}

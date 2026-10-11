@@ -391,7 +391,7 @@ fn manifest() -> Value {
 /// A body one mutating operation takes, carrying whatever that action needs.
 pub fn body_for(operation: &Operation) -> Value {
     if let Effect::Command(kind) = operation.effect {
-        return crate::world::spool_body(kind);
+        return crate::world::spool_body(kind.action_kind());
     }
     let Effect::Mutating(kind) = operation.effect else {
         return json!({});
