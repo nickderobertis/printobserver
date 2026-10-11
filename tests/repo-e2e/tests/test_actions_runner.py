@@ -10,8 +10,9 @@ and what a step reads as `GITHUB_EVENT_NAME` whatever its caller ran under;
 a `uses:` boundary is recorded with the inputs it was given; the two artifact
 actions move files through a store keyed by run id, and a download of what
 nothing uploaded fails the step; a caller's set of jobs to run skips the rest
-by name; and a construct outside the modelled set is refused by name rather
-than run as something else.
+by name; `always()` in a job's condition replaces the implicit `success()`;
+and a construct outside the modelled set is refused by name rather than run as
+something else.
 """
 
 # `assert` is how pytest states an assertion and how it produces the failure
@@ -275,6 +276,109 @@ def test_an_empty_output_shuts_the_gate(tmp_path: Path) -> None:
 
     equal(run.result("gated-open"), Result.SKIPPED, describing="a gate on an empty output")
     equal(run.result("cells"), Result.SUCCESS, describing="an ungated job after a success")
+
+
+#: Jobs after a failure: one whose condition calls `always()`, and one whose
+#: condition calls no status function.
+AFTER_A_FAILURE = """
+on: push
+jobs:
+  falls:
+    runs-on: x
+    steps:
+      - run: exit 3
+  stands:
+    runs-on: x
+    steps:
+      - run: "true"
+  always:
+    needs: [falls, stands]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: x
+    env:
+      FELL: ${{ needs.falls.result }}
+    steps:
+      - if: needs.falls.result == 'failure' && needs.stands.result == 'success'
+        run: echo "reported $FELL in run $GITHUB_RUN_ID"
+      - if: needs.falls.result == 'success'
+        run: exit 3
+  implicit:
+    needs: falls
+    if: github.ref == 'refs/heads/main'
+    runs-on: x
+    steps:
+      - run: exit 3
+"""
+
+
+def test_always_in_a_job_condition_replaces_the_implicit_success(tmp_path: Path) -> None:
+    """`always()` runs a job after a failed one, which reads its result.
+
+    A condition calling no status function skips it, as the forge's implicit
+    `success()` does; the step reads `GITHUB_RUN_ID` as the forge hands it.
+    """
+    workflow = tmp_path / "after.yml"
+    workflow.write_text(AFTER_A_FAILURE, encoding="utf-8")
+    (tmp_path / "stand-ins").mkdir()
+    runner = Runner(
+        workflow, tmp_path, path_first=tmp_path / "stand-ins", env=clean_environment(), run_id="7"
+    )
+
+    run = runner.run()
+
+    equal(
+        {name: str(job.result) for name, job in run.jobs.items()},
+        {
+            "falls": "failure",
+            "stands": "success",
+            "always": "success",
+            "implicit": "skipped",
+        },
+        describing="what the forge would report each job as",
+    )
+    equal(
+        [step.output.strip() for step in run.jobs["always"].steps],
+        ["reported failure in run 7"],
+        describing="the steps the job ran, reading what it needed",
+    )
+
+
+#: One job of one step, with a condition at the job or at the step.
+STATUS_CALLED = """
+on: push
+jobs:
+  one:
+    runs-on: x
+    {job_if}
+    steps:
+      - run: "true"
+        {step_if}
+"""
+
+
+@pytest.mark.parametrize(
+    ("condition", "where", "called"),
+    [
+        ("always()", "step", "always()"),
+        ("failure()", "job", "failure()"),
+        ("success()", "job", "success()"),
+        ("cancelled()", "job", "cancelled()"),
+    ],
+)
+def test_a_status_function_outside_the_modelled_one_is_refused_by_name(
+    tmp_path: Path, condition: str, where: str, called: str
+) -> None:
+    """`always()` in a step, and every other status function anywhere, are not guessed at."""
+    workflow = tmp_path / "status.yml"
+    job_if, step_if = (f"if: {condition}", "") if where == "job" else ("", f"if: {condition}")
+    workflow.write_text(STATUS_CALLED.format(job_if=job_if, step_if=step_if), encoding="utf-8")
+    (tmp_path / "stand-ins").mkdir()
+    runner = Runner(workflow, tmp_path, path_first=tmp_path / "stand-ins", env=clean_environment())
+
+    with pytest.raises(UnsupportedError) as refused:
+        runner.run()
+
+    contains(str(refused.value), called, describing="what the refusal named")
 
 
 @pytest.mark.parametrize(

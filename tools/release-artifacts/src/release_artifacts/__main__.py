@@ -10,6 +10,7 @@ from pathlib import Path
 
 from repo_checks.model import Repo
 
+from release_artifacts import tracking
 from release_artifacts.arming import ArmingError, arm
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
@@ -28,6 +29,7 @@ from release_artifacts.registries import (
 from release_artifacts.registries import prove as prove_registry
 from release_artifacts.standin import Registries, StandinError
 from release_artifacts.targets import TargetError, declared, workspace
+from release_artifacts.tracking import TrackingError
 from release_artifacts.world import World, WorldError, scripted_printer
 
 
@@ -47,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
             "released",
             "answered",
             "arm-release-pr",
+            "release-broken",
+            "release-mended",
             "dispatched",
             "recorded",
             "list",
@@ -142,6 +146,19 @@ def main(argv: list[str] | None = None) -> int:
         metavar="REF",
         help="the ref a hand-dispatched run was started on, as the forge names it",
     )
+    parser.add_argument(
+        "--run-url",
+        default="",
+        metavar="URL",
+        help="the release workflow run release-broken or release-mended reports",
+    )
+    parser.add_argument(
+        "--job",
+        action="append",
+        default=[],
+        metavar="JOB=RESULT",
+        help="a release workflow job and the result the forge reports it as",
+    )
     parser.add_argument("--into", type=Path, default=Path("dist"))
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
@@ -177,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _answered(arguments)
             case "arm-release-pr":
                 return _arm_release_pr(repo, arguments)
+            case "release-broken" | "release-mended":
+                return _tracked(arguments)
             case "dispatched":
                 return _dispatched(repo, arguments)
             case "recorded":
@@ -199,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         RegistryError,
         StandinError,
         TargetError,
+        TrackingError,
         WorldError,
     ) as refused:
         print(f"release-artifacts: {refused}", file=sys.stderr)
@@ -323,6 +343,40 @@ def _arm_release_pr(repo: Repo, arguments: argparse.Namespace) -> int:
         )
         return 2
     print("; ".join(arm(arguments.answer, repo)))
+    return 0
+
+
+def _tracked(arguments: argparse.Namespace) -> int:
+    """Open, comment on or close the one issue saying the release path on `main` is broken.
+
+    `release-broken` is handed every job's result and says which failed;
+    `release-mended` closes the open issue. Both name the run.
+
+    Exits 0 having told the forge; 2 where what it was handed is not a run
+    address, or not jobs and results of which one failed — a step written
+    wrongly, which nothing on the forge would mend; and 1 where the forge could
+    not be told or the environment is not the one the forge hands a step.
+    """
+    try:
+        if not arguments.run_url:
+            msg = f"{arguments.command} takes --run-url <url>: the release workflow run it reports"
+            raise tracking.TrackingError(msg)
+        run = tracking.run_url(arguments.run_url)
+        results = tracking.outcomes(arguments.job)
+        if (
+            arguments.command == "release-broken"
+            and tracking.Outcome.FAILURE not in results.values()
+        ):
+            msg = f"no job handed failed ({results}), so there is nothing to report"
+            raise tracking.TrackingError(msg)
+    except tracking.TrackingError as misused:
+        print(f"release-artifacts: {misused}", file=sys.stderr)
+        return 2
+    forge = tracking.forge(os.environ)
+    if arguments.command == "release-broken":
+        print(tracking.broken(forge, run, results))
+    else:
+        print(tracking.mended(forge, run))
     return 0
 
 

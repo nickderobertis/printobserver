@@ -96,6 +96,7 @@ CHECKS: dict[str, Check] = {
     "release-automation": checks_release.release_automation,
     "release-gating": checks_release.release_gating,
     "release-dispatch": checks_release.release_dispatch,
+    "release-tracking": checks_release.release_tracking,
     "publish-credentials": checks_release.publish_credentials,
     "base-files": base_files,
     "suppressions": checks_suppressions.suppressions,

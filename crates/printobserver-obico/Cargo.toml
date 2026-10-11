@@ -10,9 +10,9 @@ authors.workspace = true
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
-printobserver-core = { path = "../printobserver-core", version = "0.3.0" }
+printobserver-core = { workspace = true }
 printobserver-types = { workspace = true }
-printobserver-vision-api = { path = "../printobserver-vision-api", version = "0.3.0" }
+printobserver-vision-api = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "rustls", "webpki-roots"] }
 # The runtime an acknowledgement runs on when the supervision core's own expiry
 # driver asks for one: that thread polls a port's futures with no reactor of its

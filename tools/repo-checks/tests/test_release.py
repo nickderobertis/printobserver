@@ -14,6 +14,7 @@ from repo_checks.checks_release import (
     release_dispatch,
     release_gating,
     release_targets,
+    release_tracking,
 )
 from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
@@ -821,3 +822,135 @@ def test_a_dispatch_check_with_no_publishing_step_at_all_is_refused(
     findings = release_dispatch(broken.repo)
 
     refused(findings, "no committed job runs `release-plz release`")
+
+
+#: The reporting job's own lines, as the committed workflow writes them.
+REPORTING_IF = "    if: always() && github.ref == 'refs/heads/main'\n"
+REPORTING_NEEDS = "    needs: [release-pr, release]\n"
+BROKEN_IF = (
+    "      - if: needs.release-pr.result == 'failure' || needs.release.result == 'failure'\n"
+)
+MENDED_IF = (
+    "      - if: needs.release-pr.result == 'success' && needs.release.result == 'success'\n"
+)
+ISSUES_GRANT = "      issues: write\n"
+
+
+def test_the_committed_tracking_is_accepted(committed: Repo) -> None:
+    """One reporting job, waiting on both halves, opening and closing the one issue."""
+    accepted(release_tracking(committed))
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "named"),
+    [
+        (
+            REPORTING_IF,
+            "    if: github.ref == 'refs/heads/main'\n",
+            "does not run under `always()`",
+        ),
+        (REPORTING_IF, "    if: always()\n", "github.ref == 'refs/heads/main'"),
+        (REPORTING_NEEDS, "    needs: [release]\n", "does not wait on `release-pr`"),
+        (
+            BROKEN_IF,
+            "      - if: needs.release-pr.result == 'failure'\n",
+            "runs `just release-broken` under `needs.release-pr.result == 'failure'`",
+        ),
+        (
+            MENDED_IF,
+            "      - if: needs.release.result == 'success'\n",
+            "runs `just release-mended` under",
+        ),
+        (ISSUES_GRANT, "      issues: write\n      pull-requests: write\n", "is granted"),
+        (ISSUES_GRANT, "", "is granted"),
+    ],
+)
+def test_a_reporting_job_that_could_stay_silent_or_overreach_is_refused(
+    tree: Callable[[], Tree], old: str, new: str, named: str
+) -> None:
+    """Each line of the reporting job, put back wrong, is refused naming what it lost."""
+    broken = tree()
+    broken.edit(RELEASE, old, new)
+
+    refused(release_tracking(broken.repo), named)
+
+
+def test_a_release_workflow_whose_failure_step_was_dropped_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """With no step running the broken recipe, no job is the reporting job at all."""
+    broken = tree()
+    text = broken.read(RELEASE)
+    start = text.index(BROKEN_IF)
+    end = text.index("\n", text.index("run: just release-broken", start)) + 1
+    broken.write(RELEASE, text[:start] + text[end:])
+
+    refused(release_tracking(broken.repo), "0 jobs run `just release-broken`")
+
+
+def test_a_reporting_job_without_its_closing_step_is_refused(tree: Callable[[], Tree]) -> None:
+    """An issue nothing closes says the release path is broken long after it was mended."""
+    broken = tree()
+    text = broken.read(RELEASE)
+    start = text.index(MENDED_IF)
+    end = text.index("\n", text.index("run: just release-mended", start)) + 1
+    broken.write(RELEASE, text[:start] + text[end:])
+
+    refused(release_tracking(broken.repo), "runs no `just release-mended` step")
+
+
+def test_another_job_granted_issues_is_refused(tree: Callable[[], Tree]) -> None:
+    """The grant to open an issue is the reporting job's alone."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "  release:\n    name: release\n    runs-on: ubuntu-24.04\n",
+        "  release:\n    name: release\n    runs-on: ubuntu-24.04\n"
+        "    permissions:\n      contents: read\n      issues: write\n",
+    )
+
+    refused(release_tracking(broken.repo), "release is granted `issues`")
+
+
+def test_the_workflow_granted_issues_is_refused(tree: Callable[[], Tree]) -> None:
+    """A workflow-level grant reaches every job, the drafting and publishing ones included."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "permissions:\n  contents: read\n",
+        "permissions:\n  contents: read\n  issues: write\n",
+    )
+
+    refused(release_tracking(broken.repo), "the workflow itself is granted `issues`")
+
+
+def test_a_tracking_recipe_the_justfile_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A step running a recipe nothing declares fails on the run it exists for."""
+    broken = tree()
+    broken.edit("justfile", "release-mended RUN:", "release-mended-renamed RUN:")
+
+    refused(release_tracking(broken.repo), "declares no `release-mended` recipe")
+
+
+def test_a_tracking_check_with_no_publishing_step_at_all_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """With nothing publishing there is no release workflow for a job to report on."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "run: release-plz release --backend github --output json >",
+        "run: echo nothing >",
+    )
+
+    refused(release_tracking(broken.repo), "so nothing publishes a release")
+
+
+def test_a_tracking_policy_missing_a_name_is_refused(tree: Callable[[], Tree]) -> None:
+    """The recipe names are the policy's, and a policy naming none is refused by name."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'mended_recipe = "release-mended"\n', "")
+
+    refused(release_tracking(broken.repo), "mended_recipe")

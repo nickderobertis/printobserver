@@ -1207,3 +1207,135 @@ def _resolve_findings(repo: Repo, dispatch: dict[str, str], proof: dict[str, str
             f"which is the version every route proof takes"
         )
     return findings
+
+
+#: The recipes the release workflow's reporting job runs, declared once in
+#: `repo-policy.toml`'s `[release]`.
+TRACKING = ("broken_recipe", "mended_recipe")
+
+#: The condition the reporting job runs under: whatever the jobs it waits on
+#: answered, which the forge only allows with a status function, and on `main`.
+ALWAYS = "always()"
+ON_MAIN = "github.ref == 'refs/heads/main'"
+
+#: The one grant the reporting job holds beside reading the checkout.
+ISSUES = "issues"
+TRACKING_PERMISSIONS = {"contents": "read", ISSUES: "write"}
+
+
+def release_tracking(repo: Repo) -> list[str]:
+    """A release workflow that fails on `main` says so on the forge, and says when it is mended.
+
+    The workflow running the release program carries one job waiting on every
+    job that drafts and every job that publishes, under `always()` on `main` —
+    without the status function the forge skips it on exactly the run it exists
+    for. It runs the declared `broken_recipe` under a condition naming each of
+    those jobs' `failure`, and the declared `mended_recipe` under one naming
+    each one's `success`; it holds `contents: read` and `issues: write` and
+    nothing else, and no other job or the workflow itself holds `issues: write`.
+    """
+    from repo_checks.model import PolicyValueError, policy_strings, policy_table
+    from repo_checks.parsing import recipes as parse_recipes
+
+    try:
+        names = policy_strings(policy_table(repo, "release"), TRACKING, "release")
+    except PolicyValueError as error:
+        return [str(error)]
+
+    findings: list[str] = []
+    found = False
+    for path in repo.workflow_paths:
+        workflow = load_workflow(path)
+        jobs = jobs_of(workflow)
+        publishing = _jobs_running(jobs, PUBLISHING)
+        if not publishing:
+            continue
+        found = True
+        watched = [*_jobs_running(jobs, DRAFTING), *publishing]
+        findings.extend(_tracking_findings(workflow, jobs, watched, names, path.name))
+    if not found:
+        findings.append(f"no committed job runs `{PUBLISHING}`, so nothing publishes a release")
+
+    declared = parse_recipes(repo.justfile)
+    findings.extend(
+        f"the justfile declares no `{names[key]}` recipe, which `repo-policy.toml` names as "
+        f"what {purpose}"
+        for key, purpose in (
+            ("broken_recipe", "says on the forge that the release path is broken"),
+            ("mended_recipe", "closes the issue once the release path is mended"),
+        )
+        if names[key] not in declared
+    )
+    return findings
+
+
+def _tracking_findings(
+    workflow: Workflow,
+    jobs: dict[str, Job],
+    watched: list[str],
+    names: dict[str, str],
+    file: str,
+) -> list[str]:
+    """The one reporting job's waits, conditions, steps and grants."""
+    broken, mended = names["broken_recipe"], names["mended_recipe"]
+    reporting = [name for name, job in jobs.items() if _running(job, broken)]
+    if len(reporting) != 1:
+        return [
+            f"{file}: {len(reporting)} jobs run `just {broken}`, and one is what keeps one "
+            f"`release-broken` issue: a release workflow failing on `main` says so nowhere "
+            f"anybody reads without it"
+        ]
+    name = reporting[0]
+    job = jobs[name]
+    where = f"{file}: reporting job `{name}`"
+    findings = [
+        f"{where} does not wait on `{waited}`, whose failure is what it reports"
+        for waited in watched
+        if waited not in _needs(job)
+    ]
+    condition = " ".join(str(job.get("if", "")).split())
+    findings.extend(
+        f"{where} does not run under `{required}`: {why}"
+        for required, why in (
+            (
+                ALWAYS,
+                "the forge skips a job when a job it waits on failed, which is the run "
+                "it exists for",
+            ),
+            (ON_MAIN, "it reports the release path on `main`, and a branch's run is not it"),
+        )
+        if required not in condition
+    )
+    for recipe, result, joined in ((broken, "failure", "||"), (mended, "success", "&&")):
+        steps = _running(job, recipe)
+        if not steps:
+            findings.append(f"{where} runs no `just {recipe}` step")
+            continue
+        stated = " ".join(str(steps[0].get("if", "")).split())
+        expected = f" {joined} ".join(f"needs.{w}.result == '{result}'" for w in watched)
+        if stated != expected:
+            findings.append(
+                f"{where} runs `just {recipe}` under `{stated or 'no condition'}`, and it "
+                f"runs under `{expected}`: the step says the release path is "
+                f"{'broken' if result == 'failure' else 'mended'} exactly then"
+            )
+    granted = job.get("permissions")
+    if granted != TRACKING_PERMISSIONS:
+        findings.append(
+            f"{where} is granted {granted!r}, and it holds {TRACKING_PERMISSIONS!r}: reading "
+            f"the checkout, and the one grant that lets it open an issue"
+        )
+    holders = [
+        other
+        for other, held in jobs.items()
+        if other != name
+        and isinstance(held.get("permissions"), dict)
+        and held["permissions"].get(ISSUES) == "write"
+    ]
+    if isinstance(workflow.get("permissions"), dict) and ISSUES in workflow["permissions"]:
+        holders.append("the workflow itself")
+    findings.extend(
+        f"{file}: {holder} is granted `{ISSUES}`, which the reporting job `{name}` alone holds"
+        for holder in holders
+    )
+    return findings
