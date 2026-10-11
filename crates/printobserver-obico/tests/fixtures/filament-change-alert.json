@@ -1,0 +1,19 @@
+{
+  "source": "obico",
+  "received_at": "2026-03-01T12:30:00Z",
+  "kind": "obico_printer_notification",
+  "payload": {
+    "file_name": "benchy.gcode",
+    "notification_type": "filament_change",
+    "obico_print_id": 4211,
+    "started_at": "2026-03-01T12:00:00.500Z"
+  },
+  "raw": "ewogICJldmVudCI6IHsKICAgICJ0eXBlIjogIkZpbGFtZW50Q2hhbmdlIiwKICAgICJpc193YXJuaW5nIjogZmFsc2UsCiAgICAicHJpbnRfcGF1c2VkIjogZmFsc2UKICB9LAogICJwcmludGVyIjogewogICAgImlkIjogMTcsCiAgICAibmFtZSI6ICJQcnVzYSBNSzQiCiAgfSwKICAicHJpbnQiOiB7CiAgICAiaWQiOiA0MjExLAogICAgImZpbGVuYW1lIjogImJlbmNoeS5nY29kZSIsCiAgICAic3RhcnRlZF9hdCI6IDE3NzIzNjY0MDAuNSwKICAgICJlbmRlZF9hdCI6ICIiCiAgfSwKICAiaW1nX3VybCI6ICJodHRwczovL29iaWNvLmV4YW1wbGUvbWVkaWEvc25hcHNob3RzLzQyMTEuanBnIgp9Cg==",
+  "image_url": "https://obico.example/media/snapshots/4211.jpg",
+  "print": {
+    "id": 4211,
+    "file_name": "benchy.gcode",
+    "started_at": "2026-03-01T12:00:00.500Z"
+  },
+  "signal": "filament_change"
+}

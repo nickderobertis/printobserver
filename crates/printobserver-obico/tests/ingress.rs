@@ -19,7 +19,7 @@ mod image_host;
 mod store;
 
 use core::time::Duration;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use image_host::{Answer, ImageHost, unreachable_url};
@@ -35,8 +35,8 @@ use printobserver_obico::{
 use printobserver_types::serde_json::{self, Value, json};
 use printobserver_types::{EventPayload, EventRecord, RawBytes, Timestamp};
 use printobserver_vision_api::{
-    Detection, MalformedExternalEventPayload, PrinterSignal, ProviderPrint, VisionError,
-    VisionPort as _, WebAddress,
+    Detection, MalformedExternalEventPayload, NormalizedAlert, PrinterSignal, ProviderPrint,
+    VisionError, VisionPort as _, WebAddress,
 };
 use store::{MemoryStore, RefusingStore};
 
@@ -937,6 +937,33 @@ async fn a_filament_change_notification_carries_the_printer_s_signal() {
         .await
         .expect("the sample normalizes");
     assert_eq!(alert.signal, None, "a failure alert relays no signal");
+}
+
+/// The alert a filament-change notification normalizes to is exactly the one
+/// committed beside it, which the supervision domain's own journeys hand to a
+/// supervisor: so the chain from the body Obico posts to the spool it charges
+/// is one chain, with this test holding the adapter's half of it.
+#[tokio::test]
+async fn a_filament_change_notification_normalizes_to_the_committed_alert() {
+    let store = Arc::new(MemoryStore::new());
+    let vision = ingress(&store, prompt_bounds()).vision().clone();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let body = std::fs::read(fixtures.join("filament-change-notification.json"))
+        .expect("the posted body is committed");
+    let committed: NormalizedAlert = serde_json::from_slice(
+        &std::fs::read(fixtures.join("filament-change-alert.json"))
+            .expect("the normalized alert is committed"),
+    )
+    .expect("the committed alert reads");
+
+    let mut alert = vision
+        .normalize(RawBytes::new(body), Some("application/json".to_owned()))
+        .await
+        .expect("the body normalizes");
+    alert.received_at = committed.received_at;
+
+    assert_eq!(alert, committed);
+    assert_eq!(alert.signal, Some(PrinterSignal::FilamentChange));
 }
 
 /// The token a journey configures, which must never be shown.
