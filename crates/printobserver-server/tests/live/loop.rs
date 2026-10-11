@@ -804,7 +804,10 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
     if operation.effect == Effect::Write {
         return manifest_write(reason);
     }
-    let mut body = live(operation.name).accepted;
+    let mut body = match operation.effect {
+        Effect::Command(_) => ledger_body(operation.name),
+        _ => live(operation.name).accepted,
+    };
     let object = body.as_object_mut().expect("the body is an object");
     match reason {
         Some(blank) => {
@@ -813,6 +816,28 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
         None => {
             object.remove("reason");
         }
+    }
+    body
+}
+
+/// A body one spool command takes: the operator asking, and whatever else the
+/// command needs.
+fn ledger_body(name: &str) -> Value {
+    let mut body = json!({ "reason": "the live walk is asking the ledger", "actor": "operator" });
+    let object = body.as_object_mut().expect("the body is an object");
+    match name {
+        "register_spool" => {
+            object.insert("name".to_owned(), json!("a live walk's spool"));
+            object.insert("material".to_owned(), json!("PLA"));
+            object.insert("initial_g".to_owned(), json!(1000.0));
+        }
+        "load_spool" => {
+            object.insert("tool".to_owned(), json!(0));
+        }
+        "adjust_spool" => {
+            object.insert("remaining_g".to_owned(), json!(500.0));
+        }
+        _ => {}
     }
     body
 }
@@ -1310,12 +1335,21 @@ async fn stored(world: &Composed, print_id: PrintId) -> Value {
     let (_, manifest) = world
         .get(&world.operation_url("manifest_get", print_id))
         .await;
+    // The spool ledger is the printer's rather than the print's, and a spool
+    // command refused for its reason wrote nothing into it either.
+    let (_, spools) = world
+        .get(&format!(
+            "{}?include_retired=true",
+            world.operation_url("spools", print_id)
+        ))
+        .await;
     json!({
         "print": answered["print"],
         "session": answered["session"],
         "interventions": answered["interventions"],
         "events": events["events"],
         "manifest": manifest,
+        "spools": spools,
     })
 }
 

@@ -31,6 +31,12 @@ the repository-wide rules; this file holds the ones only this script carries.
   in `HOLD_SECONDS` the minimum that print keeps running for — which is what
   gives the tier something to act on. It does **not** start a print in
   `--mode serial` unless asked: a real printer moves.
+- **A file on request, printed by nothing.** `upload --file <path> [--as
+  <name>]` puts one G-code file on the instance `up` started and selects and
+  starts nothing — what a journey needs to start a file it names the moment it
+  was uploaded, so the start waits for OctoPrint's own analysis of it. It is the
+  only way anything outside the adapter puts a file there: the rule that one
+  crate builds OctoPrint requests leaves a Rust tier none of its own.
 - **A virtual printer that injects no faults.** OctoPrint's virtual printer
   by default answers lines 100, 105, 110 and 115 after each `M110` with a
   resend, a dropped answer, a missing line number and a checksum mismatch. That

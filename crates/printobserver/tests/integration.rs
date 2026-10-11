@@ -49,6 +49,8 @@ mod documented;
 mod durations;
 #[path = "journeys/failures.rs"]
 mod failures;
+#[path = "journeys/filament.rs"]
+mod filament;
 #[path = "journeys/formats.rs"]
 mod formats;
 #[path = "journeys/materializing.rs"]
@@ -70,6 +72,15 @@ fn every_client_command_is_proven_against_a_real_octoprint() {
     let world = World::open(world::SCRIPTED);
 
     tier::run(&world, tier::AGAINST_A_REAL_MACHINE);
+}
+
+/// A spool too short for a file is refused with its figures, overridden, and
+/// charged what the cancelled print fed, against a real `OctoPrint`.
+#[test]
+fn a_short_spool_is_refused_overridden_and_charged_against_a_real_octoprint() {
+    let world = World::open(world::SCRIPTED);
+
+    filament::a_short_spool_is_refused_overridden_and_charged(&world);
 }
 
 /// The documented operator workflow, carried out from the documentation alone,

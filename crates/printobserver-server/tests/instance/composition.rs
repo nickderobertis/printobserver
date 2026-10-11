@@ -168,6 +168,12 @@ impl Composed {
             operation
                 .full_path()
                 .replace("{print_id}", &print_id.to_string())
+                // A spool command names a spool rather than a print, and this
+                // walk asks one of nothing a spool is held under.
+                .replace(
+                    "{spool_id}",
+                    &printobserver_core::SpoolId::new().to_string()
+                )
         )
     }
 

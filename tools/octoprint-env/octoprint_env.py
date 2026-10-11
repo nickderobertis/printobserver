@@ -211,6 +211,11 @@ FAILURE_CLASSES: dict[str, str] = {
         "read the server log the message names: the instance accepted the upload but "
         "did not report a running print, which the tier needs to act on"
     ),
+    "upload-refused": (
+        "run `up` first and name the file with `--file`: `upload` puts a file on an "
+        "instance that is already answering, and the instance's own answer says why it "
+        "refused one"
+    ),
 }
 
 
@@ -884,6 +889,41 @@ def hold_print(instance: Instance, url: str, timeout: float) -> str:
     )
 
 
+def upload(instance: Instance, gcode: Path, as_name: str | None) -> dict[str, Any]:
+    """Put one G-code file on the running instance, selecting and starting nothing.
+
+    What a journey needs that the hold print is not: a file it names itself,
+    whose moves feed filament, on the instance it is driving — and uploaded
+    the moment the journey asks, so OctoPrint's own analysis of it is still to
+    come. The upload is the one request this makes.
+
+    Raises:
+        StartupError: If no instance is running, or the upload was refused.
+    """
+    record = _already_running(instance)
+    if record is None:
+        raise StartupError(
+            "upload-refused", f"no instance under {instance.state_dir} is answering its API"
+        )
+    name = as_name or gcode.name
+    body, content_type = multipart({}, name, gcode.read_bytes())
+    status, answer = call(
+        record_url(record),
+        api_key(instance),
+        "/api/files/local",
+        method="POST",
+        body=body,
+        content_type=content_type,
+        timeout=60.0,
+    )
+    if status not in {200, 201}:
+        raise StartupError(
+            "upload-refused", f"uploading {name} was refused with {status}: {answer}"
+        )
+    note(f"{name} is uploaded, and nothing is printing it")
+    return {"file_name": name, "origin": "local"}
+
+
 def stop(instance: Instance) -> dict[str, Any]:
     """Stop whatever this state directory started, leaving no process behind."""
     if not instance.record.is_file():
@@ -1123,7 +1163,18 @@ def summarize_install(instance: Instance) -> dict[str, Any]:
 def argument_parser() -> argparse.ArgumentParser:
     """The command surface, whose defaults every recipe and caller shares."""
     parser = argparse.ArgumentParser(prog="octoprint-env", description=__doc__)
-    parser.add_argument("command", choices=("install", "up", "down"))
+    parser.add_argument("command", choices=("install", "up", "down", "upload"))
+    parser.add_argument(
+        "--file",
+        default=None,
+        help="the G-code file `upload` puts on the running instance",
+    )
+    parser.add_argument(
+        "--as",
+        dest="as_name",
+        default=None,
+        help="the name `upload` gives it there (default: the file's own)",
+    )
     parser.add_argument(
         "--state-dir",
         default=os.environ.get("OCTOPRINT_ENV_STATE_DIR", DEFAULT_STATE_DIR),
@@ -1200,6 +1251,10 @@ def main(argv: list[str] | None = None) -> int:
             answer = summarize_install(instance)
         elif arguments.command == "down":
             answer = stop(instance)
+        elif arguments.command == "upload":
+            if not arguments.file:
+                raise StartupError("upload-refused", "`upload` needs the file, named with `--file`")
+            answer = upload(instance, Path(arguments.file), arguments.as_name)
         else:
             printing = connection.is_virtual if arguments.printing is None else arguments.printing
             port = None if str(arguments.port) == "auto" else int(arguments.port)
