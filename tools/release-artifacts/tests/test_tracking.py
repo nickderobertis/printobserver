@@ -521,3 +521,14 @@ def test_the_stand_in_takes_a_null_where_the_forge_does(forge: IssuesForge) -> N
 
     equal(json.loads(answered)["state"], "closed", describing="the issue's state")
     equal(forge.issues[number].state_reason, None, describing="the reason it was closed for")
+
+
+def test_a_label_read_answering_another_label_fails_the_step_opening_nothing(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A `200` that is not the tracking label is no confirmation that the label is there."""
+    forge.refuse("GET", f"/repos/{REPOSITORY}/labels/{LABEL}", 200, "something else")
+
+    equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
+    contains(capsys.readouterr().err, f"answered the `{LABEL}` label with", describing="it said")
+    equal(forge.issues, {}, describing="the issues opened")

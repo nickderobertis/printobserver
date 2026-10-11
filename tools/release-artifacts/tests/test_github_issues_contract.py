@@ -98,11 +98,13 @@ def types(description: Described, schema: object) -> set[str]:
     """Every JSON type a schema admits, across its branches."""
     found: set[str] = set()
     for branch in alternatives(description, schema):
-        declared = branch.get("type")
-        if isinstance(declared, list):
-            found |= {str(kind) for kind in declared}
-        elif isinstance(declared, str):
-            found.add(declared)
+        match branch.get("type"):
+            case list() as several:
+                found |= {str(kind) for kind in several}
+            case str() as one:
+                found.add(one)
+            case _:
+                pass
     return found
 
 
