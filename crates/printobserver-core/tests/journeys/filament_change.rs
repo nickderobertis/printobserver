@@ -24,10 +24,10 @@ use printobserver_vision_api::{NormalizedAlert, PrinterSignal};
 
 use crate::fakes::{PrinterMethod, StoreMethod};
 use crate::shelf::{
-    FILE, SIZE, TOTAL_MM, adjust_command, assert_close, assert_ledger_explains, charges_to,
-    command, command_on, ends, ends_on, every, every_of, facts, grams, load, load_command,
-    loaded_spool, on_tool, paused_at, register, request_start, running_at, running_at_on,
-    spool_now, spool_world_with, start,
+    FILE, SIZE, TOTAL_MM, adjust_command, after_an_uncharged_print, assert_close,
+    assert_ledger_explains, charges_to, command, command_on, ends, ends_on, every, every_of, grams,
+    load, load_command, loaded_spool, on_tool, paused_at, register, request_start, running_at,
+    running_at_on, spool_now, spool_world_with, start,
 };
 use crate::world::World;
 
@@ -125,21 +125,6 @@ fn reasons(spool: &SpoolRecord) -> Vec<UnverifiedReason> {
 /// Every charge held after an unconfirmed change.
 fn pending(world: &World) -> Vec<printobserver_core::PendingCharge> {
     block_on(world.core.pending_charges(None)).expect("the pending charges are read")
-}
-
-/// Leave the spool on tool 0 holding an `uncharged_print` mark, from a print of
-/// the file before it had an analysis — and answer that earlier print.
-fn after_an_uncharged_print(world: &World) -> PrintId {
-    world.printer.holds_file(facts(None));
-    running_at(world, SIZE / 2);
-    let earlier = block_on(world.core.list_and_adopt_prints())
-        .expect("listed")
-        .active
-        .expect("adopted");
-    running_at(world, SIZE);
-    ends(world, PrinterState::Operational);
-    world.printer.holds_file(facts(Some(TOTAL_MM)));
-    earlier
 }
 
 /// A print of the file, on a spool already holding an `uncharged_print` mark

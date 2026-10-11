@@ -417,3 +417,22 @@ pub fn assert_ledger_explains(world: &World, spool_id: SpoolId) {
         figure.expect("the spool is in the timeline"),
     );
 }
+
+/// Leave the spool on tool 0 holding an `uncharged_print` mark, from a print of
+/// the file before it had an analysis — and answer that earlier print.
+///
+/// # Panics
+///
+/// Panics when the earlier print is not adopted.
+pub fn after_an_uncharged_print(world: &World) -> PrintId {
+    world.printer.holds_file(facts(None));
+    running_at(world, SIZE / 2);
+    let earlier = block_on(world.core.list_and_adopt_prints())
+        .expect("listed")
+        .active
+        .expect("adopted");
+    running_at(world, SIZE);
+    ends(world, PrinterState::Operational);
+    world.printer.holds_file(facts(Some(TOTAL_MM)));
+    earlier
+}
