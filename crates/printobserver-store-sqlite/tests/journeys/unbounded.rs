@@ -4,10 +4,12 @@
 //! exposing both a correct paged read and an unbounded one satisfies every
 //! assertion the paged read is held to. So this enumerates every method the
 //! crate's store types expose and every method the store traits declare, and refuses
-//! one whose answer carries a collection of events under none of three bounds —
-//! a limit the declared maximum bounds, a page size answered with a cursor, or
-//! the call's own drafts: a write answering the events it appended answers one
-//! per draft it was handed, and a draft is what it takes.
+//! one whose signature declares none of three bounds on an answer carrying a
+//! collection of events — a limit the declared maximum bounds, a page size
+//! answered with a cursor, or drafts of the events it appends. The third is a
+//! reading of the signature alone: that such a method answers only the events
+//! its own drafts became is what the ledger's conformance journeys assert of
+//! every answer it gives.
 
 use std::collections::BTreeSet;
 
@@ -59,7 +61,7 @@ fn answers_events(returns: &str, carriers: &BTreeSet<String>) -> bool {
             .any(|name| carriers.contains(name))
 }
 
-/// The types a method's answer of events may be bounded by.
+/// The types whose presence in a signature declares a bound on its answer.
 struct Bounds {
     /// Answers carrying the cursor a next page follows.
     cursors: BTreeSet<String>,
@@ -69,8 +71,8 @@ struct Bounds {
     drafted: BTreeSet<String>,
 }
 
-/// Whether a method's answer of events is bounded, and by which of the three.
-fn bounded(method: &Method, bounds: &Bounds) -> bool {
+/// Whether a method's signature declares one of the three bounds.
+fn declares_a_bound(method: &Method, bounds: &Bounds) -> bool {
     let takes_limit = method.params.iter().any(|param| {
         param.name == "limit"
             || named_types(&param.ty)
@@ -81,15 +83,15 @@ fn bounded(method: &Method, bounds: &Bounds) -> bool {
         && named_types(&method.returns)
             .iter()
             .any(|name| bounds.cursors.contains(name));
-    let writes_its_answer = method.params.iter().any(|param| {
+    let takes_drafts = method.params.iter().any(|param| {
         named_types(&param.ty)
             .iter()
             .any(|name| name == "EventDraft" || bounds.drafted.contains(name))
     });
-    takes_limit || paged || writes_its_answer
+    takes_limit || paged || takes_drafts
 }
 
-/// Every enumerated method answering events under no bound.
+/// Every enumerated method answering events whose signature declares no bound.
 fn unbounded(files: &[syn::File]) -> Vec<String> {
     let carriers = declaring(files, Some("events"), "Vec<EventRecord>");
     let bounds = Bounds {
@@ -100,7 +102,7 @@ fn unbounded(files: &[syn::File]) -> Vec<String> {
     enumerated(files)
         .into_iter()
         .filter(|method| answers_events(&method.returns, &carriers))
-        .filter(|method| !bounded(method, &bounds))
+        .filter(|method| !declares_a_bound(method, &bounds))
         .map(|method| format!("{}::{}", method.owner, method.name))
         .collect()
 }
@@ -157,7 +159,7 @@ impl MemoryStore {
 }
 ";
 
-/// The third bound is the call's own drafts, and nothing a write merely takes.
+/// The third bound is drafts in the signature, and nothing else a write takes.
 #[test]
 fn a_read_taking_no_draft_is_refused_however_near_a_write_it_is() {
     let mut files = sources();
