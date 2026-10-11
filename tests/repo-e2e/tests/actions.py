@@ -138,9 +138,11 @@ SECRET_REFERENCE = re.compile(r"secrets\.([A-Za-z0-9_]+)")
 INTERPOLATION = re.compile(r"\$\{\{(.*?)\}\}")
 
 #: The forge's status functions, which a job condition may call.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 STATUS_FUNCTIONS = ("always", "success", "failure", "cancelled")
 
 #: A call of one of them, as a condition spells it.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 STATUS_CALL = re.compile(rf"\b({'|'.join(STATUS_FUNCTIONS)})\s*\(")
 
 
@@ -159,6 +161,7 @@ class Status:
 
     def answer(self, function: str) -> bool | None:
         """What `function()` answers, or `None` where it is no status function."""
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
         return {
             "always": True,
             "success": self.succeeded,

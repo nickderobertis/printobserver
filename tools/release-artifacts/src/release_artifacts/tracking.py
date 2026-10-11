@@ -207,6 +207,7 @@ def run_url(url: str) -> str:
     return url
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def tracking(forge: Forge) -> list[IssueNumber]:
     """Every open tracking issue, oldest first, read page by page to the last.
 
@@ -235,6 +236,7 @@ def tracking(forge: Forge) -> list[IssueNumber]:
         page += 1
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def _labelled(forge: Forge) -> None:
     """Create the tracking label where the repository does not carry it yet.
 
@@ -259,6 +261,7 @@ def _labelled(forge: Forge) -> None:
             forge.ask("GET", f"/labels/{quote(LABEL)}")
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:
     """Say that `run` failed: open the tracking issue, or comment on the open one.
 
@@ -297,6 +300,7 @@ def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:
     return f"opened #{_number(opened, 'the issue it opened')}: {said}"
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def mended(forge: Forge, run: str) -> str:
     """Say that `run` succeeded: close every open tracking issue, naming it.
 

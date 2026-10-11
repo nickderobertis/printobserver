@@ -2384,14 +2384,9 @@ reason = "These two tests prove the issues stand-in's own refusals over a real c
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/release-artifacts/src/release_artifacts/issues_standin.py"
-site = "class Issue:"
-reason = "The stand-in reproduces the slice of GitHub's REST issues API `tracking` uses — the listing by label, a label read and creation, an issue opened, commented on and closed — in GitHub's documented paths and fields, and it is the only copy of that slice in this repository. It has no drift gate against the live API because the only way to exercise those writes is to open and close an issue on a real repository, which no tier here may do. What reconciles it is the reporting job's own run on `main`: `tracking` validates the two things it reads off the forge — that a listing is a list and that each issue names a positive integer `number` — so a shape that moved fails that step naming what the forge answered, rather than reading as nothing open."
+site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
+reason = "Every directive for this rule in this file sits on part of one restatement: the stand-in reproduces the slice of GitHub's REST issues API `tracking` uses, its page sizes, label colour, validation answer, issue states and reasons, issue document and routes included, — the listing by label, a label read and creation, an issue opened, commented on and closed — in GitHub's documented paths and fields, and it is the only copy of that slice in this repository. It has no drift gate against the live API because the only way to exercise those writes is to open and close an issue on a real repository, which no tier here may do. What reconciles it is the reporting job's own run on `main`: `tracking` validates the two things it reads off the forge — that a listing is a list and that each issue names a positive integer `number` — so a shape that moved fails that step naming what the forge answered, rather than reading as nothing open."
 
-[[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tools/release-artifacts/src/release_artifacts/issues_standin.py"
-site = "class IssuesForge:"
-reason = "The routes and statuses half of the same slice the entry at `class Issue:` covers, on the same ground: GitHub's documented paths and the statuses `tracking` acts on (`404` for an absent label, `422` for one that already exists or a document it will not take), with no live drift gate because exercising them writes to a real repository, and the reporting job's run on `main` as the reconciliation."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -2399,23 +2394,13 @@ file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."
 
-[[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tools/release-artifacts/src/release_artifacts/tracking.py"
-site = "class Outcome(StrEnum):"
-reason = "The four results the forge reports a job as through `needs.<job>.result`, which the workflow hands this step verbatim. GitHub publishes them as documentation rather than as anything a build could read, so there is no source to generate from; the reconciliation is the step itself, which refuses a result outside the four by name rather than reading it as a success, so a fifth the forge began reporting would fail the reporting job on `main` naming it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/release-artifacts/src/release_artifacts/tracking.py"
-site = "class Forge:"
-reason = "The client half of the slice of GitHub's REST issues API that the entries at `class Issue:` and `class IssuesForge:` in `issues_standin.py` stand in for, on the same ground: GitHub's documented paths, with no live drift gate because exercising them opens and closes an issue on a real repository. Every answer the forge gives is validated where it is read, so a route or a shape that moved fails the reporting job on `main` naming what the forge said, which is the reconciliation."
+site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
+reason = "The client half of the slice of GitHub's REST issues API that `issues_standin.py` stands in for — the listing, label, issue, comment and closure requests every directive for this rule in this file sits on — on the ground that file's entry for this rule states: GitHub's documented paths, with no live drift gate because exercising them opens and closes an issue on a real repository. Every answer the forge gives is validated where it is read, so a route or a shape that moved fails the reporting job on `main` naming what the forge said, which is the reconciliation."
 
-[[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/actions.py"
-site = "class Status:"
-reason = "The same ground as this file's entry at `class Event:` and the one covering every directive for this rule in it: the runner models the forge's documented scheduling rules, here the four status functions a job condition may call, and the forge's own run of the same workflow text on every push to `main` is where a rule modelled wrongly shows up. Nothing publishes those semantics in a form a build could read."
 
 [[suppression]]
 rule = "e2e_not_mocked"

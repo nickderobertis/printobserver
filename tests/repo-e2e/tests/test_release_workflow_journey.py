@@ -405,8 +405,8 @@ def driven(
     real_just = shutil.which("just")
     truth(real_just is not None, describing="`just` to be on the PATH")
     store = store or ArtifactStore(tmp_path / "store")
-    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     owned = tracker is None
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     tracker = tracker or IssuesForge(REPOSITORY, RUN_TOKEN)
 
     runner = Runner(

@@ -32,15 +32,19 @@ from release_artifacts.tracking import IssueNumber
 MAX_BODY_BYTES = 1024 * 1024
 
 #: The forge's default page of a listing, and the most one page may hold.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 DEFAULT_PAGE, MAX_PAGE = 30, 100
 
 #: How many hexadecimal digits the forge takes a label's colour as.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 COLOUR_DIGITS = 6
 
 #: What the forge answers a request whose document it will not take.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 INVALID = (422, {"message": "Validation Failed"})
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class State(StrEnum):
     """Whether an issue is open, as the forge's `state` field says."""
 
@@ -48,6 +52,7 @@ class State(StrEnum):
     CLOSED = "closed"
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 class Reason(StrEnum):
     """Why an issue was closed, as the forge's `state_reason` field says."""
 
@@ -72,6 +77,7 @@ class Issue:
 
     def document(self, html: str) -> dict[str, object]:
         """The issue in the forge's shape."""
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
         shown: dict[str, object] = {
             "number": self.number,
             "title": self.title,
@@ -186,6 +192,7 @@ class IssuesForge:
         query: dict[str, list[str]],
         document: dict[str, object],
     ) -> tuple[int, object]:
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] see suppressions.toml.
         match (method, rest):
             case ("GET", ["issues"]):
                 return self._listed(query)
@@ -216,6 +223,7 @@ class IssuesForge:
     def _held(self, number: str) -> bool:
         return number.isascii() and number.isdigit() and IssueNumber(int(number)) in self.issues
 
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def _listed(self, query: dict[str, list[str]]) -> tuple[int, object]:
         """One page of the issues carrying every label asked for, in the state asked for."""
         wanted = {name for value in query.get("labels", []) for name in value.split(",") if name}
@@ -235,6 +243,7 @@ class IssuesForge:
         ]
         return 200, matching[(page_of - 1) * size_of : page_of * size_of]
 
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def _opened(self, document: dict[str, object]) -> tuple[int, object]:
         """Open an issue from a document carrying a title, a body and a list of label names."""
         title, body, labels = (document.get(key) for key in ("title", "body", "labels"))
@@ -247,6 +256,7 @@ class IssuesForge:
         self.issues[number] = Issue(number, title, body, list(labels))
         return 201, self.issues[number].document(self.html)
 
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def _updated(self, issue: Issue, document: dict[str, object]) -> tuple[int, object]:
         """Move an issue to the state, and for the reason, a document names."""
         state, reason = document.get("state"), document.get("state_reason")
