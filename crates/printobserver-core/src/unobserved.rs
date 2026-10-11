@@ -153,7 +153,7 @@ impl Supervisor {
         if held.is_empty() {
             let baseline = files
                 .iter()
-                .filter(|file| file.successes >= 0 && file.failures >= 0)
+                .filter(|file| readable(file))
                 .map(|file| FileTally {
                     file_name: file.file_name.clone(),
                     origin: file.origin.clone(),
@@ -172,13 +172,7 @@ impl Supervisor {
         let loaded = self.stores().filament.loaded_spools().await?;
         let settlements = self.settlements_of(&files).await?;
         let mut accounting = Accounting::default();
-        // A tally is read at this boundary: a count below zero is not one the
-        // printer can have, and a file reporting one is left as last held
-        // rather than accounted on it.
-        for file in files
-            .iter()
-            .filter(|file| file.successes >= 0 && file.failures >= 0)
-        {
+        for file in files.iter().filter(|file| readable(file)) {
             let previous = held
                 .iter()
                 .find(|tally| tally.file_name == file.file_name && tally.origin == file.origin);
@@ -366,6 +360,14 @@ impl Supervisor {
         )?);
         Ok(())
     }
+}
+
+/// Whether a file's tally is one the printer can have: no count below zero,
+/// and a total that does not overflow. One that is not is read at this
+/// boundary as no tally at all — neither stored as a baseline nor accounted on
+/// — so the file stays as last held until the printer reports a real one.
+fn readable(file: &FileFacts) -> bool {
+    file.successes >= 0 && file.failures >= 0 && file.successes.checked_add(file.failures).is_some()
 }
 
 /// The loaded spools a file's prints would have fed: those on the tools its

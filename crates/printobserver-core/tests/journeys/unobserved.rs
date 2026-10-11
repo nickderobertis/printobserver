@@ -361,7 +361,8 @@ fn a_tally_below_zero_is_left_as_last_held() {
 }
 
 /// A tally whose counts overflow when they are added is no tally: the
-/// accounting answers without accounting a print on it.
+/// accounting accounts nothing on it and keeps the one last held, so the next
+/// real tally is accounted against that.
 #[test]
 fn a_tally_whose_counts_overflow_accounts_nothing() {
     let world = spool_world();
@@ -372,4 +373,11 @@ fn a_tally_whose_counts_overflow_accounts_nothing() {
     account(&world);
     assert!(every::<UnaccountedPrintPayload>(&world).is_empty());
     assert!(charges_to(&world, spool.id).is_empty());
+    tally(&world, 3, 0, true);
+    account(&world);
+    assert_eq!(
+        every::<UnaccountedPrintPayload>(&world).len(),
+        1,
+        "the overflowing tally replaced the one last held"
+    );
 }
