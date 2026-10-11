@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::block_on::block_on;
 use crate::fixture::Store;
 use crate::ledger_records::{
-    LedgerState, at, change, charge, ended, every_timeline_event, ledger_state, pend, print_key,
+    LedgerState, at, change, charge, ended, ledger_state, newest_timeline_events, pend, print_key,
     register, tally, unaccounted, unobserved_key,
 };
 use printobserver_core::store::{Settlement, SpoolChange};
@@ -115,7 +115,7 @@ fn write_the_ledger(port: &Arc<dyn Store>) -> Written {
 /// Submit every key the first store recorded again, which writes nothing.
 fn replay_against(port: &Arc<dyn Store>, written: &Written) {
     let [first_print, second_print] = written.prints;
-    let events = every_timeline_event(port).len();
+    let events = newest_timeline_events(port).len();
     let replay = block_on(port.apply_spool_changes(
         Vec::new(),
         vec![charge(
@@ -159,7 +159,7 @@ fn replay_against(port: &Arc<dyn Store>, written: &Written) {
         Ok(Vec::new()),
         "an unobserved charge replayed after a restart wrote"
     );
-    assert_eq!(every_timeline_event(port).len(), events);
+    assert_eq!(newest_timeline_events(port).len(), events);
 }
 
 /// Every part of the ledger reads back unchanged from a reopened file, and a

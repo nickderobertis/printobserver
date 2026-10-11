@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::block_on::block_on;
 use crate::fixture::{Fixture, Store, draft};
 use crate::ledger_records::{
-    at, change, charge, ended, event_of, every_timeline_event, kinds, ledger_state, new_spool,
+    at, change, charge, ended, event_of, kinds, ledger_state, new_spool, newest_timeline_events,
     pend, print_key, register, tally, unaccounted, unobserved_key, whole_timeline,
 };
 use printobserver_core::kinds::{
@@ -70,7 +70,7 @@ const fn unconfirmed(print_id: PrintId) -> UnverifiedReason {
 
 /// How many `spool_unverified` events name one spool.
 fn unverified_events(port: &Arc<dyn Store>, spool_id: SpoolId) -> usize {
-    every_timeline_event(port)
+    newest_timeline_events(port)
         .iter()
         .filter_map(EventRecord::payload_as::<SpoolUnverifiedPayload>)
         .filter(|payload| payload.as_ref().is_ok_and(|read| read.spool_id == spool_id))
@@ -106,7 +106,7 @@ fn a_registration_answers_the_spool_and_its_event_from_one_write() {
             "{name}: the payload is not the record"
         );
         assert_eq!(block_on(port.spool(spool.id)), Ok(Some(spool.clone())));
-        assert_eq!(every_timeline_event(&port), vec![event], "{name}");
+        assert_eq!(newest_timeline_events(&port), vec![event], "{name}");
 
         let later = register(&port, "second", None, 500.0, at(5));
         assert_eq!(
@@ -490,6 +490,12 @@ fn the_latest_file_position_is_kept_by_when_it_was_read() {
             Ok(Some(position(900, 20))),
             "{name}"
         );
+        block_on(port.record_file_position(print.id, position(950, 20))).expect("recorded");
+        assert_eq!(
+            block_on(port.file_position(print.id)),
+            Ok(Some(position(950, 20))),
+            "{name}: a position read at the same instant did not replace the one held"
+        );
         assert!(
             matches!(
                 block_on(port.record_file_position(PrintId::new(), position(1, 1))),
@@ -521,7 +527,7 @@ fn a_replayed_charge_debits_nothing_and_writes_no_event_through_every_write() {
         let first = block_on(port.apply_spool_changes(Vec::new(), vec![debit()], Vec::new()))
             .expect("the charge applies");
         let recorded = first.charges[0].clone();
-        let events = every_timeline_event(&port);
+        let events = newest_timeline_events(&port);
         let charges = block_on(port.charges(print.id)).expect("the charges read");
         assert_grams(remaining(&port, spool.id), 487.5, "{name}");
 
@@ -570,7 +576,7 @@ fn a_replayed_charge_debits_nothing_and_writes_no_event_through_every_write() {
             "{name}: a replay debited",
         );
         assert_eq!(block_on(port.charges(print.id)), Ok(charges), "{name}");
-        let after: Vec<EventRecord> = every_timeline_event(&port)
+        let after: Vec<EventRecord> = newest_timeline_events(&port)
             .into_iter()
             .filter(|event| event.kind().as_str() == "filament_consumed")
             .collect();
@@ -1079,6 +1085,310 @@ fn the_timeline_answers_its_kinds_newest_first_under_every_filter() {
                 Err(StoreError::NotFound { .. })
             ),
             "{name}: a cursor naming no event"
+        );
+    }
+}
+
+/// Clearing kinds of mark the spool does not hold changes nothing.
+#[test]
+fn clearing_marks_the_spool_does_not_hold_changes_nothing() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let spool = register(&port, "doubted", Some(0), 500.0, at(0));
+        let marked = block_on(port.apply_spool_changes(
+            vec![change(
+                spool.id,
+                SpoolChange::MarkUnverified {
+                    reason: uncharged(print.id),
+                },
+                at(1),
+            )],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the mark applies");
+        let untouched = block_on(port.apply_spool_changes(
+            vec![change(
+                spool.id,
+                SpoolChange::ClearMarks {
+                    kinds: vec![
+                        UnverifiedReasonKind::TallyReset,
+                        UnverifiedReasonKind::FilamentChangeUnconfirmed,
+                    ],
+                },
+                at(9),
+            )],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the clearing answers");
+        assert_eq!(untouched.events, Vec::new(), "{name}");
+        assert_eq!(
+            untouched.spools, marked.spools,
+            "{name}: clearing marks the spool does not hold changed its trust or its instant"
+        );
+    }
+}
+
+/// Retiring a spool still on its tool frees the tool for another.
+#[test]
+fn retiring_a_loaded_spool_frees_its_tool() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let retiring = register(&port, "empty", Some(0), 2.0, at(0));
+        let next = register(&port, "full", None, 1_000.0, at(1));
+        block_on(port.apply_spool_changes(
+            vec![change(retiring.id, SpoolChange::Retire, at(2))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the spool retires on its tool");
+        assert_eq!(block_on(port.loaded_spools()), Ok(Vec::new()), "{name}");
+        block_on(port.apply_spool_changes(
+            vec![change(next.id, SpoolChange::Load { tool: 0 }, at(3))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the tool a retired spool held takes another");
+        assert_eq!(
+            block_on(port.loaded_spools())
+                .map(|found| found.iter().map(|spool| spool.id).collect::<Vec<_>>()),
+            Ok(vec![next.id]),
+            "{name}"
+        );
+    }
+}
+
+/// A charge naming no spool, or no grams, is recorded and debits nothing.
+#[test]
+fn a_charge_naming_no_spool_or_no_grams_is_recorded_and_debits_nothing() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let spool = register(&port, "tracked", Some(1), 500.0, at(0));
+        let write = block_on(port.apply_spool_changes(
+            Vec::new(),
+            vec![
+                charge(print_key(print.id, 0, 0), Some(print.id), None, None, at(5)),
+                charge(
+                    print_key(print.id, 1, 0),
+                    Some(print.id),
+                    Some(spool.id),
+                    None,
+                    at(5),
+                ),
+            ],
+            Vec::new(),
+        ))
+        .expect("the charges apply");
+        assert_eq!(
+            kinds(&write.events),
+            ["filament_consumed", "filament_consumed"],
+            "{name}"
+        );
+        assert_eq!(
+            block_on(port.charges(print.id)).map(|found| found
+                .iter()
+                .map(|record| (record.spool_id, record.grams))
+                .collect::<Vec<_>>()),
+            Ok(vec![(None, None), (Some(spool.id), None)]),
+            "{name}"
+        );
+        assert_grams(remaining(&port, spool.id), 500.0, name);
+    }
+}
+
+/// A charge taken before the spool last changed leaves that instant alone.
+#[test]
+fn a_charge_older_than_the_spools_last_change_leaves_its_instant() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let spool = register(&port, "corrected", Some(0), 500.0, at(0));
+        block_on(port.apply_spool_changes(
+            vec![change(
+                spool.id,
+                SpoolChange::SetRemaining { remaining_g: 400.0 },
+                at(20),
+            )],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the correction applies");
+        let write = block_on(port.apply_spool_changes(
+            Vec::new(),
+            vec![charge(
+                print_key(print.id, 0, 0),
+                Some(print.id),
+                Some(spool.id),
+                Some(15.0),
+                at(10),
+            )],
+            Vec::new(),
+        ))
+        .expect("the charge applies");
+        assert_eq!(
+            write.spools[0].updated_at,
+            at(20),
+            "{name}: a late charge moved the spool's instant back"
+        );
+        assert_grams(write.spools[0].remaining_g, 385.0, name);
+    }
+}
+
+/// A print's charges read back by tool and then segment, under keys whose
+/// free-text parts carry colons.
+#[test]
+fn a_prints_charges_read_by_tool_then_segment_under_every_key_spelling() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let colons = printobserver_core::ChargeKey::Unobserved {
+            origin: "sd:card".to_owned(),
+            file_name: "parts:v2:bracket.gcode".to_owned(),
+            generation: 12,
+            print_number: 3,
+            tool: -1,
+        };
+        let submitted = [
+            print_key(print.id, 1, 0),
+            print_key(print.id, 0, 10),
+            colons.clone(),
+            print_key(print.id, 0, 2),
+            print_key(print.id, 1, 1),
+        ];
+        block_on(
+            port.apply_spool_changes(
+                Vec::new(),
+                submitted
+                    .iter()
+                    .map(|key| charge(key.clone(), Some(print.id), None, None, at(5)))
+                    .collect(),
+                Vec::new(),
+            ),
+        )
+        .expect("the charges apply");
+        assert_eq!(
+            block_on(port.charges(print.id)).map(|found| found
+                .into_iter()
+                .map(|record| record.key)
+                .collect::<Vec<_>>()),
+            Ok(vec![
+                colons.clone(),
+                print_key(print.id, 0, 2),
+                print_key(print.id, 0, 10),
+                print_key(print.id, 1, 0),
+                print_key(print.id, 1, 1),
+            ]),
+            "{name}: the charges are not by tool and then segment, or a key read back changed"
+        );
+        let replay = block_on(port.apply_spool_changes(
+            Vec::new(),
+            vec![charge(colons.clone(), Some(print.id), None, None, at(6))],
+            Vec::new(),
+        ))
+        .expect("the replay answers");
+        assert_eq!(
+            (replay.events.len(), replay.charges[0].key.clone()),
+            (0, colons),
+            "{name}: a key carrying colons was not found recorded"
+        );
+    }
+}
+
+/// The timeline breaks a tie of instants by identifier, follows a cursor
+/// inside one instant, finds a spool however deep a payload names it, and
+/// carries the image an event arrived with.
+#[test]
+fn the_timeline_breaks_ties_finds_a_spool_at_any_depth_and_carries_images() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let (spool, _) = block_on(port.register_spool(
+            new_spool("tracked", Some(0), 500.0, at(0)),
+            operator_source(),
+            Actor::Operator,
+            "a new spool".to_owned(),
+        ))
+        .expect("the spool registers");
+        let started = |minute| {
+            block_on(port.append_event(event_of(
+                Some(print.id),
+                at(minute),
+                &PrintStartedPayload {
+                    file_name: None,
+                    started_by: None,
+                    loaded: vec![printobserver_core::LoadedSpool {
+                        tool: 0,
+                        spool_id: spool.id,
+                    }],
+                    preflight: None,
+                },
+            )))
+            .expect("the start is appended")
+        };
+        let mut tied = vec![started(5), started(5)];
+        tied.sort_by_key(|event| core::cmp::Reverse(event.id));
+        let mentioned = block_on(port.append_event(event_of(
+            None,
+            at(6),
+            &printobserver_core::SpoolUnloadedPayload {
+                spool_id: SpoolId::new(),
+                tool: 1,
+                actor: Actor::Operator,
+                reason: format!("the shelf beside {}", spool.id),
+            },
+        )))
+        .expect("the unload is appended");
+        let image = block_on(port.put_image(
+            print.id,
+            tied[0].id,
+            None,
+            "image/jpeg".to_owned(),
+            printobserver_types::RawBytes::new(b"the first layer".to_vec()),
+        ))
+        .expect("an image is stored");
+
+        let read = |query: TimelineQuery| block_on(port.timeline(query)).expect("it reads");
+        let by_spool = read(TimelineQuery {
+            spool_id: Some(spool.id),
+            since: Some(at(5)),
+            ..whole_timeline(None)
+        });
+        assert_eq!(
+            ids(&by_spool),
+            ids(&tied),
+            "{name}: a spool named inside a list, or one instant's tie, was not read newest first"
+        );
+        assert!(
+            !ids(&read(TimelineQuery {
+                spool_id: Some(spool.id),
+                ..whole_timeline(None)
+            }))
+            .contains(&mentioned.id),
+            "{name}: a string merely containing the spool's identifier matched it"
+        );
+        assert_eq!(
+            by_spool[0].image.as_ref().map(|carried| carried.id),
+            Some(image.id),
+            "{name}: the timeline lost the image its event arrived with"
+        );
+        assert_eq!(
+            ids(&read(TimelineQuery {
+                before: Some(tied[0].id),
+                since: Some(at(5)),
+                kinds: vec![EventKind::new(PrintStartedPayload::KIND).expect("a kind name")],
+                ..whole_timeline(None)
+            })),
+            vec![tied[1].id],
+            "{name}: the cursor did not follow inside one instant"
         );
     }
 }

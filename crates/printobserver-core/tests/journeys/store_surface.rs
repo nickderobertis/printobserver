@@ -381,15 +381,20 @@ fn each_store_trait_declares_exactly_the_stated_methods() {
 /// identifier of a record another aggregate holds in order to relate to it —
 /// so a type that is an identifier is not a record of the aggregate it names.
 ///
-/// The filament ledger and the timeline are held to this only as the
-/// aggregates others may not reach into, not as ones that may reach into none:
-/// the ledger takes the drafts of its own events and answers them, because a
-/// spool, its charge and the event that says so are one transaction, and the
-/// timeline is a reading of the event log by definition.
+/// Two crossings are stated rather than refused, and they are the only ones:
+/// the filament ledger takes the drafts of the events it writes and answers
+/// them, because a spool, its charge and the event that says so are one
+/// transaction; and the timeline answers events, because it is a reading of
+/// the event log. Each of the two is still refused every other aggregate's
+/// records.
 #[test]
-fn no_trait_acts_on_another_traits_aggregate() {
+fn no_trait_acts_on_another_traits_aggregate_beyond_the_two_stated_crossings() {
     let source = parse(&store_source());
-    let reaching_into_the_log = ["FilamentStore", "TimelineStore"];
+    let crossings: [(&str, &str); 3] = [
+        ("FilamentStore", "EventDraft"),
+        ("FilamentStore", "EventRecord"),
+        ("TimelineStore", "EventRecord"),
+    ];
     let records: [(&str, &[&str]); 7] = [
         (
             "PrintStore",
@@ -431,9 +436,6 @@ fn no_trait_acts_on_another_traits_aggregate() {
     ];
     let mut checked = 0_usize;
     for (own, _) in records {
-        if reaching_into_the_log.contains(&own) {
-            continue;
-        }
         for declared in trait_methods(&source, own) {
             let mentioned: Vec<String> = declared
                 .params
@@ -446,6 +448,9 @@ fn no_trait_acts_on_another_traits_aggregate() {
                     continue;
                 }
                 for record in theirs {
+                    if crossings.contains(&(own, *record)) {
+                        continue;
+                    }
                     assert!(
                         !mentioned.iter().any(|ty| ty.contains(record)),
                         "{own}::{} carries {record}, which is {other}'s",

@@ -319,12 +319,13 @@ pub fn whole_timeline(limit: Option<u32>) -> TimelineQuery {
     }
 }
 
-/// Every timeline event the store holds, newest first.
+/// The newest thousand timeline events the store holds — every one, for the
+/// journeys here, none of which writes so many — newest first.
 ///
 /// # Panics
 ///
 /// Panics when the store refuses the read.
-pub fn every_timeline_event(port: &Arc<dyn Store>) -> Vec<EventRecord> {
+pub fn newest_timeline_events(port: &Arc<dyn Store>) -> Vec<EventRecord> {
     block_on(port.timeline(whole_timeline(Some(1_000)))).expect("the timeline reads")
 }
 
@@ -342,7 +343,7 @@ pub fn kinds(events: &[EventRecord]) -> Vec<String> {
 pub struct LedgerState {
     /// Every spool, retired ones included.
     pub spools: Vec<SpoolRecord>,
-    /// Every timeline event.
+    /// The newest thousand timeline events.
     pub events: Vec<EventRecord>,
     /// Every charge against each named print.
     pub charges: Vec<Vec<ChargeRecord>>,
@@ -362,7 +363,7 @@ pub struct LedgerState {
 pub fn ledger_state(port: &Arc<dyn Store>, prints: &[PrintId]) -> LedgerState {
     LedgerState {
         spools: block_on(port.spools(true)).expect("the spools read"),
-        events: every_timeline_event(port),
+        events: newest_timeline_events(port),
         charges: prints
             .iter()
             .map(|print_id| block_on(port.charges(*print_id)).expect("the charges read"))
