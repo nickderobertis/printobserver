@@ -2202,3 +2202,9 @@ rule = "modern_domain_modeling"
 file = "tests/skilltest/scenario.py"
 site = "record: dict[str, Any] = {"
 reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/store.rs"
+site = "pub file_name: String,"
+reason = "The task that froze the filament store's shapes states `FileTally { file_name: String, origin: String, .. }`, and the tally is keyed by the same file name the frozen spool-ledger contract already carries as a `String` in `ChargeKey::Unobserved.file_name` and `UnaccountedPrintPayload.file_name`: a tally, the unobserved charge it accounts and the event that reports it must name one file identically, so one of the three cannot take `FileName` alone. The name is the printer's own, read back from its file listing rather than typed by anybody, and is stored and compared verbatim. Moving all three to a validated name together is a contract amendment for the manager, drafted as a follow-up rather than made here."

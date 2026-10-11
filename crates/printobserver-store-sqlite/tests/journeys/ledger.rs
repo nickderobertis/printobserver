@@ -1392,3 +1392,121 @@ fn the_timeline_breaks_ties_finds_a_spool_at_any_depth_and_carries_images() {
         );
     }
 }
+
+/// A charge or a pend refused after a charge has already taken a pending debit
+/// in the same call leaves none of the call: not the debit, not the taking, not
+/// the event.
+#[test]
+fn a_charge_or_pend_refused_late_in_a_call_rolls_back_the_taking_before_it() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let ghost = PrintId::new();
+        let spool = register(&port, "next", Some(0), 500.0, at(0));
+        block_on(port.apply_spool_changes(
+            Vec::new(),
+            Vec::new(),
+            vec![pend(print_key(print.id, 0, 1), print.id, at(5))],
+        ))
+        .expect("the pend holds");
+        let taking = || {
+            charge(
+                print_key(print.id, 0, 1),
+                Some(print.id),
+                Some(spool.id),
+                Some(5.0),
+                at(10),
+            )
+        };
+        // A charge against a print nothing opened, whose own event names none.
+        let mut unopened = charge(
+            print_key(ghost, 0, 0),
+            Some(ghost),
+            Some(spool.id),
+            Some(1.0),
+            at(10),
+        );
+        unopened.event.print_id = None;
+        let mut orphaned = pend(print_key(ghost, 0, 1), ghost, at(10));
+        orphaned.event.print_id = None;
+        let attempts = vec![
+            (
+                vec![
+                    taking(),
+                    charge(
+                        print_key(print.id, 0, 2),
+                        Some(print.id),
+                        Some(SpoolId::new()),
+                        Some(1.0),
+                        at(10),
+                    ),
+                ],
+                Vec::new(),
+                "a spool nothing registered",
+            ),
+            (vec![taking(), unopened], Vec::new(), "charges.print_id"),
+            (vec![taking()], vec![orphaned], "pending_charges.print_id"),
+        ];
+        let before = ledger_state(&port, &[print.id]);
+        for (charges, pends, refusal) in attempts {
+            let answer = block_on(port.apply_spool_changes(Vec::new(), charges, pends));
+            match refusal {
+                "a spool nothing registered" => assert!(
+                    matches!(answer, Err(StoreError::NotFound { .. })),
+                    "{name}: a charge naming {refusal} answered {answer:?}"
+                ),
+                constraint => assert_eq!(answer, Err(refused(constraint)), "{name}"),
+            }
+            assert_eq!(
+                ledger_state(&port, &[print.id]),
+                before,
+                "{name}: refused on {refusal}, the call left its earlier taking behind"
+            );
+        }
+    }
+}
+
+/// A correction in the same call as a charge taking a pending debit sets the
+/// figure after that debit, so the correction is what the spool reads.
+#[test]
+fn a_correction_beside_a_taken_pending_charge_is_what_the_spool_reads() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = open(&port, "bracket.gcode");
+        let spool = register(&port, "weighed", Some(0), 500.0, at(0));
+        block_on(port.apply_spool_changes(
+            Vec::new(),
+            Vec::new(),
+            vec![pend(print_key(print.id, 0, 1), print.id, at(5))],
+        ))
+        .expect("the pend holds");
+        let write = block_on(port.apply_spool_changes(
+            vec![change(
+                spool.id,
+                SpoolChange::SetRemaining { remaining_g: 300.0 },
+                at(10),
+            )],
+            vec![charge(
+                print_key(print.id, 0, 1),
+                Some(print.id),
+                Some(spool.id),
+                Some(5.0),
+                at(10),
+            )],
+            Vec::new(),
+        ))
+        .expect("the correction applies");
+        assert_eq!(
+            kinds(&write.events),
+            ["filament_consumed", "spool_adjusted"]
+        );
+        assert_grams(remaining(&port, spool.id), 300.0, name);
+        assert_eq!(
+            block_on(port.pending_charges(None)),
+            Ok(Vec::new()),
+            "{name}"
+        );
+    }
+}

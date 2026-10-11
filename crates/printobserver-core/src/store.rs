@@ -692,6 +692,7 @@ pub enum Settlement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileTally {
     /// The file.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub file_name: String,
     /// Where the file lives, in the printer's own vocabulary.
     pub origin: String,
