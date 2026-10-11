@@ -1215,7 +1215,7 @@ the gate gates. Structural wiring has one deterministic proof instead:
 `repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires
 `check` to invoke every tier in `repo-policy.toml` and refuses empty tiers.
 
-<!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs. -->
+<!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection statement spanning the e2e project and CI workflows; neither project subtree alone owns which required job runs the OctoPrint tier. -->
 **The OctoPrint tier runs in the required `integration` jobs, not in the gate.**
 Every `integration (<platform>)` context is a required check, and each runs
 `just octoprint-up`, `just test-integration` and `just octoprint-down` on every
