@@ -817,3 +817,70 @@ fn a_position_before_the_file_s_start_is_not_recorded() {
         1_400.0,
     );
 }
+
+/// A print first opened by an alert — no print open, a spool loaded — is
+/// opened with the alert itself written first and exactly one `print_started`
+/// straight after it, naming no start and the spool loaded; and it is charged
+/// like any other print when it ends, never written off as untracked.
+#[test]
+fn a_print_an_alert_opens_is_started_charged_and_never_untracked() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Alert Opened", 1_000.0);
+    assert!(world.store.prints().is_empty(), "a print was already open");
+
+    let event = world
+        .handle(crate::world::failure_alert(7))
+        .expect("the alert is handled");
+    let print_id = event.print_id.expect("the alert opened a print");
+
+    let history = world.store.events_of(print_id);
+    let at = history
+        .iter()
+        .position(|record| record.id == event.id)
+        .expect("the alert is in its print's history");
+    let next = history.get(at + 1).expect("something follows the alert");
+    let started = next
+        .payload_as::<PrintStartedPayload>()
+        .expect("the alert is followed by its print_started")
+        .expect("a print_started reads as one");
+    assert_eq!(
+        history
+            .iter()
+            .filter(|record| record.body.is::<PrintStartedPayload>())
+            .count(),
+        1,
+        "the alert's print was started more than once"
+    );
+    assert_eq!(started.started_by, None);
+    assert_eq!(started.preflight, None);
+    assert_eq!(started.file_name.as_deref(), Some(FILE));
+    assert_eq!(
+        started.loaded,
+        vec![LoadedSpool {
+            tool: 0,
+            spool_id: spool.id
+        }]
+    );
+
+    running_at(&world, SIZE);
+    ends(&world, PrinterState::Operational);
+
+    assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Completed);
+    let charges = charges_of(&world, print_id);
+    assert_eq!(charges.len(), 1);
+    assert_charge(
+        &charges[0],
+        spool.id,
+        &world,
+        ChargeMethod::SlicerEstimate,
+        TOTAL_MM,
+    );
+    assert_eq!(charges[0].charge_key, key(print_id, 0));
+    assert!(every_of::<PrintUntrackedPayload>(&world, print_id).is_empty());
+    assert_close(
+        spool_now(&world, spool.id).remaining_g,
+        1_000.0 - grams(&spool, TOTAL_MM),
+    );
+    assert_ledger_explains(&world, spool.id);
+    world.journal.assert_no_violations();
+}
