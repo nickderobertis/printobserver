@@ -530,6 +530,66 @@ fn the_fixture_refuses_a_refusal_naming_no_state() {
     );
 }
 
+/// Put the operator's credential into one configuration in plaintext, as
+/// `api.credential`, in place of its verifier: what an installation from before
+/// verifiers carries, and what every start under it warns about.
+fn with_a_plaintext_credential(configuration: &Path) {
+    let mut document: toml::Table =
+        toml::from_str(&std::fs::read_to_string(configuration).expect("the configuration reads"))
+            .expect("the configuration is a document");
+    let mut api = toml::Table::new();
+    api.insert(
+        "credential".to_owned(),
+        toml::Value::String(CREDENTIAL.to_owned()),
+    );
+    document.insert("api".to_owned(), toml::Value::Table(api));
+    std::fs::write(configuration, document.to_string()).expect("the configuration is writable");
+}
+
+/// A service started under a plaintext credential says so before it reports
+/// running, as the console form does, and then serves under that credential.
+#[test]
+fn a_service_under_a_plaintext_credential_warns_and_serves() {
+    let root = TempDir::new().expect("the tier's own root");
+    let octoprint = format!("http://{}", answering_host());
+    let configuration = configuration(root.path(), &octoprint);
+    with_a_plaintext_credential(&configuration);
+    let mut child = start(&configuration);
+    let mut reports = BufReader::new(child.stdout.take().expect("the fixture's reports")).lines();
+
+    assert_eq!(
+        next_report(&mut reports).map(|report| report.state),
+        Some(ServiceState::StartPending.name().to_owned())
+    );
+    assert_eq!(
+        next_report(&mut reports).map(|report| report.state),
+        Some(ServiceState::Running.name().to_owned()),
+        "the service did not report running: {}",
+        said(&mut child)
+    );
+    let (address, credential) = where_it_serves(&root.path().join("state"));
+    let answer = ask(&address, &credential);
+    assert!(
+        answer.contains("HTTP/1.1 200"),
+        "the service did not admit the plaintext credential it was configured with:\n{answer}"
+    );
+
+    let mut stdin = child.stdin.take().expect("the fixture's stop control");
+    writeln!(stdin, "stop").expect("the stop control is sent");
+    drop(stdin);
+    let status = exits_within(&mut child, SETTLES_WITHIN);
+    let said = said(&mut child);
+    assert_eq!(
+        status.code(),
+        Some(i32::from(Exit::Success.status())),
+        "{said}"
+    );
+    assert!(
+        said.contains("printobserver: warning:") && said.contains("`api.credential`"),
+        "the start under a plaintext credential did not warn: {said}"
+    );
+}
+
 /// The console form of `printobserver server` on Windows — what runs whenever
 /// the service control manager did not start it — stops the way a console
 /// process is asked to: on `CTRL_BREAK`, it shuts the server down and exits
@@ -555,16 +615,7 @@ fn the_console_server_stops_cleanly_on_a_console_break() {
     let root = TempDir::new().expect("the tier's own root");
     let octoprint = format!("http://{}", answering_host());
     let configuration = configuration(root.path(), &octoprint);
-    let mut document: toml::Value =
-        toml::from_str(&std::fs::read_to_string(&configuration).expect("the configuration reads"))
-            .expect("the configuration is a document");
-    let mut api = toml::Table::new();
-    api.insert(
-        "credential".to_owned(),
-        toml::Value::String(CREDENTIAL.to_owned()),
-    );
-    document["api"] = toml::Value::Table(api);
-    std::fs::write(&configuration, document.to_string()).expect("the configuration is writable");
+    with_a_plaintext_credential(&configuration);
 
     let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
         .arg("server")
@@ -590,7 +641,8 @@ fn the_console_server_stops_cleanly_on_a_console_break() {
     std::fs::write(
         &sender,
         format!(
-            "$signature = @'\r\n\
+            "$ErrorActionPreference = 'Stop'\r\n\
+             $signature = @'\r\n\
              [DllImport(\"kernel32.dll\", SetLastError = true)]\r\n\
              public static extern bool FreeConsole();\r\n\
              [DllImport(\"kernel32.dll\", SetLastError = true)]\r\n\
