@@ -1633,6 +1633,18 @@ reason = "The same ground the entries for this rule at `tests/repo-e2e/project.j
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "one sequential read of its instance"
+reason = "Each is one read of the OctoPrint `just octoprint-up` started, made by a journey that acts on the answer before its next step — the job before an upload, the file after it, the job again — through the same blocking helpers every journey of this suite reads that instance with, which `tests/environment.py` gives the reason for. A test of a provisioning script's upload has nothing to overlap, and an async client would be a second client of an instance the product never reaches from here."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "status, answer = call("
+reason = "The one request `upload` makes: a file put on an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before it starts that file. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = 'call(record_url(record), api_key(instance), "/api/version", timeout=5.0)'
 reason = "The first step of the same strictly ordered bring-up the `http.client.HTTPConnection` entry above describes: one blocking question to an OctoPrint this script itself started, on loopback, whose answer decides whether anything else is started at all. The judge reached it through a rename on the line above it; the helper it calls carries the reason for every call through it."

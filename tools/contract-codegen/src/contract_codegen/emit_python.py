@@ -226,11 +226,24 @@ def _declaration(declaration: Declaration) -> list[str]:
             raise TypeError(msg)
 
 
-def _argument(parameter: Parameter) -> str:
-    """One value a generated method takes, as Python declares it."""
+def _argument(parameter: Parameter, identifiers: frozenset[str] = frozenset()) -> str:
+    """One value a generated method takes, as Python declares it.
+
+    An identifier travels as text, and the server describes it as a string; one
+    the contracts declare a type for — a `spool_id` is a `SpoolId` — is
+    declared as that type, so a caller's checker reads which identifier a method
+    takes.
+    """
+    named = pascal(parameter.name)
+    identified = (
+        parameter.name.endswith("_id")
+        and parameter.carried == Scalar("string")
+        and named in identifiers
+    )
+    shape = named if identified else type_name(parameter.carried)
     if parameter.optional:
-        return f"{parameter.name}: {type_name(parameter.carried)} | None = None"
-    return f"{parameter.name}: {type_name(parameter.type)}"
+        return f"{parameter.name}: {shape} | None = None"
+    return f"{parameter.name}: {named if identified else type_name(parameter.type)}"
 
 
 #: The directive every generated call through the published client carries.
@@ -280,10 +293,10 @@ def _target(operation: Operation) -> str:
     return path
 
 
-def _method(operation: Operation) -> list[str]:
+def _method(operation: Operation, identifiers: frozenset[str] = frozenset()) -> list[str]:
     """One operation, as the Python client's own method."""
     supplied = operation.supplied()
-    arguments = ", ".join(["self", *(_argument(parameter) for parameter in supplied)])
+    arguments = ", ".join(["self", *(_argument(parameter, identifiers) for parameter in supplied)])
     lines = [f"    # {NAME_DIRECTIVE}"] if operation.name in NAMED_FOR_WHAT_IS_ASKED else []
     spelled = method_name(operation.name, "python")
     lines.append(f"    def {spelled}({arguments}) -> {operation.answer}:")
@@ -500,8 +513,15 @@ def emit(contract: Contract) -> str:
         )
     )
     lines.append("")
+    # The identifiers the contracts declare a type of their own for, which a
+    # method taking one declares it as.
+    identifiers = frozenset(
+        declaration.name
+        for declaration in contract.declarations
+        if isinstance(declaration, Alias) and declaration.name.endswith("Id")
+    )
     for operation in contract.operations:
-        lines.extend(_method(operation))
+        lines.extend(_method(operation, identifiers))
         lines.append("")
     return "\n".join(lines) + "\n"
 

@@ -187,25 +187,25 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
     if not isinstance(answered, dict):
         msg = f"`{operation.name}` answers something a refusal cannot be built from"
         raise ExampleError(msg)
-    record = answered.get("record")
-    if isinstance(record, dict):
-        return {
-            **answered,
-            "record": {
-                **record,
-                "decision": {
-                    "rejected": {
-                        "out_of_bounds": {
-                            "adjustable": value_of(Ref("Adjustable"), contract),
-                            "requested": NUMBER,
-                            "allowed": {"min": 0.5, "max": 1.25},
+    match answered:
+        case {"record": dict() as record}:
+            return {
+                **answered,
+                "record": {
+                    **record,
+                    "decision": {
+                        "rejected": {
+                            "out_of_bounds": {
+                                "adjustable": value_of(Ref("Adjustable"), contract),
+                                "requested": NUMBER,
+                                "allowed": {"min": 0.5, "max": 1.25},
+                            }
                         }
-                    }
+                    },
                 },
-            },
-        }
-    if "decision" in answered:
-        return {**answered, "decision": {"rejected": {"spool_refused": {"detail": TEXT}}}}
+            }
+        case {"decision": _}:
+            return {**answered, "decision": {"rejected": {"spool_refused": {"detail": TEXT}}}}
     msg = f"`{operation.name}` answers no record and no decision for a refusal to be taken on"
     raise ExampleError(msg)
 

@@ -702,23 +702,24 @@ def _live_argument(parameter: Parameter, token: str) -> str:
     and all: a reference added here would be one the compiler immediately
     takes off again, which is a lint of its own.
     """
-    from contract_codegen.walk import WORLD_PREFIX, live_kinds, live_text
+    from contract_codegen.walk import Absent, FromWorld, Kinds, Text, parsed
 
-    if token == ABSENT:
-        return "None"
-    text = live_text(token)
-    kinds = live_kinds(token)
-    if parameter.optional:
-        if text is not None:
+    match parsed(token):
+        case Absent():
+            return "None"
+        case Text(text) if parameter.optional:
             return f"Some({json.dumps(text)}.to_owned())"
-        if kinds is not None:
+        case Text(text):
+            return json.dumps(text)
+        case Kinds(kinds):
             listed = ", ".join(f"{json.dumps(kind)}.to_owned()" for kind in kinds)
-            return f"Some(vec![{listed}])"
-        if token.startswith(WORLD_PREFIX):
-            return f"Some({token}.clone())"
+            return f"Some(vec![{listed}])" if parameter.optional else f"vec![{listed}]"
+        case FromWorld(attribute) if parameter.optional:
+            return f"Some(world.{attribute}.clone())"
+        case _:
+            pass
+    if parameter.optional:
         return f"Some({LIVE_TOKENS.get(token, token)})"
-    if text is not None:
-        return json.dumps(text)
     written = LIVE_TOKENS.get(token, token)
     if token not in LIVE_TOKENS and isinstance(parameter.carried, Ref):
         return f"&{written}"

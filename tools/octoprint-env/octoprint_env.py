@@ -45,9 +45,10 @@ import subprocess
 import sys
 import time
 import urllib.parse
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, TypedDict
 
 import yaml
 
@@ -889,7 +890,14 @@ def hold_print(instance: Instance, url: str, timeout: float) -> str:
     )
 
 
-def upload(instance: Instance, gcode: Path, as_name: str | None) -> dict[str, Any]:
+class Uploaded(TypedDict):
+    """What `upload` answers: the name the file has on the instance, and where."""
+
+    file_name: str
+    origin: str
+
+
+def upload(instance: Instance, gcode: Path, as_name: str | None) -> Uploaded:
     """Put one G-code file on the running instance, selecting and starting nothing.
 
     What a journey needs that the hold print is not: a file it names itself,
@@ -907,6 +915,7 @@ def upload(instance: Instance, gcode: Path, as_name: str | None) -> dict[str, An
         )
     name = as_name or gcode.name
     body, content_type = multipart({}, name, gcode.read_bytes())
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     status, answer = call(
         record_url(record),
         api_key(instance),
@@ -921,7 +930,7 @@ def upload(instance: Instance, gcode: Path, as_name: str | None) -> dict[str, An
             "upload-refused", f"uploading {name} was refused with {status}: {answer}"
         )
     note(f"{name} is uploaded, and nothing is printing it")
-    return {"file_name": name, "origin": "local"}
+    return Uploaded(file_name=name, origin="local")
 
 
 def stop(instance: Instance) -> dict[str, Any]:
@@ -1246,19 +1255,25 @@ def main(argv: list[str] | None = None) -> int:
     try:
         connection = connection_of(arguments)
         instance = Instance(Path(arguments.state_dir), connection)
-        if arguments.command == "install":
-            install(instance)
-            answer = summarize_install(instance)
-        elif arguments.command == "down":
-            answer = stop(instance)
-        elif arguments.command == "upload":
-            if not arguments.file:
-                raise StartupError("upload-refused", "`upload` needs the file, named with `--file`")
-            answer = upload(instance, Path(arguments.file), arguments.as_name)
-        else:
-            printing = connection.is_virtual if arguments.printing is None else arguments.printing
-            port = None if str(arguments.port) == "auto" else int(arguments.port)
-            answer = up(instance, port, printing=printing, timeout=arguments.start_timeout)
+        answer: Mapping[str, object]
+        match arguments.command:
+            case "install":
+                install(instance)
+                answer = summarize_install(instance)
+            case "down":
+                answer = stop(instance)
+            case "upload":
+                if not arguments.file:
+                    raise StartupError(
+                        "upload-refused", "`upload` needs the file, named with `--file`"
+                    )
+                answer = upload(instance, Path(arguments.file), arguments.as_name)
+            case _:
+                printing = (
+                    connection.is_virtual if arguments.printing is None else arguments.printing
+                )
+                port = None if str(arguments.port) == "auto" else int(arguments.port)
+                answer = up(instance, port, printing=printing, timeout=arguments.start_timeout)
     except StartupError as failure:
         print(f"octoprint-env: failed: {failure.failure_class}", file=sys.stderr)
         print(f"  what happened: {failure.detail}", file=sys.stderr)

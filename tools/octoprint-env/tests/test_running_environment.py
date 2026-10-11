@@ -106,6 +106,7 @@ def test_a_file_uploaded_to_the_running_instance_is_held_and_printed_by_nothing(
     """`upload` puts a named file on the instance and leaves the job as it was."""
     url = str(brought_up["url"])
     key = key_from_record(brought_up)
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of its instance
     before = job_state(url, key)
     gcode = tmp_path / "anything.gcode"
     gcode.write_text("G21\nG91\nG1 X1 E1 F600\nG4 S1\n", encoding="utf-8")
@@ -122,9 +123,12 @@ def test_a_file_uploaded_to_the_running_instance_is_held_and_printed_by_nothing(
 
     equal(result.returncode, 0, describing=f"the upload: {result.stderr}")
     equal(answer(result)["file_name"], "an-upload-the-tier-made.gcode")
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of its instance
     status, held = api(url, "/api/files/local/an-upload-the-tier-made.gcode", key)
     equal(status, 200, describing=f"the uploaded file read back: {held}")
-    equal(job_state(url, key), before, describing="the job, which an upload leaves alone")
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of its instance
+    after = job_state(url, key)
+    equal(after, before, describing="the job, which an upload leaves alone")
 
 
 def test_the_instance_reports_a_connected_printer(brought_up: dict[str, Any]) -> None:

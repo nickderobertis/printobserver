@@ -31,6 +31,7 @@ from printobserver_sdk.contract import (
     Actor,
     GeneratedClient,
     Range,
+    RejectionReason,
     RejectionReasonOutOfBoundsPayload,
     SpoolCommandAnswer,
 )
@@ -170,21 +171,18 @@ def _rejection(status: int, said: str) -> Exception:
     # An action's answer carries its decision in its record; a spool command's
     # carries it at the top.
     answer: ActionAnswer | SpoolCommandAnswer
-    if isinstance(document, dict) and "record" in document:
-        action = cast(ActionAnswer, document)
-        decision = action["record"]["decision"]
-        answer = action
-    else:
-        command = cast(SpoolCommandAnswer, document)
-        decision = command["decision"]
-        answer = command
-    if not isinstance(decision, dict) or "rejected" not in decision:
-        return UnreadableError(
-            status,
-            "the supervisor refused this action and answered a record whose decision "
-            "is not a refusal",
-        )
-    reason = decision["rejected"]
+    match document:
+        case {"record": {"decision": {"rejected": refused}}}:
+            answer = cast(ActionAnswer, document)
+        case {"decision": {"rejected": refused}}:
+            answer = cast(SpoolCommandAnswer, document)
+        case _:
+            return UnreadableError(
+                status,
+                "the supervisor refused this action and answered a record whose decision "
+                "is not a refusal",
+            )
+    reason = cast(RejectionReason, refused)
     requested: float | None = None
     allowed: Range | None = None
     if isinstance(reason, dict) and "out_of_bounds" in reason:

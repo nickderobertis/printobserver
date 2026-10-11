@@ -418,14 +418,74 @@ def rejected_live(contract: Contract) -> tuple[LiveStep, ...]:
     return tuple(step for step in plan_live(contract) if step.operation.rejectable)
 
 
-#: The prefix of a token standing for text, which `LIVE_TEXT` spells.
-TEXT_PREFIX = "text:"
-
-#: The prefix of a token standing for a list of timeline kinds.
-KINDS_PREFIX = "kinds:"
-
 #: The prefix of a token naming a value the world the walk runs in carries.
 WORLD_PREFIX = "world."
+
+
+@dataclass(frozen=True, slots=True)
+class FromWorld:
+    """A value the world the walk runs in carries, by its attribute's name."""
+
+    attribute: str
+
+
+@dataclass(frozen=True, slots=True)
+class Text:
+    """A string, which every emitter writes in its own language."""
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class Kinds:
+    """A list of timeline kinds, sent once per kind."""
+
+    kinds: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Flag:
+    """True or false."""
+
+    value: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Absent:
+    """A value left out: neither the target nor the body carries it."""
+
+
+@dataclass(frozen=True, slots=True)
+class Written:
+    """Anything else, which an emitter writes out through its own table."""
+
+    token: str
+
+
+#: What one token of the real walk is, once it is read.
+Token = FromWorld | Text | Kinds | Flag | Absent | Written
+
+
+def parsed(token: str) -> Token:
+    """What one token of `LIVE_VALUES` stands for, read once.
+
+    The table spells its values as text so that every emitter can key its own
+    rendering on one string; this is the one place that text is read for what
+    it is.
+    """
+    if token == ABSENT:
+        return Absent()
+    if token.startswith(WORLD_PREFIX):
+        return FromWorld(token.removeprefix(WORLD_PREFIX))
+    match token.split(":", 1):
+        case ["text", named]:
+            return Text(LIVE_TEXT[named])
+        case ["kinds", listed]:
+            return Kinds(tuple(listed.split(",")))
+        case ["bool", "true" | "false" as said]:
+            return Flag(said == "true")
+        case _:
+            return Written(token)
 
 
 class Asked(NamedTuple):
@@ -449,34 +509,37 @@ def live_query(step: LiveStep) -> tuple[Asked, ...]:
     """
     found: list[Asked] = []
     for parameter, token in step.arguments:
-        if parameter.located != "query" or token == ABSENT:
+        if parameter.located != "query":
             continue
-        if token.startswith(WORLD_PREFIX):
-            found.append(Asked(parameter.name, token.removeprefix(WORLD_PREFIX), ""))
-        elif token.startswith(KINDS_PREFIX):
-            found.extend(
-                Asked(parameter.name, "", quote(kind, safe=""))
-                for kind in token.removeprefix(KINDS_PREFIX).split(",")
-            )
-        elif token.startswith(TEXT_PREFIX):
-            text = LIVE_TEXT[token.removeprefix(TEXT_PREFIX)]
-            found.append(Asked(parameter.name, "", quote(text, safe="")))
-        elif token.startswith("bool:"):
-            found.append(Asked(parameter.name, "", token.removeprefix("bool:")))
-        else:
-            found.append(Asked(parameter.name, "", token))
+        match parsed(token):
+            case Absent():
+                continue
+            case FromWorld(attribute):
+                found.append(Asked(parameter.name, attribute, ""))
+            case Kinds(kinds):
+                found.extend(Asked(parameter.name, "", quote(kind, safe="")) for kind in kinds)
+            case Text(text):
+                found.append(Asked(parameter.name, "", quote(text, safe="")))
+            case Flag(value):
+                found.append(Asked(parameter.name, "", "true" if value else "false"))
+            case Written(written):
+                found.append(Asked(parameter.name, "", written))
     return tuple(found)
 
 
 def live_text(token: str) -> str | None:
     """The text a `text:` token stands for, or `None` for any other token."""
-    if token.startswith(TEXT_PREFIX):
-        return LIVE_TEXT[token.removeprefix(TEXT_PREFIX)]
-    return None
+    match parsed(token):
+        case Text(text):
+            return text
+        case _:
+            return None
 
 
 def live_kinds(token: str) -> list[str] | None:
     """The kinds a `kinds:` token stands for, or `None` for any other token."""
-    if token.startswith(KINDS_PREFIX):
-        return token.removeprefix(KINDS_PREFIX).split(",")
-    return None
+    match parsed(token):
+        case Kinds(kinds):
+            return list(kinds)
+        case _:
+            return None

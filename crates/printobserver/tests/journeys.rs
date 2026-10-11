@@ -145,6 +145,29 @@ fn the_listing_and_a_refused_start_say_what_each_spool_holds() {
     spooling::the_listing_and_the_start_say_what_each_spool_holds(&world);
 }
 
+/// `printobserver server` says when it started without accounting the prints
+/// the printer counted while nothing watched, because the printer's file list
+/// could not be read — and serves.
+///
+/// The machine this tier stands in answers that read with a document it cannot
+/// be read from, so every world here starts this way.
+#[test]
+fn the_server_says_it_skipped_the_tallies_it_could_not_read_and_serves() {
+    let world = World::open(world::STOOD_IN);
+
+    let said = world.said_so_far();
+    assert!(
+        said.contains("printobserver: the printer could not be read")
+            && said.contains("were not accounted on this start"),
+        "the server did not say it skipped the accounting: {said}"
+    );
+    assert_eq!(
+        running::read(&world, &["prints"])["active"],
+        printobserver_types::serde_json::json!(world.print_id()),
+        "the server that skipped the accounting does not serve"
+    );
+}
+
 /// Every command example the reference documents show, run against a real
 /// supervisor and compared with what the document shows beside it.
 ///

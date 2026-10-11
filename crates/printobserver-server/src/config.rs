@@ -1313,7 +1313,7 @@ fn spool_policy(section: &SpoolsSection) -> Result<SpoolPolicy, ConfigError> {
             ));
         }
     };
-    let grams = |field: ConfigField, value: Option<f64>, default: f64| match value {
+    let margin = |field: ConfigField, value: Option<f64>, default: f64| match value {
         None => Ok(default),
         Some(value) if value.is_finite() && value >= 0.0 => Ok(value),
         Some(_) => Err(ConfigError::about(
@@ -1322,12 +1322,12 @@ fn spool_policy(section: &SpoolsSection) -> Result<SpoolPolicy, ConfigError> {
              than the print needs",
         )),
     };
-    let buffer_percent = grams(
+    let buffer_percent = margin(
         ConfigField::SpoolsBufferPercent,
         section.buffer_percent,
         defaults.buffer_percent,
     )?;
-    let buffer_min_g = grams(
+    let buffer_min_g = margin(
         ConfigField::SpoolsBufferMinG,
         section.buffer_min_g,
         defaults.buffer_min_g,

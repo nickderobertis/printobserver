@@ -2747,7 +2747,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(PrintsAnswer, answered)
 
-    def status(self, print_id: str) -> StatusAnswer:
+    def status(self, print_id: PrintId) -> StatusAnswer:
         """Call `status` on the configured supervisor.
 
         Raises:
@@ -2767,7 +2767,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(StatusAnswer, answered)
 
-    def context(self, print_id: str) -> ContextAnswer:
+    def context(self, print_id: PrintId) -> ContextAnswer:
         """Call `context` on the configured supervisor.
 
         Raises:
@@ -2787,7 +2787,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ContextAnswer, answered)
 
-    def image(self, image_id: str) -> ImageAnswer:
+    def image(self, image_id: ImageId) -> ImageAnswer:
         """Call `image` on the configured supervisor.
 
         Raises:
@@ -2807,7 +2807,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ImageAnswer, answered)
 
-    def history(self, print_id: str, limit: int | None = None) -> HistoryAnswer:
+    def history(self, print_id: PrintId, limit: int | None = None) -> HistoryAnswer:
         """Call `history` on the configured supervisor.
 
         Raises:
@@ -2829,7 +2829,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(HistoryAnswer, answered)
 
-    def manifest_get(self, print_id: str) -> ManifestAnswer:
+    def manifest_get(self, print_id: PrintId) -> ManifestAnswer:
         """Call `manifest_get` on the configured supervisor.
 
         Raises:
@@ -2849,7 +2849,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ManifestAnswer, answered)
 
-    def look(self, print_id: str, wait_s: int | None = None) -> Look:
+    def look(self, print_id: PrintId, wait_s: int | None = None) -> Look:
         """Call `look` on the configured supervisor.
 
         Raises:
@@ -2871,7 +2871,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(Look, answered)
 
-    def manifest_set(self, print_id: str, reason: str, manifest: JobManifest) -> ManifestAnswer:
+    def manifest_set(self, print_id: PrintId, reason: str, manifest: JobManifest) -> ManifestAnswer:
         """Call `manifest_set` on the configured supervisor.
 
         Raises:
@@ -2920,7 +2920,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(SpoolsAnswer, answered)
 
-    def spool(self, spool_id: str) -> SpoolAnswer:
+    def spool(self, spool_id: SpoolId) -> SpoolAnswer:
         """Call `spool` on the configured supervisor.
 
         Raises:
@@ -2945,7 +2945,7 @@ class GeneratedClient(GeneratedSurface):
         kinds: list[str] | None = None,
         since: str | None = None,
         until: str | None = None,
-        spool_id: str | None = None,
+        spool_id: SpoolId | None = None,
         before: str | None = None,
         limit: int | None = None,
     ) -> TimelineAnswer:
@@ -3003,7 +3003,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(PreflightAnswer, answered)
 
-    def pause(self, print_id: str, reason: str) -> ActionAnswer:
+    def pause(self, print_id: PrintId, reason: str) -> ActionAnswer:
         """Call `pause` on the configured supervisor.
 
         Raises:
@@ -3030,7 +3030,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
-    def resume(self, print_id: str, reason: str) -> ActionAnswer:
+    def resume(self, print_id: PrintId, reason: str) -> ActionAnswer:
         """Call `resume` on the configured supervisor.
 
         Raises:
@@ -3057,7 +3057,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
 
-    def cancel(self, print_id: str, reason: str) -> ActionAnswer:
+    def cancel(self, print_id: PrintId, reason: str) -> ActionAnswer:
         """Call `cancel` on the configured supervisor.
 
         Raises:
@@ -3086,7 +3086,7 @@ class GeneratedClient(GeneratedSurface):
 
     def start_print(
         self,
-        print_id: str,
+        print_id: PrintId,
         file_name: FileName,
         manifest: JobManifest,
         reason: str,
@@ -3123,7 +3123,7 @@ class GeneratedClient(GeneratedSurface):
         return cast(ActionAnswer, answered)
 
     def set_feedrate_factor(
-        self, print_id: str, factor: float, reason: str, duration_s: int | None = None
+        self, print_id: PrintId, factor: float, reason: str, duration_s: int | None = None
     ) -> ActionAnswer:
         """Call `set_feedrate_factor` on the configured supervisor.
 
@@ -3155,7 +3155,7 @@ class GeneratedClient(GeneratedSurface):
         return cast(ActionAnswer, answered)
 
     def set_flowrate_factor(
-        self, print_id: str, factor: float, reason: str, duration_s: int | None = None
+        self, print_id: PrintId, factor: float, reason: str, duration_s: int | None = None
     ) -> ActionAnswer:
         """Call `set_flowrate_factor` on the configured supervisor.
 
@@ -3187,7 +3187,12 @@ class GeneratedClient(GeneratedSurface):
         return cast(ActionAnswer, answered)
 
     def set_tool_target_c(
-        self, print_id: str, reason: str, target_c: float, tool: int, duration_s: int | None = None
+        self,
+        print_id: PrintId,
+        reason: str,
+        target_c: float,
+        tool: int,
+        duration_s: int | None = None,
     ) -> ActionAnswer:
         """Call `set_tool_target_c` on the configured supervisor.
 
@@ -3220,7 +3225,7 @@ class GeneratedClient(GeneratedSurface):
         return cast(ActionAnswer, answered)
 
     def set_bed_target_c(
-        self, print_id: str, reason: str, target_c: float, duration_s: int | None = None
+        self, print_id: PrintId, reason: str, target_c: float, duration_s: int | None = None
     ) -> ActionAnswer:
         """Call `set_bed_target_c` on the configured supervisor.
 
@@ -3252,7 +3257,7 @@ class GeneratedClient(GeneratedSurface):
         return cast(ActionAnswer, answered)
 
     def set_fan_percent(
-        self, print_id: str, percent: float, reason: str, duration_s: int | None = None
+        self, print_id: PrintId, percent: float, reason: str, duration_s: int | None = None
     ) -> ActionAnswer:
         """Call `set_fan_percent` on the configured supervisor.
 
@@ -3284,7 +3289,11 @@ class GeneratedClient(GeneratedSurface):
         return cast(ActionAnswer, answered)
 
     def acknowledge_failure(
-        self, print_id: str, disposition: AcknowledgementDisposition, event_id: EventId, reason: str
+        self,
+        print_id: PrintId,
+        disposition: AcknowledgementDisposition,
+        event_id: EventId,
+        reason: str,
     ) -> ActionAnswer:
         """Call `acknowledge_failure` on the configured supervisor.
 
@@ -3365,7 +3374,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(SpoolCommandAnswer, answered)
 
-    def load_spool(self, spool_id: str, reason: str, tool: int) -> SpoolCommandAnswer:
+    def load_spool(self, spool_id: SpoolId, reason: str, tool: int) -> SpoolCommandAnswer:
         """Call `load_spool` on the configured supervisor.
 
         Raises:
@@ -3393,7 +3402,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(SpoolCommandAnswer, answered)
 
-    def unload_spool(self, spool_id: str, reason: str) -> SpoolCommandAnswer:
+    def unload_spool(self, spool_id: SpoolId, reason: str) -> SpoolCommandAnswer:
         """Call `unload_spool` on the configured supervisor.
 
         Raises:
@@ -3422,7 +3431,7 @@ class GeneratedClient(GeneratedSurface):
 
     def adjust_spool(
         self,
-        spool_id: str,
+        spool_id: SpoolId,
         reason: str,
         gross_g: float | None = None,
         remaining_g: float | None = None,
@@ -3457,7 +3466,7 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(SpoolCommandAnswer, answered)
 
-    def retire_spool(self, spool_id: str, reason: str) -> SpoolCommandAnswer:
+    def retire_spool(self, spool_id: SpoolId, reason: str) -> SpoolCommandAnswer:
         """Call `retire_spool` on the configured supervisor.
 
         Raises:

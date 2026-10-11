@@ -154,14 +154,15 @@ pub fn about_now(driven: &Driven, world: &World) -> Driven {
 
 /// These arguments, naming the print the world is about now wherever they
 /// name a print, and the spool a retirement is about now; the same reason as
-/// [`about_now`], whose ledger they are put in front of too. A request asked
-/// against the print that ended before the walk, or the spool already
-/// retired, keeps naming that one.
+/// [`about_now`]. A request asked against the print that ended before the
+/// walk, or the spool already retired, keeps naming that one.
+///
+/// It names and does nothing else: a caller about to run them puts the ledger
+/// where their command needs it first, with [`World::ledger_for`].
 #[must_use]
-pub fn naming_the_print_now(arguments: &[String], world: &World) -> Vec<String> {
+pub fn naming_the_print_and_spool_now(arguments: &[String], world: &World) -> Vec<String> {
     let mut now = arguments.to_vec();
     let command = now.first().cloned().unwrap_or_default();
-    world.ledger_for(&command);
     for index in 1..now.len() {
         if now[index - 1] == "--print-id" && !world.is_the_ended_print(&now[index]) {
             now[index] = world.print_id();

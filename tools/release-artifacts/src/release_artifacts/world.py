@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import queue
 import secrets
 import sqlite3
@@ -34,7 +35,7 @@ from types import TracebackType
 from typing import IO, NewType
 from urllib.parse import urlsplit
 
-from repo_checks.shell import start
+from repo_checks.shell import run, start
 
 
 class QuietServer(ThreadingHTTPServer):
@@ -108,6 +109,9 @@ INGRESS_TIMEOUT_SECONDS = 60.0
 #: The API credential a supervisor serves under, as a request presents it.
 Credential = NewType("Credential", str)
 
+#: A spool's identifier, as the supervisor mints and spells one.
+SpoolId = NewType("SpoolId", str)
+
 
 @dataclass(frozen=True, slots=True)
 class Running:
@@ -127,7 +131,7 @@ class Running:
     #: came up, or — where the operator is granted nothing — an identifier no
     #: spool has, which the grant refuses every command about before the
     #: ledger is asked.
-    spool_id: str
+    spool_id: SpoolId
     #: Where its record and its images live.
     state: Path
     #: The file a journey against this world starts a print of.
@@ -551,45 +555,48 @@ class World:
         msg = "the ingress accepted the alert but did not finish preparing its print and image"
         raise WorldError(msg)
 
-    def _register_a_spool(self, server: str) -> str:
-        """Register one spool as the operator, and answer its identifier.
+    def _register_a_spool(self, server: str) -> SpoolId:
+        """Register one spool as the operator, through the program itself.
+
+        The world's own program is the operator's own surface onto the
+        supervisor it just started, so the spool every client then acts on is
+        registered the way an operator registers one.
 
         Raises:
             WorldError: If the supervisor would not register it.
         """
-        import http.client
-
-        # llmlint: ignore[async_typed_clients_at_boundaries] one post in a sequential proof
-        connection = http.client.HTTPConnection(urlsplit(server).netloc, timeout=30)
-        connection.request(
-            "POST",
-            "/v1/spools/actions/register_spool",
-            body=json.dumps(
-                {
-                    "name": "the world's own spool",
-                    "material": "PLA",
-                    "initial_g": 1000.0,
-                    "reason": "a world is setting up a spool for a client to act on",
-                    "actor": "operator",
-                }
-            ),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.credential}",
+        ran = run(
+            [
+                str(self.program),
+                "register-spool",
+                "--name",
+                "the world's own spool",
+                "--material",
+                "PLA",
+                "--initial-g",
+                "1000",
+                "--actor",
+                "operator",
+                "--reason",
+                "a world is setting up a spool for a client to act on",
+                "--json",
+            ],
+            env={
+                **os.environ,
+                "PRINTOBSERVER_SERVER": server,
+                "PRINTOBSERVER_CREDENTIAL": self.credential,
             },
+            timeout=60,
         )
-        answered = connection.getresponse()
-        said = answered.read()
-        connection.close()
         try:
-            spool_id = json.loads(said)["spool"]["id"]
+            spool_id = json.loads(ran.stdout)["spool"]["id"]
         except (ValueError, KeyError, TypeError) as error:
-            msg = f"the supervisor registered no spool ({answered.status}): {said!r}"
+            msg = f"the supervisor registered no spool ({ran.returncode}): {ran.stderr}"
             raise WorldError(msg) from error
         if not isinstance(spool_id, str):
-            msg = f"the supervisor answered a spool with no identifier: {said!r}"
+            msg = f"the supervisor answered a spool with no identifier: {ran.stdout}"
             raise WorldError(msg)
-        return spool_id
+        return SpoolId(spool_id)
 
     def _recorded(self) -> tuple[str, str, str] | None:
         """The print and image, once the ingress has finished observing the printer.
@@ -624,7 +631,7 @@ class World:
         return str(prints[0][0]), str(images[0][0]), str(events[0][0])
 
 
-def unheld_spool_id() -> str:
+def unheld_spool_id() -> SpoolId:
     """A spool identifier no spool has: a version 7 UUID minted now.
 
     It is spelled exactly as this system spells one — lowercase, hyphenated, at
@@ -638,7 +645,7 @@ def unheld_spool_id() -> str:
     value |= ((random >> 64) & 0xFFF) << 64
     value |= 0b10 << 62
     value |= random & ((1 << 62) - 1)
-    return str(uuid.UUID(int=value))
+    return SpoolId(str(uuid.UUID(int=value)))
 
 
 def _as_toml(document: dict[str, object]) -> str:
