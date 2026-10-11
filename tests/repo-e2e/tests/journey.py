@@ -58,8 +58,8 @@ DEBUG_BUILD = pytest.mark.xdist_group("repo-root-debug-build")
 #: The journeys that draft or publish a release with `release-plz` over a copy of
 #: the tree. Drafting runs `cargo-semver-checks`, which builds the rustdoc of
 #: every crate the release changes; two of those beside each other and the
-#: gate's own test tier pushed one past the bound its journey sets on the
-#: program (draft run 38165363260), so the group runs them one at a time.
+#: gate's own test tier push one past the bound its journey sets on the
+#: program, so the group runs them one at a time.
 RELEASE_DRAFTING = pytest.mark.xdist_group("release-plz-drafting")
 
 # What every other journey shares with another running beside it, it only reads

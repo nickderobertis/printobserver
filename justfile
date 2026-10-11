@@ -66,9 +66,8 @@ tool-version TOOL:
 # first, so the gate's two longest tiers overlap. Both are waited out whatever
 # either answers, so a run reports every failure of both, and fails if either
 # failed. On Windows it runs last, as the other tiers do in turn: either tier
-# alone fills a 4-processor Windows runner, so beside each other they only slowed
-# both, and the gate (windows-aarch64) took 84 minutes against 68 in sequence
-# (draft runs 38165363260 and 38159308802), where every other platform gained.
+# alone fills a 4-processor Windows runner, so beside each other they only slow
+# both down, where every other platform's runner has the room to gain.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}

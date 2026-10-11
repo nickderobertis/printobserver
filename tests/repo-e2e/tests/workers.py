@@ -7,11 +7,10 @@ logical processors, bounded by its memory: a journey's heaviest moment is a
 memory has to hold.
 
 On Windows one processor is left to the host. A worker on every processor of a
-4-processor Windows runner kept the host's own services from answering inside
+4-processor Windows runner keeps the host's own services from answering inside
 the deadlines the journeys set on them: OctoPrint's bring-down asks Windows
 which program a process is through a PowerShell CIM query bounded at 30
-seconds, and that query ran past it on the `gate (windows-aarch64)` cell of
-draft run 38172314896.
+seconds.
 
 Free disk is read and reported but bounds nothing: every journey keeps its
 temporary directory until the session ends, so what the tier leaves on disk is
