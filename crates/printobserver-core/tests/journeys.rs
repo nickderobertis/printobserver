@@ -13,6 +13,9 @@ mod journal;
 #[path = "support/fakes.rs"]
 mod fakes;
 
+#[path = "support/ledger.rs"]
+mod ledger;
+
 #[path = "support/source.rs"]
 mod source;
 

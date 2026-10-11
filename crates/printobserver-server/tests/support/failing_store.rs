@@ -14,17 +14,21 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use printobserver_core::store::{
-    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
-    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, Stores,
+    ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
+    FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
+    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery,
+    TimelineStore,
 };
 use printobserver_core::{
-    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
-    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
-    PrintRecord,
+    ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
+    Intervention, InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing,
+    PendingCharge, PolicyDecision, PrintOutcome, PrintRecord, SpoolId, SpoolRecord,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSession;
-use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
+use printobserver_types::{
+    EventId, EventRecord, EventSource, ImageId, PrintId, RawBytes, Timestamp,
+};
 
 /// What the store says when it has failed.
 pub const DETAIL: &str = "the disk is full";
@@ -248,6 +252,110 @@ impl SessionStore for FailingStore {
         &self,
         _print_id: PrintId,
     ) -> BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>> {
+        failed()
+    }
+}
+
+impl FilamentStore for FailingStore {
+    fn register_spool(
+        &self,
+        _spool: NewSpool,
+        _source: EventSource,
+        _actor: Actor,
+        _reason: String,
+    ) -> BoxFuture<'_, Result<(SpoolRecord, EventRecord), StoreError>> {
+        failed()
+    }
+
+    fn apply_spool_changes(
+        &self,
+        _mutations: Vec<SpoolMutation>,
+        _charges: Vec<Charge>,
+        _pends: Vec<Pend>,
+    ) -> BoxFuture<'_, Result<SpoolWrite, StoreError>> {
+        failed()
+    }
+
+    fn settle_print(
+        &self,
+        _print_id: PrintId,
+        _outcome: PrintOutcome,
+        _ended: EventDraft,
+        _charges: Vec<Charge>,
+        _pends: Vec<Pend>,
+        _marks: Vec<SpoolMutation>,
+    ) -> BoxFuture<'_, Result<Settlement, StoreError>> {
+        failed()
+    }
+
+    fn print_settlement(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<(Timestamp, PrintOutcome)>, StoreError>> {
+        failed()
+    }
+
+    fn charges(&self, _print_id: PrintId) -> BoxFuture<'_, Result<Vec<ChargeRecord>, StoreError>> {
+        failed()
+    }
+
+    fn pending_charges(
+        &self,
+        _tool: Option<i64>,
+    ) -> BoxFuture<'_, Result<Vec<PendingCharge>, StoreError>> {
+        failed()
+    }
+
+    fn spool(&self, _id: SpoolId) -> BoxFuture<'_, Result<Option<SpoolRecord>, StoreError>> {
+        failed()
+    }
+
+    fn spools(
+        &self,
+        _include_retired: bool,
+    ) -> BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>> {
+        failed()
+    }
+
+    fn loaded_spools(&self) -> BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>> {
+        failed()
+    }
+
+    fn record_file_position(
+        &self,
+        _print_id: PrintId,
+        _position: FilePosition,
+    ) -> BoxFuture<'_, Result<(), StoreError>> {
+        failed()
+    }
+
+    fn file_position(
+        &self,
+        _print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<FilePosition>, StoreError>> {
+        failed()
+    }
+
+    fn file_tallies(&self) -> BoxFuture<'_, Result<Vec<FileTally>, StoreError>> {
+        failed()
+    }
+
+    fn account_tallies(
+        &self,
+        _tallies: Vec<FileTally>,
+        _charges: Vec<Charge>,
+        _marks: Vec<SpoolMutation>,
+        _events: Vec<EventDraft>,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        failed()
+    }
+}
+
+impl TimelineStore for FailingStore {
+    fn timeline(
+        &self,
+        _query: TimelineQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
         failed()
     }
 }

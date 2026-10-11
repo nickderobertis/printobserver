@@ -17,13 +17,15 @@ use crate::declarations::{
     public_functions, trait_method_docs, trait_methods,
 };
 
-/// The five traits, in the order the module declares them.
-const TRAITS: [&str; 5] = [
+/// The seven traits, in the order the module declares them.
+const TRAITS: [&str; 7] = [
     "PrintStore",
     "EventStore",
     "ImageStore",
     "ActionStore",
     "SessionStore",
+    "FilamentStore",
+    "TimelineStore",
 ];
 
 /// The `store` module's own source.
@@ -252,6 +254,107 @@ fn stated_session_methods() -> Vec<Method> {
     ]
 }
 
+/// The filament ledger's stated methods.
+fn stated_filament_methods() -> Vec<Method> {
+    vec![
+        method(
+            "register_spool",
+            &[
+                ("spool", "NewSpool"),
+                ("source", "EventSource"),
+                ("actor", "Actor"),
+                ("reason", "String"),
+            ],
+            "BoxFuture<'_,Result<(SpoolRecord,EventRecord),StoreError>>",
+        ),
+        method(
+            "apply_spool_changes",
+            &[
+                ("changes", "Vec<SpoolMutation>"),
+                ("charges", "Vec<Charge>"),
+                ("pends", "Vec<Pend>"),
+            ],
+            "BoxFuture<'_,Result<SpoolWrite,StoreError>>",
+        ),
+        method(
+            "settle_print",
+            &[
+                ("print_id", "PrintId"),
+                ("outcome", "PrintOutcome"),
+                ("ended", "EventDraft"),
+                ("charges", "Vec<Charge>"),
+                ("pends", "Vec<Pend>"),
+                ("marks", "Vec<SpoolMutation>"),
+            ],
+            "BoxFuture<'_,Result<Settlement,StoreError>>",
+        ),
+        method(
+            "print_settlement",
+            &[("print_id", "PrintId")],
+            "BoxFuture<'_,Result<Option<(Timestamp,PrintOutcome)>,StoreError>>",
+        ),
+        method(
+            "charges",
+            &[("print_id", "PrintId")],
+            "BoxFuture<'_,Result<Vec<ChargeRecord>,StoreError>>",
+        ),
+        method(
+            "pending_charges",
+            &[("tool", "Option<i64>")],
+            "BoxFuture<'_,Result<Vec<PendingCharge>,StoreError>>",
+        ),
+        method(
+            "spool",
+            &[("id", "SpoolId")],
+            "BoxFuture<'_,Result<Option<SpoolRecord>,StoreError>>",
+        ),
+        method(
+            "spools",
+            &[("include_retired", "bool")],
+            "BoxFuture<'_,Result<Vec<SpoolRecord>,StoreError>>",
+        ),
+        method(
+            "loaded_spools",
+            &[],
+            "BoxFuture<'_,Result<Vec<SpoolRecord>,StoreError>>",
+        ),
+        method(
+            "record_file_position",
+            &[("print_id", "PrintId"), ("position", "FilePosition")],
+            "BoxFuture<'_,Result<(),StoreError>>",
+        ),
+        method(
+            "file_position",
+            &[("print_id", "PrintId")],
+            "BoxFuture<'_,Result<Option<FilePosition>,StoreError>>",
+        ),
+        method(
+            "file_tallies",
+            &[],
+            "BoxFuture<'_,Result<Vec<FileTally>,StoreError>>",
+        ),
+        method(
+            "account_tallies",
+            &[
+                ("tallies", "Vec<FileTally>"),
+                ("charges", "Vec<Charge>"),
+                ("marks", "Vec<SpoolMutation>"),
+                ("events", "Vec<EventDraft>"),
+            ],
+            "BoxFuture<'_,Result<Vec<EventRecord>,StoreError>>",
+        ),
+    ]
+}
+
+/// The timeline's stated method.
+fn stated_timeline_methods() -> Vec<Method> {
+    vec![method(
+        "timeline",
+        &[("query", "TimelineQuery")],
+        "BoxFuture<'_,Result<Vec<EventRecord>,StoreError>>",
+    )]
+}
+
 /// Every method each store trait is stated to declare, and no other.
 #[test]
 fn each_store_trait_declares_exactly_the_stated_methods() {
@@ -262,6 +365,8 @@ fn each_store_trait_declares_exactly_the_stated_methods() {
         stated_image_methods(),
         stated_action_methods(),
         stated_session_methods(),
+        stated_filament_methods(),
+        stated_timeline_methods(),
     ];
     for (name, expected) in TRAITS.iter().zip(stated) {
         assert_eq!(trait_methods(&source, name), expected, "{name}");
@@ -275,10 +380,17 @@ fn each_store_trait_declares_exactly_the_stated_methods() {
 /// each of the other four. Identifiers are the exception — a method takes the
 /// identifier of a record another aggregate holds in order to relate to it —
 /// so a type that is an identifier is not a record of the aggregate it names.
+///
+/// The filament ledger and the timeline are held to this only as the
+/// aggregates others may not reach into, not as ones that may reach into none:
+/// the ledger takes the drafts of its own events and answers them, because a
+/// spool, its charge and the event that says so are one transaction, and the
+/// timeline is a reading of the event log by definition.
 #[test]
 fn no_trait_acts_on_another_traits_aggregate() {
     let source = parse(&store_source());
-    let records: [(&str, &[&str]); 5] = [
+    let reaching_into_the_log = ["FilamentStore", "TimelineStore"];
+    let records: [(&str, &[&str]); 7] = [
         (
             "PrintStore",
             &["PrintRecord", "JobManifest", "ManifestNarrowing"],
@@ -301,9 +413,27 @@ fn no_trait_acts_on_another_traits_aggregate() {
             ],
         ),
         ("SessionStore", &["SupervisionSession"]),
+        (
+            "FilamentStore",
+            &[
+                "NewSpool",
+                "SpoolRecord",
+                "Charge",
+                "Pend",
+                "SpoolMutation",
+                "SpoolWrite",
+                "Settlement",
+                "FilePosition",
+                "FileTally",
+            ],
+        ),
+        ("TimelineStore", &["TimelineQuery"]),
     ];
     let mut checked = 0_usize;
     for (own, _) in records {
+        if reaching_into_the_log.contains(&own) {
+            continue;
+        }
         for declared in trait_methods(&source, own) {
             let mentioned: Vec<String> = declared
                 .params

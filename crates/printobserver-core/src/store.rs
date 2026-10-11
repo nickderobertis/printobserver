@@ -14,8 +14,12 @@
 //! * [`ImageStore`] — the images stored beside events.
 //! * [`ActionStore`] — actions, and the bounded interventions they open.
 //! * [`SessionStore`] — the supervision session of a print.
+//! * [`FilamentStore`] — the filament ledger: spools, the charges against them,
+//!   the charges held for a spool not yet named, each print's settlement and
+//!   last file position, and the printer's per-file print tallies.
+//! * [`TimelineStore`] — the printer-wide reading of the event log.
 //!
-//! An implementation implements all five over one backing, and the composition
+//! An implementation implements all seven over one backing, and the composition
 //! root hands each consumer the trait it names: [`Stores`] is one
 //! implementation coerced once per trait, which is what lets a consumer take
 //! `Arc<dyn EventStore>` without knowing which store is behind it.
@@ -69,9 +73,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::records::{
-    ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
-    InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing, PolicyDecision,
-    PrintRecord,
+    ActionId, ActionRecord, ActionRequest, Actor, ChargeKey, ExecutionOutcome, FilePosition,
+    ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing,
+    PendingCharge, PolicyDecision, PrintOutcome, PrintRecord, SpoolId, SpoolRecord, SpoolTrust,
+    UnverifiedReason, UnverifiedReasonKind,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSession;
@@ -515,11 +520,479 @@ pub trait SessionStore: Send + Sync {
     ) -> BoxFuture<'_, Result<Option<SupervisionSession>, StoreError>>;
 }
 
+/// A spool on its way into the store, before the store mints its identifier.
+///
+/// A [`SpoolRecord`] without the three fields the store sets itself: its `id`,
+/// minted; its `updated_at`, which is `registered_at`; and its `retired_at`,
+/// which is absent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewSpool {
+    /// The operator's own label for the spool.
+    pub name: String,
+    /// The material, such as `PLA`.
+    pub material: String,
+    /// The filament's colour, when the operator gave one.
+    pub color: Option<String>,
+    /// The filament's diameter, in millimetres.
+    pub diameter_mm: f64,
+    /// The material's density, in grams per cubic centimetre.
+    pub density_g_cm3: f64,
+    /// The net filament on the spool when it was full, in grams.
+    pub initial_g: f64,
+    /// The filament left, in grams.
+    pub remaining_g: f64,
+    /// The empty spool's own weight, in grams, when the operator gave it.
+    pub tare_g: Option<f64>,
+    /// The tool the spool is loaded on, when it is registered loaded.
+    pub loaded_on_tool: Option<i64>,
+    /// How far the remaining figure can be trusted.
+    pub trust: SpoolTrust,
+    /// When the spool was registered.
+    pub registered_at: Timestamp,
+}
+
+/// One debit on its way into the store.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Charge {
+    /// The durable identity of the debit.
+    pub key: ChargeKey,
+    /// The tool that fed the filament, in the printer's own numbering.
+    pub tool: i64,
+    /// The print it was fed in, when it was fed in one this system recorded.
+    pub print_id: Option<PrintId>,
+    /// The spool charged; absent when nothing was tracked on the tool, and the
+    /// filament is recorded uncharged.
+    pub spool_id: Option<SpoolId>,
+    /// How much was fed, in millimetres.
+    pub length_mm: f64,
+    /// What that weighs, in grams; what is subtracted from the spool.
+    pub grams: Option<f64>,
+    /// When the charge was taken.
+    pub at: Timestamp,
+    /// Its `filament_consumed` event.
+    pub event: EventDraft,
+}
+
+/// What the store holds of one debit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChargeRecord {
+    /// The durable identity of the debit.
+    pub key: ChargeKey,
+    /// The tool that fed the filament, in the printer's own numbering.
+    pub tool: i64,
+    /// The print it was fed in, when it was fed in one this system recorded.
+    pub print_id: Option<PrintId>,
+    /// The spool charged; absent when the filament was recorded uncharged.
+    pub spool_id: Option<SpoolId>,
+    /// How much was fed, in millimetres.
+    pub length_mm: f64,
+    /// What that weighs, in grams.
+    pub grams: Option<f64>,
+    /// When the charge was taken.
+    pub at: Timestamp,
+    /// Its `filament_consumed` event.
+    pub event_id: EventId,
+}
+
+/// A charge held for a spool not yet named, on its way into the store.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pend {
+    /// What is held.
+    pub pending: PendingCharge,
+    /// Its `charge_pended` event.
+    pub event: EventDraft,
+}
+
+/// One change to one spool, on its way into the store.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpoolMutation {
+    /// The spool changed.
+    pub spool_id: SpoolId,
+    /// What changes.
+    pub change: SpoolChange,
+    /// When it changed; the spool's `updated_at` once it has.
+    pub at: Timestamp,
+    /// Its event. Written whenever the change is, except for the two changes
+    /// whose own entries below say they write none.
+    pub event: EventDraft,
+}
+
+/// What one [`SpoolMutation`] changes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpoolChange {
+    /// Put the spool on a tool.
+    Load {
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// Take the spool off its tool.
+    Unload,
+    /// Set the spool's remaining figure, which clears every mark: the spool
+    /// reads `verified` after it.
+    SetRemaining {
+        /// The filament left, in grams.
+        remaining_g: f64,
+    },
+    /// Add one mark, by [`SpoolTrust::marked`], at the mutation's instant. A
+    /// reason the spool already holds adds nothing and writes no second
+    /// `spool_unverified` event.
+    MarkUnverified {
+        /// Why the figure is in doubt.
+        reason: UnverifiedReason,
+    },
+    /// Remove every mark of these kinds, by [`SpoolTrust::cleared`]. The
+    /// domain chooses the kinds through
+    /// [`marks_cleared_by`](crate::filament::marks_cleared_by), and the marks
+    /// cleared are named in the command's own event, so this change writes no
+    /// event of its own: the mutation's `event` is not written.
+    ClearMarks {
+        /// The kinds of mark removed.
+        kinds: Vec<UnverifiedReasonKind>,
+    },
+    /// Retire the spool.
+    Retire,
+}
+
+/// What one [`FilamentStore::apply_spool_changes`] wrote.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpoolWrite {
+    /// Every spool a charge or a mutation named, as the write left it, once
+    /// each, in the order it was first named.
+    pub spools: Vec<SpoolRecord>,
+    /// Every event the write appended, in the order it appended them.
+    pub events: Vec<EventRecord>,
+    /// One record per charge submitted, in the order submitted: the one this
+    /// write recorded, or, for a replay, the one already recorded.
+    pub charges: Vec<ChargeRecord>,
+    /// Every charge this write held; a replayed pend is not among them.
+    pub pending: Vec<PendingCharge>,
+}
+
+/// What settling a print did.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Settlement {
+    /// This call settled it.
+    Settled {
+        /// When it was settled: its `print_ended` event's instant.
+        at: Timestamp,
+        /// Every event the settlement appended, in the order it appended them,
+        /// its `print_ended` event last.
+        events: Vec<EventRecord>,
+    },
+    /// It was already settled, and this call wrote nothing.
+    AlreadySettled {
+        /// When it was settled.
+        at: Timestamp,
+        /// The outcome it was settled with.
+        outcome: PrintOutcome,
+    },
+}
+
+/// The printer's own count of the prints of one file, as last accounted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileTally {
+    /// The file.
+    pub file_name: String,
+    /// Where the file lives, in the printer's own vocabulary.
+    pub origin: String,
+    /// The tally generation, which starts at 0 and only ever advances: it
+    /// advances each time the printer's tally for the file is reset.
+    pub generation: u32,
+    /// The completed prints the tally counts.
+    pub successes: i64,
+    /// The failed prints the tally counts.
+    pub failures: i64,
+    /// When the tally was read.
+    pub observed_at: Timestamp,
+}
+
+/// Which timeline events to read.
+///
+/// An empty `kinds` means every kind of
+/// [`TIMELINE_KINDS`](crate::kinds::TIMELINE_KINDS), and an absent `limit`
+/// means [`DEFAULT_HISTORY_WINDOW`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimelineQuery {
+    /// The kinds to read; empty means every timeline kind, and a kind outside
+    /// the timeline is refused.
+    pub kinds: Vec<EventKind>,
+    /// The earliest instant to read from, inclusive.
+    pub since: Option<Timestamp>,
+    /// The latest instant to read to, inclusive.
+    pub until: Option<Timestamp>,
+    /// Only events whose payload names this spool.
+    pub spool_id: Option<SpoolId>,
+    /// The cursor: only events strictly older than this one.
+    pub before: Option<EventId>,
+    /// How many events to answer; absent means [`DEFAULT_HISTORY_WINDOW`].
+    pub limit: Option<u32>,
+}
+
+impl TimelineQuery {
+    /// The limit this query resolves to.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::LimitRefused`] when the limit asked for is above
+    /// [`MAX_HISTORY_LIMIT`].
+    pub fn resolved_limit(&self) -> Result<u32, StoreError> {
+        resolve_history_limit(self.limit)
+    }
+
+    /// The kinds this query reads: those asked for, or every timeline kind.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::ConstraintRefused`] naming `timeline.kinds` when a
+    /// kind asked for is not one of
+    /// [`TIMELINE_KINDS`](crate::kinds::TIMELINE_KINDS).
+    pub fn resolved_kinds(&self) -> Result<Vec<EventKind>, StoreError> {
+        let refused = || StoreError::ConstraintRefused {
+            constraint: "timeline.kinds".to_owned(),
+        };
+        if self.kinds.is_empty() {
+            return crate::kinds::TIMELINE_KINDS
+                .iter()
+                .map(|kind| EventKind::new(*kind).map_err(|_| refused()))
+                .collect();
+        }
+        if self
+            .kinds
+            .iter()
+            .any(|kind| !crate::kinds::TIMELINE_KINDS.contains(&kind.as_str()))
+        {
+            return Err(refused());
+        }
+        Ok(self.kinds.clone())
+    }
+}
+
+/// The filament ledger: spools, the charges against them, the charges held for
+/// a spool not yet named, each print's settlement and last file position, and
+/// the printer's per-file print tallies.
+///
+/// # Every write is one transaction
+///
+/// Each writing method writes everything it was given and every event that
+/// goes with it, or — when any part is refused — none of it: a crash or a
+/// refusal halfway leaves the ledger as it was before the call.
+///
+/// # A charge is debited exactly once
+///
+/// A charge is keyed by its [`ChargeKey`], stored under
+/// [`ChargeKey::canonical`]. Wherever a charge is submitted —
+/// [`apply_spool_changes`](Self::apply_spool_changes),
+/// [`settle_print`](Self::settle_print) or
+/// [`account_tallies`](Self::account_tallies) — the same rules hold:
+///
+/// * A charge whose key is **not yet recorded** subtracts its `grams` from its
+///   spool — a retired spool included, since retirement refuses later commands
+///   rather than the settlement of earlier prints, and below zero included,
+///   since a charge is never refused or clamped — records the charge, and
+///   appends its event. The spool's `updated_at` becomes the later of its own
+///   and the charge's instant. A charge naming no spool, or no grams,
+///   subtracts nothing and is still recorded.
+/// * A charge whose key is **already recorded** is a replay: it subtracts
+///   nothing and appends no event.
+/// * A charge whose key is **pending** takes it: the pending charge is removed
+///   in the same transaction that records the charge, so it is debited once.
+///
+/// A pend is held the same way: one whose key is already pending or already
+/// charged is a replay and writes nothing; otherwise it is held and its event
+/// appended.
+///
+/// Within one call, the charges are applied first, in the order given, then
+/// the pends, then the mutations — so a correction sets its figure after any
+/// pending charge the same command took.
+///
+/// # A spool change, and what refuses one
+///
+/// A mutation applies its [`SpoolChange`], sets the spool's `updated_at` to its
+/// instant, and appends its event — except where the change's own entry says
+/// it writes none. The trust functions are the contract's,
+/// [`SpoolTrust::marked`] and [`SpoolTrust::cleared`], and no implementation
+/// restates them. Every refusal is the whole call's:
+///
+/// * [`StoreError::NotFound`] for a spool that does not exist.
+/// * [`StoreError::ConstraintRefused`] naming `spools.loaded_on_tool` for a
+///   load onto a tool another unretired spool holds. A swap is two mutations
+///   in one call, the unload and then the load.
+/// * [`StoreError::ConstraintRefused`] naming `spools.retired_at` for a load,
+///   an unload, a `set_remaining`, a `clear_marks` or a `retire` of a retired
+///   spool. A `mark_unverified` still applies to one, because a settlement
+///   marks the spool that fed the print whatever has happened to it since.
+///
+/// Every method is asynchronous, the trait is dyn-compatible, and it is
+/// shareable across threads, because its consumers hold it behind
+/// `Arc<dyn FilamentStore>`.
+pub trait FilamentStore: Send + Sync {
+    /// Register a spool, minting its identifier.
+    ///
+    /// In one transaction, writes the spool and a `spool_registered` event —
+    /// with no print, from `source`, received at the spool's `registered_at` —
+    /// whose payload carries the record as written, `actor` and `reason`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a spool registered loaded onto a tool another unretired spool
+    /// holds with [`StoreError::ConstraintRefused`] naming
+    /// `spools.loaded_on_tool`.
+    fn register_spool(
+        &self,
+        spool: NewSpool,
+        source: EventSource,
+        actor: Actor,
+        reason: String,
+    ) -> BoxFuture<'_, Result<(SpoolRecord, EventRecord), StoreError>>;
+
+    /// Apply spool mutations, charges and pends, with their events, in one
+    /// transaction — all of them or none.
+    ///
+    /// # Errors
+    ///
+    /// Refuses the whole call as the trait's own documentation states.
+    fn apply_spool_changes(
+        &self,
+        changes: Vec<SpoolMutation>,
+        charges: Vec<Charge>,
+        pends: Vec<Pend>,
+    ) -> BoxFuture<'_, Result<SpoolWrite, StoreError>>;
+
+    /// Settle a print, once.
+    ///
+    /// In one transaction: the print's remaining charges and its pends, under
+    /// the replay rules, with their events; the `mark_unverified` mutations in
+    /// `marks`, applied by the rules every mutation is, with their events; the
+    /// `ended` event, which is the print's `print_ended`; and the print's
+    /// settlement, at that event's instant, with `outcome`. A print already
+    /// settled is answered [`Settlement::AlreadySettled`] and nothing is
+    /// written.
+    ///
+    /// It does not end the print record: the domain calls
+    /// [`PrintStore::end_print`] after it, so a crash between the two leaves a
+    /// settled, open print that the next close-out only ends.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a print that does not exist with [`StoreError::NotFound`], and
+    /// otherwise as the trait's own documentation states.
+    fn settle_print(
+        &self,
+        print_id: PrintId,
+        outcome: PrintOutcome,
+        ended: EventDraft,
+        charges: Vec<Charge>,
+        pends: Vec<Pend>,
+        marks: Vec<SpoolMutation>,
+    ) -> BoxFuture<'_, Result<Settlement, StoreError>>;
+
+    /// When a print was settled, and with which outcome, when it has been.
+    fn print_settlement(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<(Timestamp, PrintOutcome)>, StoreError>>;
+
+    /// Every charge recorded against a print, by tool and then by segment.
+    ///
+    /// This is how a later segment is charged only the remainder after a
+    /// restart.
+    fn charges(&self, print_id: PrintId) -> BoxFuture<'_, Result<Vec<ChargeRecord>, StoreError>>;
+
+    /// Every charge still pending — on one tool, when one is named — oldest
+    /// first.
+    fn pending_charges(
+        &self,
+        tool: Option<i64>,
+    ) -> BoxFuture<'_, Result<Vec<PendingCharge>, StoreError>>;
+
+    /// Read one spool.
+    fn spool(&self, id: SpoolId) -> BoxFuture<'_, Result<Option<SpoolRecord>, StoreError>>;
+
+    /// Read every spool — retired ones only when asked for — most recently
+    /// registered first.
+    fn spools(&self, include_retired: bool) -> BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>>;
+
+    /// Read every unretired spool loaded on a tool, by tool.
+    fn loaded_spools(&self) -> BoxFuture<'_, Result<Vec<SpoolRecord>, StoreError>>;
+
+    /// Record how far into its file a print had got.
+    ///
+    /// Keeps the latest by `observed_at`: a position observed before the one
+    /// held is not recorded.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a print that does not exist with [`StoreError::NotFound`].
+    fn record_file_position(
+        &self,
+        print_id: PrintId,
+        position: FilePosition,
+    ) -> BoxFuture<'_, Result<(), StoreError>>;
+
+    /// The latest file position recorded for a print.
+    fn file_position(
+        &self,
+        print_id: PrintId,
+    ) -> BoxFuture<'_, Result<Option<FilePosition>, StoreError>>;
+
+    /// Every file's tally as last accounted, by file name and then origin.
+    fn file_tallies(&self) -> BoxFuture<'_, Result<Vec<FileTally>, StoreError>>;
+
+    /// Account the prints the printer's tallies counted and this system never
+    /// saw, in one transaction.
+    ///
+    /// Their charges, under the replay rules; their `mark_unverified`
+    /// mutations, applied by the rules every mutation is; their
+    /// `unaccounted_print` and `file_tally_rebaselined` events; and the
+    /// advanced tallies, each stored by file name and origin over whatever was
+    /// held — so a crash leaves either none of it or all of it. Answers every
+    /// event it appended, in the order it appended them.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a tally whose generation is below the one held for its file
+    /// with [`StoreError::ConstraintRefused`] naming `file_tallies.generation`,
+    /// and otherwise as the trait's own documentation states.
+    fn account_tallies(
+        &self,
+        tallies: Vec<FileTally>,
+        charges: Vec<Charge>,
+        marks: Vec<SpoolMutation>,
+        events: Vec<EventDraft>,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
+}
+
+/// The printer-wide reading of the event log.
+///
+/// Every method is asynchronous, the trait is dyn-compatible, and it is
+/// shareable across threads, because its consumers hold it behind
+/// `Arc<dyn TimelineStore>`.
+pub trait TimelineStore: Send + Sync {
+    /// Read the events of the printer timeline, across every print and none.
+    ///
+    /// Answers only events of [`TIMELINE_KINDS`](crate::kinds::TIMELINE_KINDS),
+    /// **newest first** by `(received_at, id)`. An empty `kinds` means every
+    /// timeline kind; `since` and `until` are inclusive; `spool_id` keeps only
+    /// events whose payload names that spool — carries its identifier as a
+    /// string value anywhere in it; and `before` keeps only events strictly
+    /// older than that event. The limit is resolved by
+    /// [`resolve_history_limit`].
+    ///
+    /// # Errors
+    ///
+    /// Refuses a kind outside the timeline with
+    /// [`StoreError::ConstraintRefused`] naming `timeline.kinds`, a limit above
+    /// [`MAX_HISTORY_LIMIT`] with [`StoreError::LimitRefused`], and a cursor
+    /// naming no event with [`StoreError::NotFound`].
+    fn timeline(&self, query: TimelineQuery)
+    -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
+}
+
 /// One store implementation, held once per aggregate it persists.
 ///
 /// The composition root builds this from the one implementation it chose, by
 /// [`Stores::of`], and each consumer takes the handle for the aggregate it
-/// names: five shared handles to one backing rather than five backings. A
+/// names: seven shared handles to one backing rather than seven backings. A
 /// consumer that needs several aggregates holds the bundle; one that needs one
 /// clones that handle out of it.
 #[derive(Clone)]
@@ -534,20 +1007,33 @@ pub struct Stores {
     pub actions: Arc<dyn ActionStore>,
     /// The supervision session of a print.
     pub sessions: Arc<dyn SessionStore>,
+    /// The filament ledger.
+    pub filament: Arc<dyn FilamentStore>,
+    /// The printer-wide reading of the event log.
+    pub timeline: Arc<dyn TimelineStore>,
 }
 
 impl Stores {
     /// Every aggregate's handle onto one implementation.
     pub fn of<S>(store: Arc<S>) -> Self
     where
-        S: PrintStore + EventStore + ImageStore + ActionStore + SessionStore + 'static,
+        S: PrintStore
+            + EventStore
+            + ImageStore
+            + ActionStore
+            + SessionStore
+            + FilamentStore
+            + TimelineStore
+            + 'static,
     {
         Self {
             prints: Arc::clone(&store) as Arc<dyn PrintStore>,
             events: Arc::clone(&store) as Arc<dyn EventStore>,
             images: Arc::clone(&store) as Arc<dyn ImageStore>,
             actions: Arc::clone(&store) as Arc<dyn ActionStore>,
-            sessions: store as Arc<dyn SessionStore>,
+            sessions: Arc::clone(&store) as Arc<dyn SessionStore>,
+            filament: Arc::clone(&store) as Arc<dyn FilamentStore>,
+            timeline: store as Arc<dyn TimelineStore>,
         }
     }
 }
