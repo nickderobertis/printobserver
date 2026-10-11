@@ -174,6 +174,7 @@ impl Supervisor {
     /// # Errors
     ///
     /// Returns the store's own error when the spools could not be read.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub async fn spools(&self, include_retired: bool) -> Result<Vec<SpoolRecord>, CoreError> {
         Ok(self.stores().filament.spools(include_retired).await?)
     }

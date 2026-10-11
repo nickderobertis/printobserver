@@ -2310,3 +2310,9 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-core/src/preflight.rs"
 site = "if Delay::new(ANALYSIS_POLL).await.is_err() {"
 reason = "This branch is reached only when the operating system refuses to start a thread, which no journey can arrange without exhausting the host's threads for every test running beside it. What it does is the smallest true thing — stop waiting and judge the start on the file's facts as they stand, which is the path `a_start_whose_analysis_never_appears_is_refused_unless_an_operator_overrides` drives once the wait elapses — and `Delay` itself answers the spawn's own error rather than panicking, with its waking proven by `delay`'s own tests."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/spools.rs"
+site = "pub async fn spools(&self, include_retired: bool)"
+reason = "The filament-accounting task states this exact signature, `spools(&self, include_retired: bool) -> Vec<SpoolRecord>`, as the surface the server node consumes, mirroring `FilamentStore::spools(include_retired: bool)` that the spool-store node already landed; a selection enum here would redecide an agreed public shape that the server, command line and clients are built against. Both values of the flag are valid selections — unretired spools, or every spool — so no invalid state is representable through it."
