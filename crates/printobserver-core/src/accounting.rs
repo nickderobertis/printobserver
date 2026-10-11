@@ -305,6 +305,14 @@ pub(crate) fn feed_to(
     })
 }
 
+/// A print's file, as a name a file API takes, when it has one.
+fn file_of(print: &PrintRecord) -> Option<FileName> {
+    print
+        .file_name
+        .as_deref()
+        .and_then(|name| FileName::new(name).ok())
+}
+
 /// Whether a spool holds one print's filament-change mark, of either kind.
 pub(crate) fn holds_change_mark(spool: &SpoolRecord, print_id: PrintId) -> bool {
     marks_of(spool).iter().any(|reason| {
@@ -703,15 +711,14 @@ impl Supervisor {
     /// file's own facts.
     pub(crate) async fn analysis_of(
         &self,
-        file_name: &str,
+        file_name: &FileName,
         job: Option<&JobSnapshot>,
     ) -> FileAnalysis {
-        let facts = match FileName::new(file_name) {
-            Ok(name) => self.read_file_facts(name).await.ok(),
-            Err(_) => None,
-        };
+        let facts = self.read_file_facts(file_name.clone()).await.ok();
         let from_job = job
-            .filter(|job| job.file_name.as_deref() == Some(file_name) && !job.filament.is_empty())
+            .filter(|job| {
+                job.file_name.as_deref() == Some(file_name.as_str()) && !job.filament.is_empty()
+            })
             .map(|job| lengths_of(&job.filament));
         let lengths = from_job.or_else(|| {
             facts
@@ -727,21 +734,21 @@ impl Supervisor {
     /// why. Nothing when neither can be worked out.
     pub(crate) async fn extrusion_to(
         &self,
-        file_name: &str,
+        file_name: &FileName,
         position: &FilePosition,
         analysis: &FileAnalysis,
     ) -> Option<Extrusion> {
-        let refusal = match FileName::new(file_name) {
-            Ok(name) => match self.read_extruded_to(name, position.bytes).await {
-                Ok(filament) => {
-                    return Some(Extrusion {
-                        lengths: lengths_of(&filament),
-                        method: ChargeMethod::GcodeExtrusion,
-                        note: None,
-                    });
-                }
-                Err(error) => error.to_string(),
-            },
+        let refusal = match self
+            .read_extruded_to(file_name.clone(), position.bytes)
+            .await
+        {
+            Ok(filament) => {
+                return Some(Extrusion {
+                    lengths: lengths_of(&filament),
+                    method: ChargeMethod::GcodeExtrusion,
+                    note: None,
+                });
+            }
             Err(error) => error.to_string(),
         };
         let analysed = analysis.lengths.as_ref()?;
@@ -868,8 +875,9 @@ impl Supervisor {
         let job = closing_job.or(read.as_ref());
         let file_name = print
             .file_name
-            .clone()
-            .or_else(|| started.file_name.clone());
+            .as_deref()
+            .or(started.file_name.as_deref())
+            .and_then(|name| FileName::new(name).ok());
         let analysis = match &file_name {
             Some(file) => self.analysis_of(file, job).await,
             None => FileAnalysis::default(),
@@ -894,13 +902,10 @@ impl Supervisor {
         } else {
             Canceller::NotHere
         };
-        let named = file_name
-            .as_deref()
-            .and_then(|name| FileName::new(name).ok());
         let outcome = Ending {
             state,
             job,
-            file_name: named.as_ref(),
+            file_name: file_name.as_ref(),
             position: position.as_ref(),
             size_bytes: analysis.size_bytes(),
             tally,
@@ -1109,7 +1114,7 @@ impl Supervisor {
         &self,
         print: &PrintRecord,
     ) -> Result<Option<(FilePosition, Extrusion, FileAnalysis)>, CoreError> {
-        let Some(file_name) = print.file_name.clone() else {
+        let Some(file_name) = file_of(print) else {
             return Ok(None);
         };
         let (whereabouts, job) = self.position_now(print).await?;
@@ -1155,11 +1160,12 @@ impl Supervisor {
         let (whereabouts, job) = self.position_now(print).await?;
         let read_now = matches!(whereabouts, Whereabouts::ReadNow(_));
         let position = whereabouts.position().cloned();
-        let analysis = match &print.file_name {
+        let file_name = file_of(print);
+        let analysis = match &file_name {
             Some(file) => self.analysis_of(file, job.as_ref()).await,
             None => FileAnalysis::default(),
         };
-        let extrusion = match (&print.file_name, &position) {
+        let extrusion = match (&file_name, &position) {
             (Some(file), Some(position)) => self.extrusion_to(file, position, &analysis).await,
             _ => None,
         };
