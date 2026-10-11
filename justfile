@@ -60,16 +60,23 @@ tool-version TOOL:
 # a tier reaches and says why before it runs. The repository-level steps — the
 # coverage floors, the Windows-target lint, the workflow lint and the repository
 # checks — run whichever tier it is.
+#
+# The end-to-end tier starts beside the test tier rather than after every other
+# one: what it reads of this tree's build, its graph target builds first, so
+# the gate's two longest tiers overlap. Both are waited out whatever either
+# answers, so a run reports every failure of both, and fails if either failed.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
     just typecheck {{quote(tier)}}
-    just test {{quote(tier)}}
-    just coverage {{quote(tier)}}
-    just build {{quote(tier)}}
-    just lint-workflows
-    just check-repo
-    just test-e2e {{quote(tier)}}
+    just test-e2e {{quote(tier)}} & e2e=$!; status=0; \
+    just test {{quote(tier)}} && \
+    just coverage {{quote(tier)}} && \
+    just build {{quote(tier)}} && \
+    just lint-workflows && \
+    just check-repo || status=$?; \
+    wait "$e2e" || status=$?; \
+    exit "$status"
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any

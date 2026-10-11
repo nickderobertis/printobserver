@@ -157,8 +157,8 @@ def test_a_check_recipe_that_invokes_the_tier_is_refused(tree: Callable[[], Tree
     broken = tree()
     broken.edit(
         JUSTFILE,
-        "    just test-e2e {{quote(tier)}}\n",
-        "    just test-e2e {{quote(tier)}}\n    just test-obico\n",
+        "    just typecheck {{quote(tier)}}\n",
+        "    just typecheck {{quote(tier)}}\n    just test-obico\n",
     )
 
     findings = obico_tier(broken.repo)

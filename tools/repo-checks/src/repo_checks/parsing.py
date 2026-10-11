@@ -43,6 +43,7 @@ SHELL_WORDS = frozenset(
         "[",
         "[[",
         "exit",
+        "wait",
         "true",
         "false",
         ":",
@@ -151,14 +152,16 @@ def recipes(justfile: str) -> dict[str, Recipe]:
 
 
 def programs_in(command: str) -> list[str]:
-    """The program names a shell command line invokes.
+    r"""The program names a shell command line invokes.
 
     Deterministic and deliberately simple: the first word of the command and the
     first word after each pipe, minus shell keywords and builtins, minus leading
-    `@`/`-` recipe prefixes and `VAR=value` assignments.
+    `@`/`-` recipe prefixes and `VAR=value` assignments. A recipe line is read
+    on its own, so the `\` continuing it onto the next is punctuation rather
+    than a program.
     """
     names: list[str] = []
-    for segment in command.split("|"):
+    for segment in command.rstrip().removesuffix("\\").split("|"):
         words = segment.strip().split()
         index = 0
         while index < len(words) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[index]):
