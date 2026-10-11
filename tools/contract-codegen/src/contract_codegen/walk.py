@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import NamedTuple
+from urllib.parse import quote
 
 from contract_codegen.examples import (
     TEXT,
@@ -72,6 +73,13 @@ def _value(parameter: Parameter, contract: Contract) -> object:
     return argument_of(parameter.carried, contract)
 
 
+def _query_text(value: object) -> str:
+    """One query value as a target carries it: a flag as `true` or `false`."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
 def plan(contract: Contract) -> tuple[Step, ...]:
     """Every step of the walk, one per operation the server declares."""
     steps: list[Step] = []
@@ -87,9 +95,10 @@ def plan(contract: Contract) -> tuple[Step, ...]:
             if parameter.located == "path":
                 target = target.replace(f"{{{parameter.name}}}", TEXT)
         asked = "&".join(
-            f"{parameter.name}={value}"
+            f"{parameter.name}={_query_text(item)}"
             for parameter, value in arguments
             if parameter.located == "query"
+            for item in (value if isinstance(value, list) else [value])
         )
         body: dict[str, object] | None = None
         if any(parameter.located == "body" for parameter in operation.parameters):
@@ -242,6 +251,19 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     # bring-up left it, and where the scripted environment's own suite expects
     # it.
     Ordered("resume", "paused"),
+    # The spool ledger is the printer's rather than a print's, so it is
+    # answered from wherever the machine is. The world registered a spool for
+    # the walk as it came up; the walk loads, unloads, corrects and finally
+    # retires that one, so nothing it does is left on a tool.
+    Ordered("spools", ""),
+    Ordered("spool", ""),
+    Ordered("printer_history", ""),
+    Ordered("preflight", ""),
+    Ordered("register_spool", ""),
+    Ordered("load_spool", ""),
+    Ordered("unload_spool", ""),
+    Ordered("adjust_spool", ""),
+    Ordered("retire_spool", ""),
     # After every action rather than before: a listing may open a print for the
     # running job, and an action is recorded against the most recently opened
     # open print, so a listing earlier would move the walk's own actions onto
@@ -256,6 +278,10 @@ LIVE_ORDER: tuple[Ordered, ...] = (
 #: so the walk follows the print the start's `record.print_id` names rather than
 #: acting on the one the cancel ended.
 FOLLOWED = "start_print"
+
+#: The token of a value the real walk leaves out: an optional one, given no
+#: value, which neither the target nor the body carries.
+ABSENT = "absent"
 
 #: What the real walk supplies for one value, by the operation and the value it
 #: is for, and by the value alone where every operation supplies the same. The
@@ -281,6 +307,35 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     # The walk starts its print the ordinary way, with the filament check
     # standing: an override is a decision for whoever is at the machine.
     ("start_print", "override_filament_check"): "bool:false",
+    ("*", "spool_id"): "world.spool_id",
+    ("spools", "include_retired"): "bool:true",
+    ("printer_history", "kinds"): "kinds:spool_registered",
+    ("printer_history", "since"): "text:since",
+    ("printer_history", "until"): "text:until",
+    ("printer_history", "before"): ABSENT,
+    ("register_spool", "name"): "text:name",
+    ("register_spool", "material"): "text:material",
+    ("register_spool", "color"): "text:color",
+    ("register_spool", "initial_g"): "1000.0",
+    ("register_spool", "remaining_g"): "900.0",
+    ("register_spool", "diameter_mm"): "1.75",
+    ("register_spool", "density_g_cm3"): "1.24",
+    ("register_spool", "tare_g"): "200.0",
+    ("load_spool", "tool"): "0",
+    # A correction is from exactly one figure: the remaining one, and no
+    # scale reading beside it.
+    ("adjust_spool", "remaining_g"): "800.0",
+    ("adjust_spool", "gross_g"): ABSENT,
+}
+
+#: The text each `text:` token of the real walk stands for, which every
+#: emitter writes as a string of its own language.
+LIVE_TEXT: dict[str, str] = {
+    "since": "2020-01-01T00:00:00Z",
+    "until": "2999-12-31T23:59:59Z",
+    "name": "a spool the generated walk registers",
+    "material": "PLA",
+    "color": "black",
 }
 
 
@@ -361,3 +416,67 @@ def rejected_live(contract: Contract) -> tuple[LiveStep, ...]:
     nothing is refused every action from wherever the machine happens to be.
     """
     return tuple(step for step in plan_live(contract) if step.operation.rejectable)
+
+
+#: The prefix of a token standing for text, which `LIVE_TEXT` spells.
+TEXT_PREFIX = "text:"
+
+#: The prefix of a token standing for a list of timeline kinds.
+KINDS_PREFIX = "kinds:"
+
+#: The prefix of a token naming a value the world the walk runs in carries.
+WORLD_PREFIX = "world."
+
+
+class Asked(NamedTuple):
+    """One value a real call carries after the question mark, as its target says."""
+
+    #: The value's own name.
+    name: str
+    #: The world's value it is, when it is one; empty when `text` is the value.
+    world: str
+    #: The value as the target carries it, escaped, when it is not the world's.
+    text: str
+
+
+def live_query(step: LiveStep) -> tuple[Asked, ...]:
+    """Every value one real call carries after the question mark, in order.
+
+    A value left out is not there; a list is there once per item; text is
+    escaped exactly as every client escapes a query value — everything but the
+    unreserved characters — so the target a step asserts is the one the call
+    reaches.
+    """
+    found: list[Asked] = []
+    for parameter, token in step.arguments:
+        if parameter.located != "query" or token == ABSENT:
+            continue
+        if token.startswith(WORLD_PREFIX):
+            found.append(Asked(parameter.name, token.removeprefix(WORLD_PREFIX), ""))
+        elif token.startswith(KINDS_PREFIX):
+            found.extend(
+                Asked(parameter.name, "", quote(kind, safe=""))
+                for kind in token.removeprefix(KINDS_PREFIX).split(",")
+            )
+        elif token.startswith(TEXT_PREFIX):
+            text = LIVE_TEXT[token.removeprefix(TEXT_PREFIX)]
+            found.append(Asked(parameter.name, "", quote(text, safe="")))
+        elif token.startswith("bool:"):
+            found.append(Asked(parameter.name, "", token.removeprefix("bool:")))
+        else:
+            found.append(Asked(parameter.name, "", token))
+    return tuple(found)
+
+
+def live_text(token: str) -> str | None:
+    """The text a `text:` token stands for, or `None` for any other token."""
+    if token.startswith(TEXT_PREFIX):
+        return LIVE_TEXT[token.removeprefix(TEXT_PREFIX)]
+    return None
+
+
+def live_kinds(token: str) -> list[str] | None:
+    """The kinds a `kinds:` token stands for, or `None` for any other token."""
+    if token.startswith(KINDS_PREFIX):
+        return token.removeprefix(KINDS_PREFIX).split(",")
+    return None

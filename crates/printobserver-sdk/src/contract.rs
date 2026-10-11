@@ -19,7 +19,7 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 18] = [
+pub const OPERATION_NAMES: [&str; 27] = [
     "prints",
     "status",
     "context",
@@ -28,6 +28,10 @@ pub const OPERATION_NAMES: [&str; 18] = [
     "manifest_get",
     "look",
     "manifest_set",
+    "spools",
+    "spool",
+    "printer_history",
+    "preflight",
     "pause",
     "resume",
     "cancel",
@@ -38,6 +42,11 @@ pub const OPERATION_NAMES: [&str; 18] = [
     "set_bed_target_c",
     "set_fan_percent",
     "acknowledge_failure",
+    "register_spool",
+    "load_spool",
+    "unload_spool",
+    "adjust_spool",
+    "retire_spool",
 ];
 
 /// What an operator's acknowledgement of a failure event asks for next.
@@ -1089,6 +1098,13 @@ pub struct Preflight {
     pub verdict: PreflightVerdict,
 }
 
+/// What a filament check answers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreflightAnswer {
+    /// What the check found, read now.
+    pub preflight: Preflight,
+}
+
 /// The filament check before a start was made.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreflightCheckedPayload {
@@ -1651,6 +1667,16 @@ pub struct SpoolAdjustedPayload {
     pub took_pending: Option<Vec<PendingTaken>>,
 }
 
+/// What one spool's read answers: the spool, and the newest of the printer's
+/// own events that name it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolAnswer {
+    /// The newest timeline events naming it, newest first.
+    pub recent: Vec<EventRecord>,
+    /// The spool, retired or not.
+    pub spool: SpoolRecord,
+}
+
 /// The whole vocabulary of the spool ledger, and there is no other.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "command")]
@@ -1741,6 +1767,23 @@ pub enum SpoolCommand {
         /// The spool to retire.
         spool_id: SpoolId,
     },
+}
+
+/// What a spool command answers, accepted or refused.
+///
+/// A refusal is the same shape and deliberately so: the decision carries the
+/// grant or the ledger's own reason, and the events are the record the
+/// refusal
+/// wrote.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolCommandAnswer {
+    /// The decision taken on the command.
+    pub decision: PolicyDecision,
+    /// Every event it wrote, in the order they were written.
+    pub events: Vec<EventRecord>,
+    /// The spool it was about, as the command left it, when there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spool: Option<SpoolRecord>,
 }
 
 /// A spool command was refused.
@@ -1880,6 +1923,26 @@ pub struct SpoolUnverifiedPayload {
     pub spool_id: SpoolId,
 }
 
+/// What the spools read answers.
+///
+/// `at_a_glance` is one line per spool, in the order `spools` lists them,
+/// composed here so that what is left on each spool is the first thing a
+/// reader of either rendering meets rather than a figure inside a whole
+/// record. Its name is what puts it first: both renderings walk an answer's
+/// fields in name order, ahead of `pending` and `spools`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpoolsAnswer {
+    /// One line per spool in `spools`, in the same order.
+    pub at_a_glance: Vec<String>,
+    /// Every charge held after a filament change nobody has confirmed, oldest
+    /// first: what the next spool loaded on that tool is charged.
+    pub pending: Vec<PendingCharge>,
+    /// Every spool, retired ones only when asked for, most recently
+    /// registered
+    /// first.
+    pub spools: Vec<SpoolRecord>,
+}
+
 /// What one restart put back the way it found it.
 ///
 /// A supervisor that has been restarted adopts whatever the store holds
@@ -1977,6 +2040,17 @@ pub struct SupervisionSessionOpenedPayload {
     pub harness_identity: String,
     /// The session's own name in the harness.
     pub session_name: String,
+}
+
+/// What a printer history read answers: one page of the printer's own events.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineAnswer {
+    /// The events, newest first.
+    pub events: Vec<EventRecord>,
+    /// The cursor for the following, older page, given as `before`; absent
+    /// when there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<EventId>,
 }
 
 /// An instant in UTC, as an RFC 3339 string with a zero offset.
@@ -2377,6 +2451,87 @@ impl Client {
         self.call("PUT", &target, &asked, sending.as_ref())
     }
 
+    /// Call `spools` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn spools(&self, include_retired: Option<bool>) -> Result<SpoolsAnswer, ClientError> {
+        let target = String::from("/v1/spools");
+        let mut asked: Vec<(String, String)> = Vec::new();
+        if let Some(value) = include_retired {
+            asked.push(("include_retired".to_owned(), value.to_string()));
+        }
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `spool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn spool(&self, spool_id: &str) -> Result<SpoolAnswer, ClientError> {
+        let target = format!("/v1/spools/{spool_id}");
+        let asked: Vec<(String, String)> = Vec::new();
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `printer_history` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn printer_history(
+        &self,
+        kinds: Option<Vec<String>>,
+        since: Option<String>,
+        until: Option<String>,
+        spool_id: Option<String>,
+        before: Option<String>,
+        limit: Option<i64>,
+    ) -> Result<TimelineAnswer, ClientError> {
+        let target = String::from("/v1/history");
+        let mut asked: Vec<(String, String)> = Vec::new();
+        for value in kinds.into_iter().flatten() {
+            asked.push(("kinds".to_owned(), value));
+        }
+        if let Some(value) = since {
+            asked.push(("since".to_owned(), value));
+        }
+        if let Some(value) = until {
+            asked.push(("until".to_owned(), value));
+        }
+        if let Some(value) = spool_id {
+            asked.push(("spool_id".to_owned(), value));
+        }
+        if let Some(value) = before {
+            asked.push(("before".to_owned(), value));
+        }
+        if let Some(value) = limit {
+            asked.push(("limit".to_owned(), value.to_string()));
+        }
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `preflight` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn preflight(&self, file_name: &str) -> Result<PreflightAnswer, ClientError> {
+        let target = String::from("/v1/preflight");
+        let asked: Vec<(String, String)> = vec![("file_name".to_owned(), file_name.to_owned())];
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
     /// Call `pause` on the configured supervisor.
     ///
     /// # Errors
@@ -2657,6 +2812,167 @@ impl Client {
         sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
         sending.insert("disposition".to_owned(), crate::as_value(&disposition)?);
         sending.insert("event_id".to_owned(), crate::as_value(&event_id)?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `register_spool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    #[expect(clippy::too_many_arguments)]
+    pub fn register_spool(
+        &self,
+        initial_g: f64,
+        material: &str,
+        name: &str,
+        reason: &str,
+        color: Option<String>,
+        density_g_cm3: Option<f64>,
+        diameter_mm: Option<f64>,
+        remaining_g: Option<f64>,
+        tare_g: Option<f64>,
+    ) -> Result<SpoolCommandAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/spools/actions/register_spool");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        if let Some(value) = color {
+            sending.insert("color".to_owned(), crate::as_value(&value)?);
+        }
+        if let Some(value) = density_g_cm3 {
+            sending.insert("density_g_cm3".to_owned(), crate::as_value(&value)?);
+        }
+        if let Some(value) = diameter_mm {
+            sending.insert("diameter_mm".to_owned(), crate::as_value(&value)?);
+        }
+        sending.insert("initial_g".to_owned(), crate::as_value(&initial_g)?);
+        sending.insert("material".to_owned(), crate::as_value(&material)?);
+        sending.insert("name".to_owned(), crate::as_value(&name)?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        if let Some(value) = remaining_g {
+            sending.insert("remaining_g".to_owned(), crate::as_value(&value)?);
+        }
+        if let Some(value) = tare_g {
+            sending.insert("tare_g".to_owned(), crate::as_value(&value)?);
+        }
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `load_spool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn load_spool(
+        &self,
+        spool_id: &str,
+        reason: &str,
+        tool: i64,
+    ) -> Result<SpoolCommandAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = format!("/v1/spools/{spool_id}/actions/load_spool");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        sending.insert("tool".to_owned(), crate::as_value(&tool)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `unload_spool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn unload_spool(
+        &self,
+        spool_id: &str,
+        reason: &str,
+    ) -> Result<SpoolCommandAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = format!("/v1/spools/{spool_id}/actions/unload_spool");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `adjust_spool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn adjust_spool(
+        &self,
+        spool_id: &str,
+        reason: &str,
+        gross_g: Option<f64>,
+        remaining_g: Option<f64>,
+    ) -> Result<SpoolCommandAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = format!("/v1/spools/{spool_id}/actions/adjust_spool");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        if let Some(value) = gross_g {
+            sending.insert("gross_g".to_owned(), crate::as_value(&value)?);
+        }
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        if let Some(value) = remaining_g {
+            sending.insert("remaining_g".to_owned(), crate::as_value(&value)?);
+        }
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `retire_spool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn retire_spool(
+        &self,
+        spool_id: &str,
+        reason: &str,
+    ) -> Result<SpoolCommandAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = format!("/v1/spools/{spool_id}/actions/retire_spool");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));
         self.call("POST", &target, &asked, sending.as_ref())

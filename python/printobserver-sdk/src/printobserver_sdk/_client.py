@@ -32,6 +32,7 @@ from printobserver_sdk.contract import (
     GeneratedClient,
     Range,
     RejectionReasonOutOfBoundsPayload,
+    SpoolCommandAnswer,
 )
 
 #: The status a rejected action is answered under.
@@ -165,8 +166,18 @@ def _said(said: str) -> str:
 
 def _rejection(status: int, said: str) -> Exception:
     """The policy's own refusal, as the answer to it carries it."""
-    answer = cast(ActionAnswer, _document(status, said))
-    decision = answer["record"]["decision"]
+    document = _document(status, said)
+    # An action's answer carries its decision in its record; a spool command's
+    # carries it at the top.
+    answer: ActionAnswer | SpoolCommandAnswer
+    if isinstance(document, dict) and "record" in document:
+        action = cast(ActionAnswer, document)
+        decision = action["record"]["decision"]
+        answer = action
+    else:
+        command = cast(SpoolCommandAnswer, document)
+        decision = command["decision"]
+        answer = command
     if not isinstance(decision, dict) or "rejected" not in decision:
         return UnreadableError(
             status,

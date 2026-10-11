@@ -666,6 +666,317 @@ fn step_resume(client: &Client, world: &supervisor::Supervisor, proxy: &live::Pr
     live::same("resume", &answered, &seen.answer);
 }
 
+/// `spools`, answered by a real supervisor.
+fn step_spools(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .spools(Some(true))
+        .expect("`spools` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`spools`");
+    assert_eq!(seen.target, "/v1/spools?include_retired=true", "`spools`");
+    assert_eq!(seen.status, 200, "`spools`");
+    assert_eq!(seen.body, "", "`spools` sends no body");
+    live::same("spools", &answered, &seen.answer);
+}
+
+/// `spool`, answered by a real supervisor.
+fn step_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .spool(&world.spool_id)
+        .expect("`spool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`spool`");
+    assert_eq!(
+        seen.target,
+        format!("/v1/spools/{spool_id}", spool_id = world.spool_id),
+        "`spool`"
+    );
+    assert_eq!(seen.status, 200, "`spool`");
+    assert_eq!(seen.body, "", "`spool` sends no body");
+    live::same("spool", &answered, &seen.answer);
+}
+
+/// `printer_history`, answered by a real supervisor.
+fn step_printer_history(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .printer_history(
+            Some(vec!["spool_registered".to_owned()]),
+            Some("2020-01-01T00:00:00Z".to_owned()),
+            Some("2999-12-31T23:59:59Z".to_owned()),
+            Some(world.spool_id.clone()),
+            None,
+            Some(20),
+        )
+        .expect("`printer_history` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`printer_history`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/history?kinds=spool_registered&since=2020-01-01T00%3A00%3A00Z&until=2999-12-31T23%3A59%3A59Z&spool_id={spool_id}&limit=20",
+            spool_id = world.spool_id
+        ),
+        "`printer_history`"
+    );
+    assert_eq!(seen.status, 200, "`printer_history`");
+    assert_eq!(seen.body, "", "`printer_history` sends no body");
+    live::same("printer_history", &answered, &seen.answer);
+}
+
+/// `preflight`, answered by a real supervisor.
+fn step_preflight(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .preflight(&world.file_name)
+        .expect("`preflight` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`preflight`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/preflight?file_name={file_name}",
+            file_name = world.file_name
+        ),
+        "`preflight`"
+    );
+    assert_eq!(seen.status, 200, "`preflight`");
+    assert_eq!(seen.body, "", "`preflight` sends no body");
+    live::same("preflight", &answered, &seen.answer);
+}
+
+/// `register_spool`, answered by a real supervisor.
+fn step_register_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .register_spool(
+            1000.0,
+            "PLA",
+            "a spool the generated walk registers",
+            REASON,
+            Some("black".to_owned()),
+            Some(1.24),
+            Some(1.75),
+            Some(900.0),
+            Some(200.0),
+        )
+        .expect("`register_spool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`register_spool`");
+    assert_eq!(
+        seen.target, "/v1/spools/actions/register_spool",
+        "`register_spool`"
+    );
+    assert_eq!(seen.status, 200, "`register_spool`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`register_spool`"
+    );
+    assert_eq!(
+        sent["color"],
+        serde_json::to_value("black").expect("a value renders"),
+        "`register_spool` sent another `color`"
+    );
+    assert_eq!(
+        sent["density_g_cm3"],
+        serde_json::to_value(1.24).expect("a value renders"),
+        "`register_spool` sent another `density_g_cm3`"
+    );
+    assert_eq!(
+        sent["diameter_mm"],
+        serde_json::to_value(1.75).expect("a value renders"),
+        "`register_spool` sent another `diameter_mm`"
+    );
+    assert_eq!(
+        sent["initial_g"],
+        serde_json::to_value(1000.0).expect("a value renders"),
+        "`register_spool` sent another `initial_g`"
+    );
+    assert_eq!(
+        sent["material"],
+        serde_json::to_value("PLA").expect("a value renders"),
+        "`register_spool` sent another `material`"
+    );
+    assert_eq!(
+        sent["name"],
+        serde_json::to_value("a spool the generated walk registers").expect("a value renders"),
+        "`register_spool` sent another `name`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`register_spool` sent another `reason`"
+    );
+    assert_eq!(
+        sent["remaining_g"],
+        serde_json::to_value(900.0).expect("a value renders"),
+        "`register_spool` sent another `remaining_g`"
+    );
+    assert_eq!(
+        sent["tare_g"],
+        serde_json::to_value(200.0).expect("a value renders"),
+        "`register_spool` sent another `tare_g`"
+    );
+    live::same("register_spool", &answered, &seen.answer);
+}
+
+/// `load_spool`, answered by a real supervisor.
+fn step_load_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .load_spool(&world.spool_id, REASON, 0)
+        .expect("`load_spool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`load_spool`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/spools/{spool_id}/actions/load_spool",
+            spool_id = world.spool_id
+        ),
+        "`load_spool`"
+    );
+    assert_eq!(seen.status, 200, "`load_spool`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(sent["actor"], serde_json::json!("operator"), "`load_spool`");
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`load_spool` sent another `reason`"
+    );
+    assert_eq!(
+        sent["tool"],
+        serde_json::to_value(0).expect("a value renders"),
+        "`load_spool` sent another `tool`"
+    );
+    live::same("load_spool", &answered, &seen.answer);
+}
+
+/// `unload_spool`, answered by a real supervisor.
+fn step_unload_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .unload_spool(&world.spool_id, REASON)
+        .expect("`unload_spool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`unload_spool`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/spools/{spool_id}/actions/unload_spool",
+            spool_id = world.spool_id
+        ),
+        "`unload_spool`"
+    );
+    assert_eq!(seen.status, 200, "`unload_spool`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`unload_spool`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`unload_spool` sent another `reason`"
+    );
+    live::same("unload_spool", &answered, &seen.answer);
+}
+
+/// `adjust_spool`, answered by a real supervisor.
+fn step_adjust_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .adjust_spool(&world.spool_id, REASON, None, Some(800.0))
+        .expect("`adjust_spool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`adjust_spool`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/spools/{spool_id}/actions/adjust_spool",
+            spool_id = world.spool_id
+        ),
+        "`adjust_spool`"
+    );
+    assert_eq!(seen.status, 200, "`adjust_spool`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`adjust_spool`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`adjust_spool` sent another `reason`"
+    );
+    assert_eq!(
+        sent["remaining_g"],
+        serde_json::to_value(800.0).expect("a value renders"),
+        "`adjust_spool` sent another `remaining_g`"
+    );
+    live::same("adjust_spool", &answered, &seen.answer);
+}
+
+/// `retire_spool`, answered by a real supervisor.
+fn step_retire_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .retire_spool(&world.spool_id, REASON)
+        .expect("`retire_spool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`retire_spool`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/spools/{spool_id}/actions/retire_spool",
+            spool_id = world.spool_id
+        ),
+        "`retire_spool`"
+    );
+    assert_eq!(seen.status, 200, "`retire_spool`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`retire_spool`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`retire_spool` sent another `reason`"
+    );
+    live::same("retire_spool", &answered, &seen.answer);
+}
+
 /// `prints`, answered by a real supervisor.
 fn step_prints(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "");
@@ -698,7 +1009,7 @@ fn refused_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`cancel`");
-    live::same("cancel", rejection.answer.as_ref(), &seen.answer);
+    live::same("cancel", &rejection.answer, &seen.answer);
 }
 
 /// `start_print`, refused by a real supervisor's own policy.
@@ -728,7 +1039,7 @@ fn refused_start_print(
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`start_print`");
-    live::same("start_print", rejection.answer.as_ref(), &seen.answer);
+    live::same("start_print", &rejection.answer, &seen.answer);
 }
 
 /// `set_feedrate_factor`, refused by a real supervisor's own policy.
@@ -751,11 +1062,7 @@ fn refused_set_feedrate_factor(
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`set_feedrate_factor`");
-    live::same(
-        "set_feedrate_factor",
-        rejection.answer.as_ref(),
-        &seen.answer,
-    );
+    live::same("set_feedrate_factor", &rejection.answer, &seen.answer);
 }
 
 /// `set_flowrate_factor`, refused by a real supervisor's own policy.
@@ -778,11 +1085,7 @@ fn refused_set_flowrate_factor(
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`set_flowrate_factor`");
-    live::same(
-        "set_flowrate_factor",
-        rejection.answer.as_ref(),
-        &seen.answer,
-    );
+    live::same("set_flowrate_factor", &rejection.answer, &seen.answer);
 }
 
 /// `set_fan_percent`, refused by a real supervisor's own policy.
@@ -801,7 +1104,7 @@ fn refused_set_fan_percent(client: &Client, world: &supervisor::Supervisor, prox
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`set_fan_percent`");
-    live::same("set_fan_percent", rejection.answer.as_ref(), &seen.answer);
+    live::same("set_fan_percent", &rejection.answer, &seen.answer);
 }
 
 /// `set_tool_target_c`, refused by a real supervisor's own policy.
@@ -820,7 +1123,7 @@ fn refused_set_tool_target_c(client: &Client, world: &supervisor::Supervisor, pr
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`set_tool_target_c`");
-    live::same("set_tool_target_c", rejection.answer.as_ref(), &seen.answer);
+    live::same("set_tool_target_c", &rejection.answer, &seen.answer);
 }
 
 /// `set_bed_target_c`, refused by a real supervisor's own policy.
@@ -839,7 +1142,7 @@ fn refused_set_bed_target_c(client: &Client, world: &supervisor::Supervisor, pro
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`set_bed_target_c`");
-    live::same("set_bed_target_c", rejection.answer.as_ref(), &seen.answer);
+    live::same("set_bed_target_c", &rejection.answer, &seen.answer);
 }
 
 /// `acknowledge_failure`, refused by a real supervisor's own policy.
@@ -867,11 +1170,7 @@ fn refused_acknowledge_failure(
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`acknowledge_failure`");
-    live::same(
-        "acknowledge_failure",
-        rejection.answer.as_ref(),
-        &seen.answer,
-    );
+    live::same("acknowledge_failure", &rejection.answer, &seen.answer);
 }
 
 /// `pause`, refused by a real supervisor's own policy.
@@ -890,7 +1189,7 @@ fn refused_pause(client: &Client, world: &supervisor::Supervisor, proxy: &live::
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`pause`");
-    live::same("pause", rejection.answer.as_ref(), &seen.answer);
+    live::same("pause", &rejection.answer, &seen.answer);
 }
 
 /// `resume`, refused by a real supervisor's own policy.
@@ -909,7 +1208,112 @@ fn refused_resume(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     );
     let seen = proxy.last();
     assert_eq!(seen.status, 409, "`resume`");
-    live::same("resume", rejection.answer.as_ref(), &seen.answer);
+    live::same("resume", &rejection.answer, &seen.answer);
+}
+
+/// `register_spool`, refused by a real supervisor's own policy.
+fn refused_register_spool(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .register_spool(
+            1000.0,
+            "PLA",
+            "a spool the generated walk registers",
+            REASON,
+            Some("black".to_owned()),
+            Some(1.24),
+            Some(1.75),
+            Some(900.0),
+            Some(200.0),
+        )
+        .expect_err("`register_spool` is refused for an actor granted nothing");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`register_spool`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),
+        "`register_spool` was refused for something other than the grant: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`register_spool`");
+    live::same("register_spool", &rejection.answer, &seen.answer);
+}
+
+/// `load_spool`, refused by a real supervisor's own policy.
+fn refused_load_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .load_spool(&world.spool_id, REASON, 0)
+        .expect_err("`load_spool` is refused for an actor granted nothing");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`load_spool`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),
+        "`load_spool` was refused for something other than the grant: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`load_spool`");
+    live::same("load_spool", &rejection.answer, &seen.answer);
+}
+
+/// `unload_spool`, refused by a real supervisor's own policy.
+fn refused_unload_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .unload_spool(&world.spool_id, REASON)
+        .expect_err("`unload_spool` is refused for an actor granted nothing");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`unload_spool`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),
+        "`unload_spool` was refused for something other than the grant: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`unload_spool`");
+    live::same("unload_spool", &rejection.answer, &seen.answer);
+}
+
+/// `adjust_spool`, refused by a real supervisor's own policy.
+fn refused_adjust_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .adjust_spool(&world.spool_id, REASON, None, Some(800.0))
+        .expect_err("`adjust_spool` is refused for an actor granted nothing");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`adjust_spool`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),
+        "`adjust_spool` was refused for something other than the grant: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`adjust_spool`");
+    live::same("adjust_spool", &rejection.answer, &seen.answer);
+}
+
+/// `retire_spool`, refused by a real supervisor's own policy.
+fn refused_retire_spool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .retire_spool(&world.spool_id, REASON)
+        .expect_err("`retire_spool` is refused for an actor granted nothing");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`retire_spool`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),
+        "`retire_spool` was refused for something other than the grant: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`retire_spool`");
+    live::same("retire_spool", &rejection.answer, &seen.answer);
 }
 
 /// The world, about the print the machine is running when it runs one.
@@ -954,9 +1358,18 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_acknowledge_failure(&client, &world, &proxy);
     step_pause(&client, &world, &proxy);
     step_resume(&client, &world, &proxy);
+    step_spools(&client, &world, &proxy);
+    step_spool(&client, &world, &proxy);
+    step_printer_history(&client, &world, &proxy);
+    step_preflight(&client, &world, &proxy);
+    step_register_spool(&client, &world, &proxy);
+    step_load_spool(&client, &world, &proxy);
+    step_unload_spool(&client, &world, &proxy);
+    step_adjust_spool(&client, &world, &proxy);
+    step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 18, "every call went through the proxy");
+    assert!(proxy.calls() >= 27, "every call went through the proxy");
     standing.stop();
 }
 
@@ -987,6 +1400,11 @@ fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
     refused_acknowledge_failure(&client, &world, &proxy);
     refused_pause(&client, &world, &proxy);
     refused_resume(&client, &world, &proxy);
+    refused_register_spool(&client, &world, &proxy);
+    refused_load_spool(&client, &world, &proxy);
+    refused_unload_spool(&client, &world, &proxy);
+    refused_adjust_spool(&client, &world, &proxy);
+    refused_retire_spool(&client, &world, &proxy);
 
     standing.stop();
 }

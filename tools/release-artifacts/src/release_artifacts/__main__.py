@@ -519,6 +519,7 @@ def _world(repo: Repo, arguments: argparse.Namespace) -> int:
                     "print_id": running.print_id,
                     "image_id": running.image_id,
                     "event_id": running.event_id,
+                    "spool_id": running.spool_id,
                     "state": str(running.state),
                     "file_name": running.file_name,
                 }

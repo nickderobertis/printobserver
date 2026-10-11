@@ -520,6 +520,254 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("resume", answered, seen.answer)
 
 
+def step_spools(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`spools`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.spools(True)
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`spools`")
+    equal(seen.target, "/v1/spools?include_retired=true", describing="`spools`")
+    equal(seen.status, 200, describing="`spools`")
+    equal(seen.body, "", describing="what `spools` sent")
+    same("spools", answered, seen.answer)
+
+
+def step_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`spool`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.spool(world.spool_id)
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`spool`")
+    equal(seen.target, f"/v1/spools/{world.spool_id}", describing="`spool`")
+    equal(seen.status, 200, describing="`spool`")
+    equal(seen.body, "", describing="what `spool` sent")
+    same("spool", answered, seen.answer)
+
+
+def step_printer_history(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`printer_history`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.printer_history(
+        ["spool_registered"],
+        "2020-01-01T00:00:00Z",
+        "2999-12-31T23:59:59Z",
+        world.spool_id,
+        None,
+        20,
+    )
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`printer_history`")
+    equal(
+        seen.target,
+        f"/v1/history?kinds=spool_registered&since=2020-01-01T00%3A00%3A00Z&until=2999-12-31T23%3A59%3A59Z&spool_id={world.spool_id}&limit=20",
+        describing="`printer_history`",
+    )
+    equal(seen.status, 200, describing="`printer_history`")
+    equal(seen.body, "", describing="what `printer_history` sent")
+    same("printer_history", answered, seen.answer)
+
+
+def step_preflight(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`preflight`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.preflight(world.file_name)
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`preflight`")
+    equal(seen.target, f"/v1/preflight?file_name={world.file_name}", describing="`preflight`")
+    equal(seen.status, 200, describing="`preflight`")
+    equal(seen.body, "", describing="what `preflight` sent")
+    same("preflight", answered, seen.answer)
+
+
+def step_register_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`register_spool`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.register_spool(
+        1000.0,
+        "PLA",
+        "a spool the generated walk registers",
+        REASON,
+        "black",
+        1.24,
+        1.75,
+        900.0,
+        200.0,
+    )
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`register_spool`")
+    equal(seen.target, "/v1/spools/actions/register_spool", describing="`register_spool`")
+    equal(seen.status, 200, describing="`register_spool`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `register_spool` acted as")
+    equal(
+        sent["color"],
+        "black",
+        describing="the `color` `register_spool` sent",
+    )
+    equal(
+        sent["density_g_cm3"],
+        1.24,
+        describing="the `density_g_cm3` `register_spool` sent",
+    )
+    equal(
+        sent["diameter_mm"],
+        1.75,
+        describing="the `diameter_mm` `register_spool` sent",
+    )
+    equal(
+        sent["initial_g"],
+        1000.0,
+        describing="the `initial_g` `register_spool` sent",
+    )
+    equal(
+        sent["material"],
+        "PLA",
+        describing="the `material` `register_spool` sent",
+    )
+    equal(
+        sent["name"],
+        "a spool the generated walk registers",
+        describing="the `name` `register_spool` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `register_spool` sent",
+    )
+    equal(
+        sent["remaining_g"],
+        900.0,
+        describing="the `remaining_g` `register_spool` sent",
+    )
+    equal(
+        sent["tare_g"],
+        200.0,
+        describing="the `tare_g` `register_spool` sent",
+    )
+    same("register_spool", answered, seen.answer)
+
+
+def step_load_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`load_spool`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.load_spool(world.spool_id, REASON, 0)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`load_spool`")
+    equal(seen.target, f"/v1/spools/{world.spool_id}/actions/load_spool", describing="`load_spool`")
+    equal(seen.status, 200, describing="`load_spool`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `load_spool` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `load_spool` sent",
+    )
+    equal(
+        sent["tool"],
+        0,
+        describing="the `tool` `load_spool` sent",
+    )
+    same("load_spool", answered, seen.answer)
+
+
+def step_unload_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`unload_spool`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.unload_spool(world.spool_id, REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`unload_spool`")
+    equal(
+        seen.target,
+        f"/v1/spools/{world.spool_id}/actions/unload_spool",
+        describing="`unload_spool`",
+    )
+    equal(seen.status, 200, describing="`unload_spool`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `unload_spool` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `unload_spool` sent",
+    )
+    same("unload_spool", answered, seen.answer)
+
+
+def step_adjust_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`adjust_spool`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.adjust_spool(world.spool_id, REASON, None, 800.0)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`adjust_spool`")
+    equal(
+        seen.target,
+        f"/v1/spools/{world.spool_id}/actions/adjust_spool",
+        describing="`adjust_spool`",
+    )
+    equal(seen.status, 200, describing="`adjust_spool`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `adjust_spool` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `adjust_spool` sent",
+    )
+    equal(
+        sent["remaining_g"],
+        800.0,
+        describing="the `remaining_g` `adjust_spool` sent",
+    )
+    same("adjust_spool", answered, seen.answer)
+
+
+def step_retire_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`retire_spool`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.retire_spool(world.spool_id, REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`retire_spool`")
+    equal(
+        seen.target,
+        f"/v1/spools/{world.spool_id}/actions/retire_spool",
+        describing="`retire_spool`",
+    )
+    equal(seen.status, 200, describing="`retire_spool`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `retire_spool` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `retire_spool` sent",
+    )
+    same("retire_spool", answered, seen.answer)
+
+
 def step_prints(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`prints`, answered by a real supervisor."""
     ready(client, world.print_id, "")
@@ -560,10 +808,19 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_acknowledge_failure(client, world, proxy)
         step_pause(client, world, proxy)
         step_resume(client, world, proxy)
+        step_spools(client, world, proxy)
+        step_spool(client, world, proxy)
+        step_printer_history(client, world, proxy)
+        step_preflight(client, world, proxy)
+        step_register_spool(client, world, proxy)
+        step_load_spool(client, world, proxy)
+        step_unload_spool(client, world, proxy)
+        step_adjust_spool(client, world, proxy)
+        step_retire_spool(client, world, proxy)
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 18,
+            proxy.calls() >= 27,
             describing="every call to have gone through the proxy",
         )
 
@@ -750,6 +1007,101 @@ def refused_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
         truth(False, describing="`resume` to be refused")
 
 
+def refused_register_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`register_spool`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.register_spool(
+            1000.0,
+            "PLA",
+            "a spool the generated walk registers",
+            REASON,
+            "black",
+            1.24,
+            1.75,
+            900.0,
+            200.0,
+        )
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`register_spool` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`register_spool`")
+        same("register_spool", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`register_spool` to be refused")
+
+
+def refused_load_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`load_spool`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.load_spool(world.spool_id, REASON, 0)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`load_spool` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`load_spool`")
+        same("load_spool", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`load_spool` to be refused")
+
+
+def refused_unload_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`unload_spool`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.unload_spool(world.spool_id, REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`unload_spool` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`unload_spool`")
+        same("unload_spool", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`unload_spool` to be refused")
+
+
+def refused_adjust_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`adjust_spool`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.adjust_spool(world.spool_id, REASON, None, 800.0)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`adjust_spool` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`adjust_spool`")
+        same("adjust_spool", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`adjust_spool` to be refused")
+
+
+def refused_retire_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`retire_spool`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.retire_spool(world.spool_id, REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`retire_spool` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`retire_spool`")
+        same("retire_spool", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`retire_spool` to be refused")
+
+
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 def test_every_action_is_refused_as_a_typed_rejection(
     tmp_path_factory: pytest.TempPathFactory,
@@ -779,3 +1131,8 @@ def test_every_action_is_refused_as_a_typed_rejection(
         refused_acknowledge_failure(client, world, proxy)
         refused_pause(client, world, proxy)
         refused_resume(client, world, proxy)
+        refused_register_spool(client, world, proxy)
+        refused_load_spool(client, world, proxy)
+        refused_unload_spool(client, world, proxy)
+        refused_adjust_spool(client, world, proxy)
+        refused_retire_spool(client, world, proxy)

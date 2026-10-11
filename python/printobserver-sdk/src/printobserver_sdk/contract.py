@@ -71,6 +71,10 @@ OPERATION_NAMES: tuple[str, ...] = (
     "manifest_get",
     "look",
     "manifest_set",
+    "spools",
+    "spool",
+    "printer_history",
+    "preflight",
     "pause",
     "resume",
     "cancel",
@@ -81,6 +85,11 @@ OPERATION_NAMES: tuple[str, ...] = (
     "set_bed_target_c",
     "set_fan_percent",
     "acknowledge_failure",
+    "register_spool",
+    "load_spool",
+    "unload_spool",
+    "adjust_spool",
+    "retire_spool",
 )
 
 
@@ -1174,6 +1183,16 @@ class Preflight(TypedDict):
     verdict: PreflightVerdict
 
 
+class PreflightAnswer(TypedDict):
+    """`PreflightAnswer`, as the contracts declare it.
+
+    What a filament check answers.
+    """
+
+    # What the check found, read now.
+    preflight: Preflight
+
+
 class PreflightCheckedPayload(TypedDict):
     """`PreflightCheckedPayload`, as the contracts declare it.
 
@@ -1871,6 +1890,20 @@ class SpoolAdjustedPayload(TypedDict):
     took_pending: NotRequired[list[PendingTaken]]
 
 
+class SpoolAnswer(TypedDict):
+    """`SpoolAnswer`, as the contracts declare it.
+
+    What one spool's read answers: the spool, and the newest of the
+    printer's
+    own events that name it.
+    """
+
+    # The newest timeline events naming it, newest first.
+    recent: list[EventRecord]
+    # The spool, retired or not.
+    spool: SpoolRecord
+
+
 class SpoolCommandRegisterSpool(TypedDict):
     """The `register_spool` arm of `SpoolCommand`.
 
@@ -1982,6 +2015,26 @@ SpoolCommand: TypeAlias = (
     | SpoolCommandAdjustSpool
     | SpoolCommandRetireSpool
 )
+
+
+class SpoolCommandAnswer(TypedDict):
+    """`SpoolCommandAnswer`, as the contracts declare it.
+
+    What a spool command answers, accepted or refused.
+
+    A refusal is the same shape and deliberately so: the decision carries
+    the
+    grant or the ledger's own reason, and the events are the record the
+    refusal
+    wrote.
+    """
+
+    # The decision taken on the command.
+    decision: PolicyDecision
+    # Every event it wrote, in the order they were written.
+    events: list[EventRecord]
+    # The spool it was about, as the command left it, when there is one.
+    spool: NotRequired[SpoolRecord | None]
 
 
 class SpoolCommandRejectedPayload(TypedDict):
@@ -2136,6 +2189,30 @@ class SpoolUnverifiedPayload(TypedDict):
     spool_id: SpoolId
 
 
+class SpoolsAnswer(TypedDict):
+    """`SpoolsAnswer`, as the contracts declare it.
+
+    What the spools read answers.
+
+    `at_a_glance` is one line per spool, in the order `spools` lists them,
+    composed here so that what is left on each spool is the first thing a
+    reader of either rendering meets rather than a figure inside a whole
+    record. Its name is what puts it first: both renderings walk an
+    answer's
+    fields in name order, ahead of `pending` and `spools`.
+    """
+
+    # One line per spool in `spools`, in the same order.
+    at_a_glance: list[str]
+    # Every charge held after a filament change nobody has confirmed, oldest
+    # first: what the next spool loaded on that tool is charged.
+    pending: list[PendingCharge]
+    # Every spool, retired ones only when asked for, most recently
+    # registered
+    # first.
+    spools: list[SpoolRecord]
+
+
 class StartupOutcomeSessionResumedPayload(TypedDict):
     """What the `session_resumed` arm of `StartupOutcome` carries.
 
@@ -2266,6 +2343,20 @@ class SupervisionSessionOpenedPayload(TypedDict):
     harness_identity: str
     # The session's own name in the harness.
     session_name: str
+
+
+class TimelineAnswer(TypedDict):
+    """`TimelineAnswer`, as the contracts declare it.
+
+    What a printer history read answers: one page of the printer's own
+    events.
+    """
+
+    # The events, newest first.
+    events: list[EventRecord]
+    # The cursor for the following, older page, given as `before`; absent
+    # when there is none.
+    next: NotRequired[EventId | None]
 
 
 # An instant in UTC, as an RFC 3339 string with a zero offset.
@@ -2807,6 +2898,111 @@ class GeneratedClient(GeneratedSurface):
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ManifestAnswer, answered)
 
+    def spools(self, include_retired: bool | None = None) -> SpoolsAnswer:
+        """Call `spools` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/spools"
+        asked: list[tuple[str, str]] = []
+        if include_retired is not None:
+            asked.append(("include_retired", "true" if include_retired else "false"))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolsAnswer, answered)
+
+    def spool(self, spool_id: str) -> SpoolAnswer:
+        """Call `spool` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = f"/v1/spools/{spool_id}"
+        asked: list[tuple[str, str]] = []
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolAnswer, answered)
+
+    def printer_history(
+        self,
+        kinds: list[str] | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        spool_id: str | None = None,
+        before: str | None = None,
+        limit: int | None = None,
+    ) -> TimelineAnswer:
+        """Call `printer_history` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/history"
+        asked: list[tuple[str, str]] = []
+        if kinds is not None:
+            for value in kinds:
+                asked.append(("kinds", str(value)))
+        if since is not None:
+            asked.append(("since", str(since)))
+        if until is not None:
+            asked.append(("until", str(until)))
+        if spool_id is not None:
+            asked.append(("spool_id", str(spool_id)))
+        if before is not None:
+            asked.append(("before", str(before)))
+        if limit is not None:
+            asked.append(("limit", str(limit)))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(TimelineAnswer, answered)
+
+    def preflight(self, file_name: str) -> PreflightAnswer:
+        """Call `preflight` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/preflight"
+        asked: list[tuple[str, str]] = []
+        if file_name is not None:
+            asked.append(("file_name", str(file_name)))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(PreflightAnswer, answered)
+
     def pause(self, print_id: str, reason: str) -> ActionAnswer:
         """Call `pause` on the configured supervisor.
 
@@ -3117,3 +3313,173 @@ class GeneratedClient(GeneratedSurface):
         # type `operations.json` declares for it, so this cast names that type.
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(ActionAnswer, answered)
+
+    def register_spool(
+        self,
+        initial_g: float,
+        material: str,
+        name: str,
+        reason: str,
+        color: str | None = None,
+        density_g_cm3: float | None = None,
+        diameter_mm: float | None = None,
+        remaining_g: float | None = None,
+        tare_g: float | None = None,
+    ) -> SpoolCommandAnswer:
+        """Call `register_spool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/spools/actions/register_spool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if color is not None:
+            sending["color"] = color
+        if density_g_cm3 is not None:
+            sending["density_g_cm3"] = density_g_cm3
+        if diameter_mm is not None:
+            sending["diameter_mm"] = diameter_mm
+        sending["initial_g"] = initial_g
+        sending["material"] = material
+        sending["name"] = name
+        sending["reason"] = reason
+        if remaining_g is not None:
+            sending["remaining_g"] = remaining_g
+        if tare_g is not None:
+            sending["tare_g"] = tare_g
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolCommandAnswer, answered)
+
+    def load_spool(self, spool_id: str, reason: str, tool: int) -> SpoolCommandAnswer:
+        """Call `load_spool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = f"/v1/spools/{spool_id}/actions/load_spool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        sending["tool"] = tool
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolCommandAnswer, answered)
+
+    def unload_spool(self, spool_id: str, reason: str) -> SpoolCommandAnswer:
+        """Call `unload_spool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = f"/v1/spools/{spool_id}/actions/unload_spool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolCommandAnswer, answered)
+
+    def adjust_spool(
+        self,
+        spool_id: str,
+        reason: str,
+        gross_g: float | None = None,
+        remaining_g: float | None = None,
+    ) -> SpoolCommandAnswer:
+        """Call `adjust_spool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = f"/v1/spools/{spool_id}/actions/adjust_spool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if gross_g is not None:
+            sending["gross_g"] = gross_g
+        sending["reason"] = reason
+        if remaining_g is not None:
+            sending["remaining_g"] = remaining_g
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolCommandAnswer, answered)
+
+    def retire_spool(self, spool_id: str, reason: str) -> SpoolCommandAnswer:
+        """Call `retire_spool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = f"/v1/spools/{spool_id}/actions/retire_spool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(SpoolCommandAnswer, answered)

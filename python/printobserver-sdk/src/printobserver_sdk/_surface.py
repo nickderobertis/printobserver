@@ -15,7 +15,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - imported for annotations alone
-    from printobserver_sdk.contract import ActionAnswer, Actor, Range, RejectionReason
+    from printobserver_sdk.contract import (
+        ActionAnswer,
+        Actor,
+        Range,
+        RejectionReason,
+        SpoolCommandAnswer,
+    )
 
 
 class ClientError(Exception):
@@ -89,7 +95,8 @@ class RejectedError(ClientError):
     `reason` is the refusal itself, matched rather than read; `requested` and
     `allowed` are the value that was asked for and the range that is allowed,
     which the policy states when it ruled on a value and which are `None` when
-    it ruled on something else.
+    it ruled on something else. `answer` is the whole answer: an action's
+    record, or a spool command's decision and the events its refusal wrote.
     """
 
     def __init__(
@@ -97,7 +104,7 @@ class RejectedError(ClientError):
         reason: RejectionReason,
         requested: float | None,
         allowed: Range | None,
-        answer: ActionAnswer,
+        answer: ActionAnswer | SpoolCommandAnswer,
     ) -> None:
         """Record the reason, the value asked for and the range allowed."""
         said = f"the supervisor's policy refused this action: {reason!r}"

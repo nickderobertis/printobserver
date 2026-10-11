@@ -45,6 +45,7 @@ class Supervisor:
     print_id: str
     image_id: str
     event_id: str
+    spool_id: str
     file_name: str
 
 
@@ -122,6 +123,7 @@ class Standing:
             print_id=described["print_id"],
             image_id=described["image_id"],
             event_id=described["event_id"],
+            spool_id=described["spool_id"],
             file_name=described["file_name"],
         )
 

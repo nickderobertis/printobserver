@@ -11,7 +11,13 @@
  * each other's shapes without either being unloadable.
  */
 
-import type { ActionAnswer, Actor, Range, RejectionReason } from "./contract.ts";
+import type {
+  ActionAnswer,
+  Actor,
+  Range,
+  RejectionReason,
+  SpoolCommandAnswer,
+} from "./contract.ts";
 
 /** Why a call did not answer what it asked for. */
 export class ClientError extends Error {
@@ -116,14 +122,18 @@ export class Rejected extends ClientError {
   readonly requested: number | undefined;
   /** The range that is allowed, where the policy ruled on a value. */
   readonly allowed: Range | undefined;
-  /** The whole answer, whose record carries the request and the decision. */
-  readonly answer: ActionAnswer;
+  /**
+   * The whole answer: an action's, whose record carries the request and the
+   * decision, or a spool command's, carrying the decision and the events its
+   * refusal wrote.
+   */
+  readonly answer: ActionAnswer | SpoolCommandAnswer;
 
   constructor(
     reason: RejectionReason,
     requested: number | undefined,
     allowed: Range | undefined,
-    answer: ActionAnswer,
+    answer: ActionAnswer | SpoolCommandAnswer,
   ) {
     super(
       `the supervisor's policy refused this action: ${JSON.stringify(reason)}` +

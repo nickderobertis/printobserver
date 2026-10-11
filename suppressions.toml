@@ -1174,6 +1174,20 @@ file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
 site = 'test("every method is answered by a real supervisor"'
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Node walk, so that the directive standing in `npm/printobserver-sdk/integration/live.test.ts` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
+# --- the generated Rust client's spool registration ---------------------------
+
+[[suppression]]
+rule = "clippy::too_many_arguments"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub fn register_spool("
+reason = "A generated method takes one argument per value its operation declares, in the order every client takes them, and the contracts' `register_spool` declares nine: the spool's name, material, colour, diameter, density, full and current figures and tare, and the reason. Gathering them into a struct for this one method would give the Rust client a calling convention its sixteen other methods and the two other clients do not have, and would be a second, hand-kept copy of the `SpoolCommand` variant the method is generated from. The generator writes this directive only above a method past the lint's limit, so a later operation within it carries none."
+
+[[suppression]]
+rule = "clippy::too_many_arguments"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = 'lines.append("    #[expect(clippy::too_many_arguments)]")'
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated method past the lint's limit, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
 # --- the generated Python client's calls, and the prints read -----------------
 
 [[suppression]]

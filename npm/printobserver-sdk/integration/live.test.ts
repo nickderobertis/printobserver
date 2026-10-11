@@ -141,7 +141,7 @@ async function stepHistory(client: Client, proxy: Recording) {
 
   const seen = proxy.last();
   expect(seen.method).toBe("GET");
-  expect(seen.target).toBe(`/v1/prints/${world.print_id}/history?limit=${20}`);
+  expect(seen.target).toBe(`/v1/prints/${world.print_id}/history?limit=20`);
   expect(seen.status).toBe(200);
   expect(seen.body).toBe("");
   same("history", answered, seen.answer);
@@ -155,7 +155,7 @@ async function stepLook(client: Client, proxy: Recording) {
 
   const seen = proxy.last();
   expect(seen.method).toBe("GET");
-  expect(seen.target).toBe(`/v1/prints/${world.print_id}/look?wait_s=${0}`);
+  expect(seen.target).toBe(`/v1/prints/${world.print_id}/look?wait_s=0`);
   expect(seen.status).toBe(200);
   expect(seen.body).toBe("");
   same("look", answered, seen.answer);
@@ -350,6 +350,171 @@ async function stepResume(client: Client, proxy: Recording) {
   same("resume", answered, seen.answer);
 }
 
+/** `spools`, answered by a real supervisor. */
+async function stepSpools(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.spools(true);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(`/v1/spools?include_retired=true`);
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("spools", answered, seen.answer);
+}
+
+/** `spool`, answered by a real supervisor. */
+async function stepSpool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.spool(world.spool_id);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(`/v1/spools/${world.spool_id}`);
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("spool", answered, seen.answer);
+}
+
+/** `printer_history`, answered by a real supervisor. */
+async function stepPrinterHistory(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.printerHistory(
+    ["spool_registered"],
+    "2020-01-01T00:00:00Z",
+    "2999-12-31T23:59:59Z",
+    world.spool_id,
+    undefined,
+    20,
+  );
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(
+    `/v1/history?kinds=spool_registered&since=2020-01-01T00%3A00%3A00Z&until=2999-12-31T23%3A59%3A59Z&spool_id=${world.spool_id}&limit=20`,
+  );
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("printer_history", answered, seen.answer);
+}
+
+/** `preflight`, answered by a real supervisor. */
+async function stepPreflight(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.preflight(world.file_name);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(`/v1/preflight?file_name=${world.file_name}`);
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("preflight", answered, seen.answer);
+}
+
+/** `register_spool`, answered by a real supervisor. */
+async function stepRegisterSpool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.registerSpool(
+    1000.0,
+    "PLA",
+    "a spool the generated walk registers",
+    REASON,
+    "black",
+    1.24,
+    1.75,
+    900.0,
+    200.0,
+  );
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/spools/actions/register_spool`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.color).toEqual("black");
+  expect(sent.density_g_cm3).toEqual(1.24);
+  expect(sent.diameter_mm).toEqual(1.75);
+  expect(sent.initial_g).toEqual(1000.0);
+  expect(sent.material).toEqual("PLA");
+  expect(sent.name).toEqual("a spool the generated walk registers");
+  expect(sent.reason).toEqual(REASON);
+  expect(sent.remaining_g).toEqual(900.0);
+  expect(sent.tare_g).toEqual(200.0);
+  same("register_spool", answered, seen.answer);
+}
+
+/** `load_spool`, answered by a real supervisor. */
+async function stepLoadSpool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.loadSpool(world.spool_id, REASON, 0);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/spools/${world.spool_id}/actions/load_spool`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
+  expect(sent.tool).toEqual(0);
+  same("load_spool", answered, seen.answer);
+}
+
+/** `unload_spool`, answered by a real supervisor. */
+async function stepUnloadSpool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.unloadSpool(world.spool_id, REASON);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/spools/${world.spool_id}/actions/unload_spool`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
+  same("unload_spool", answered, seen.answer);
+}
+
+/** `adjust_spool`, answered by a real supervisor. */
+async function stepAdjustSpool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.adjustSpool(world.spool_id, REASON, undefined, 800.0);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/spools/${world.spool_id}/actions/adjust_spool`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
+  expect(sent.remaining_g).toEqual(800.0);
+  same("adjust_spool", answered, seen.answer);
+}
+
+/** `retire_spool`, answered by a real supervisor. */
+async function stepRetireSpool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const answered = await client.retireSpool(world.spool_id, REASON);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/spools/${world.spool_id}/actions/retire_spool`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
+  same("retire_spool", answered, seen.answer);
+}
+
 /** `prints`, answered by a real supervisor. */
 async function stepPrints(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "");
@@ -390,9 +555,18 @@ test("every method is answered by a real supervisor", async () => {
   await stepAcknowledgeFailure(client, proxy);
   await stepPause(client, proxy);
   await stepResume(client, proxy);
+  await stepSpools(client, proxy);
+  await stepSpool(client, proxy);
+  await stepPrinterHistory(client, proxy);
+  await stepPreflight(client, proxy);
+  await stepRegisterSpool(client, proxy);
+  await stepLoadSpool(client, proxy);
+  await stepUnloadSpool(client, proxy);
+  await stepAdjustSpool(client, proxy);
+  await stepRetireSpool(client, proxy);
   await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(18);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(27);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */
@@ -519,6 +693,81 @@ async function refusedResume(client: Client, proxy: Recording) {
   same("resume", (refused as Rejected).answer, seen.answer);
 }
 
+/** `register_spool`, refused by a real supervisor's own policy. */
+async function refusedRegisterSpool(client: Client, proxy: Recording) {
+  const refused = await client
+    .registerSpool(
+      1000.0,
+      "PLA",
+      "a spool the generated walk registers",
+      REASON,
+      "black",
+      1.24,
+      1.75,
+      900.0,
+      200.0,
+    )
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("register_spool", (refused as Rejected).answer, seen.answer);
+}
+
+/** `load_spool`, refused by a real supervisor's own policy. */
+async function refusedLoadSpool(client: Client, proxy: Recording) {
+  const refused = await client
+    .loadSpool(world.spool_id, REASON, 0)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("load_spool", (refused as Rejected).answer, seen.answer);
+}
+
+/** `unload_spool`, refused by a real supervisor's own policy. */
+async function refusedUnloadSpool(client: Client, proxy: Recording) {
+  const refused = await client
+    .unloadSpool(world.spool_id, REASON)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("unload_spool", (refused as Rejected).answer, seen.answer);
+}
+
+/** `adjust_spool`, refused by a real supervisor's own policy. */
+async function refusedAdjustSpool(client: Client, proxy: Recording) {
+  const refused = await client
+    .adjustSpool(world.spool_id, REASON, undefined, 800.0)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("adjust_spool", (refused as Rejected).answer, seen.answer);
+}
+
+/** `retire_spool`, refused by a real supervisor's own policy. */
+async function refusedRetireSpool(client: Client, proxy: Recording) {
+  const refused = await client
+    .retireSpool(world.spool_id, REASON)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("retire_spool", (refused as Rejected).answer, seen.answer);
+}
+
 /**
  * Every action, refused by a real supervisor's own policy, as a typed rejection.
  *
@@ -559,6 +808,11 @@ test("every action is refused as a typed rejection by a real supervisor", async 
     await refusedAcknowledgeFailure(client, proxy);
     await refusedPause(client, proxy);
     await refusedResume(client, proxy);
+    await refusedRegisterSpool(client, proxy);
+    await refusedLoadSpool(client, proxy);
+    await refusedUnloadSpool(client, proxy);
+    await refusedAdjustSpool(client, proxy);
+    await refusedRetireSpool(client, proxy);
   } finally {
     world = shared;
     await refusing.stop();

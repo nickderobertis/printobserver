@@ -25,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -122,6 +123,11 @@ class Running:
     image_id: str
     #: The failure event an acknowledgement is about.
     event_id: str
+    #: The spool every spool command is about: one registered as the world
+    #: came up, or — where the operator is granted nothing — an identifier no
+    #: spool has, which the grant refuses every command about before the
+    #: ledger is asked.
+    spool_id: str
     #: Where its record and its images live.
     state: Path
     #: The file a journey against this world starts a print of.
@@ -428,12 +434,14 @@ class World:
         )
         server = self._await_serving()
         print_id, image_id, event_id = self._open_a_print(server)
+        spool_id = unheld_spool_id() if self.refusing else self._register_a_spool(server)
         return Running(
             server=server,
             credential=self.credential,
             print_id=print_id,
             image_id=image_id,
             event_id=event_id,
+            spool_id=spool_id,
             state=self.state,
             file_name=HOLD_FILE,
         )
@@ -543,6 +551,46 @@ class World:
         msg = "the ingress accepted the alert but did not finish preparing its print and image"
         raise WorldError(msg)
 
+    def _register_a_spool(self, server: str) -> str:
+        """Register one spool as the operator, and answer its identifier.
+
+        Raises:
+            WorldError: If the supervisor would not register it.
+        """
+        import http.client
+
+        # llmlint: ignore[async_typed_clients_at_boundaries] one post in a sequential proof
+        connection = http.client.HTTPConnection(urlsplit(server).netloc, timeout=30)
+        connection.request(
+            "POST",
+            "/v1/spools/actions/register_spool",
+            body=json.dumps(
+                {
+                    "name": "the world's own spool",
+                    "material": "PLA",
+                    "initial_g": 1000.0,
+                    "reason": "a world is setting up a spool for a client to act on",
+                    "actor": "operator",
+                }
+            ),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.credential}",
+            },
+        )
+        answered = connection.getresponse()
+        said = answered.read()
+        connection.close()
+        try:
+            spool_id = json.loads(said)["spool"]["id"]
+        except (ValueError, KeyError, TypeError) as error:
+            msg = f"the supervisor registered no spool ({answered.status}): {said!r}"
+            raise WorldError(msg) from error
+        if not isinstance(spool_id, str):
+            msg = f"the supervisor answered a spool with no identifier: {said!r}"
+            raise WorldError(msg)
+        return spool_id
+
     def _recorded(self) -> tuple[str, str, str] | None:
         """The print and image, once the ingress has finished observing the printer.
 
@@ -574,6 +622,23 @@ class World:
         if not prints or not images or not events or not prepared:
             return None
         return str(prints[0][0]), str(images[0][0]), str(events[0][0])
+
+
+def unheld_spool_id() -> str:
+    """A spool identifier no spool has: a version 7 UUID minted now.
+
+    It is spelled exactly as this system spells one — lowercase, hyphenated, at
+    version 7 — so a request naming it reaches the grant rather than being
+    refused for its spelling.
+    """
+    millis = time.time_ns() // 1_000_000
+    random = int.from_bytes(secrets.token_bytes(10), "big")
+    value = (millis & ((1 << 48) - 1)) << 80
+    value |= 0x7 << 76
+    value |= ((random >> 64) & 0xFFF) << 64
+    value |= 0b10 << 62
+    value |= random & ((1 << 62) - 1)
+    return str(uuid.UUID(int=value))
 
 
 def _as_toml(document: dict[str, object]) -> str:

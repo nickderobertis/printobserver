@@ -177,32 +177,42 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
     """The document a stub host refuses one operation with.
 
     The policy's own refusal, which is the same shape as an acceptance carrying
-    a decision that is a refusal — and the one refusal that carries a value
-    asked for and a range allowed, because that is the one a caller acts on.
+    a decision that is a refusal. A print action's answer carries its decision
+    in its record, and its refusal is the one that carries a value asked for
+    and a range allowed, because that is the one a caller acts on. A spool
+    command's answer carries its decision at the top, and its refusal is the
+    ledger's, which says why in words.
     """
     answered = answer_of(operation, contract)
     if not isinstance(answered, dict):
         msg = f"`{operation.name}` answers something a refusal cannot be built from"
         raise ExampleError(msg)
     record = answered.get("record")
-    if not isinstance(record, dict):
-        msg = f"`{operation.name}` answers no record for a refusal to be taken on"
-        raise ExampleError(msg)
-    return {
-        **answered,
-        "record": {
-            **record,
-            "decision": {
-                "rejected": {
-                    "out_of_bounds": {
-                        "adjustable": value_of(Ref("Adjustable"), contract),
-                        "requested": NUMBER,
-                        "allowed": {"min": 0.5, "max": 1.25},
+    if isinstance(record, dict):
+        return {
+            **answered,
+            "record": {
+                **record,
+                "decision": {
+                    "rejected": {
+                        "out_of_bounds": {
+                            "adjustable": value_of(Ref("Adjustable"), contract),
+                            "requested": NUMBER,
+                            "allowed": {"min": 0.5, "max": 1.25},
+                        }
                     }
-                }
+                },
             },
-        },
-    }
+        }
+    if "decision" in answered:
+        return {**answered, "decision": {"rejected": {"spool_refused": {"detail": TEXT}}}}
+    msg = f"`{operation.name}` answers no record and no decision for a refusal to be taken on"
+    raise ExampleError(msg)
+
+
+def is_ledger_refusal(rejection: object) -> bool:
+    """Whether one refusal document is the spool ledger's rather than the policy's."""
+    return isinstance(rejection, dict) and "record" not in rejection
 
 
 def argument_of(shape: TypeExpr, contract: Contract) -> object:

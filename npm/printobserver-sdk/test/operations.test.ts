@@ -209,6 +209,79 @@ test("manifest_set makes no request when the reason is empty", async () => {
   }
 });
 
+test("spools sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"at_a_glance": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "pending": [{"analysed_length_mm": 1.5, "charge_key": {"key": "print", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "segment": 7, "tool": 7}, "length_mm": 1.5, "method": "slicer_estimate", "note": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "pended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "position": {"bytes": 7, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "size_bytes": 7}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tool": 7}], "spools": [{"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.spools(true);
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe("/v1/spools?include_retired=true");
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
+test("spool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"recent": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.spool("0198f0a1-2b3c-7d4e-8f90-123456789abc");
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe("/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc");
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
+test("printer_history sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "next": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.printerHistory(
+    ["0198f0a1-2b3c-7d4e-8f90-123456789abc"],
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    7,
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe(
+    "/v1/history?kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&since=0198f0a1-2b3c-7d4e-8f90-123456789abc&until=0198f0a1-2b3c-7d4e-8f90-123456789abc&spool_id=0198f0a1-2b3c-7d4e-8f90-123456789abc&before=0198f0a1-2b3c-7d4e-8f90-123456789abc&limit=7",
+  );
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
+test("preflight sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"buffer_g": 1.5, "marks": [{"reason": {"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "reason": "uncharged_print"}, "since": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "remaining_g": 1.5, "required_g": 1.5, "spool_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "spool_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tool": 7, "verdict": "passed"}], "verdict": "passed"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.preflight("0198f0a1-2b3c-7d4e-8f90-123456789abc");
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe("/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc");
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
 test("pause sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
     '{"intervention": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "printer_refusal": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "record": {"decision": "accepted", "executed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "succeeded", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "request": {"action": {"action": "pause", "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "requested_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}',
@@ -251,6 +324,7 @@ test("pause surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("pause makes no request when the reason is empty", async () => {
@@ -322,6 +396,7 @@ test("resume surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("resume makes no request when the reason is empty", async () => {
@@ -393,6 +468,7 @@ test("cancel surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("cancel makes no request when the reason is empty", async () => {
@@ -479,6 +555,7 @@ test("start_print surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("start_print makes no request when the reason is empty", async () => {
@@ -575,6 +652,7 @@ test("set_feedrate_factor surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("set_feedrate_factor makes no request when the reason is empty", async () => {
@@ -655,6 +733,7 @@ test("set_flowrate_factor surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("set_flowrate_factor makes no request when the reason is empty", async () => {
@@ -737,6 +816,7 @@ test("set_tool_target_c surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("set_tool_target_c makes no request when the reason is empty", async () => {
@@ -817,6 +897,7 @@ test("set_bed_target_c surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("set_bed_target_c makes no request when the reason is empty", async () => {
@@ -897,6 +978,7 @@ test("set_fan_percent surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("set_fan_percent makes no request when the reason is empty", async () => {
@@ -977,6 +1059,7 @@ test("acknowledge_failure surfaces the policy's own refusal", async () => {
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
 });
 
 test("acknowledge_failure makes no request when the reason is empty", async () => {
@@ -1008,6 +1091,419 @@ test("acknowledge_failure makes no request when the reason is empty", async () =
         JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as EventId,
         "   ",
       );
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("register_spool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.registerSpool(
+    1.5,
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "a generated walk is asking",
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/spools/actions/register_spool");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "initial_g": 1.5, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "reason": "a generated walk is asking", "remaining_g": 1.5, "tare_g": 1.5}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("register_spool surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.registerSpool(
+      1.5,
+      "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+      "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+      "a generated walk is asking",
+      "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+      1.5,
+      1.5,
+      1.5,
+      1.5,
+    );
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  const rejection = refused as Rejected;
+  expect(rejection.requested).toBeUndefined();
+  expect(rejection.allowed).toBeUndefined();
+  expect(rejection.reason).toHaveProperty("spool_refused");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("register_spool makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.registerSpool(
+        1.5,
+        "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+        "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+        "",
+        "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+      );
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.registerSpool(
+        1.5,
+        "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+        "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+        "   ",
+        "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+      );
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("load_spool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.loadSpool(
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "a generated walk is asking",
+    7,
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe(
+    "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/load_spool",
+  );
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking", "tool": 7}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("load_spool surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.loadSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 7);
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  const rejection = refused as Rejected;
+  expect(rejection.requested).toBeUndefined();
+  expect(rejection.allowed).toBeUndefined();
+  expect(rejection.reason).toHaveProperty("spool_refused");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("load_spool makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.loadSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "", 7);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.loadSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", 7);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("unload_spool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.unloadSpool(
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "a generated walk is asking",
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe(
+    "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/unload_spool",
+  );
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("unload_spool surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.unloadSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking");
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  const rejection = refused as Rejected;
+  expect(rejection.requested).toBeUndefined();
+  expect(rejection.allowed).toBeUndefined();
+  expect(rejection.reason).toHaveProperty("spool_refused");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("unload_spool makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.unloadSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.unloadSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("adjust_spool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.adjustSpool(
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "a generated walk is asking",
+    1.5,
+    1.5,
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe(
+    "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/adjust_spool",
+  );
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "gross_g": 1.5, "reason": "a generated walk is asking", "remaining_g": 1.5}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("adjust_spool surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.adjustSpool(
+      "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+      "a generated walk is asking",
+      1.5,
+      1.5,
+    );
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  const rejection = refused as Rejected;
+  expect(rejection.requested).toBeUndefined();
+  expect(rejection.allowed).toBeUndefined();
+  expect(rejection.reason).toHaveProperty("spool_refused");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("adjust_spool makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.adjustSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "", 1.5, 1.5);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.adjustSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", 1.5, 1.5);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("retire_spool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.retireSpool(
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "a generated walk is asking",
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe(
+    "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/retire_spool",
+  );
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("retire_spool surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.retireSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking");
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  const rejection = refused as Rejected;
+  expect(rejection.requested).toBeUndefined();
+  expect(rejection.allowed).toBeUndefined();
+  expect(rejection.reason).toHaveProperty("spool_refused");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("retire_spool makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.retireSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.retireSpool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ");
     } catch (raised) {
       refused = raised;
     }
