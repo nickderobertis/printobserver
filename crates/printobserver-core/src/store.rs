@@ -553,6 +553,7 @@ pub struct NewSpool {
 
 /// One debit on its way into the store.
 #[derive(Debug, Clone, PartialEq)]
+// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub struct Charge {
     /// The durable identity of the debit.
     pub key: ChargeKey,
@@ -575,6 +576,7 @@ pub struct Charge {
 
 /// What the store holds of one debit.
 #[derive(Debug, Clone, PartialEq)]
+// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub struct ChargeRecord {
     /// The durable identity of the debit.
     pub key: ChargeKey,

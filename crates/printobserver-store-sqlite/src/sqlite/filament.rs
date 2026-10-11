@@ -289,8 +289,11 @@ fn settlement_on(
 /// The statement one timeline read runs, and the values it binds.
 ///
 /// One arm per kind, each walking `events_by_kind_and_instant` newest first and
-/// stopping at the limit, so the read touches at most the limit's worth of rows
-/// per kind however long the log is; the arms are then merged newest first.
+/// stopping once it has the limit's worth of rows; the arms are then merged
+/// newest first. With no spool filter every row walked is one answered, so the
+/// default read touches at most the limit's worth of rows per kind however long
+/// the log is. A spool filter is a predicate on each row walked, so a read for a
+/// spool few events name may walk far more of a kind's history than it answers.
 fn timeline_statement(
     connection: &Connection,
     query: &TimelineQuery,

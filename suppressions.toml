@@ -2208,3 +2208,9 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/store.rs"
 site = "pub file_name: String,"
 reason = "The task that froze the filament store's shapes states `FileTally { file_name: String, origin: String, .. }`, and the tally is keyed by the same file name the frozen spool-ledger contract already carries as a `String` in `ChargeKey::Unobserved.file_name` and `UnaccountedPrintPayload.file_name`: a tally, the unobserved charge it accounts and the event that reports it must name one file identically, so one of the three cannot take `FileName` alone. The name is the printer's own, read back from its file listing rather than typed by anybody, and is stored and compared verbatim. Moving all three to a validated name together is a contract amendment for the manager, drafted as a follow-up rather than made here."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/store.rs"
+site = "pub struct Charge"
+reason = "`Charge` and `ChargeRecord` carry `tool` and `print_id` beside their `ChargeKey` because the task that froze the filament store states both shapes with those fields, and the frozen `charges` table holds `tool` and `print_id` as columns of their own so a print's charges are read through `charges_by_print(print_id, tool)`. They do not always restate the key either: an `unobserved` key names no print, and the same unobserved print may be charged against a print record the domain did open. Deriving the two from the key, or validating them against it, is a change to the shared contract for the manager, drafted as a follow-up rather than made here; until then the domain builds each charge's three fields together, and the store reads a charge's key back from its own canonical spelling and refuses a non-canonical one."
