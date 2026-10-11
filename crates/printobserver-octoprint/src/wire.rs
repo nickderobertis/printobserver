@@ -148,9 +148,9 @@ pub(crate) struct FilePayload {
     name: String,
     /// Where it lives: `local` or `sdcard`.
     origin: String,
-    /// `machinecode`, `model` or `folder`.
+    /// Whether it is a file or a folder.
     #[serde(rename = "type", default)]
-    kind: Option<String>,
+    kind: EntryKind,
     /// Its size in bytes.
     #[serde(default)]
     size: Option<i64>,
@@ -166,6 +166,22 @@ pub(crate) struct FilePayload {
     /// What a folder holds.
     #[serde(default)]
     children: Vec<FilePayload>,
+}
+
+/// What one entry of `OctoPrint`'s storage is.
+///
+/// Only the folder is told apart, because only a folder is not a file; every
+/// other word `OctoPrint` spells a type with, today `machinecode` and `model`,
+/// is a file.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum EntryKind {
+    /// A folder, holding entries of its own.
+    Folder,
+    /// Anything else: a file.
+    #[default]
+    #[serde(other)]
+    File,
 }
 
 /// What `GET /api/files?recursive=true` answers with.
@@ -223,10 +239,22 @@ impl FilePayload {
         self.refs.as_ref()?.download.as_deref()
     }
 
-    /// The facts this entry denotes.
-    pub(crate) fn facts(self) -> FileFacts {
+    /// The facts this entry denotes, or why they are not facts about a file.
+    ///
+    /// A size or a tally below zero is no count of anything, so an entry
+    /// carrying one is refused rather than passed on as though it were.
+    pub(crate) fn facts(self) -> Result<FileFacts, String> {
         let prints = self.prints.unwrap_or_default();
-        FileFacts {
+        let successes = prints.success.unwrap_or(0);
+        let failures = prints.failure.unwrap_or(0);
+        if self.size.is_some_and(|size| size < 0) || successes < 0 || failures < 0 {
+            return Err(format!(
+                "{} carries a negative size or tally: size {:?}, {successes} succeeded, \
+                 {failures} failed",
+                self.name, self.size
+            ));
+        }
+        Ok(FileFacts {
             file_name: self.name,
             origin: self.origin,
             size_bytes: self.size,
@@ -234,16 +262,18 @@ impl FilePayload {
                 .gcode_analysis
                 .and_then(|analysis| analysis.filament)
                 .map(|filament| filament_of(&filament)),
-            successes: prints.success.unwrap_or(0),
-            failures: prints.failure.unwrap_or(0),
+            successes,
+            failures,
+            // A last print missing its date or its outcome, or dated where no
+            // timestamp is, says nothing a last print is made of.
             last_print: prints.last.and_then(|last| {
-                let at = Timestamp::from_unix_seconds(whole_seconds(last.date?)).ok()?;
+                let at = Timestamp::from_unix_seconds(epoch_seconds(last.date?)?).ok()?;
                 Some(FilePrint {
                     at,
                     success: last.success?,
                 })
             }),
-        }
+        })
     }
 }
 
@@ -252,29 +282,41 @@ impl ListingPayload {
     ///
     /// A folder carries a tally of its own — `OctoPrint` sums its children's —
     /// and is not a file, so it is never one of these.
-    pub(crate) fn printed(self) -> Vec<FileFacts> {
+    pub(crate) fn printed(self) -> Result<Vec<FileFacts>, String> {
         let mut printed = Vec::new();
         let mut pending = self.files;
         while let Some(mut entry) = pending.pop() {
-            if entry.kind.as_deref() == Some("folder") {
+            if entry.kind == EntryKind::Folder {
                 pending.append(&mut entry.children);
             } else if entry.prints.is_some() {
-                printed.push(entry.facts());
+                printed.push(entry.facts()?);
             }
         }
         printed.sort_by(|a, b| (&a.origin, &a.file_name).cmp(&(&b.origin, &b.file_name)));
-        printed
+        Ok(printed)
     }
+}
+
+/// The whole second a date `OctoPrint` reports in fractional epoch seconds
+/// falls in, when it names one.
+///
+/// [`whole_seconds`] answers zero for a value no `i64` holds, which here would
+/// be a print dated 1970 rather than a date that is not one.
+fn epoch_seconds(date: f64) -> Option<i64> {
+    /// Further from the epoch than any `i64` count of seconds a date spells.
+    const LIMIT: f64 = 1e15;
+    (date.is_finite() && date.abs() < LIMIT).then(|| whole_seconds(date))
 }
 
 /// The filament every tool `OctoPrint` reports a length for, in tool order.
 ///
-/// A tool whose length is null is omitted, and a key naming no tool skipped.
+/// A tool whose length is null is omitted, and a key naming no tool — one
+/// whose number is not a whole number from zero — is skipped.
 fn filament_of(filament: &FilamentPayload) -> Vec<ToolFilament> {
     let mut tools: Vec<ToolFilament> = filament
         .iter()
         .filter_map(|(name, value)| {
-            let tool = name.strip_prefix(TOOL_PREFIX)?.parse::<i64>().ok()?;
+            let tool = i64::from(name.strip_prefix(TOOL_PREFIX)?.parse::<u32>().ok()?);
             let payload: ToolFilamentPayload = serde_json::from_value(value.clone()).ok()?;
             Some(ToolFilament {
                 tool,
@@ -338,7 +380,8 @@ impl JobPayload {
             print_time_left_s: progress.print_time_left,
             state: job_state_of(self.state.as_deref()),
             error: self.error,
-            file_position_bytes: progress.filepos,
+            // A position before the file's first byte is no position at all.
+            file_position_bytes: progress.filepos.filter(|position| *position >= 0),
             filament: job.filament.as_ref().map(filament_of).unwrap_or_default(),
         }
     }

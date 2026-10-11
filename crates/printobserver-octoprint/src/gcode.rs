@@ -50,16 +50,27 @@ use printobserver_printer_api::ToolFilament;
 /// being held in memory a line at a time.
 const LINE_LIMIT: usize = 4096;
 
-/// The interpreter's state across a file: the tool, the mode, and every tool's
-/// position and net feed.
+/// How a coordinate is read: as a place, or as a distance from the last one.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Positioning {
+    /// A place: `M82` for `E`, `G90` for the axes. What a firmware starts in.
+    #[default]
+    Absolute,
+    /// A distance: `M83` for `E`, `G91` for the axes.
+    Relative,
+}
+
+/// The interpreter's state across a file: the tool, the modes, and every
+/// tool's position and net feed.
 #[derive(Debug, Default, Clone)]
 pub struct Extrusion {
     /// The selected tool.
     tool: i64,
-    /// Whether `M83` is in effect.
-    relative_e: bool,
-    /// Whether `G91` is in effect.
-    relative_axes: bool,
+    /// What `M82`/`M83` last said about `E`.
+    extruder: Positioning,
+    /// What `G90`/`G91` last said; `G91` makes `E` relative whatever `M82`
+    /// said, and `G90` hands `E` back to it.
+    axes: Positioning,
     /// Every tool's current `E` position.
     positions: BTreeMap<i64, f64>,
     /// Every tool's net feed, in millimetres.
@@ -82,11 +93,11 @@ impl Extrusion {
         let number = code.parse::<u32>().ok();
         match (*letter, number) {
             ('G', Some(0..=3)) => self.feed(&words[1..]),
-            ('G', Some(90)) => self.relative_axes = false,
-            ('G', Some(91)) => self.relative_axes = true,
+            ('G', Some(90)) => self.axes = Positioning::Absolute,
+            ('G', Some(91)) => self.axes = Positioning::Relative,
             ('G', Some(92)) => self.reset(&words[1..]),
-            ('M', Some(82)) => self.relative_e = false,
-            ('M', Some(83)) => self.relative_e = true,
+            ('M', Some(82)) => self.extruder = Positioning::Absolute,
+            ('M', Some(83)) => self.extruder = Positioning::Relative,
             ('T', Some(tool)) => self.tool = i64::from(tool),
             _ => {}
         }
@@ -111,7 +122,8 @@ impl Extrusion {
             return;
         };
         let position = self.positions.entry(self.tool).or_insert(0.0);
-        let delta = if self.relative_e || self.relative_axes {
+        let delta = if self.extruder == Positioning::Relative || self.axes == Positioning::Relative
+        {
             e
         } else {
             e - *position
@@ -180,7 +192,7 @@ fn words(raw: &[u8]) -> Vec<(char, String)> {
 /// as the position, so the rest of the file need never arrive.
 #[derive(Debug, Clone)]
 pub struct ExtrudedTo {
-    /// The interpreter.
+    /// What every complete line before the position has been read into.
     extrusion: Extrusion,
     /// How many bytes before the position have not arrived yet.
     remaining: u64,
@@ -248,7 +260,8 @@ impl ExtrudedTo {
         self.extrusion.fed()
     }
 
-    /// One byte of the line being read.
+    /// One byte: a newline completes the line, and a line past
+    /// [`LINE_LIMIT`] stops being held and is marked to be skipped.
     fn push(&mut self, byte: u8) {
         if byte == b'\n' {
             self.finish_line();
@@ -259,7 +272,9 @@ impl ExtrudedTo {
         }
     }
 
-    /// The line being read is complete.
+    /// The line being read is complete: read it, unless it outgrew
+    /// [`LINE_LIMIT`] — only its first bytes were held, and a command read from
+    /// a prefix could be a different command.
     fn finish_line(&mut self) {
         if !self.overlong {
             self.extrusion.line(&self.line);
@@ -267,7 +282,7 @@ impl ExtrudedTo {
         self.drop_line();
     }
 
-    /// Forget the line being read.
+    /// Forget the line being read, whether it was read or never will be.
     fn drop_line(&mut self) {
         self.line.clear();
         self.overlong = false;

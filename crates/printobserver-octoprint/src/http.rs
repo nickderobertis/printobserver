@@ -169,34 +169,65 @@ fn framing_of(head: &[u8]) -> Result<(u16, Framing), Transport> {
     let status_line = lines
         .next()
         .ok_or_else(|| Transport::Malformed("the response carries no status line".to_owned()))?;
-    let status: u16 = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))?;
-    let mut framing = Framing::Close;
+    let status = status_of(status_line)?;
+    let mut chunked = false;
+    let mut length: Option<usize> = None;
     for line in lines {
         let Some((name, value)) = line.split_once(':') else {
-            continue;
+            return Err(Transport::Malformed(format!("{line:?} is no header")));
         };
         let name = name.trim().to_ascii_lowercase();
         let value = value.trim();
-        if name == "transfer-encoding" && value.to_ascii_lowercase().contains("chunked") {
-            framing = Framing::Chunked;
-        } else if name == "content-length"
-            && !matches!(framing, Framing::Chunked)
-            && let Ok(length) = value.parse::<usize>()
-        {
-            framing = Framing::Length(length);
+        if name == "transfer-encoding" {
+            // Chunked must be the last coding, and no other is one this
+            // client can undo, so it is the only value read as a body.
+            if !value.eq_ignore_ascii_case("chunked") {
+                return Err(Transport::Malformed(format!(
+                    "a body transfer-encoded {value:?} is not one this port reads"
+                )));
+            }
+            chunked = true;
+        } else if name == "content-length" {
+            let declared = value
+                .parse::<usize>()
+                .map_err(|_| Transport::Malformed(format!("{value:?} is no content length")))?;
+            if length.is_some_and(|earlier| earlier != declared) {
+                return Err(Transport::Malformed(
+                    "the response declares two different content lengths".to_owned(),
+                ));
+            }
+            length = Some(declared);
         }
     }
+    let framing = match (chunked, length) {
+        (true, Some(_)) => {
+            return Err(Transport::Malformed(
+                "the response declares both a length and chunks".to_owned(),
+            ));
+        }
+        (true, None) => Framing::Chunked,
+        (false, Some(length)) => Framing::Length(length),
+        (false, None) => Framing::Close,
+    };
     Ok((status, framing))
+}
+
+/// The status a status line carries, when it is an HTTP/1 status line.
+fn status_of(status_line: &str) -> Result<u16, Transport> {
+    let mut parts = status_line.split_whitespace();
+    let version = parts.next().unwrap_or_default();
+    parts
+        .next()
+        .filter(|_| version.starts_with("HTTP/1."))
+        .and_then(|code| code.parse::<u16>().ok())
+        .filter(|code| (100..=599).contains(code))
+        .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))
 }
 
 /// A connection being read a piece at a time, with what has arrived and not
 /// yet been handed on.
 struct Source<'a> {
-    /// The connection.
+    /// The connection, read only as far as the sink asks.
     stream: TcpStream,
     /// Where it reaches, for naming in an error.
     endpoint: &'a Endpoint,
@@ -260,6 +291,8 @@ impl Source<'_> {
             let size = usize::from_str_radix(size_text, 16)
                 .map_err(|_| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
             if size == 0 {
+                // The trailer section, ended by its blank line.
+                while !self.line()?.is_empty() {}
                 return Ok(ControlFlow::Continue(()));
             }
             if self.length(size, sink)?.is_break() {
@@ -298,7 +331,7 @@ impl Source<'_> {
             }
             if !self.fill()? {
                 return Err(Transport::Malformed(
-                    "a chunk carries no size line".to_owned(),
+                    "the chunked body stops before its last chunk".to_owned(),
                 ));
             }
         }
@@ -367,11 +400,7 @@ fn parse(raw: &[u8]) -> Result<Response, Transport> {
     let status_line = lines
         .next()
         .ok_or_else(|| Transport::Malformed("the response carries no status line".to_owned()))?;
-    let status: u16 = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .ok_or_else(|| Transport::Malformed(format!("{status_line:?} is no status line")))?;
+    let status = status_of(status_line)?;
 
     let mut length = None;
     let mut chunked = false;

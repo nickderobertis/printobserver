@@ -47,27 +47,84 @@ pub fn delete_local(instance: &Scripted, name: &str) {
     );
 }
 
-/// Upload one file to the instance's own storage, as a browser would.
+/// Upload one file to the instance's own storage, into a folder of it or to
+/// its top, as a browser would.
 ///
 /// # Panics
 ///
 /// Panics when the instance does not accept it.
-pub fn upload_local(instance: &Scripted, name: &str, content: &[u8]) {
-    let boundary = "printobserver-upload-boundary";
-    let mut body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n\
-         Content-Type: application/octet-stream\r\n\r\n"
-    )
-    .into_bytes();
-    body.extend_from_slice(content);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+pub fn upload_local(instance: &Scripted, folder: Option<&str>, name: &str, content: &[u8]) {
+    let (body, content_type) = multipart(folder.map(|path| ("path", path)), Some((name, content)));
     let (status, answer) = send(
         instance,
         "POST",
         "/api/files/local",
-        Some((&format!("multipart/form-data; boundary={boundary}"), &body)),
+        Some((&content_type, &body)),
     );
     assert_eq!(status, 201, "uploading {name} answered {status}: {answer}");
+}
+
+/// Create one folder at the top of the instance's own storage.
+///
+/// # Panics
+///
+/// Panics when the instance does not create it.
+pub fn create_folder(instance: &Scripted, name: &str) {
+    let (body, content_type) = multipart(Some(("foldername", name)), None);
+    let (status, answer) = send(
+        instance,
+        "POST",
+        "/api/files/local",
+        Some((&content_type, &body)),
+    );
+    assert_eq!(status, 201, "creating {name} answered {status}: {answer}");
+}
+
+/// Send one JSON command, and expect it taken.
+///
+/// # Panics
+///
+/// Panics when the instance answers anything but success.
+pub fn post_json(instance: &Scripted, path: &str, json: &serde_json::Value) {
+    let body = json.to_string();
+    let (status, answer) = send(
+        instance,
+        "POST",
+        path,
+        Some(("application/json", body.as_bytes())),
+    );
+    assert!(
+        (200..300).contains(&status),
+        "POST {path} answered {status}: {answer}"
+    );
+}
+
+/// One multipart body, carrying at most one field and at most one file.
+fn multipart(field: Option<(&str, &str)>, file: Option<(&str, &[u8])>) -> (Vec<u8>, String) {
+    let boundary = "printobserver-upload-boundary";
+    let mut body = Vec::new();
+    if let Some((name, value)) = field {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n\
+                 {value}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    if let Some((name, content)) = file {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; \
+                 filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(content);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    (body, format!("multipart/form-data; boundary={boundary}"))
 }
 
 /// The status and body `OctoPrint` answers one request with.

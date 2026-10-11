@@ -163,7 +163,9 @@ impl OctoPrintPrinter {
     fn read_printed_files(&self) -> Result<Vec<FileFacts>, PrinterError> {
         let body = self.request(Method::Get, FILES_PATH, None)?;
         let listing: ListingPayload = decode(&body, FILES_PATH)?;
-        Ok(listing.printed())
+        listing
+            .printed()
+            .map_err(|detail| malformed(format!("{FILES_PATH} answered {detail}")))
     }
 
     /// Read the net filament one file's G-code feeds each tool, up to a byte.
@@ -434,7 +436,11 @@ impl PrinterPort for OctoPrintPrinter {
     }
 
     fn file_facts(&self, file_name: FileName) -> BoxFuture<'_, Result<FileFacts, PrinterError>> {
-        Box::pin(async move { self.read_file(&file_name).map(FilePayload::facts) })
+        Box::pin(async move {
+            self.read_file(&file_name)?.facts().map_err(|detail| {
+                malformed(format!("{} answered {detail}", local_file_path(&file_name)))
+            })
+        })
     }
 
     fn printed_files(&self) -> BoxFuture<'_, Result<Vec<FileFacts>, PrinterError>> {

@@ -4,17 +4,21 @@
 //! The walk uploads this crate's own extrusion fixture, waits for
 //! `OctoPrint`'s analysis of it, prints it, reads the running job's position
 //! and filament, asks what the file's G-code fed up to that position, cancels
-//! it, and reads the tally the cancel left. What the instance reported is read
-//! from its own JSON by a reader sharing no parsing with the adapter.
+//! it, and reads the tally the cancel left. It then prints a copy inside a
+//! folder, so the listing's folders — which carry a tally of their own — are
+//! told apart from files by the live producer rather than by a recording.
+//! What the instance reported is read from its own JSON by a reader sharing no
+//! parsing with the adapter, and every figure is compared with it: lengths,
+//! volumes, sizes, tallies and the last print's date.
 //!
-//! It removes the fixture before it begins, so a second run against one
-//! instance starts from a file never printed, and removes it again when it is
-//! done, so the instance holds what the bring-up left it holding.
+//! It removes what it uploads before it begins, so a second run against one
+//! instance starts from files never printed, and again when it is done, so the
+//! instance holds what the bring-up left it holding.
 
 use std::time::Duration;
 
 use printobserver_printer_api::{FileFacts, PrinterPort as _, PrinterState, ToolFilament};
-use printobserver_types::FileName;
+use printobserver_types::{FileName, Timestamp};
 
 use crate::block_on::block_on;
 use crate::env::Scripted;
@@ -23,6 +27,15 @@ use crate::wait;
 
 /// The name the fixture is uploaded under.
 const FIXTURE: &str = "printobserver-extrusion.gcode";
+
+/// The file the scripted environment uploads and prints, and leaves selected.
+const HOLD_FILE: &str = "hold.gcode";
+
+/// The folder a second copy is printed from.
+const FOLDER: &str = "printobserver-folder";
+
+/// The name of the copy inside it.
+const NESTED: &str = "printobserver-nested.gcode";
 
 /// The fixture itself: absolute extrusion along a square, dwelling between
 /// moves so that a virtual printer streams it for about a minute.
@@ -33,7 +46,8 @@ const REACHED: Duration = Duration::from_secs(90);
 
 /// Reading files, a running job's filament, and the feed up to its position.
 ///
-/// Expects no print running, which is how the acting walk leaves the instance.
+/// Expects no print running, which is how the acting walk leaves the instance,
+/// and leaves none running, with the hold print selected.
 ///
 /// # Panics
 ///
@@ -41,8 +55,8 @@ const REACHED: Duration = Duration::from_secs(90);
 pub fn walk(instance: &Scripted) {
     let printer = instance.printer();
     let name = FileName::new(FIXTURE).expect("a file name");
-    raw::delete_local(instance, FIXTURE);
-    raw::upload_local(instance, FIXTURE, FIXTURE_BYTES);
+    remove_what_this_walk_uploads(instance);
+    raw::upload_local(instance, None, FIXTURE, FIXTURE_BYTES);
 
     // file_facts — once the analysis appears: a filament per tool, no tallies.
     let facts = wait::until("OctoPrint's analysis of the fixture", REACHED, || {
@@ -54,14 +68,15 @@ pub fn walk(instance: &Scripted) {
         }
     });
     let reported = raw::get(instance, &format!("/api/files/local/{FIXTURE}"));
-    let analysed = analysed_lengths(&reported["gcodeAnalysis"]["filament"]);
+    let analysed = analysed_filament(&reported["gcodeAnalysis"]["filament"]);
     assert!(
         !analysed.is_empty(),
         "the analysis names no tool: {reported}"
     );
     assert_eq!(
-        lengths(facts.filament.as_deref().unwrap_or_default()),
-        analysed
+        facts.filament.as_ref(),
+        Some(&analysed),
+        "lengths and volumes"
     );
     assert_eq!(facts.file_name, FIXTURE);
     assert_eq!(facts.origin, "local");
@@ -85,7 +100,7 @@ pub fn walk(instance: &Scripted) {
     // extruded_to — at the position the job reported, strictly part of the
     // whole, and exactly what this fixture's own G-code feeds by then.
     let fed = block_on(printer.extruded_to(name.clone(), second)).expect("the feed");
-    let whole = analysed[0].1;
+    let whole = analysed[0].length_mm;
     let charged = lengths(&fed);
     assert_eq!(charged.len(), 1, "one tool fed: {fed:?}");
     assert!(
@@ -123,14 +138,101 @@ pub fn walk(instance: &Scripted) {
             .find(|facts| facts.file_name == FIXTURE && facts.failures > 0)
             .ok_or_else(|| "no failure tallied yet".to_owned())
     });
-    tallied_once_and_failed(&tallied);
+    tallied_once_and_failed(
+        instance,
+        &tallied,
+        &format!("/api/files/local/{FIXTURE}"),
+        0,
+    );
 
+    print_inside_a_folder(instance);
+
+    remove_what_this_walk_uploads(instance);
+}
+
+/// Remove the fixture and the folder, selecting the environment's own hold
+/// print first: `OctoPrint` refuses to remove a selected file, or a folder
+/// holding one, and a cancelled print stays selected.
+fn remove_what_this_walk_uploads(instance: &Scripted) {
+    raw::post_json(
+        instance,
+        &format!("/api/files/local/{HOLD_FILE}"),
+        &serde_json::json!({ "command": "select", "print": false }),
+    );
     raw::delete_local(instance, FIXTURE);
+    raw::delete_local(instance, FOLDER);
+}
+
+/// A printed file inside a folder is listed, and the folder — which the
+/// instance reports with a tally of its own — is not.
+fn print_inside_a_folder(instance: &Scripted) {
+    let printer = instance.printer();
+    raw::create_folder(instance, FOLDER);
+    raw::upload_local(instance, Some(FOLDER), NESTED, FIXTURE_BYTES);
+    // The port starts only a file at the top of the storage, so the copy in
+    // the folder is started the way an operator would start it.
+    let nested_path = format!("/api/files/local/{FOLDER}/{NESTED}");
+    // `OctoPrint` keeps a removed folder's metadata cached, so a copy uploaded
+    // into a folder recreated under the same name can arrive carrying the last
+    // run's tally: the claim is that this print adds one to it.
+    let failed_before = raw::get(instance, &nested_path)["prints"]["failure"]
+        .as_i64()
+        .unwrap_or(0);
+    raw::post_json(
+        instance,
+        &nested_path,
+        &serde_json::json!({ "command": "select", "print": true }),
+    );
+    wait::until("the copy in the folder to print", REACHED, || {
+        let state = raw::get(instance, "/api/job")["state"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        if state.starts_with("Printing") {
+            Ok(())
+        } else {
+            Err(format!("`{state}`"))
+        }
+    });
+    block_on(printer.cancel()).expect("the copy cancels");
+    wait::until("the copy's cancel to finish", REACHED, || {
+        let state = block_on(printer.job()).map_err(|e| e.to_string())?.state;
+        if state == PrinterState::Operational {
+            Ok(())
+        } else {
+            Err(format!("{state:?}"))
+        }
+    });
+
+    let tallied = wait::until("the copy's cancel to be tallied", REACHED, || {
+        let listed = block_on(printer.printed_files()).map_err(|e| e.to_string())?;
+        assert!(
+            listed.iter().all(|facts| facts.file_name != FOLDER),
+            "a folder is listed as a printed file: {listed:?}"
+        );
+        listed
+            .into_iter()
+            .find(|facts| facts.file_name == NESTED && facts.failures > failed_before)
+            .ok_or_else(|| "no failure tallied inside the folder yet".to_owned())
+    });
+    let listing = raw::get(instance, "/api/files?recursive=true");
+    let folder = listing["files"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|entry| entry["name"] == FOLDER)
+        .unwrap_or_else(|| panic!("the instance does not list {FOLDER}: {listing}"));
+    assert_eq!(folder["type"], "folder");
+    assert!(
+        folder.get("prints").is_some(),
+        "the folder carries no tally, so leaving it out proves nothing: {folder}"
+    );
+    tallied_once_and_failed(instance, &tallied, &nested_path, failed_before);
 }
 
 /// One running reading of the job, past a position, bracketed by the
 /// instance's own figure either side of it.
-fn running_position(instance: &Scripted, analysed: &[(i64, f64)], past: i64) -> i64 {
+fn running_position(instance: &Scripted, analysed: &[ToolFilament], past: i64) -> i64 {
     let printer = instance.printer();
     wait::until("the running fixture to read further in", REACHED, || {
         let before = raw::get(instance, "/api/job")["progress"]["filepos"].as_i64();
@@ -152,23 +254,40 @@ fn running_position(instance: &Scripted, analysed: &[(i64, f64)], past: i64) -> 
         );
         assert_eq!(job.file_name.as_deref(), Some(FIXTURE));
         assert_eq!(job.state, PrinterState::Printing);
-        assert_eq!(
-            lengths(&job.filament),
-            analysed,
-            "the job's filament is the analysis"
-        );
+        assert_eq!(job.filament, analysed, "the job's filament is the analysis");
         Ok(position)
     })
 }
 
-/// The cancel this walk took is the fixture's one print, and it failed.
-fn tallied_once_and_failed(printed: &FileFacts) {
-    assert_eq!((printed.successes, printed.failures), (0, 1), "{printed:?}");
+/// The cancel this walk took added one failure to the file's tally and none to
+/// its successes, and is its last print — dated when the instance dates it.
+fn tallied_once_and_failed(
+    instance: &Scripted,
+    printed: &FileFacts,
+    path: &str,
+    failed_before: i64,
+) {
+    assert_eq!(
+        (printed.successes, printed.failures),
+        (0, failed_before + 1),
+        "{printed:?}"
+    );
     let last = printed.last_print.as_ref().expect("a last print");
     assert!(
         !last.success,
         "a cancelled print is not a success: {printed:?}"
     );
+    let reported = raw::get(instance, path);
+    let date = reported["prints"]["last"]["date"]
+        .as_f64()
+        .unwrap_or_else(|| panic!("the instance dates no last print: {reported}"));
+    let at = Timestamp::from_unix_seconds(
+        format!("{:.0}", date.round())
+            .parse()
+            .expect("a whole second"),
+    )
+    .expect("a timestamp");
+    assert_eq!(last.at, at, "the instance dated the last print {date}");
 }
 
 /// Each tool's length, in tool order.
@@ -179,19 +298,20 @@ fn lengths(filament: &[ToolFilament]) -> Vec<(i64, f64)> {
         .collect()
 }
 
-/// The lengths `OctoPrint`'s own analysis reports, in tool order.
-fn analysed_lengths(filament: &serde_json::Value) -> Vec<(i64, f64)> {
-    let mut tools: Vec<(i64, f64)> = filament
+/// The filament `OctoPrint`'s own analysis reports, in tool order.
+fn analysed_filament(filament: &serde_json::Value) -> Vec<ToolFilament> {
+    let mut tools: Vec<ToolFilament> = filament
         .as_object()
         .into_iter()
         .flatten()
         .filter_map(|(name, tool)| {
-            Some((
-                name.strip_prefix("tool")?.parse().ok()?,
-                tool["length"].as_f64()?,
-            ))
+            Some(ToolFilament {
+                tool: name.strip_prefix("tool")?.parse().ok()?,
+                length_mm: tool["length"].as_f64()?,
+                volume_cm3: tool["volume"].as_f64(),
+            })
         })
         .collect();
-    tools.sort_by_key(|(tool, _)| *tool);
+    tools.sort_by_key(|tool| tool.tool);
     tools
 }

@@ -174,7 +174,6 @@ fn serve(
                 let _ = connection.write_all(&head(*framing, bytes.len()));
                 let _ = connection.write_all(&framed(*framing, first));
                 let _ = connection.flush();
-                // Hold the rest until the test lets it go.
                 let _ = held.recv_timeout(HOLD);
                 released.store(true, Ordering::SeqCst);
                 let _ = connection.write_all(&framed(*framing, rest));
@@ -239,7 +238,7 @@ fn program() -> Vec<u8> {
     text.into_bytes()
 }
 
-/// A file name.
+/// The one file the stand-in serves facts and a download for.
 fn print_gcode() -> FileName {
     FileName::new("print.gcode").expect("a file name")
 }
@@ -410,7 +409,7 @@ type BrokenDownload = (&'static str, &'static [u8], fn(&PrinterError) -> bool);
 /// it says, is not answered as though it were the file.
 #[test]
 fn a_broken_download_is_not_read_as_the_file() {
-    let cases: [BrokenDownload; 5] = [
+    let cases: [BrokenDownload; 10] = [
         (
             "a length it does not deliver",
             b"HTTP/1.1 200 OK\r\nContent-Length: 500\r\n\r\nM83\nG1 E1\n",
@@ -436,6 +435,31 @@ fn a_broken_download_is_not_read_as_the_file() {
             b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n",
             |error| matches!(error, PrinterError::Malformed { .. }),
         ),
+        (
+            "a status line that is not HTTP's",
+            b"garbage 200 OK\r\nContent-Length: 4\r\n\r\nM83\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
+            "a length that is no number",
+            b"HTTP/1.1 200 OK\r\nContent-Length: lots\r\n\r\nM83\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
+            "two lengths that disagree",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nContent-Length: 9\r\n\r\nM83\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
+            "a coding this client cannot undo",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\nM83\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
+        (
+            "a last chunk with no blank line after it",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nM83\n\r\n0\r\n",
+            |error| matches!(error, PrinterError::Malformed { .. }),
+        ),
     ];
     for (describing, raw, expected) in cases {
         let stand_in = StandIn::start(facts(), Download::Raw(raw.to_vec()));
@@ -444,5 +468,56 @@ fn a_broken_download_is_not_read_as_the_file() {
             block_on(stand_in.printer().extruded_to(print_gcode(), 1_000)).expect_err("a refusal");
 
         assert!(expected(&error), "{describing}: {error:?}");
+    }
+}
+
+/// Every rule the G-code reader keeps, in one program, read through the
+/// adapter's own download — with the figure each tool is owed worked by hand.
+#[test]
+fn every_rule_of_the_reader_holds_through_the_download() {
+    let program = "M82 ; absolute\n\
+                   G92 E0\n\
+                   N1 G1 X1 E2*71\n\
+                   G1 X2 E1.2\n\
+                   G0 X3 E2\n\
+                   G92\n\
+                   G2 X1 Y1 I1 J0 E1.5\n\
+                   G91\n\
+                   G3 X0 Y0 I-1 J0 E0.5\n\
+                   G90\n\
+                   (G1 E100) ; G1 E100\n\
+                   M221 S50\n\
+                   T1\n\
+                   M83\n\
+                   G1 X1 E3\n\
+                   G1 E-1\n\
+                   G1 E1\n\
+                   G1X2E0.25\n";
+    let stand_in = StandIn::start(
+        facts(),
+        Download::Raw(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{program}",
+                program.len()
+            )
+            .into_bytes(),
+        ),
+    );
+
+    let fed = block_on(stand_in.printer().extruded_to(print_gcode(), 100_000)).expect("the feed");
+
+    // Tool 0: 2, a retraction of 0.8 and its unretraction, a bare reset, an arc
+    // of 1.5 in absolute and one of 0.5 relative under G91 — 4. Tool 1: 3, a
+    // retraction and its unretraction, and 0.25 written without spaces — 3.25.
+    // Neither the commented G1 E100 nor M221 counts.
+    let expected = [(0, 4.0), (1, 3.25)];
+    assert_eq!(fed.len(), expected.len(), "{fed:?}");
+    for (tool, (want_tool, want_length)) in fed.iter().zip(expected) {
+        assert_eq!(tool.tool, want_tool, "{fed:?}");
+        assert!(
+            (tool.length_mm - want_length).abs() < 1e-9,
+            "tool {want_tool} fed {} mm, owed {want_length} mm",
+            tool.length_mm
+        );
     }
 }

@@ -39,7 +39,7 @@ fn tool(tool: i64, length_mm: f64, volume_cm3: Option<f64>) -> ToolFilament {
     }
 }
 
-/// A file name.
+/// A name as the port takes it, refusing one no `FileName` admits.
 fn file(name: &str) -> FileName {
     FileName::new(name).expect("a file name")
 }
@@ -264,5 +264,97 @@ fn a_listing_this_port_cannot_read_is_malformed() {
     match block_on(printer.printed_files()).expect_err("a refusal") {
         PrinterError::Malformed { detail } => assert!(detail.contains("/api/files"), "{detail}"),
         other => panic!("expected a malformed answer, found {other:?}"),
+    }
+}
+
+/// A printer built against a server answering one inline body to everything.
+fn answering_body(body: &str) -> (Stub, OctoPrintPrinter) {
+    let stub = Stub::always(Reply::Body(200, body.to_owned()));
+    let config = OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration");
+    (stub, OctoPrintPrinter::new(config))
+}
+
+/// Only a key naming a tool by a whole number from zero, with a length, is a
+/// tool's filament; every other entry is skipped rather than failing the read.
+#[test]
+fn only_a_tool_key_with_a_length_is_a_tool_s_filament() {
+    let (_stub, printer) = answering_body(
+        r#"{"job": {"filament": {
+              "tool2": {"length": 4.5, "volume": 0.01},
+              "tool-1": {"length": 1.0},
+              "toolX": {"length": 1.0},
+              "spool": {"length": 1.0},
+              "tool3": null,
+              "tool4": "unreadable",
+              "tool5": {"volume": 2.0},
+              "tool0": {"length": 0.5}
+            }}, "progress": {}, "state": "Operational"}"#,
+    );
+
+    let job = block_on(printer.job()).expect("a job");
+
+    assert_eq!(
+        job.filament,
+        vec![tool(0, 0.5, None), tool(2, 4.5, Some(0.01))]
+    );
+}
+
+/// A position before the file's first byte is reported as no position.
+#[test]
+fn a_negative_file_position_is_no_position() {
+    let (_stub, printer) =
+        answering_body(r#"{"job": {}, "progress": {"filepos": -1}, "state": "Printing"}"#);
+
+    assert_eq!(
+        block_on(printer.job()).expect("a job").file_position_bytes,
+        None
+    );
+}
+
+/// A last print missing its date or its outcome, or dated where no timestamp
+/// is, is no last print — and the tallies beside it still are what they say.
+#[test]
+fn an_incomplete_last_print_is_no_last_print() {
+    for last in [
+        r#"{"success": true}"#,
+        r#"{"date": 1700000000.0}"#,
+        r#"{"date": 1e300, "success": false}"#,
+    ] {
+        let (_stub, printer) = answering_body(&format!(
+            r#"{{"name": "a.gcode", "origin": "local", "type": "machinecode",
+                 "prints": {{"success": 1, "failure": 2, "last": {last}}}}}"#
+        ));
+
+        let facts = block_on(printer.file_facts(file("a.gcode"))).expect("the facts");
+
+        assert_eq!(facts.last_print, None, "{last}");
+        assert_eq!((facts.successes, facts.failures), (1, 2), "{last}");
+    }
+}
+
+/// A negative size or tally counts nothing, so the read is refused as
+/// malformed — for one file and for a listing carrying one.
+#[test]
+fn a_negative_size_or_tally_is_malformed() {
+    for entry in [
+        r#"{"name": "a.gcode", "origin": "local", "size": -4, "prints": {"success": 0}}"#,
+        r#"{"name": "a.gcode", "origin": "local", "prints": {"success": -1, "failure": 0}}"#,
+        r#"{"name": "a.gcode", "origin": "local", "prints": {"success": 0, "failure": -2}}"#,
+    ] {
+        let (_stub, printer) = answering_body(entry);
+        match block_on(printer.file_facts(file("a.gcode"))).expect_err("a refusal") {
+            PrinterError::Malformed { detail } => {
+                assert!(detail.contains("/api/files/local/a.gcode"), "{detail}");
+            }
+            other => panic!("{entry}: expected a malformed answer, found {other:?}"),
+        }
+
+        let (_stub, printer) = answering_body(&format!(r#"{{"files": [{entry}]}}"#));
+        match block_on(printer.printed_files()).expect_err("a refusal") {
+            PrinterError::Malformed { detail } => {
+                assert!(detail.contains("/api/files"), "{detail}");
+            }
+            other => panic!("{entry}: expected a malformed answer, found {other:?}"),
+        }
     }
 }
