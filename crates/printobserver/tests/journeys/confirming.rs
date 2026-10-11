@@ -57,6 +57,7 @@ pub fn the_cross_product_walk(world: &World) {
             // did nothing pass. Putting it back running after a cancel is a
             // job of its own, so the invocation is about the print it is now.
             world.wants(planned.reports);
+            world.ledger_for(&planned.command.name);
             let one = &walk::about_now(planned, world);
             let invocation = walk::invocations(one, world).swap_remove(index);
             starting_from_somewhere_else(world, &one.command.name);

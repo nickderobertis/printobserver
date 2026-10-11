@@ -181,6 +181,26 @@ async fn paged_to_the_end(world: &World) {
     assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
     let (status, refused) = world.get(&format!("{history}?kinds=camera_look")).await;
     assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    // A filter given twice, or one the read does not take, is refused naming
+    // it rather than one of them quietly dropped.
+    let (status, refused) = world.get(&format!("{history}?limit=1&limit=2")).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("`limit` was given more than once"),
+        "{refused}"
+    );
+    let (status, refused) = world.get(&format!("{history}?print_id=anything")).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("takes no `print_id`"),
+        "{refused}"
+    );
 }
 
 /// A check of the file against the spool on its tool answers its figures, and

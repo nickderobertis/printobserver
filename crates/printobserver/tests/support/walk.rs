@@ -125,17 +125,16 @@ fn spool_about(world: &World, command: &str) -> String {
     }
 }
 
-/// This entry, about the print the world is about now, with the ledger put
-/// where it needs it.
+/// This entry, about the print and the spool the world is about now.
 ///
 /// A walk is built before the machine is put where each command needs it, and
-/// putting it there can replace the print the walk is about. The ledger is put
-/// where the command needs it here too — the walk's spool off its tool for a
-/// load of it, on it for an unload, and a fresh spool for a retirement — which
-/// is what lets one command be run again and again.
+/// putting it there can replace the print the walk is about; a retirement is
+/// about a fresh spool each time. It renames and does nothing else: a caller
+/// about to run the entry puts the ledger where it needs it first, with
+/// [`World::ledger_for`], which is what lets one command be run again and
+/// again.
 #[must_use]
 pub fn about_now(driven: &Driven, world: &World) -> Driven {
-    world.ledger_for(&driven.command.name);
     let mut now = driven.clone();
     for field in &now.command.fields {
         if field.parameter.located == Located::Path && field.parameter.name == "print_id" {

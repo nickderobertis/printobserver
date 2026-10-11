@@ -119,6 +119,7 @@ pub fn rejected_from(one: &Driven) -> Reports {
 pub fn every_command_owes_its_failures(world: &World) {
     for one in walk::walk(world) {
         world.wants(one.reports);
+        world.ledger_for(&one.command.name);
         let one = walk::about_now(&one, world);
         let arguments = succeeding(&one);
 
@@ -282,6 +283,7 @@ pub fn an_action_the_machine_refuses_is_answered_as_that(world: &World) {
         .find(|found| found.command.name == "pause")
         .expect("this walk drives a pause");
     world.wants(one.reports);
+    world.ledger_for(&one.command.name);
     let one = walk::about_now(&one, world);
     if !world.machine_refuses(true) {
         return;

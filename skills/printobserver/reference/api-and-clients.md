@@ -287,8 +287,7 @@ Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), 
 A start the policy accepted is held to the filament check before the printer is
 asked anything, and a refusal turns into `insufficient_filament`,
 `unverified_spool` or `analysis_unavailable`; `override_filament_check` set
-`true` by the operator lets it go ahead, recorded as overridden. The intervention
-policy states the check.
+`true` by the operator lets it go ahead, recorded as overridden.
 
 A start reads the printer first, ending every open print that read finds over, and
 when no print is then open it opens one for the file — so the action, its events

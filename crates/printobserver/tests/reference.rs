@@ -229,3 +229,88 @@ fn the_documents_restate_the_timeline_kinds_and_the_spool_window_as_the_server_h
         );
     }
 }
+
+/// The installers that carry the spool check's defaults, commented out.
+const INSTALLERS: [&str; 2] = ["scripts/install-service.sh", "scripts/install-service.ps1"];
+
+/// The intervention policy, which restates the spool check's defaults.
+const INTERVENTION_POLICY: &str = "skills/printobserver/reference/intervention-policy.md";
+
+/// The worked examples, which restate the printer history's window.
+const COMMON_OPERATIONS: &str = "skills/printobserver/reference/common-operations.md";
+
+/// One document of the tree.
+fn document(path: &str) -> String {
+    std::fs::read_to_string(repo_root().join(path))
+        .unwrap_or_else(|error| panic!("{path} reads: {error}"))
+}
+
+/// A whole number as the documents write it: thousands separated by commas.
+fn written(count: u32) -> String {
+    let digits = count.to_string();
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
+/// The defaults the installers' commented `[spools]` table and the
+/// intervention policy restate are the supervision core's own, and the printer
+/// history's window the documents restate is the store's.
+#[test]
+fn the_documents_restate_the_spool_check_and_history_window_defaults_as_the_code_has_them() {
+    let defaults = printobserver_core::SpoolPolicy::default();
+    for installer in INSTALLERS {
+        let text = document(installer);
+        for line in [
+            "# preflight = \"refuse\"".to_owned(),
+            format!("# buffer_percent = {:.1}", defaults.buffer_percent),
+            format!("# buffer_min_g = {:.1}", defaults.buffer_min_g),
+            format!("# analysis_wait_seconds = {}", defaults.analysis_wait_s),
+        ] {
+            assert!(
+                text.lines().any(|held| held == line),
+                "{installer} does not carry `{line}`, the core's default"
+            );
+        }
+    }
+    assert_eq!(
+        defaults.preflight,
+        printobserver_core::PreflightMode::Refuse
+    );
+    let policy = document(INTERVENTION_POLICY)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for said in [
+        format!(
+            "{} and {} by default",
+            defaults.buffer_percent, defaults.buffer_min_g
+        ),
+        format!("{} by default", defaults.analysis_wait_s),
+        "`refuse`, the default".to_owned(),
+    ] {
+        assert!(
+            policy.contains(&said),
+            "{INTERVENTION_POLICY} does not say `{said}`, the core's default"
+        );
+    }
+
+    let window = written(printobserver_core::DEFAULT_HISTORY_WINDOW);
+    let most = written(printobserver_core::MAX_HISTORY_LIMIT);
+    for path in [COMMAND_SURFACE, API_AND_CLIENTS, COMMON_OPERATIONS] {
+        let text = document(path)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            text.contains(&format!("{window} when left out")) && text.contains(&most),
+            "{path} does not state the printer history's window of {window} and its most of \
+             {most} as the store has them"
+        );
+    }
+}

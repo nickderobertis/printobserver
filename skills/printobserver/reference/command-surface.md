@@ -359,7 +359,7 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 - `--override-filament-check` — written `--override-filament-check true` to start despite a spool too short or in doubt, or a file `OctoPrint` has not analysed, with this start's reason as the override's (optional). Only an operator's override counts; it is recorded on the action and on the filament check the start made.
 - `--reason` — why this change is being made, in the actor's own words (required).
 
-Before the machine is asked, the start checks the spools loaded against what `OctoPrint`'s analysis of the file says each tool needs, waiting for that analysis when the file has none yet and a tool holds a tracked spool. [The intervention policy](intervention-policy.md#the-filament-check-a-start-is-held-to) states the check, its modes and what it waits.
+Before the machine is asked, the start checks the spools loaded against what `OctoPrint`'s analysis of the file says each tool needs, waiting for that analysis when the file has none yet and a tool holds a tracked spool. In the default mode a start is refused while a loaded spool holds less than the print needs plus its buffer, while its figure is in doubt, or while the file still has no analysis; the server's `[spools]` table can set it to warn instead, or to check nothing.
 
 **Output.** The action record, carrying the request, who asked, the reason and the policy's decision; the bounded intervention it opened, when it opened one; and what the printer said, when the request reached it and it refused.
 
