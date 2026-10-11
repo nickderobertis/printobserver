@@ -326,8 +326,8 @@ def _method(operation: Operation, identifiers: frozenset[str] = frozenset()) -> 
     lines.append("        asked: list[tuple[str, str]] = []")
     for parameter in query:
         lines.append(f"        if {parameter.name} is not None:")
-        if isinstance(parameter.carried, ListOf):
-            # A value a request may carry more than once travels once per item.
+        if parameter.repeated and isinstance(parameter.carried, ListOf):
+            # A value the description says is repeated travels once per item.
             lines.append(f"            for value in {parameter.name}:")
             text = _query_text("value", parameter.carried.item)
             lines.append(f'                asked.append(("{parameter.name}", {text}))')

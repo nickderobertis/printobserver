@@ -170,8 +170,8 @@ def test_a_client_that_renames_a_method_is_refused(
         ),
         (
             PYTHON,
-            "def pause(self, print_id: str, reason: str)",
-            "def pause(self, print_id: str, reason: str | None = None)",
+            "def pause(self, print_id: PrintId, reason: str)",
+            "def pause(self, print_id: PrintId, reason: str | None = None)",
         ),
         (
             NODE,
@@ -204,9 +204,9 @@ def test_a_client_whose_reason_may_be_left_out_is_refused(
         ),
         (
             PYTHON,
-            "def set_feedrate_factor(\n        self, print_id: str, factor: float, "
+            "def set_feedrate_factor(\n        self, print_id: PrintId, factor: float, "
             "reason: str, duration_s: int | None = None\n    )",
-            "def set_feedrate_factor(\n        self, print_id: str, factor: float, "
+            "def set_feedrate_factor(\n        self, print_id: PrintId, factor: float, "
             "reason: str, duration_s: int\n    )",
         ),
         (
@@ -238,8 +238,8 @@ def test_a_client_that_requires_the_duration_is_refused(
         ),
         (
             PYTHON,
-            "    def pause(self, print_id: str",
-            "    def pause(self, actor: Actor, print_id: str",
+            "    def pause(self, print_id: PrintId",
+            "    def pause(self, actor: Actor, print_id: PrintId",
         ),
         (
             NODE,

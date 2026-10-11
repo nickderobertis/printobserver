@@ -24371,7 +24371,7 @@ Declared by `printobserver-server`.
 
 ```json
 {
-  "description_version": 1,
+  "description_version": 2,
   "media_type": "application/json",
   "operations": [
     {
@@ -24402,6 +24402,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24428,6 +24429,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24454,6 +24456,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "image_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24480,6 +24483,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24489,6 +24493,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "query",
           "name": "limit",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "integer"
@@ -24515,6 +24520,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24541,6 +24547,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24550,6 +24557,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "query",
           "name": "wait_s",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "integer"
@@ -24576,6 +24584,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24585,6 +24594,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24594,6 +24604,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "manifest",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/JobManifest"
@@ -24620,6 +24631,7 @@ Declared by `printobserver-server`.
           "kind": "boolean",
           "located": "query",
           "name": "include_retired",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "boolean"
@@ -24646,6 +24658,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "spool_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24672,6 +24685,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "query",
           "name": "kinds",
+          "repeated": true,
           "required": false,
           "shape": {
             "items": {
@@ -24684,6 +24698,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "query",
           "name": "since",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "string"
@@ -24693,6 +24708,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "query",
           "name": "until",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "string"
@@ -24702,6 +24718,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "query",
           "name": "spool_id",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "string"
@@ -24711,6 +24728,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "query",
           "name": "before",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "string"
@@ -24720,6 +24738,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "query",
           "name": "limit",
+          "repeated": false,
           "required": false,
           "shape": {
             "type": "integer"
@@ -24746,6 +24765,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "query",
           "name": "file_name",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24772,6 +24792,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24781,6 +24802,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -24791,6 +24813,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -24822,6 +24845,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24831,6 +24855,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -24841,6 +24866,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -24872,6 +24898,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24881,6 +24908,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -24891,6 +24919,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -24922,6 +24951,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -24931,6 +24961,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -24941,6 +24972,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "file_name",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/FileName",
@@ -24951,6 +24983,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "manifest",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/JobManifest",
@@ -24961,6 +24994,7 @@ Declared by `printobserver-server`.
           "kind": "boolean",
           "located": "body",
           "name": "override_filament_check",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
@@ -24971,6 +25005,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25002,6 +25037,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25011,6 +25047,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25021,6 +25058,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "How long the change stands for, in whole seconds.",
@@ -25035,6 +25073,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "factor",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The multiplier asked for.",
@@ -25046,6 +25085,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25077,6 +25117,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25086,6 +25127,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25096,6 +25138,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "How long the change stands for, in whole seconds.",
@@ -25110,6 +25153,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "factor",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The multiplier asked for.",
@@ -25121,6 +25165,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25152,6 +25197,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25161,6 +25207,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25171,6 +25218,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "How long the change stands for, in whole seconds.",
@@ -25185,6 +25233,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25195,6 +25244,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "target_c",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The target temperature asked for, in degrees Celsius.",
@@ -25206,6 +25256,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "tool",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The tool, in the printer's own numbering.",
@@ -25238,6 +25289,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25247,6 +25299,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25257,6 +25310,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "How long the change stands for, in whole seconds.",
@@ -25271,6 +25325,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25281,6 +25336,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "target_c",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The target temperature asked for, in degrees Celsius.",
@@ -25313,6 +25369,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25322,6 +25379,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25332,6 +25390,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "duration_s",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "How long the change stands for, in whole seconds.",
@@ -25346,6 +25405,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "percent",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The percentage asked for.",
@@ -25357,6 +25417,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25388,6 +25449,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "print_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25397,6 +25459,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25407,6 +25470,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "disposition",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/AcknowledgementDisposition",
@@ -25417,6 +25481,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "event_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/EventId",
@@ -25427,6 +25492,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25458,6 +25524,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25468,6 +25535,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "color",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "The filament's colour.",
@@ -25481,6 +25549,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "density_g_cm3",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "The material's density, in grams per cubic centimetre; the known\ndensity of the material when absent, and a material with none known\nis refused.",
@@ -25495,6 +25564,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "diameter_mm",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "The filament's diameter, in millimetres; 1.75 when absent.",
@@ -25509,6 +25579,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "initial_g",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The net filament on the spool when full, in grams.",
@@ -25520,6 +25591,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "material",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The material, such as `PLA`.",
@@ -25530,6 +25602,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "name",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The operator's own label for it.",
@@ -25540,6 +25613,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25550,6 +25624,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "remaining_g",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "The filament on it now, in grams; the full figure when absent.",
@@ -25564,6 +25639,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "tare_g",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "The empty spool's own weight, in grams.",
@@ -25599,6 +25675,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "spool_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25608,6 +25685,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25618,6 +25696,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25628,6 +25707,7 @@ Declared by `printobserver-server`.
           "kind": "integer",
           "located": "body",
           "name": "tool",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "The tool, in the printer's own numbering.",
@@ -25660,6 +25740,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "spool_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25669,6 +25750,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25679,6 +25761,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25710,6 +25793,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "spool_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25719,6 +25803,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25729,6 +25814,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "gross_g",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "A scale reading of the spool, in grams, which needs its tare.",
@@ -25743,6 +25829,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",
@@ -25753,6 +25840,7 @@ Declared by `printobserver-server`.
           "kind": "number",
           "located": "body",
           "name": "remaining_g",
+          "repeated": false,
           "required": false,
           "shape": {
             "description": "The filament left, in grams.",
@@ -25788,6 +25876,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "path",
           "name": "spool_id",
+          "repeated": false,
           "required": true,
           "shape": {
             "type": "string"
@@ -25797,6 +25886,7 @@ Declared by `printobserver-server`.
           "kind": "structured",
           "located": "body",
           "name": "actor",
+          "repeated": false,
           "required": true,
           "shape": {
             "$ref": "#/$defs/Actor",
@@ -25807,6 +25897,7 @@ Declared by `printobserver-server`.
           "kind": "text",
           "located": "body",
           "name": "reason",
+          "repeated": false,
           "required": true,
           "shape": {
             "description": "Why the actor is asking for this.",

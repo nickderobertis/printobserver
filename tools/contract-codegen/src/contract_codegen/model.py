@@ -168,6 +168,9 @@ class Parameter:
     required: bool
     #: `path`, `query` or `body`.
     located: str
+    #: Whether a request may carry it more than once, each item a value of its
+    #: own: a query list, sent as one `name=value` per item.
+    repeated: bool = False
 
     @property
     def optional(self) -> bool:

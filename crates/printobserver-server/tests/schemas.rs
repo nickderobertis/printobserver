@@ -47,7 +47,13 @@ const OPERATIONS_FILE: &str = "operations.json";
 ///
 /// It is the description's shape rather than the API's: a consumer that reads
 /// this file needs to know whether it still knows how to read it.
-const DESCRIPTION_VERSION: u64 = 1;
+///
+/// Version 2 gave every parameter `repeated`: whether a request may carry it
+/// more than once, each a value of its own — which a query list is, sent as
+/// one `name=value` per item. A version-1 reader would take that list as one
+/// value, so the version moved with the shape rather than leaving a reader to
+/// guess from an array it was never told about.
+const DESCRIPTION_VERSION: u64 = 2;
 
 /// The name of the shape one answer of one operation carries.
 ///
@@ -71,6 +77,7 @@ fn described(operation: &Operation) -> Value {
                 "required": parameter.required,
                 "located": format!("{:?}", parameter.located).to_lowercase(),
                 "kind": format!("{:?}", parameter.kind).to_lowercase(),
+                "repeated": parameter.repeated,
                 "shape": shape,
             })
         })
@@ -306,6 +313,39 @@ fn every_described_operation_carries_the_values_its_request_declares() {
             .collect();
         assert_eq!(names, declared, "`{}`", operation.name);
     }
+}
+
+/// The description is at the version whose shape carries `repeated`, and a
+/// value is described as repeated exactly when its operation declares it so —
+/// a query value, described as a list of its kind — and as nothing else.
+#[test]
+fn a_repeated_value_is_described_as_one_at_the_description_version_that_carries_it() {
+    let document = operations_document();
+    assert_eq!(document["description_version"], json!(2));
+
+    let mut repeated = Vec::new();
+    for operation in &OPERATIONS {
+        let entry = described(operation);
+        let declared = operation.request();
+        let parameters = entry["parameters"]
+            .as_array()
+            .expect("a described operation carries its parameters");
+        for (parameter, described) in declared.iter().zip(parameters) {
+            assert_eq!(
+                described["repeated"],
+                json!(parameter.repeated),
+                "`{}`'s `{}`",
+                operation.name,
+                parameter.name
+            );
+            if parameter.repeated {
+                assert_eq!(described["located"], json!("query"), "{described}");
+                assert_eq!(described["shape"]["type"], json!("array"), "{described}");
+                repeated.push(format!("{}.{}", operation.name, parameter.name));
+            }
+        }
+    }
+    assert_eq!(repeated, vec!["printer_history.kinds".to_owned()]);
 }
 
 /// A mutating operation is described as answering the policy's own rejection.

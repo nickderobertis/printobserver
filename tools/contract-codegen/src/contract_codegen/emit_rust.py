@@ -278,8 +278,8 @@ def _method(operation: Operation) -> list[str]:
             item = carried.item if isinstance(carried, ListOf) else carried
             if not parameter.optional:
                 continue
-            if isinstance(carried, ListOf):
-                # A value a request may carry more than once travels once per item.
+            if parameter.repeated:
+                # A value the description says is repeated travels once per item.
                 lines.append(f"        for value in {spelled}.into_iter().flatten() {{")
             else:
                 lines.append(f"        if let Some(value) = {spelled} {{")

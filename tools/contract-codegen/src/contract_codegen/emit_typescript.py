@@ -215,8 +215,8 @@ def _method(operation: Operation) -> list[str]:
     for parameter in query:
         spelled = camel(parameter.name)
         lines.append(f"    if ({spelled} !== undefined) {{")
-        if isinstance(parameter.carried, ListOf):
-            # A value a request may carry more than once travels once per item.
+        if parameter.repeated:
+            # A value the description says is repeated travels once per item.
             lines.append(f"      for (const value of {spelled}) {{")
             lines.append(f'        asked.push(["{parameter.name}", String(value)]);')
             lines.append("      }")
