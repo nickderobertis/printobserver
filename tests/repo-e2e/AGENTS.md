@@ -6,8 +6,8 @@ ones only this suite carries.
 
 - **It runs under pytest-xdist.** `test-e2e` runs `pytest -n auto --dist
   loadgroup`, and `tests/workers.py` answers `auto`: a worker per logical
-  processor, as many as the host's memory holds. The log says which figures it
-  chose from.
+  processor, one fewer on Windows, as many as the host's memory holds. The log
+  says which figures it chose from.
 - **A journey that shares something declares it.** What a journey touches
   beyond its own copy, its own temporary directory and a stand-in bound to port
   0 — a fixed path under the repository root, a build into that root's

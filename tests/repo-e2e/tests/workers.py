@@ -6,6 +6,13 @@ logical processors, bounded by its memory: a journey's heaviest moment is a
 `cargo` build in a copy of the tree, and one of those per worker is what the
 memory has to hold.
 
+On Windows one processor is left to the host. A worker on every processor of a
+4-processor Windows runner kept the host's own services from answering inside
+the deadlines the journeys set on them: OctoPrint's bring-down asks Windows
+which program a process is through a PowerShell CIM query bounded at 30
+seconds, and that query ran past it on the `gate (windows-aarch64)` cell of
+draft run 38172314896.
+
 Free disk is read and reported but bounds nothing: every journey keeps its
 temporary directory until the session ends, so what the tier leaves on disk is
 the same whichever worker ran which journey, and a worker adds only its own
@@ -25,6 +32,9 @@ from pathlib import Path
 #: needs of the host's memory.
 MEMORY_PER_WORKER_GIB = 2.0
 
+#: The processors left to a Windows host's own services rather than to a worker.
+RESERVED_ON_WINDOWS = 1
+
 GIB = 1024**3
 
 
@@ -35,18 +45,21 @@ class Host:
     cpus: int
     memory_gib: float
     free_disk_gib: float
+    #: The processors left to the host's own services.
+    reserved: int = 0
 
     @property
     def workers(self) -> int:
-        """One worker per logical processor, as many as the memory holds, and never none."""
-        return max(1, min(self.cpus, int(self.memory_gib // MEMORY_PER_WORKER_GIB)))
+        """A worker per processor not left to the host, as many as the memory holds, never none."""
+        processors = self.cpus - self.reserved
+        return max(1, min(processors, int(self.memory_gib // MEMORY_PER_WORKER_GIB)))
 
     def said(self) -> str:
         """The one line a run states its choice in, with the figures it was chosen from."""
         return (
-            f"repo-e2e: {self.workers} xdist workers: {self.cpus} logical processors, "
-            f"{self.memory_gib:.1f} GiB memory ({MEMORY_PER_WORKER_GIB:g} GiB a worker), "
-            f"{self.free_disk_gib:.1f} GiB free disk"
+            f"repo-e2e: {self.workers} xdist workers: {self.cpus} logical processors "
+            f"({self.reserved} left to the host), {self.memory_gib:.1f} GiB memory "
+            f"({MEMORY_PER_WORKER_GIB:g} GiB a worker), {self.free_disk_gib:.1f} GiB free disk"
         )
 
 
@@ -93,4 +106,5 @@ def here(temporary: Path) -> Host:
         cpus=os.process_cpu_count() or 1,
         memory_gib=memory_bytes() / GIB,
         free_disk_gib=shutil.disk_usage(temporary).free / GIB,
+        reserved=RESERVED_ON_WINDOWS if sys.platform == "win32" else 0,
     )
