@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from repo_checks.checks_ci import secrets
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -46,6 +46,45 @@ def test_release_automation_naming_the_built_in_token_is_refused(
 
     refused(findings, "built-in token")
     refused(findings, "RELEASE_PLZ_TOKEN")
+
+
+def test_a_publishing_job_handed_the_built_in_token_is_refused(tree: Callable[[], Tree]) -> None:
+    """The job that tags a release is refused the token as the drafting job is."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "          GIT_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}\n"
+        "          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}\n"
+        "      - id: answer",
+        "          GIT_TOKEN: ${{ github.token }}\n"
+        "          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}\n"
+        "      - id: answer",
+    )
+
+    refused(secrets(broken.repo), "job `release` runs the release program")
+
+
+def test_the_built_in_token_declared_for_the_whole_workflow_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A workflow-level `env` reaches every job, the drafting and publishing ones among them."""
+    broken = tree()
+    broken.edit(
+        RELEASE,
+        "permissions:\n  contents: read\n",
+        "permissions:\n  contents: read\n\nenv:\n  GITHUB_TOKEN: ${{ github.token }}\n",
+    )
+
+    refused(secrets(broken.repo), "outside its jobs")
+
+
+def test_the_reporting_job_alone_may_hand_the_built_in_token_to_a_step(committed: Repo) -> None:
+    """The committed reporting job names it, under `issues: write`, and is accepted."""
+    workflow = committed.path(RELEASE).read_text(encoding="utf-8")
+    reporting = workflow[workflow.index("  release-health:") : workflow.index("  artifacts:")]
+
+    contains(reporting, "GITHUB_TOKEN: ${{ github.token }}", describing="the reporting job")
+    accepted(secrets(committed))
 
 
 def test_release_automation_without_a_crate_credential_is_refused(
