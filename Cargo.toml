@@ -51,7 +51,7 @@ authors = ["Nick DeRobertis"]
 # nowhere else, and every manifest inherits it. Release automation moves the
 # one shared version and these requirements together, so a release of any
 # subset of the crates cannot leave a sibling requiring a version it has moved
-# past — the state `cargo update` refused in run 38129622045.
+# past, which `cargo update` refuses.
 [workspace.dependencies]
 base64 = "0.22"
 jsonschema ={ version = "0.34", default-features = false }

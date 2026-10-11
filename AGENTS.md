@@ -1133,9 +1133,9 @@ crate in one `version_group`, and every requirement one crate makes of another
 is inherited from its `[workspace.dependencies]` entry rather than written in
 the crate's own manifest. Without both, a change touching some crates drafts a
 version every crate moves to while the others' requirements stay behind, and
-`cargo update` refuses the draft — which is how nothing released from 2026-10-03
-to 2026-10-11. `tests/repo-e2e/tests/test_release_path_journey.py` drafts a
-release of one crate in the required gate to hold this.
+`cargo update` refuses the draft.
+`tests/repo-e2e/tests/test_release_path_journey.py` drafts a release of one
+crate in the required gate to hold this.
 
 **A release path that fails on `main` says so.** The workflow's `release-health`
 job keeps one open issue labelled `release-broken` while drafting or publishing

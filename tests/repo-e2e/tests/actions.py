@@ -144,6 +144,28 @@ STATUS_FUNCTIONS = ("always", "success", "failure", "cancelled")
 STATUS_CALL = re.compile(rf"\b({'|'.join(STATUS_FUNCTIONS)})\s*\(")
 
 
+@dataclass(frozen=True, slots=True)
+class Status:
+    """What each status function answers for one job, from what it needs.
+
+    `always()` is true, `success()` is true where every needed job succeeded,
+    `failure()` where one failed, and `cancelled()` never, because nothing
+    here cancels a run.
+    """
+
+    succeeded: bool
+    failed: bool
+
+    def answer(self, function: str) -> bool | None:
+        """What `function()` answers, or `None` where it is no status function."""
+        return {
+            "always": True,
+            "success": self.succeeded,
+            "failure": self.failed,
+            "cancelled": False,
+        }.get(function)
+
+
 class UnsupportedError(ValueError):
     """The workflow uses a construct this runner does not model, and will not guess at."""
 
@@ -381,7 +403,7 @@ class Contexts:
     runner: dict[str, str] = field(default_factory=dict)
     #: What each status function answers, in a job condition; `None` elsewhere,
     #: where calling one is refused.
-    status: dict[str, bool] | None = None
+    status: Status | None = None
 
     def resolve(self, dotted: str) -> object:
         """The value at one dotted path, or `None` where the forge would give `null`.
@@ -518,7 +540,8 @@ class _Expression:
                 return value
             case Token("name", name) if self._peek() == Token("op", "("):
                 status = self.contexts.status
-                if status is None or name not in status:
+                answered = None if status is None else status.answer(name)
+                if answered is None:
                     msg = (
                         f"expression `{self.text}` calls `{name}()`, which this runner does "
                         f"not model here"
@@ -529,7 +552,7 @@ class _Expression:
                     msg = f"expression `{self.text}` passes `{name}()` an argument"
                     raise UnsupportedError(msg)
                 self._take()
-                return status[name]
+                return answered
             case Token("name", name) if name in LITERALS:
                 return LITERALS[name]
             case Token("name", name):
@@ -800,12 +823,10 @@ class Runner:
             secrets=contexts.secrets,
             github=contexts.github,
             inputs=contexts.inputs,
-            status={
-                "always": True,
-                "success": succeeded,
-                "failure": any(done[needed].result is Result.FAILURE for needed in needs),
-                "cancelled": False,
-            },
+            status=Status(
+                succeeded=succeeded,
+                failed=any(done[needed].result is Result.FAILURE for needed in needs),
+            ),
         )
         if condition is not None and not _truthy(evaluate(str(condition), judged)):
             return JobRun(Result.SKIPPED)

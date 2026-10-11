@@ -1,10 +1,9 @@
 """Saying, on the forge, that the release path on `main` is broken — and when it is mended.
 
 The release workflow fires on every push to `main`, and a run of it that fails
-is one red mark among many: for eight days its drafting job failed on every
-push and nothing anybody read said so. So the workflow's last job hands the
-outcome of its drafting and publishing jobs to this module, which keeps exactly
-one open issue labelled `LABEL` while either fails: `broken` opens it on the
+is one red mark among many, which nobody reads. So the workflow's last job hands
+the outcome of its drafting and publishing jobs to this module, which keeps
+exactly one open issue labelled `LABEL` while either fails: `broken` opens it on the
 first failing run and comments on it, naming the run, on every one after; and
 `mended` closes it, naming the run, on the first run in which both succeed.
 
@@ -22,6 +21,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from urllib.parse import quote, urlsplit
 
 from release_artifacts.registries import RefusedError, RegistryError, Token, exchange
@@ -39,21 +39,29 @@ LABEL_DESCRIPTION = "The release workflow on main is failing; closed when it nex
 #: What the forge hands every step, and this module reads.
 API_URL, REPOSITORY, TOKEN = "GITHUB_API_URL", "GITHUB_REPOSITORY", "GITHUB_TOKEN"
 
-#: The media type and version of GitHub's REST API this speaks.
+#: The media type GitHub's REST API answers in.
 MEDIA_TYPE = "application/vnd.github+json"
 
-#: The outcomes the forge reports a job as, through `needs.<job>.result`.
-RESULTS = frozenset({"success", "failure", "cancelled", "skipped"})
+
+class Outcome(StrEnum):
+    """What the forge reports a job as, through `needs.<job>.result`."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+
 
 #: An `owner/name` as the forge spells `GITHUB_REPOSITORY`.
 REPOSITORY_NAME = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
-#: The most open issues one read asks for. One is what this module keeps, so
-#: a page this size is a page that holds every one there is.
+#: The most open issues one read of the listing asks for; a shorter page is the
+#: last one.
 PAGE = 100
 
-#: How the forge says it carries no such label.
-NOT_FOUND = 404
+#: How the forge says it carries no such label, and that it already carries one
+#: of that name — which is a second run creating it at the same moment.
+NOT_FOUND, ALREADY_THERE = 404, 422
 
 #: What to do about a forge this module could not tell.
 NEXT = (
@@ -92,6 +100,7 @@ class Forge:
         """
         url = f"{self.api}/repos/{self.repository}{path}"
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
             answered = exchange(
                 url,
                 method=method,
@@ -142,25 +151,40 @@ def forge(environment: Mapping[str, str]) -> Forge:
     return Forge(api, repository, Token(token))
 
 
-def outcomes(given: list[str]) -> dict[str, str]:
+def outcomes(given: list[str]) -> dict[str, Outcome]:
     """Each `<job>=<result>` handed on the command line, by job.
 
     Raises:
         TrackingError: If one is not that shape, or names no result the forge
             reports a job as.
     """
-    named: dict[str, str] = {}
+    named: dict[str, Outcome] = {}
+    known = {outcome.value for outcome in Outcome}
     for entry in given:
         job, separator, result = entry.partition("=")
-        if not separator or not job.strip() or result not in RESULTS:
+        if not separator or not job.strip() or result not in known:
             msg = (
                 f"{entry!r} is not `<job>=<result>` with a result among "
-                f"{', '.join(sorted(RESULTS))}. Next: hand each job as "
+                f"{', '.join(sorted(known))}. Next: hand each job as "
                 f"`<job>=${{{{ needs.<job>.result }}}}`."
             )
             raise TrackingError(msg)
-        named[job.strip()] = result
+        named[job.strip()] = Outcome(result)
     return named
+
+
+def _number(entry: object, what: str) -> int:
+    """The issue number one document of the forge's carries.
+
+    Raises:
+        TrackingError: If it carries none a forge would give an issue: a
+            positive integer, and not a boolean.
+    """
+    number = entry.get("number") if isinstance(entry, dict) else None
+    if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+        msg = f"the forge answered {what} with {entry!r}, which names no issue. {NEXT}"
+        raise TrackingError(msg)
+    return number
 
 
 def run_url(url: str) -> str:
@@ -177,38 +201,56 @@ def run_url(url: str) -> str:
 
 
 def tracking(forge: Forge) -> list[int]:
-    """Every open tracking issue, oldest first.
+    """Every open tracking issue, oldest first, read page by page to the last.
 
     The forge lists a pull request among a repository's issues; one carrying
     the label is not an issue this keeps, and is left alone.
+
+    Raises:
+        TrackingError: If a page is not the forge's list of issues, or an entry
+            names no issue.
     """
-    listed = forge.ask("GET", f"/issues?labels={quote(LABEL)}&state=open&per_page={PAGE}")
-    entries = listed if isinstance(listed, list) else []
-    numbers = [
-        entry["number"]
-        for entry in entries
-        if isinstance(entry, dict)
-        and isinstance(entry.get("number"), int)
-        and "pull_request" not in entry
-    ]
-    return sorted(numbers)
+    numbers: list[int] = []
+    page = 1
+    while True:
+        query = f"labels={quote(LABEL)}&state=open&per_page={PAGE}&page={page}"
+        listed = forge.ask("GET", f"/issues?{query}")
+        if not isinstance(listed, list):
+            msg = f"the forge answered its open `{LABEL}` issues with {listed!r}. {NEXT}"
+            raise TrackingError(msg)
+        numbers.extend(
+            _number(entry, "a listed issue")
+            for entry in listed
+            if not (isinstance(entry, dict) and "pull_request" in entry)
+        )
+        if len(listed) < PAGE:
+            return sorted(numbers)
+        page += 1
 
 
 def _labelled(forge: Forge) -> None:
-    """Create the tracking label where the repository does not carry it yet."""
+    """Create the tracking label where the repository does not carry it yet.
+
+    A second run creating it at the same moment is refused as a label that
+    already exists, which is the state this asks for.
+    """
     try:
         forge.ask("GET", f"/labels/{quote(LABEL)}")
     except TrackingError as absent:
         if absent.status != NOT_FOUND:
             raise
-        forge.ask(
-            "POST",
-            "/labels",
-            {"name": LABEL, "color": LABEL_COLOUR, "description": LABEL_DESCRIPTION},
-        )
+        try:
+            forge.ask(
+                "POST",
+                "/labels",
+                {"name": LABEL, "color": LABEL_COLOUR, "description": LABEL_DESCRIPTION},
+            )
+        except TrackingError as raced:
+            if raced.status != ALREADY_THERE:
+                raise
 
 
-def broken(forge: Forge, run: str, results: Mapping[str, str]) -> str:
+def broken(forge: Forge, run: str, results: Mapping[str, Outcome]) -> str:
     """Say that `run` failed: open the tracking issue, or comment on the open one.
 
     Returns:
@@ -218,7 +260,7 @@ def broken(forge: Forge, run: str, results: Mapping[str, str]) -> str:
         TrackingError: If no job handed failed, which is a step asked to say a
             run failed that did not, or the forge could not be told.
     """
-    failed = [job for job, result in results.items() if result == "failure"]
+    failed = [job for job, result in results.items() if result is Outcome.FAILURE]
     if not failed:
         msg = f"no job handed failed ({dict(results)}), so there is nothing to report. {NEXT}"
         raise TrackingError(msg)
@@ -243,21 +285,41 @@ def broken(forge: Forge, run: str, results: Mapping[str, str]) -> str:
             ),
         },
     )
-    number = opened.get("number") if isinstance(opened, dict) else None
-    return f"opened #{number}: {said}"
+    return f"opened #{_number(opened, 'the issue it opened')}: {said}"
 
 
 def mended(forge: Forge, run: str) -> str:
     """Say that `run` succeeded: close every open tracking issue, naming it.
 
+    Every one is attempted whatever an earlier one answered, and one left open
+    is what the next succeeding run closes, because it is still listed.
+
     Returns:
         What was done, naming each issue closed, or that none was open.
+
+    Raises:
+        TrackingError: If the forge refused to close one, naming each it
+            refused and each it closed.
     """
     open_now = tracking(forge)
     if not open_now:
         return f"no open `{LABEL}` issue, so there is nothing to close"
     said = f"The release workflow drafted and published cleanly on `main`: {run}"
+    closed: list[str] = []
+    refused: list[str] = []
     for number in open_now:
-        forge.ask("POST", f"/issues/{number}/comments", {"body": said})
-        forge.ask("PATCH", f"/issues/{number}", {"state": "closed", "state_reason": "completed"})
-    return f"closed {', '.join(f'#{number}' for number in open_now)}: {said}"
+        try:
+            forge.ask("POST", f"/issues/{number}/comments", {"body": said})
+            forge.ask(
+                "PATCH", f"/issues/{number}", {"state": "closed", "state_reason": "completed"}
+            )
+        except TrackingError as refusal:
+            refused.append(f"#{number}: {refusal}")
+            continue
+        closed.append(f"#{number}")
+    if refused:
+        msg = f"the forge refused to close {'; '.join(refused)}"
+        if closed:
+            msg += f". Closed: {', '.join(closed)}"
+        raise TrackingError(msg)
+    return f"closed {', '.join(closed)}: {said}"

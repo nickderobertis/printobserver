@@ -2341,8 +2341,6 @@ file = "crates/printobserver-core/src/unobserved.rs"
 site = "settlements: &[(String, Timestamp, PrintOutcome)],"
 reason = "The file name here is the contract's own `String` — `PrintStartedPayload.file_name`, `PrintRecord.file_name` and `FileFacts.file_name`, which the spool-ledger contract and the print record state and which this node may not redecide — carried through unchanged to be written down or compared with another of those same fields. `FileName` is the narrower type of a name this system may ask a printer's file API for, and a name a printer or Obico reports is not refused for failing it: converting here would drop or refuse a real print's file name rather than record it. Every place this system asks the printer for a file, it converts to `FileName` first (`file_of`, `analysis_of`, `extrusion_to`)."
 
-# --- the release workflow's tracking issue -----------------------------------
-#
 # `release_artifacts.tracking` opens, comments on and closes one issue on the
 # forge, and nothing here may do that on the real one. These are the sites that
 # stand GitHub's issues API in, and the helper that runs the workflow over it.
@@ -2370,3 +2368,33 @@ rule = "e2e_not_mocked"
 file = "tools/release-artifacts/tests/test_tracking.py"
 site = "with IssuesForge(REPOSITORY, CREDENTIAL) as standing:"
 reason = "GitHub's issues API, stood in because the real one would open a real issue on github.com, which no test may do. What is under test is this repository's own tracking command, driven through its real command line with the environment the forge hands a step, speaking real HTTP through `registries.exchange` — the one place this tool audits a URL and attaches a credential. The stand-in keeps what each call left, records the credential every request carried, and refuses where told, so the open-comment-close sequence and every refusal are proven over a real connection. The journey over the committed workflow's reporting job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/tracking.py"
+site = "answered = exchange("
+reason = "The same ground as the entry for this rule at `urllib.request.Request(` in `registries.py`, whose `exchange` this calls rather than opening a second HTTP site. The typed half is answered rather than suppressed: every answer the forge gives is narrowed where it is read — a listing must be a list, each entry must name a positive integer issue, an opened issue must name its number — and anything else fails the step naming what the forge said. The async half does not apply: this is a command-line step a `just` recipe runs to completion, asking the forge one ordered question at a time (list, then label, then open or comment, then close), with nothing to overlap and no event loop anywhere in the program."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "exchange("
+reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/release-artifacts/src/release_artifacts/issues_standin.py"
+site = "def document(self, html: str)"
+reason = "The stand-in reproduces the slice of GitHub's REST issues API `tracking` uses — the listing by label, a label read and creation, an issue opened, commented on and closed — in GitHub's documented paths and fields, and it is the only copy of that slice in this repository. It has no drift gate against the live API because the only way to exercise those writes is to open and close an issue on a real repository, which no tier here may do. What reconciles it is the reporting job's own run on `main`: `tracking` validates the two things it reads off the forge — that a listing is a list and that each issue names a positive integer `number` — so a shape that moved fails that step naming what the forge answered, rather than reading as nothing open."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/release-artifacts/src/release_artifacts/issues_standin.py"
+site = "def _route("
+reason = "The routes and statuses half of the same slice the entry at `def document(self, html: str)` covers, on the same ground: GitHub's documented paths and the statuses `tracking` acts on (`404` for an absent label, `422` for one that already exists or a document it will not take), with no live drift gate because exercising them writes to a real repository, and the reporting job's run on `main` as the reconciliation."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."

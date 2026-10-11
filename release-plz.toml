@@ -65,7 +65,7 @@ git_release_enable = false
 # Without it release-plz decides each crate apart: a release of some writes the
 # next version into that shared field, which moves every crate, but rewrites
 # the requirements of only the crates it released, and `cargo update` then
-# refuses a sibling requiring the version just moved past (run 38129622045).
+# refuses a sibling requiring the version just moved past.
 # `tests/repo-e2e/tests/test_release_path_journey.py` holds this by drafting a
 # release of one crate and requiring every crate to move with it.
 [[package]]

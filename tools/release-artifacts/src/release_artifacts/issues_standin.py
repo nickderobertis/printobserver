@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass, field
+from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Self
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -26,6 +27,30 @@ from urllib.parse import parse_qs, unquote, urlsplit
 #: The most this reads of one request body; every document `tracking` sends
 #: is a few hundred bytes.
 MAX_BODY_BYTES = 1024 * 1024
+
+#: The forge's default page of a listing, and the most one page may hold.
+DEFAULT_PAGE, MAX_PAGE = 30, 100
+
+#: How many hexadecimal digits the forge takes a label's colour as.
+COLOUR_DIGITS = 6
+
+#: What the forge answers a request whose document it will not take.
+INVALID = (422, {"message": "Validation Failed"})
+
+
+class State(StrEnum):
+    """Whether an issue is open, as the forge's `state` field says."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class Reason(StrEnum):
+    """Why an issue was closed, as the forge's `state_reason` field says."""
+
+    COMPLETED = "completed"
+    NOT_PLANNED = "not_planned"
+    REOPENED = "reopened"
 
 
 @dataclass(slots=True)
@@ -36,11 +61,12 @@ class Issue:
     title: str
     body: str
     labels: list[str]
-    state: str = "open"
-    state_reason: str | None = None
+    state: State = State.OPEN
+    state_reason: Reason | None = None
     comments: list[str] = field(default_factory=list)
     pull_request: bool = False
 
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def document(self, html: str) -> dict[str, object]:
         """The issue in the forge's shape."""
         shown: dict[str, object] = {
@@ -106,6 +132,10 @@ class IssuesForge:
         """Answer every `method` request to `path` with `status` and `body` from now on."""
         self._refused[(method, path)] = (status, body)
 
+    def accept(self, method: str, path: str) -> None:
+        """Answer `method` requests to `path` as the forge does again."""
+        self._refused.pop((method, path), None)
+
     def garble(self, method: str, path: str) -> None:
         """Answer every `method` request to `path` with a body that is not JSON from now on."""
         self._garbled.add((method, path))
@@ -115,7 +145,7 @@ class IssuesForge:
         return [
             issue
             for _, issue in sorted(self.issues.items())
-            if issue.state == "open" and label in issue.labels and not issue.pull_request
+            if issue.state is State.OPEN and label in issue.labels and not issue.pull_request
         ]
 
     def stop(self) -> None:
@@ -145,6 +175,7 @@ class IssuesForge:
         with self._lock:
             return self._route(method, rest, parse_qs(split.query), document)
 
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
     def _route(
         self,
         method: str,
@@ -154,52 +185,74 @@ class IssuesForge:
     ) -> tuple[int, object]:
         match (method, rest):
             case ("GET", ["issues"]):
-                return 200, self._listed(query)
+                return self._listed(query)
             case ("POST", ["issues"]):
                 return self._opened(document)
             case ("POST", ["issues", number, "comments"]) if self._held(number):
-                body = str(document.get("body", ""))
+                body = document.get("body")
+                if not isinstance(body, str) or not body:
+                    return INVALID
                 self.issues[int(number)].comments.append(body)
                 return 201, {"id": len(self.issues[int(number)].comments), "body": body}
             case ("PATCH", ["issues", number]) if self._held(number):
-                issue = self.issues[int(number)]
-                issue.state = str(document.get("state", issue.state))
-                reason = document.get("state_reason")
-                issue.state_reason = str(reason) if reason is not None else None
-                return 200, issue.document(self.html)
+                return self._updated(self.issues[int(number)], document)
             case ("GET", ["labels", name]) if name in self.labels:
                 return 200, {"name": name}
             case ("POST", ["labels"]):
-                name = str(document.get("name", ""))
-                if not name or name in self.labels:
-                    return 422, {"message": "Validation Failed"}
+                name, colour = document.get("name"), document.get("color")
+                if not isinstance(name, str) or not name or name in self.labels:
+                    return INVALID
+                if not isinstance(colour, str) or len(colour) != COLOUR_DIGITS:
+                    return INVALID
                 self.labels.add(name)
-                return 201, {"name": name, "color": document.get("color")}
+                return 201, {"name": name, "color": colour}
             case _:
                 return 404, {"message": "Not Found"}
 
     def _held(self, number: str) -> bool:
         return number.isascii() and number.isdigit() and int(number) in self.issues
 
-    def _listed(self, query: dict[str, list[str]]) -> list[dict[str, object]]:
+    def _listed(self, query: dict[str, list[str]]) -> tuple[int, object]:
+        """One page of the issues carrying every label asked for, in the state asked for."""
         wanted = {name for value in query.get("labels", []) for name in value.split(",") if name}
         state = query.get("state", ["open"])[0]
-        return [
+        size, page = query.get("per_page", [str(DEFAULT_PAGE)])[0], query.get("page", ["1"])[0]
+        if not (size.isascii() and size.isdigit() and page.isascii() and page.isdigit()):
+            return INVALID
+        size_of, page_of = min(int(size), MAX_PAGE), int(page)
+        if size_of < 1 or page_of < 1:
+            return INVALID
+        matching = [
             issue.document(self.html)
             for _, issue in sorted(self.issues.items())
             if (state == "all" or issue.state == state) and wanted <= set(issue.labels)
         ]
+        return 200, matching[(page_of - 1) * size_of : page_of * size_of]
 
     def _opened(self, document: dict[str, object]) -> tuple[int, object]:
-        title = document.get("title")
-        labels = document.get("labels", [])
-        if not isinstance(title, str) or not title or not isinstance(labels, list):
-            return 422, {"message": "Validation Failed"}
+        """Open an issue from a document carrying a title, a body and a list of label names."""
+        title, body, labels = (document.get(key) for key in ("title", "body", "labels"))
+        if not isinstance(title, str) or not title or not isinstance(body, str):
+            return INVALID
+        if not isinstance(labels, list) or not all(isinstance(name, str) for name in labels):
+            return INVALID
         number = len(self.issues) + 1
-        named = [str(label) for label in labels]
-        self.labels |= set(named)
-        self.issues[number] = Issue(number, title, str(document.get("body", "")), named)
+        self.labels |= set(labels)
+        self.issues[number] = Issue(number, title, body, list(labels))
         return 201, self.issues[number].document(self.html)
+
+    def _updated(self, issue: Issue, document: dict[str, object]) -> tuple[int, object]:
+        """Move an issue to the state, and for the reason, a document names."""
+        state, reason = document.get("state"), document.get("state_reason")
+        known_states = {value.value for value in State}
+        known_reasons = {value.value for value in Reason}
+        if not isinstance(state, str) or state not in known_states:
+            return INVALID
+        if reason is not None and (not isinstance(reason, str) or reason not in known_reasons):
+            return INVALID
+        issue.state = State(state)
+        issue.state_reason = Reason(reason) if isinstance(reason, str) else None
+        return 200, issue.document(self.html)
 
 
 def _handler(forge: IssuesForge) -> type[BaseHTTPRequestHandler]:

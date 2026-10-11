@@ -262,6 +262,7 @@ def test_the_stand_in_refuses_what_the_forge_refuses(
 ) -> None:
     """Sent over a real connection: a bad token, a body that is no object, a missing field."""
     with pytest.raises(RefusedError) as refused:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         exchange(
             f"{forge.api}/repos/{REPOSITORY}{path}",
             method=method,
@@ -278,6 +279,7 @@ def test_the_stand_in_refuses_a_label_it_already_carries(forge: IssuesForge) -> 
     forge.labels.add(LABEL)
 
     with pytest.raises(RefusedError) as refused:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         exchange(
             f"{forge.api}/repos/{REPOSITORY}/labels",
             method="POST",
@@ -287,3 +289,133 @@ def test_the_stand_in_refuses_a_label_it_already_carries(forge: IssuesForge) -> 
         )
 
     equal(refused.value.status, 422, describing="the status")
+
+
+def test_a_label_another_run_created_at_the_same_moment_still_opens_the_issue(
+    forge: IssuesForge,
+) -> None:
+    """The forge's `422` for a label that now exists is the state the step asked for."""
+    forge.refuse("POST", f"/repos/{REPOSITORY}/labels", 422, "Validation Failed")
+
+    equal(broken(1, "release-pr=failure"), 0, describing="the exit status")
+    equal(len(forge.open_labelled(LABEL)), 1, describing="the open tracking issues")
+
+
+def test_a_label_the_forge_refuses_to_create_fails_the_step_opening_nothing(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Any other refusal of the label is the forge refusing, and nothing is opened unlabelled."""
+    forge.refuse("POST", f"/repos/{REPOSITORY}/labels", 403, "Resource not accessible")
+
+    equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
+    contains(capsys.readouterr().err, "403", describing="the forge's status")
+    equal(forge.issues, {}, describing="the issues opened")
+
+
+def test_a_refused_comment_fails_the_step_and_the_next_failing_run_comments(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run the forge would not take a comment from is loud, and changes nothing open."""
+    equal(broken(1, "release-pr=failure"), 0, describing="the first failure")
+    number = forge.open_labelled(LABEL)[0].number
+    comments = f"/repos/{REPOSITORY}/issues/{number}/comments"
+    forge.refuse("POST", comments, 502, "Bad Gateway")
+
+    equal(broken(2, "release-pr=failure"), 1, describing="the refused second report")
+    contains(capsys.readouterr().err, "502", describing="the forge's status")
+    forge.accept("POST", comments)
+    equal(broken(3, "release-pr=failure"), 0, describing="the third failure")
+
+    equal(
+        [issue.number for issue in forge.open_labelled(LABEL)],
+        [number],
+        describing="the open tracking issues",
+    )
+    equal(len(forge.issues[number].comments), 1, describing="the comments taken")
+    contains(forge.issues[number].comments[0], RUN.format(3), describing="the run named")
+
+
+def test_a_success_closes_every_open_tracking_issue_and_comments_on_the_oldest_first(
+    forge: IssuesForge,
+) -> None:
+    """Two open, however that came about: a failure tells the oldest, a success closes both."""
+    older = forge.seed(TITLE, [LABEL])
+    newer = forge.seed(TITLE, [LABEL])
+
+    equal(broken(1, "release=failure"), 0, describing="a failure")
+    equal(len(forge.issues[older].comments), 1, describing="the oldest's comments")
+    equal(forge.issues[newer].comments, [], describing="the newer's comments")
+    equal(mended(2), 0, describing="a success")
+
+    equal(forge.open_labelled(LABEL), [], describing="the open tracking issues")
+
+
+def test_a_close_the_forge_refuses_partway_is_finished_by_the_next_success(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every issue is attempted; the one left open is listed, and so closed, next time."""
+    first = forge.seed(TITLE, [LABEL])
+    second = forge.seed(TITLE, [LABEL])
+    closing = f"/repos/{REPOSITORY}/issues/{first}"
+    forge.refuse("PATCH", closing, 500, "Server Error")
+
+    equal(mended(1), 1, describing="the partly refused close")
+    said = capsys.readouterr().err
+    contains(said, f"#{first}", describing="the issue the forge refused to close")
+    contains(said, f"Closed: #{second}", describing="the issue it did close")
+    equal(
+        [issue.number for issue in forge.open_labelled(LABEL)],
+        [first],
+        describing="the tracking issues left open",
+    )
+    forge.accept("PATCH", closing)
+
+    equal(mended(2), 0, describing="the next success")
+    equal(forge.open_labelled(LABEL), [], describing="the tracking issues left open")
+
+
+def test_every_page_of_open_tracking_issues_is_read(forge: IssuesForge) -> None:
+    """More open than one page holds: the last page's are closed too."""
+    numbers = [forge.seed(TITLE, [LABEL]) for _ in range(101)]
+
+    equal(mended(1), 0, describing="a success")
+
+    equal(forge.open_labelled(LABEL), [], describing="the tracking issues left open")
+    truth(
+        any("page=2" in asked.path for asked in forge.asked),
+        describing="the second page to have been read",
+    )
+    equal(forge.issues[numbers[-1]].state, "closed", describing="the last page's issue")
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "status", "named"),
+    [
+        ("GET", "/issues", 200, "with {'message'"),
+        ("POST", "/issues", 201, "names no issue"),
+    ],
+)
+def test_a_forge_answer_that_is_not_the_document_asked_for_fails_the_step(
+    forge: IssuesForge,
+    capsys: pytest.CaptureFixture[str],
+    method: str,
+    path: str,
+    status: int,
+    named: str,
+) -> None:
+    """A listing that is no list, and an issue opened that names no number, are refused."""
+    forge.refuse(method, f"/repos/{REPOSITORY}{path}", status, "something else")
+
+    equal(broken(1, "release-pr=failure"), 1, describing="the exit status")
+    contains(capsys.readouterr().err, named, describing="what it said")
+
+
+def test_a_listed_entry_naming_no_issue_fails_the_step(
+    forge: IssuesForge, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An issue whose number is a boolean is not one this could comment on or close."""
+    number = forge.seed(TITLE, [LABEL])
+    forge.issues[number].number = True
+
+    equal(mended(1), 1, describing="the exit status")
+    contains(capsys.readouterr().err, "names no issue", describing="what it said")

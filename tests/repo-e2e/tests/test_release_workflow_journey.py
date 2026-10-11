@@ -1005,6 +1005,7 @@ def pushed(
 DRAFTED_NOTHING = '{"prs":[]}'
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_failing_push_opens_the_issue_a_second_comments_and_a_success_closes_it(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
@@ -1072,6 +1073,7 @@ def test_a_failing_push_opens_the_issue_a_second_comments_and_a_success_closes_i
         )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_succeeding_push_with_nothing_open_writes_nothing(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
@@ -1091,6 +1093,7 @@ def test_a_succeeding_push_with_nothing_open_writes_nothing(
     equal(tracker.issues, {}, describing="the issues opened")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_reporting_job_without_always_is_skipped_on_the_run_it_exists_for(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
