@@ -469,13 +469,16 @@ fn a_correction_racing_a_close_out_loses_neither_the_correction_nor_the_charge()
     }
 }
 
+/// One change to a registration, for the walk over the ones refused.
+type Edit = fn(&mut SpoolCommand);
+
 /// A registration naming a figure no spool has is refused saying which, and
 /// writes no spool: no name, no material, a diameter, density or full figure
 /// at or below zero, a tare below zero.
 #[test]
 fn a_registration_naming_an_impossible_figure_is_refused() {
     let world = spool_world();
-    let valid = |edit: &dyn Fn(&mut SpoolCommand)| {
+    let valid = |edit: Edit| {
         let mut asked = SpoolCommand::RegisterSpool {
             name: "Valid".to_owned(),
             material: "PLA".to_owned(),
@@ -491,9 +494,9 @@ fn a_registration_naming_an_impossible_figure_is_refused() {
         edit(&mut asked);
         asked
     };
-    let cases: [(&dyn Fn(&mut SpoolCommand), &str); 6] = [
+    let cases: [(Edit, &str); 6] = [
         (
-            &|asked| {
+            |asked| {
                 if let SpoolCommand::RegisterSpool { name, .. } = asked {
                     "  ".clone_into(name);
                 }
@@ -501,7 +504,7 @@ fn a_registration_naming_an_impossible_figure_is_refused() {
             "needs a name",
         ),
         (
-            &|asked| {
+            |asked| {
                 if let SpoolCommand::RegisterSpool { material, .. } = asked {
                     String::new().clone_into(material);
                 }
@@ -509,7 +512,7 @@ fn a_registration_naming_an_impossible_figure_is_refused() {
             "needs its material",
         ),
         (
-            &|asked| {
+            |asked| {
                 if let SpoolCommand::RegisterSpool { diameter_mm, .. } = asked {
                     *diameter_mm = Some(0.0);
                 }
@@ -517,7 +520,7 @@ fn a_registration_naming_an_impossible_figure_is_refused() {
             "is not one a filament has",
         ),
         (
-            &|asked| {
+            |asked| {
                 if let SpoolCommand::RegisterSpool { density_g_cm3, .. } = asked {
                     *density_g_cm3 = Some(-1.0);
                 }
@@ -525,7 +528,7 @@ fn a_registration_naming_an_impossible_figure_is_refused() {
             "is not one a material has",
         ),
         (
-            &|asked| {
+            |asked| {
                 if let SpoolCommand::RegisterSpool { initial_g, .. } = asked {
                     *initial_g = 0.0;
                 }
@@ -533,7 +536,7 @@ fn a_registration_naming_an_impossible_figure_is_refused() {
             "holds nothing",
         ),
         (
-            &|asked| {
+            |asked| {
                 if let SpoolCommand::RegisterSpool { tare_g, .. } = asked {
                     *tare_g = Some(-5.0);
                 }
