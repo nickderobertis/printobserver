@@ -334,9 +334,9 @@ type ClosingWrites = (Vec<Charge>, Vec<Pend>, Vec<SpoolMutation>);
 struct Closing {
     /// How the print ended.
     outcome: PrintOutcome,
-    /// Whether it ended unfinished while nothing was watching it, so what it
-    /// fed after the last position recorded is unknown.
-    unwatched: bool,
+    /// Whether anything was watching as it ended: unfinished and unwatched,
+    /// what it fed after the last position recorded is unknown.
+    watch: Watch,
     /// What each tool fed by the outcome's rule, when that could be worked out.
     totals: Option<Extrusion>,
     /// What the printer says of the print's file.
@@ -358,10 +358,37 @@ struct Ending<'a> {
     position: Option<&'a FilePosition>,
     /// The file's size, when it is known.
     size_bytes: Option<i64>,
-    /// Whether the file's tally shows a successful print since it began.
-    tally_success: bool,
-    /// Whether this system's own cancel was executed for it.
-    own_cancel: bool,
+    /// What the file's tally says of a print since this one was opened.
+    tally: Tally,
+    /// Who cancelled it, as far as this system knows.
+    cancelled_by: Canceller,
+}
+
+/// Whether a print was watched to its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Watch {
+    /// This supervisor saw it running, or it completed: what it fed is known.
+    Watched,
+    /// It ended unfinished while nothing was watching.
+    Unwatched,
+}
+
+/// What a file's tally says of a print since one was opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tally {
+    /// A successful print of the file was recorded since.
+    CompletedSince,
+    /// Nothing the tally says shows this print completed.
+    NoCompletion,
+}
+
+/// Who cancelled a print, as far as this system knows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Canceller {
+    /// This system's own cancel was executed for it.
+    Here,
+    /// No cancel of this system's was executed for it.
+    NotHere,
 }
 
 impl Ending<'_> {
@@ -378,10 +405,10 @@ impl Ending<'_> {
                     .completion
                     .is_some_and(|completion| completion.value() >= 1.0)
         });
-        if reached_the_end || reported_complete || self.tally_success {
+        if reached_the_end || reported_complete || self.tally == Tally::CompletedSince {
             return PrintOutcome::Completed;
         }
-        if self.own_cancel || *self.state == PrinterState::Cancelling {
+        if self.cancelled_by == Canceller::Here || *self.state == PrinterState::Cancelling {
             return PrintOutcome::Cancelled;
         }
         match self.state {
@@ -807,11 +834,21 @@ impl Supervisor {
         // own start, as a read puts it, can lie before that, and a success
         // recorded between the two is an earlier print's.
         let began = print.opened_at;
-        let tally_success = analysis
+        let tally = if analysis
             .facts
             .as_ref()
             .and_then(|facts| facts.last_print.as_ref())
-            .is_some_and(|last| last.success && last.at >= began);
+            .is_some_and(|last| last.success && last.at >= began)
+        {
+            Tally::CompletedSince
+        } else {
+            Tally::NoCompletion
+        };
+        let cancelled_by = if self.cancelled_here(print.id).await? {
+            Canceller::Here
+        } else {
+            Canceller::NotHere
+        };
         let named = file_name
             .as_deref()
             .and_then(|name| FileName::new(name).ok());
@@ -821,8 +858,8 @@ impl Supervisor {
             file_name: named.as_ref(),
             position: position.as_ref(),
             size_bytes: analysis.size_bytes(),
-            tally_success,
-            own_cancel: self.cancelled_here(print.id).await?,
+            tally,
+            cancelled_by,
         }
         .outcome();
         let totals = match (outcome, &file_name, &position) {
@@ -836,7 +873,11 @@ impl Supervisor {
         };
         Ok(Closing {
             outcome,
-            unwatched: !self.was_seen_running(print.id) && outcome != PrintOutcome::Completed,
+            watch: if self.was_seen_running(print.id) || outcome == PrintOutcome::Completed {
+                Watch::Watched
+            } else {
+                Watch::Unwatched
+            },
             totals,
             analysis,
             position,
@@ -870,7 +911,7 @@ impl Supervisor {
         used.extend(totals.lengths.keys().copied());
         for tool in used {
             let on_tool = spool_on_tool(spools, tool);
-            if closing.unwatched
+            if closing.watch == Watch::Unwatched
                 && let Some(spool) = on_tool
             {
                 marks.push(self.mark_of(spool.id, uncharged.clone(), Some(print_id))?);
@@ -933,8 +974,8 @@ impl Supervisor {
             file_name: named.as_ref(),
             position: None,
             size_bytes: None,
-            tally_success: false,
-            own_cancel: false,
+            tally: Tally::NoCompletion,
+            cancelled_by: Canceller::NotHere,
         }
         .outcome();
         // The `print_untracked` goes first, once: a close-out replayed after

@@ -6,9 +6,8 @@
 //! driving the request for the whole of the wait. [`Delay`] instead parks
 //! nothing: it hands its waker to a thread of its own that sleeps and wakes it,
 //! so it completes on any executor, [`block_on`](crate::block_on) included. A
-//! system that will not start that thread is one whose supervisor could not
-//! have started its expiry driver either, and it panics as
-//! [`Supervisor::new`](crate::Supervisor::new) does rather than spinning.
+//! system that will not start that thread answers the operating system's own
+//! error, and the caller gives up waiting rather than spinning.
 //!
 //! How long the wait as a whole lasts is never read from here: that is the
 //! injected [`Clock`](crate::Clock)'s, so a test drives it by moving the clock.
@@ -50,13 +49,13 @@ impl Delay {
 }
 
 impl Future for Delay {
-    type Output = ();
+    type Output = std::io::Result<()>;
 
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(shared) = &self.shared {
             let mut held = shared.lock().unwrap_or_else(PoisonError::into_inner);
             if held.elapsed {
-                return Poll::Ready(());
+                return Poll::Ready(Ok(()));
             }
             // An executor may poll again with a different waker; the one to
             // wake is always the latest.
@@ -69,7 +68,7 @@ impl Future for Delay {
         }));
         let sleeper = Arc::clone(&shared);
         let duration = self.duration;
-        std::thread::Builder::new()
+        let started = std::thread::Builder::new()
             .name("printobserver-delay".to_owned())
             .spawn(move || {
                 std::thread::sleep(duration);
@@ -81,8 +80,10 @@ impl Future for Delay {
                 if let Some(waker) = waker {
                     waker.wake();
                 }
-            })
-            .expect("the operating system starts a thread to wait on");
+            });
+        if let Err(error) = started {
+            return Poll::Ready(Err(error));
+        }
         self.shared = Some(shared);
         Poll::Pending
     }
@@ -113,7 +114,7 @@ mod tests {
     #[test]
     fn a_delay_completes_after_its_duration() {
         let started = Instant::now();
-        crate::block_on(Delay::new(Duration::from_millis(20)));
+        crate::block_on(Delay::new(Duration::from_millis(20))).expect("the wait is taken");
         assert!(started.elapsed() >= Duration::from_millis(20));
     }
 
@@ -127,16 +128,16 @@ mod tests {
         let mut pinned = Pin::new(&mut delay);
         let first_waker = Waker::from(Arc::clone(&first));
         let latest_waker = Waker::from(Arc::clone(&latest));
-        assert_eq!(
+        assert!(matches!(
             pinned.as_mut().poll(&mut Context::from_waker(&first_waker)),
             Poll::Pending
-        );
-        assert_eq!(
+        ));
+        assert!(matches!(
             pinned
                 .as_mut()
                 .poll(&mut Context::from_waker(&latest_waker)),
             Poll::Pending
-        );
+        ));
         let deadline = Instant::now() + Duration::from_secs(10);
         while !latest.0.load(Ordering::SeqCst) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(2));
@@ -146,11 +147,11 @@ mod tests {
             "the latest waker was not woken"
         );
         assert!(!first.0.load(Ordering::SeqCst), "a stale waker was woken");
-        assert_eq!(
+        assert!(matches!(
             pinned
                 .as_mut()
                 .poll(&mut Context::from_waker(&latest_waker)),
-            Poll::Ready(())
-        );
+            Poll::Ready(Ok(()))
+        ));
     }
 }

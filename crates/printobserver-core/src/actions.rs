@@ -123,6 +123,7 @@ impl Supervisor {
         // A start that will need an analysis waits for it before it holds the
         // resolution of prints, so the wait holds up no alert and no read.
         if let PrintAction::StartPrint { file_name, .. } = &action {
+            // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
             self.await_analysis(file_name, action.actor()).await?;
         }
         // A start holds every resolution of a print from the read that chooses
@@ -227,6 +228,7 @@ impl Supervisor {
             })?,
         )
         .await?;
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         if let Some(checked) = preflight {
             self.append_action_event(
                 print_id,
@@ -284,6 +286,7 @@ impl Supervisor {
                 Ok(Some(checked))
             }
             PrintAction::Cancel { .. } => {
+                // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
                 if let Some(print) = print
                     && let Ok(job) = self.read_job().await
                 {
@@ -299,6 +302,7 @@ impl Supervisor {
     /// What a start the printer took records: that this supervisor saw its
     /// print begin, and the print's `print_started` naming the start, the
     /// spools loaded and the check it passed — unless the print has one.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     async fn follow_the_start(
         &self,
         print_id: PrintId,

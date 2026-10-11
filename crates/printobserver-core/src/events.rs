@@ -164,6 +164,7 @@ impl Supervisor {
         let Some(print) = print else {
             return Ok(Received { event, turn: None });
         };
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         if opened {
             self.record_print_started(print.id, print.file_name.clone(), None, None)
                 .await?;

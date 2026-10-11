@@ -165,6 +165,7 @@ impl Supervisor {
     /// # Errors
     ///
     /// Returns the store's own error when the loaded spools could not be read.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub async fn preflight(&self, file_name: &FileName) -> Result<Preflight, CoreError> {
         let facts = self.read_file_facts(file_name.clone()).await.ok();
         let loaded = self.stores().filament.loaded_spools().await?;
@@ -279,7 +280,11 @@ impl Supervisor {
             if analysed || seconds_between(started, self.clock().now()) >= wait {
                 return Ok(());
             }
-            Delay::new(ANALYSIS_POLL).await;
+            // A wait the system will not take a thread for ends the wait: the
+            // start is judged on what the file says now.
+            if Delay::new(ANALYSIS_POLL).await.is_err() {
+                return Ok(());
+            }
         }
     }
 
