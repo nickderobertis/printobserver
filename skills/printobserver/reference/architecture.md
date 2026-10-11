@@ -109,12 +109,25 @@ reported it), the action an actor asks for and the record of it, the bounded
 intervention, the manifest, the safety envelope and the decision policy takes,
 the image stored beside an event, and the two identifiers it mints, `ActionId`
 and `InterventionId`, through the contract crate's exported rule. The print's
-context, the one aggregate a caller and the agent both read. The seven event
+context, the one aggregate a caller and the agent both read. The event
 kinds and three source names that logic writes. And the persistence interfaces
 it needs, one trait per aggregate it persists — prints with their manifests and
 narrowings, the event log, images, actions with the interventions they open,
 sessions — so that a consumer names only the aggregates it touches and a column
 one aggregate gains is a change nothing else rebuilds against.
+
+It owns the filament ledger too: the spool record and the marks that put its
+figure in doubt, the spool commands an actor asks for, the charges taken
+against a spool for each print and the ones held after a filament change nobody
+confirmed, the check a start is held to, and `SpoolId`. Two store traits carry
+it. `FilamentStore` holds the spools, the charges, each print's settlement and
+last file position, and the printer's per-file print tallies, and writes each
+change in one transaction with its events, keyed so that a charge replayed after
+a crash debits nothing twice. `TimelineStore` reads the **printer timeline**:
+the event log's printer-wide kinds — every print started and ended, every
+charge, every spool command and its refusal, every filament check — across all
+prints, filtered by kind, instant and spool and paged by a cursor, which is what
+`printobserver printer-history` answers.
 
 ### printobserver-server
 
@@ -123,7 +136,9 @@ failure detector posts to, the supervision loop's lifecycle, and the composition
 root that chooses which implementation backs each port. It declares the public
 operations once, and the router is folded over that declaration; and it declares
 the one kind a restart writes, the startup reconciliation its `reconcile` module
-alone records.
+alone records. That reconciliation also accounts the prints the printer's
+tallies counted while nothing watched, once the printer can be read, and says
+in its own record when it could not.
 
 ### printobserver-sdk
 

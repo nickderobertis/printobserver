@@ -87,8 +87,11 @@ const SETTLING_MANIFEST: &str = concat!(
     r#""slicer_profile":"the profile settling drove","allowed":{},"metadata":{}}"#
 );
 
+/// The reason every spool the world registers for itself is registered with.
+const REGISTERING_REASON: &str = "a roll on the shelf, registered before it is used";
+
 /// The name the walk's own spool is registered under.
-pub const WALK_SPOOL: &str = "the walk's own spool";
+pub const WALK_SPOOL: &str = "PLA black";
 
 /// The empty weight the walk's own spool is registered with, in grams.
 pub const SPOOL_TARE_G: f64 = 250.0;
@@ -556,7 +559,9 @@ impl World {
         if let Some(tare) = tare.as_deref() {
             asked.extend_from_slice(&["--tare-g", tare]);
         }
-        self.ledger(&asked)
+        // The one registration a reader of the worked examples meets, so it
+        // says what a person registering a roll would.
+        self.ledger_saying(&asked, REGISTERING_REASON)
             .pointer("/spool/id")
             .and_then(Value::as_str)
             .unwrap_or_else(|| panic!("the walk could not register `{name}`"))
@@ -566,13 +571,18 @@ impl World {
     /// Ask the ledger for one thing, for no reason but setting the walk up,
     /// and answer what it said.
     fn ledger(&self, asked: &[&str]) -> Value {
+        self.ledger_saying(asked, SETTLING_REASON)
+    }
+
+    /// The same, giving a reason of its own.
+    fn ledger_saying(&self, asked: &[&str], reason: &str) -> Value {
         let mut given = asked.to_vec();
         if given.first().is_some_and(|command| {
             printobserver::surface::command(command)
                 .and_then(|found| found.operation)
                 .is_some_and(|operation| operation.is_mutating())
         }) {
-            given.extend_from_slice(&["--actor", "operator", "--reason", SETTLING_REASON]);
+            given.extend_from_slice(&["--actor", "operator", "--reason", reason]);
         }
         let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .args(&given)

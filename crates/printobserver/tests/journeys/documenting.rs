@@ -147,16 +147,32 @@ fn examples_in(root: &Path, document: &str) -> Vec<Example> {
     found
 }
 
-/// What each placeholder stands for in this world.
-fn bindings(world: &World) -> BTreeMap<&'static str, String> {
-    BTreeMap::from([
+/// What each placeholder stands for in this world, for one example.
+///
+/// `SPOOL_ID` is the world's own spool, which is registered the first time
+/// anything asks for it — so it is bound only for an example that names it, and
+/// an example before the first such one runs against a ledger it has not
+/// touched.
+fn bindings(world: &World, example: &Example) -> BTreeMap<&'static str, String> {
+    let mut bound = BTreeMap::from([
         ("PRINT_ID", world.print_id().clone()),
         ("IMAGE_ID", world.image_id.clone()),
         ("EVENT_ID", world.event_id.clone()),
         ("FILE", world.printable_file()),
         ("STATE_DIR", state_dir_as_written(world)),
-    ])
+    ]);
+    if example
+        .steps
+        .iter()
+        .any(|step| step.command.contains(SPOOL_ID))
+    {
+        bound.insert(SPOOL_ID, world.spool_id());
+    }
+    bound
 }
+
+/// The placeholder the world's own spool is written as.
+const SPOOL_ID: &str = "SPOOL_ID";
 
 /// The world's state directory as the server resolved it and writes it.
 ///
@@ -415,7 +431,7 @@ fn run_one(
 
 /// Run one example against a real server, and say every way it disagreed.
 fn run(world: &World, example: &Example) -> (Vec<Step>, Vec<String>) {
-    let bindings = bindings(world);
+    let bindings = bindings(world, example);
     let mut produced = Vec::new();
     let mut findings = Vec::new();
     let mut last_status = None;

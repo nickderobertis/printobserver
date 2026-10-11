@@ -58,7 +58,10 @@ policy is asked anything: the operator's credential acts as `operator` only, a
 turn's acts as `{"agent": {"session_name": …}}` for its own session only, and no
 credential acts as `system`, whose actions are the server's own. A turn's
 credential reaches the operations about its own print — and an image of it —
-and `prints`, and is refused `start_print` and `manifest_set`. Every refusal
+`prints`, and the four reads of the spool ledger, which are the printer's rather
+than any one print's, and is refused `start_print` and `manifest_set`. A spool
+command names no print, so a turn's print binding constrains none of them: what
+refuses one is the envelope's grants, which give the agent none by default. Every refusal
 here is `403`, naming the identity that authenticated and what the request
 claimed or named, and nothing is decided or recorded. So the agent's minimum
 interval holds every machine-changing action a turn asks for, whatever actor it
@@ -77,7 +80,10 @@ for any other unsuccessful answer, carrying the status.
 A mutating operation answers `200` when it was carried out and `409` when the
 policy refused it. A rejection is not a transport failure — the body is the same
 action record, carrying the rejection's own reason, the value asked for and the
-range allowed.
+range allowed. A spool command's answer is `SpoolCommandAnswer` either way, and
+carries its `decision` at the top rather than in a record: `actor_may_not_request`
+when the grants refuse it and `spool_refused`, with a `detail`, when the ledger
+cannot carry it out.
 
 ## The operations
 
@@ -205,6 +211,47 @@ Replace that manifest. It carries a reason, because a manifest narrows what any 
 
 Takes `print_id` (path), `reason` (body), `manifest` (body).
 
+### spools
+
+Every spool, the retired ones only when asked for, and the charges a tool holds after a filament change nobody confirmed.
+
+`GET /v1/spools` — answers success.
+
+Takes `include_retired` (query, optional). It answers `SpoolsAnswer`:
+`at_a_glance`, one line per spool in the order `spools` lists them, composed by
+the server — name, material, remaining and initial grams to one decimal, the
+tool it is on or `not loaded`, `verified` or its oldest mark's reason with how
+many more it holds, and `retired` on a retired spool's line; `spools`, each a
+`SpoolRecord`, most recently registered first; and `pending`, each a
+`PendingCharge`, oldest first.
+
+### spool
+
+One spool, retired or not, and the newest twenty timeline events naming it.
+
+`GET /v1/spools/{spool_id}` — answers success.
+
+Takes `spool_id` (path). It answers `SpoolAnswer`: `spool` and `recent`. A spool
+nothing holds is answered `404`.
+
+### printer_history
+
+The printer timeline: the event log's printer-wide kinds, across every print, newest first.
+
+`GET /v1/history` — answers success.
+
+Takes `kinds` (query, optional, repeatable — `kinds=print_started&kinds=filament_consumed`), `since` (query, optional), `until` (query, optional), `spool_id` (query, optional), `before` (query, optional), `limit` (query, optional). It answers `TimelineAnswer`: `events`, and `next`, the event to give as `before` for the following, older page, absent on the last. `limit` is 100 when left out and refused above 1,000; a kind outside the timeline is refused `400`.
+
+### preflight
+
+Whether the spools loaded hold enough for one file, by `OctoPrint`'s analysis of it, read now.
+
+`GET /v1/preflight` — answers success.
+
+Takes `file_name` (query). It answers `PreflightAnswer`: `preflight`, a
+`Preflight` — each tool's spool, figures, marks and verdict, and the worst
+verdict. It records nothing and waits for no analysis.
+
 ### pause
 
 Pause the print.
@@ -235,7 +282,13 @@ Start a print of a named file, bounded by a manifest.
 
 `POST /v1/prints/{print_id}/actions/start_print` — answers success, rejected.
 
-Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), `reason` (body).
+Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), `override_filament_check` (body, optional), `reason` (body).
+
+A start the policy accepted is held to the filament check before the printer is
+asked anything, and a refusal turns into `insufficient_filament`,
+`unverified_spool` or `analysis_unavailable`; `override_filament_check` set
+`true` by the operator lets it go ahead, recorded as overridden. The intervention
+policy states the check.
 
 A start reads the printer first, ending every open print that read finds over, and
 when no print is then open it opens one for the file — so the action, its events
@@ -290,6 +343,52 @@ Record what was made of a failure event and what should happen next.
 
 Takes `print_id` (path), `actor` (body), `disposition` (body), `event_id` (body), `reason` (body).
 
+### register_spool
+
+Register one spool.
+
+`POST /v1/spools/actions/register_spool` — answers success, rejected.
+
+Takes `actor` (body), `color` (body, optional), `density_g_cm3` (body, optional), `diameter_mm` (body, optional), `initial_g` (body), `material` (body), `name` (body), `reason` (body), `remaining_g` (body, optional), `tare_g` (body, optional). It answers `SpoolCommandAnswer`.
+
+### load_spool
+
+Load a spool onto a tool, swapping out the one there.
+
+`POST /v1/spools/{spool_id}/actions/load_spool` — answers success, rejected.
+
+Takes `spool_id` (path), `actor` (body), `reason` (body), `tool` (body). It answers `SpoolCommandAnswer`.
+
+### unload_spool
+
+Unload a spool from its tool.
+
+`POST /v1/spools/{spool_id}/actions/unload_spool` — answers success, rejected.
+
+Takes `spool_id` (path), `actor` (body), `reason` (body). It answers `SpoolCommandAnswer`.
+
+### adjust_spool
+
+Correct a spool's figure from exactly one of a remaining figure or a scale reading.
+
+`POST /v1/spools/{spool_id}/actions/adjust_spool` — answers success, rejected.
+
+Takes `spool_id` (path), `actor` (body), `gross_g` (body, optional), `reason` (body), `remaining_g` (body, optional). It answers `SpoolCommandAnswer`.
+
+### retire_spool
+
+Retire a spool, after which it takes no further command.
+
+`POST /v1/spools/{spool_id}/actions/retire_spool` — answers success, rejected.
+
+Takes `spool_id` (path), `actor` (body), `reason` (body). It answers `SpoolCommandAnswer`.
+
+Each body is that `SpoolCommand` variant's own fields, less the `command` tag and
+— for the four about one spool — the `spool_id` its path carries; a field the
+variant does not declare is refused `400`, as is a body naming either of those
+two. Every one carries a reason, refused `400` when it is empty before anything
+is decided or written.
+
 ## The clients
 
 One entry per client this repository declares, and one entry per method that
@@ -307,7 +406,9 @@ Every generated mutating method requires a reason and refuses an empty or
 whitespace-only reason before sending a request. Adjustment methods also take
 `duration_s: Option<i64>`. A policy refusal returns `ClientError::Rejected`
 carrying a `Rejection` with `reason`, `requested`, `allowed`, and the complete
-action answer. Image answers preserve absolute paths on the server's host.
+answer as a `RejectedAnswer`: `Action`, an action's answer, or `SpoolCommand`, a
+spool command's. The Python and Node clients carry the same refusal as the
+union of the two answers. Image answers preserve absolute paths on the server's host.
 
 The Python distribution `printobserver-sdk` and npm distribution
 `@printobserver/sdk`, implemented at `python/printobserver-sdk` and
@@ -380,6 +481,26 @@ materialized path on the server's host.
 `client.manifest_set(print_id, reason, manifest)` writes the manifest and returns
 `ManifestAnswer`.
 
+#### spools
+
+`client.spools(include_retired)` reads every spool and returns `SpoolsAnswer`:
+the one line per spool, the records and the charges held for a tool.
+
+#### spool
+
+`client.spool(spool_id)` reads one spool and returns `SpoolAnswer`.
+
+#### printer_history
+
+`client.printer_history(kinds, since, until, spool_id, before, limit)` reads one
+page of the printer timeline and returns `TimelineAnswer`; each `kinds` entry is
+sent as a `kinds` value of its own, and `next` is the `before` of the page after.
+
+#### preflight
+
+`client.preflight(file_name)` checks the spools loaded against one file and
+returns `PreflightAnswer`.
+
 #### pause
 
 `client.pause(print_id, reason)` pauses the print and returns `ActionAnswer`.
@@ -427,6 +548,32 @@ percentage and returns `ActionAnswer`.
 `client.acknowledge_failure(print_id, disposition, event_id, reason)` records the
 failure acknowledgement and returns `ActionAnswer`.
 
+#### register_spool
+
+`client.register_spool(initial_g, material, name, reason, color, density_g_cm3,
+diameter_mm, remaining_g, tare_g)` registers a spool and returns
+`SpoolCommandAnswer`.
+
+#### load_spool
+
+`client.load_spool(spool_id, reason, tool)` loads a spool onto a tool and returns
+`SpoolCommandAnswer`.
+
+#### unload_spool
+
+`client.unload_spool(spool_id, reason)` unloads a spool and returns
+`SpoolCommandAnswer`.
+
+#### adjust_spool
+
+`client.adjust_spool(spool_id, reason, gross_g, remaining_g)` corrects a spool's
+figure from exactly one of the two and returns `SpoolCommandAnswer`.
+
+#### retire_spool
+
+`client.retire_spool(spool_id, reason)` retires a spool and returns
+`SpoolCommandAnswer`.
+
 #### call
 
 `client.call(method, path, query, body)` is the generic transport entry used by
@@ -436,8 +583,9 @@ the generated methods above for their typed arguments and reason validation.
 
 #### of
 
-`Rejection::of(answer)` extracts a typed rejection from an `ActionAnswer`, or
-returns `None` when its decision is not a rejection.
+`Rejection::of(answer)` extracts a typed rejection from a `RejectedAnswer` — an
+action's answer or a spool command's — or returns `None` when its decision is
+not a rejection.
 
 #### payload_as
 

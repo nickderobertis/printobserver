@@ -251,6 +251,34 @@ PowerShell on Windows:
   paused is resumed once the agent's adjustment is in. Choose limits suitable
   for your printer and material. A print manifest may narrow them but cannot
   widen them.
+- The five spool commands are granted like any other action. The template
+  grants all five to the operator and none to the agent, which reads what is
+  loaded and what a file needs but does not say which spool is on which tool:
+
+  ```toml
+  [safety.actions]
+  operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
+              "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
+              "set_fan_percent", "acknowledge_failure", "register_spool",
+              "load_spool", "unload_spool", "adjust_spool", "retire_spool"]
+  ```
+
+- `[spools]` is optional, and the template carries it commented out with its
+  defaults. Before a start reaches the printer, the spool loaded on each tool is
+  checked against what OctoPrint's analysis of the file says it needs, plus a
+  buffer. `preflight` is `refuse` (the default), `warn` or `off`;
+  `buffer_percent` and `buffer_min_g` set the buffer, the larger of the two
+  counting; and `analysis_wait_seconds` is how long a start waits for an
+  analysis of a file that has none yet. An operator can start a refused print
+  anyway with `printobserver start-print ... --override-filament-check true`.
+
+  ```toml
+  [spools]
+  preflight = "refuse"
+  buffer_percent = 10.0
+  buffer_min_g = 5.0
+  analysis_wait_seconds = 300
+  ```
 
 The server validates these values at startup, including reaching OctoPrint and
 authenticating its API key, and identifies a field it cannot accept.
@@ -524,6 +552,15 @@ four things.
 A credential you choose yourself should be long and random: the service keeps
 its SHA-256, and a verifier of a short or guessable credential can be searched
 offline.
+
+### Spool tracking on an existing installation
+
+Nothing edits a configuration already installed, so one written before spool
+tracking grants the operator none of the spool commands, and every one you ask
+for is refused `actor_may_not_request`. Add `"register_spool"`,
+`"load_spool"`, `"unload_spool"`, `"adjust_spool"` and `"retire_spool"` to the
+`operator` row of `[safety.actions]`, and restart the service. Leave the agent's
+row as it is.
 
 ## Reference documentation
 

@@ -27,13 +27,14 @@ A configuration file's `[client]` table does the same job, as `server` and
 `printobserver/client.toml` under their configuration home is read; the
 supervisor writes none.
 
-Four words in the examples stand for values that are yours rather than
+Five words in the examples stand for values that are yours rather than
 this document's, and three stand for values that differ on every run:
 
 - `PRINT_ID` — the print you are working on.
 - `IMAGE_ID` — an image of it.
 - `EVENT_ID` — an event of it.
 - `FILE` — a file the printer has, as the printer names it.
+- `SPOOL_ID` — a spool the ledger holds; `spools` lists every one.
 - `ID` — an identifier the server minted while answering.
 - `TIMESTAMP` — an instant, in UTC.
 - `STATE_DIR` — the state directory the server was configured with.
@@ -579,4 +580,329 @@ printer.tools.0.actual_c.out_of_range: false
 printer.tools.0.actual_c.value: 209.5
 printer.tools.0.target_c.out_of_range: false
 printer.tools.0.target_c.value: 210.0
+```
+
+### register_spool
+
+Put a spool on the shelf into the ledger. `--initial-g` is the filament on it
+full; give `--remaining-g` for a roll already started, and `--tare-g`, the empty
+spool's own weight, so it can be corrected from a scale reading later. A
+material with a known density needs no `--density-g-cm3`.
+
+```console
+$ printobserver register-spool --name "PLA white" --material PLA --color white --initial-g 1000 --tare-g 250 --actor operator --reason "a new roll on the shelf"
+decision: accepted
+events.0.id: ID
+events.0.kind: spool_registered
+events.0.payload.actor: operator
+events.0.payload.reason: a new roll on the shelf
+events.0.payload.spool.color: white
+events.0.payload.spool.density_g_cm3: 1.24
+events.0.payload.spool.diameter_mm: 1.75
+events.0.payload.spool.id: ID
+events.0.payload.spool.initial_g: 1000.0
+events.0.payload.spool.material: PLA
+events.0.payload.spool.name: PLA white
+events.0.payload.spool.registered_at: TIMESTAMP
+events.0.payload.spool.remaining_g: 1000.0
+events.0.payload.spool.tare_g: 250.0
+events.0.payload.spool.trust.state: verified
+events.0.payload.spool.updated_at: TIMESTAMP
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+spool.color: white
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: ID
+spool.initial_g: 1000.0
+spool.material: PLA
+spool.name: PLA white
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 1000.0
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+```
+
+### load_spool
+
+Say which spool is on a tool. Loading onto an occupied tool swaps the spool
+there off it in the same write; during a print, what the tool fed up to now is
+charged to the spool that was feeding it.
+
+```console
+$ printobserver load-spool --spool-id SPOOL_ID --tool 0 --actor operator --reason "the black roll is going on the printer"
+decision: accepted
+events.0.id: ID
+events.0.kind: spool_loaded
+events.0.payload.actor: operator
+events.0.payload.reason: the black roll is going on the printer
+events.0.payload.spool_id: SPOOL_ID
+events.0.payload.tool: 0
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: SPOOL_ID
+spool.initial_g: 1000.0
+spool.loaded_on_tool: 0
+spool.material: PLA
+spool.name: PLA black
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 1000.0
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+```
+
+### spools
+
+Every spool, and what each holds at a glance: the `at_a_glance` lines come first,
+one per spool, before the charges a tool is holding (`pending`) and the whole
+records. `--include-retired true` lists the retired spools too.
+
+```console
+$ printobserver spools
+at_a_glance.0: PLA black | PLA | 1000.0 g of 1000.0 g left | on tool 0 | verified
+at_a_glance.1: PLA white | PLA | 1000.0 g of 1000.0 g left | not loaded | verified
+pending: []
+spools.0.density_g_cm3: 1.24
+spools.0.diameter_mm: 1.75
+spools.0.id: ID
+spools.0.initial_g: 1000.0
+spools.0.loaded_on_tool: 0
+spools.0.material: PLA
+spools.0.name: PLA black
+spools.0.registered_at: TIMESTAMP
+spools.0.remaining_g: 1000.0
+spools.0.tare_g: 250.0
+spools.0.trust.state: verified
+spools.0.updated_at: TIMESTAMP
+spools.1.color: white
+spools.1.density_g_cm3: 1.24
+spools.1.diameter_mm: 1.75
+spools.1.id: ID
+spools.1.initial_g: 1000.0
+spools.1.material: PLA
+spools.1.name: PLA white
+spools.1.registered_at: TIMESTAMP
+spools.1.remaining_g: 1000.0
+spools.1.tare_g: 250.0
+spools.1.trust.state: verified
+spools.1.updated_at: TIMESTAMP
+```
+
+### spool
+
+One spool's whole record — its marks, if anything put its figure in doubt — and
+the newest of the printer's events that name it.
+
+```console
+$ printobserver spool --spool-id SPOOL_ID
+recent.0.id: ID
+recent.0.kind: spool_loaded
+recent.0.payload.actor: operator
+recent.0.payload.reason: the black roll is going on the printer
+recent.0.payload.spool_id: SPOOL_ID
+recent.0.payload.tool: 0
+recent.0.print_id: PRINT_ID
+recent.0.received_at: TIMESTAMP
+recent.0.source: operator
+recent.1.id: ID
+recent.1.kind: spool_registered
+recent.1.payload.actor: operator
+recent.1.payload.reason: a roll on the shelf, registered before it is used
+recent.1.payload.spool.density_g_cm3: 1.24
+recent.1.payload.spool.diameter_mm: 1.75
+recent.1.payload.spool.id: SPOOL_ID
+recent.1.payload.spool.initial_g: 1000.0
+recent.1.payload.spool.material: PLA
+recent.1.payload.spool.name: PLA black
+recent.1.payload.spool.registered_at: TIMESTAMP
+recent.1.payload.spool.remaining_g: 1000.0
+recent.1.payload.spool.tare_g: 250.0
+recent.1.payload.spool.trust.state: verified
+recent.1.payload.spool.updated_at: TIMESTAMP
+recent.1.received_at: TIMESTAMP
+recent.1.source: operator
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: SPOOL_ID
+spool.initial_g: 1000.0
+spool.loaded_on_tool: 0
+spool.material: PLA
+spool.name: PLA black
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 1000.0
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+```
+
+### adjust_spool
+
+Correct a spool's figure after weighing it. `--gross-g` is the scale reading of
+the whole spool, which its tare turns into what is left; `--remaining-g` gives
+what is left directly. Give one of the two. A correction clears every mark the
+spool held.
+
+```console
+$ printobserver adjust-spool --spool-id SPOOL_ID --gross-g 900 --actor operator --reason "weighed it on the kitchen scale"
+decision: accepted
+events.0.id: ID
+events.0.kind: spool_adjusted
+events.0.payload.actor: operator
+events.0.payload.gross_g: 900.0
+events.0.payload.reason: weighed it on the kitchen scale
+events.0.payload.remaining_after_g: 650.0
+events.0.payload.remaining_before_g: 1000.0
+events.0.payload.spool_id: SPOOL_ID
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: SPOOL_ID
+spool.initial_g: 1000.0
+spool.loaded_on_tool: 0
+spool.material: PLA
+spool.name: PLA black
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 650.0
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+```
+
+### preflight
+
+Whether the spools loaded hold enough for a file, checked the way a start checks
+it, without starting anything or writing anything down. Here OctoPrint has no
+analysis of the file, so the spool on tool 0 is `no_analysis`; with one, each tool
+carries what the print needs from it, the buffer asked beyond that and what the
+spool holds. A start refused by this check prints those figures and what
+settles them, and `--override-filament-check true` on `start-print` starts it
+anyway.
+
+```console
+$ printobserver preflight --file-name FILE
+preflight.checked_at: TIMESTAMP
+preflight.file_name: FILE
+preflight.tools.0.remaining_g: 650.0
+preflight.tools.0.spool_id: ID
+preflight.tools.0.spool_name: PLA black
+preflight.tools.0.tool: 0
+preflight.tools.0.verdict: no_analysis
+preflight.verdict: no_analysis
+```
+
+### unload_spool
+
+Take a spool off its tool.
+
+```console
+$ printobserver unload-spool --spool-id SPOOL_ID --actor operator --reason "swapping colours for the next job"
+decision: accepted
+events.0.id: ID
+events.0.kind: spool_unloaded
+events.0.payload.actor: operator
+events.0.payload.reason: swapping colours for the next job
+events.0.payload.spool_id: SPOOL_ID
+events.0.payload.tool: 0
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: SPOOL_ID
+spool.initial_g: 1000.0
+spool.material: PLA
+spool.name: PLA black
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 650.0
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+```
+
+### printer_history
+
+The printer's own history, newest first: here narrowed to two kinds — `--kinds`
+may be given any number of times — and to one spool, one event to a page.
+`next` is what to give as `--before` for the page after; it is absent on the
+last. `--limit` is 100 when left out, and more than 1,000 is refused.
+
+```console
+$ printobserver printer-history --spool-id SPOOL_ID --kinds spool_adjusted --kinds spool_unloaded --limit 1
+events.0.id: ID
+events.0.kind: spool_unloaded
+events.0.payload.actor: operator
+events.0.payload.reason: swapping colours for the next job
+events.0.payload.spool_id: SPOOL_ID
+events.0.payload.tool: 0
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+next: ID
+```
+
+### retire_spool
+
+Retire a spool that is used up. It takes no further command: a load of it
+afterwards is the ledger's refusal, which says why, and exits with the rejected
+status.
+
+```console
+$ printobserver retire-spool --spool-id SPOOL_ID --actor operator --reason "the roll is used up"
+decision: accepted
+events.0.id: ID
+events.0.kind: spool_retired
+events.0.payload.actor: operator
+events.0.payload.reason: the roll is used up
+events.0.payload.remaining_g: 650.0
+events.0.payload.spool_id: SPOOL_ID
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: SPOOL_ID
+spool.initial_g: 1000.0
+spool.material: PLA
+spool.name: PLA black
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 650.0
+spool.retired_at: TIMESTAMP
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+$ printobserver load-spool --spool-id SPOOL_ID --tool 0 --actor operator --reason "putting it back on"
+decision.rejected.spool_refused.detail: spool PLA black is retired and takes no further command; register a new spool instead
+events.0.id: ID
+events.0.kind: spool_command_rejected
+events.0.payload.command.actor: operator
+events.0.payload.command.command: load_spool
+events.0.payload.command.reason: putting it back on
+events.0.payload.command.spool_id: SPOOL_ID
+events.0.payload.command.tool: 0
+events.0.payload.decision.rejected.spool_refused.detail: spool PLA black is retired and takes no further command; register a new spool instead
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: operator
+spool.density_g_cm3: 1.24
+spool.diameter_mm: 1.75
+spool.id: SPOOL_ID
+spool.initial_g: 1000.0
+spool.material: PLA
+spool.name: PLA black
+spool.registered_at: TIMESTAMP
+spool.remaining_g: 650.0
+spool.retired_at: TIMESTAMP
+spool.tare_g: 250.0
+spool.trust.state: verified
+spool.updated_at: TIMESTAMP
+the supervisor's spool ledger refused this command: spool_refused. spool PLA black is retired and takes no further command; register a new spool instead
+$ echo $?
+5
 ```
