@@ -22,6 +22,9 @@ mod source;
 #[path = "support/world.rs"]
 mod world;
 
+#[path = "support/shelf.rs"]
+mod shelf;
+
 // The reader of Rust declarations the store contract's surface is held with:
 // the type crate's, included by path, because a reader of sources is a claim
 // about no crate in particular and this crate's tests name no crate of this
@@ -88,3 +91,6 @@ mod store_traits;
 
 #[path = "journeys/fake_ledger.rs"]
 mod fake_ledger;
+
+#[path = "journeys/spool_commands.rs"]
+mod spool_commands;

@@ -120,7 +120,11 @@ impl Supervisor {
     /// which is the one failure this loop cannot record anywhere; no other port
     /// is called for that event, and a later event whose append succeeds is
     /// handled to completion. Every other port failure this loop reaches is
-    /// recorded against the event rather than answered here.
+    /// recorded against the event rather than answered here — except the
+    /// writes that come after the event is already in the history and are
+    /// owed the spool ledger: a new print's `print_started`, and what a
+    /// filament-change signal the alert relays charges and marks. Those are
+    /// answered as the store's own error, the alert itself already written.
     pub async fn handle_event(&self, alert: NormalizedAlert) -> Result<EventRecord, CoreError> {
         let received = self.receive_event(alert).await?;
         if let Some(turn) = received.turn {
@@ -143,7 +147,7 @@ impl Supervisor {
     ///
     /// Exactly as [`Supervisor::handle_event`]'s.
     pub async fn receive_event(&self, alert: NormalizedAlert) -> Result<Received, CoreError> {
-        let print = self.resolve_print(&alert).await?;
+        let (print, opened) = self.resolve_print(&alert).await?;
         let draft = EventDraft {
             print_id: print.as_ref().map(|record| record.id),
             source: alert.source.clone(),
@@ -160,11 +164,18 @@ impl Supervisor {
         let Some(print) = print else {
             return Ok(Received { event, turn: None });
         };
+        if opened {
+            self.record_print_started(print.id, print.file_name.clone(), None, None)
+                .await?;
+        }
         let image = self
             .write_image(&print, &event, alert.image_url.clone())
             .await;
         if print.ended_at.is_some() {
             return Ok(Received { event, turn: None });
+        }
+        if let Some(signal) = alert.signal {
+            self.handle_signal(&print, signal, alert.kind()).await?;
         }
         let mut carried = event.clone();
         carried.image = image.or(carried.image);
@@ -217,7 +228,7 @@ impl Supervisor {
                     self.inboxes().release(print.id);
                     let _turn = self.turns().acquire(print.id).await;
                     return self
-                        .close_out_print(print.id, &state, &reached_reason(&state))
+                        .close_out_print(print.id, &state, &reached_reason(&state), None)
                         .await
                         .map(drop);
                 }
@@ -253,12 +264,15 @@ impl Supervisor {
     /// Nothing here reads the printer: an alert is written down before anything
     /// is asked of a port, and a print a later job replaced is closed by the
     /// next read that finds that job, not by an alert about it.
+    ///
+    /// Answers whether this opened it, so that the print's `print_started` is
+    /// written once the alert itself has been.
     async fn resolve_print(
         &self,
         alert: &NormalizedAlert,
-    ) -> Result<Option<PrintRecord>, CoreError> {
+    ) -> Result<(Option<PrintRecord>, bool), CoreError> {
         let Some(provider_print) = &alert.print else {
-            return Ok(None);
+            return Ok((None, false));
         };
         let _resolving = self.resolving().await;
         if let Some(found) = self
@@ -267,7 +281,7 @@ impl Supervisor {
             .print_by_provider_id(provider_print.id)
             .await?
         {
-            return Ok(Some(found));
+            return Ok((Some(found), false));
         }
         if let Some(file_name) = &provider_print.file_name {
             let unattached = self
@@ -287,7 +301,7 @@ impl Supervisor {
                     .prints
                     .attach_obico_print(found.id, provider_print.id)
                     .await?;
-                return Ok(Some(attached));
+                return Ok((Some(attached), false));
             }
         }
         let opened = self
@@ -295,7 +309,7 @@ impl Supervisor {
             .prints
             .open_print(Some(provider_print.id), provider_print.file_name.clone())
             .await?;
-        Ok(Some(opened))
+        Ok((Some(opened), true))
     }
 
     /// Fetch and store the image an alert names, recording either failure.
@@ -599,18 +613,27 @@ impl Supervisor {
     /// The caller holds the print's turn, so no turn is acting on it while it
     /// closes. Answers whether this closed it: a print already ended — by
     /// another read, or by the turn that held it — is left as it ended.
+    ///
+    /// The print's filament is settled after its interventions are expired
+    /// and before it is ended ([`crate::accounting`]): a crash between the two
+    /// leaves a settled, open print, which the next close-out only ends.
+    /// `closing_job` is the job read that found the print over, when there
+    /// was one; without it the settlement reads the job itself.
     pub(crate) async fn close_out_print(
         &self,
         print_id: PrintId,
         state: &PrinterState,
         reason: &str,
+        closing_job: Option<&JobSnapshot>,
     ) -> Result<bool, CoreError> {
-        match self.stores().prints.print(print_id).await? {
-            Some(print) if print.ended_at.is_none() => {}
+        let print = match self.stores().prints.print(print_id).await? {
+            Some(print) if print.ended_at.is_none() => print,
             _ => return Ok(false),
-        }
+        };
         self.forget_detector_pause(print_id);
         self.expire_all_active(print_id).await?;
+        self.settle_filament(&print, state, reason, closing_job)
+            .await?;
         self.stores()
             .prints
             .end_print(

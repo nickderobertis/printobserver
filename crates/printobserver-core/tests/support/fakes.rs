@@ -29,7 +29,7 @@ use printobserver_core::{
 use printobserver_core::{Clock, PrintContext, Supervisor};
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{
-    BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
+    BoxFuture, FileFacts, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot, ToolFilament,
 };
 use printobserver_supervisor_api::{
     AgentAssessment, Confidence, SupervisorError, SupervisorPort, TurnOutcome, TurnRequest,
@@ -163,6 +163,10 @@ pub struct FakePrinter {
     job: Mutex<JobSnapshot>,
     /// The methods induced to fail, and how.
     failures: Mutex<BTreeMap<PrinterMethod, PrinterError>>,
+    /// The files it holds, by name.
+    files: Mutex<BTreeMap<String, FileFacts>>,
+    /// What each file feeds up to each position a test declared.
+    extrusion: Mutex<BTreeMap<(String, i64), Vec<ToolFilament>>>,
 }
 
 impl FakePrinter {
@@ -174,7 +178,54 @@ impl FakePrinter {
             snapshot: Mutex::new(printer_snapshot(PrinterState::Printing)),
             job: Mutex::new(job_snapshot()),
             failures: Mutex::new(BTreeMap::new()),
+            files: Mutex::new(BTreeMap::new()),
+            extrusion: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Hold this file, replacing whatever was held under its name.
+    pub fn holds_file(&self, facts: FileFacts) {
+        self.files
+            .lock()
+            .expect("the printer holds")
+            .insert(facts.file_name.clone(), facts);
+    }
+
+    /// One file as it is held now.
+    ///
+    /// # Panics
+    ///
+    /// Panics when no file of that name is held.
+    #[must_use]
+    pub fn file(&self, file_name: &str) -> FileFacts {
+        self.files
+            .lock()
+            .expect("the printer holds")
+            .get(file_name)
+            .cloned()
+            .unwrap_or_else(|| panic!("the printer holds {file_name}"))
+    }
+
+    /// Answer that one file feeds each tool this much up to one position.
+    pub fn extrudes(&self, file_name: &str, position_bytes: i64, filament: Vec<ToolFilament>) {
+        self.extrusion
+            .lock()
+            .expect("the printer holds")
+            .insert((file_name.to_owned(), position_bytes), filament);
+    }
+
+    /// Report the job as this far into its file, and its file as this long.
+    pub fn reports_position(&self, position_bytes: Option<i64>, size_bytes: Option<i64>) {
+        let mut job = self.job.lock().expect("the printer holds");
+        job.file_position_bytes = position_bytes;
+        job.size_bytes = size_bytes;
+    }
+
+    /// Report the job's completion, as a fraction, or none.
+    pub fn reports_completion(&self, completion: Option<f64>) {
+        self.job.lock().expect("the printer holds").completion = completion.map(|value| {
+            printobserver_types::Reported::new(value, printobserver_printer_api::COMPLETION_RANGE)
+        });
     }
 
     /// Report this snapshot from now on.
@@ -310,6 +361,70 @@ impl PrinterPort for FakePrinter {
         let answer = self.act(PrinterMethod::SetFanPercent, Call::SetFanPercent(percent));
         Box::pin(async move { answer })
     }
+
+    fn file_facts(&self, file_name: FileName) -> BoxFuture<'_, Result<FileFacts, PrinterError>> {
+        self.journal
+            .record(Call::FileFacts(file_name.as_str().to_owned()));
+        let answer = self.induced(PrinterMethod::FileFacts).map_or_else(
+            || {
+                self.files
+                    .lock()
+                    .expect("the printer holds")
+                    .get(file_name.as_str())
+                    .cloned()
+                    .ok_or_else(|| PrinterError::Refused {
+                        status: 404,
+                        detail: format!("there is no file {file_name}"),
+                    })
+            },
+            Err,
+        );
+        Box::pin(async move { answer })
+    }
+
+    fn printed_files(&self) -> BoxFuture<'_, Result<Vec<FileFacts>, PrinterError>> {
+        self.journal.record(Call::PrintedFiles);
+        let answer = self.induced(PrinterMethod::PrintedFiles).map_or_else(
+            || {
+                Ok(self
+                    .files
+                    .lock()
+                    .expect("the printer holds")
+                    .values()
+                    .filter(|facts| facts.successes + facts.failures > 0)
+                    .cloned()
+                    .collect())
+            },
+            Err,
+        );
+        Box::pin(async move { answer })
+    }
+
+    fn extruded_to(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> BoxFuture<'_, Result<Vec<ToolFilament>, PrinterError>> {
+        self.journal.record(Call::ExtrudedTo(
+            file_name.as_str().to_owned(),
+            position_bytes,
+        ));
+        let answer = self.induced(PrinterMethod::ExtrudedTo).map_or_else(
+            || {
+                self.extrusion
+                    .lock()
+                    .expect("the printer holds")
+                    .get(&(file_name.as_str().to_owned(), position_bytes))
+                    .cloned()
+                    .ok_or_else(|| PrinterError::Refused {
+                        status: 404,
+                        detail: format!("{file_name} was not read up to byte {position_bytes}"),
+                    })
+            },
+            Err,
+        );
+        Box::pin(async move { answer })
+    }
 }
 
 /// One method of the store this crate's tests induce a failure at.
@@ -321,6 +436,14 @@ pub enum StoreMethod {
     PutImage,
     /// `open_prints`, which settling and observing read.
     OpenPrints,
+    /// `end_print`, which a close-out calls after it settles.
+    EndPrint,
+    /// `settle_print`.
+    SettlePrint,
+    /// `apply_spool_changes`.
+    ApplySpoolChanges,
+    /// `account_tallies`.
+    AccountTallies,
 }
 
 /// Everything the fake store holds.
@@ -438,6 +561,9 @@ pub struct FakeStore {
     appends: AppendGate,
     /// The one print whose appends are refused, and how, when one is.
     refused_print: Mutex<Option<(PrintId, StoreError)>>,
+    /// The methods induced to write everything and then answer a failure, as
+    /// a store whose commit landed and whose answer was lost does — once each.
+    lost_answers: Mutex<BTreeMap<StoreMethod, StoreError>>,
 }
 
 impl FakeStore {
@@ -459,7 +585,49 @@ impl FakeStore {
             reads_of_the_prints: Meeting::default(),
             appends: AppendGate::default(),
             refused_print: Mutex::new(None),
+            lost_answers: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Make the next call of one method write everything it was given and then
+    /// answer this failure, as a commit whose answer was lost does.
+    pub fn loses_the_answer_to(&self, method: StoreMethod, error: StoreError) {
+        self.lost_answers
+            .lock()
+            .expect("the store holds")
+            .insert(method, error);
+    }
+
+    /// The answer to one write that committed: the failure induced to replace
+    /// it, once, or the write's own.
+    fn answer_after_commit<T>(
+        &self,
+        method: StoreMethod,
+        written: Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let lost = self
+            .lost_answers
+            .lock()
+            .expect("the store holds")
+            .remove(&method);
+        match (written, lost) {
+            (Ok(_), Some(error)) => Err(error),
+            (written, _) => written,
+        }
+    }
+
+    /// A write of the ledger, refused outright when a failure is induced at
+    /// its method, and answered with a lost answer when one is.
+    fn ledger_call<T>(
+        &self,
+        method: StoreMethod,
+        work: impl FnOnce(&mut LedgerWrite<'_>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        if let Some(error) = self.induced(method) {
+            return Err(error);
+        }
+        let written = self.write_ledger(work);
+        self.answer_after_commit(method, written)
     }
 
     /// Make this many reads of the prints — every print, or the open ones —
@@ -782,6 +950,9 @@ impl PrintStore for FakeStore {
         reason: String,
     ) -> printobserver_core::store::BoxFuture<'_, Result<PrintRecord, StoreError>> {
         self.journal.record(Call::EndPrint(format!("{state:?}")));
+        if let Some(error) = self.induced(StoreMethod::EndPrint) {
+            return ready(Err(error));
+        }
         let mut held = self.held.lock().expect("the store holds");
         let answer = held.prints.get_mut(&print_id).map_or_else(
             || {
@@ -1832,7 +2003,9 @@ impl FilamentStore for FakeStore {
         charges: Vec<Charge>,
         pends: Vec<Pend>,
     ) -> printobserver_core::store::BoxFuture<'_, Result<SpoolWrite, StoreError>> {
-        ready(self.write_ledger(|write| write.apply(mutations, charges, pends)))
+        ready(self.ledger_call(StoreMethod::ApplySpoolChanges, |write| {
+            write.apply(mutations, charges, pends)
+        }))
     }
 
     fn settle_print(
@@ -1844,11 +2017,9 @@ impl FilamentStore for FakeStore {
         pends: Vec<Pend>,
         marks: Vec<SpoolMutation>,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Settlement, StoreError>> {
-        ready(
-            self.write_ledger(|write| {
-                write.settle(print_id, outcome, ended, charges, pends, marks)
-            }),
-        )
+        ready(self.ledger_call(StoreMethod::SettlePrint, |write| {
+            write.settle(print_id, outcome, ended, charges, pends, marks)
+        }))
     }
 
     fn print_settlement(
@@ -1930,7 +2101,9 @@ impl FilamentStore for FakeStore {
         marks: Vec<SpoolMutation>,
         events: Vec<EventDraft>,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
-        ready(self.write_ledger(|write| write.account(&tallies, charges, marks, events)))
+        ready(self.ledger_call(StoreMethod::AccountTallies, |write| {
+            write.account(&tallies, charges, marks, events)
+        }))
     }
 }
 

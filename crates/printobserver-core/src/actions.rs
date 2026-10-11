@@ -17,7 +17,7 @@
 
 use crate::records::{
     AcknowledgementDisposition, ActionRecord, ActionRequest, Actor, ActorClass, Intervention,
-    InterventionOutcome, PolicyDecision, PrintAction, PrintRecord,
+    InterventionOutcome, PolicyDecision, Preflight, PrintAction, PrintRecord,
 };
 use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{PrinterSnapshot, PrinterState};
@@ -28,8 +28,8 @@ use crate::clock::plus_seconds;
 use crate::decision::{DecisionInput, adjustment, changes_the_machine, decide};
 use crate::error::CoreError;
 use crate::kinds::{
-    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, agent_source,
-    operator_source, system_source,
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, PreflightCheckedPayload,
+    agent_source, operator_source, system_source,
 };
 use crate::store::EventDraft;
 use crate::supervisor::{Issued, Supervisor};
@@ -54,7 +54,7 @@ impl ActionOutcome {
 }
 
 /// Where an event about one actor's action came from.
-fn source_of(actor: &Actor) -> EventSource {
+pub(crate) fn source_of(actor: &Actor) -> EventSource {
     match actor.class() {
         ActorClass::Agent => agent_source(),
         ActorClass::Operator => operator_source(),
@@ -120,6 +120,11 @@ impl Supervisor {
         print_id: PrintId,
         action: PrintAction,
     ) -> Result<ActionOutcome, CoreError> {
+        // A start that will need an analysis waits for it before it holds the
+        // resolution of prints, so the wait holds up no alert and no read.
+        if let PrintAction::StartPrint { file_name, .. } = &action {
+            self.await_analysis(file_name, action.actor()).await?;
+        }
         // A start holds every resolution of a print from the read that chooses
         // its print until the printer has been asked to start: a read between
         // the two would find the machine idle and close the print just opened.
@@ -138,7 +143,7 @@ impl Supervisor {
         let print = self.stores().prints.print(print_id).await?;
         let bounds = self.bounds_for(print.as_ref(), print_id).await?;
         let snapshot = self.read_snapshot().await.ok();
-        let decision = decide(&DecisionInput {
+        let mut decision = decide(&DecisionInput {
             action: &action,
             actor: &actor,
             requested_at,
@@ -148,6 +153,9 @@ impl Supervisor {
             envelope: &self.config().envelope,
             last_agent_action: self.last_agent_action(print_id),
         });
+        let preflight = self
+            .check_accepted(&action, print.as_ref(), &mut decision)
+            .await?;
         let request = ActionRequest {
             action: action.clone(),
             actor: actor.clone(),
@@ -155,27 +163,8 @@ impl Supervisor {
         };
         let issued = self.issue_decided_action(request, decision).await?;
         let source = source_of(&actor);
-        self.append_action_event(
-            print_id,
-            source.clone(),
-            EventBody::of(&ActionRequestedPayload {
-                action_id: issued.record.id,
-                action: action.clone(),
-                actor: actor.clone(),
-            })?,
-        )
-        .await?;
-        if let PolicyDecision::Rejected(_) = &issued.record.decision {
-            self.append_action_event(
-                print_id,
-                source.clone(),
-                EventBody::of(&ActionRejectedPayload {
-                    action_id: issued.record.id,
-                    decision: issued.record.decision.clone(),
-                })?,
-            )
+        self.write_decision_down(print_id, &source, &action, &issued, preflight.as_ref())
             .await?;
-        }
         if !issued.succeeded() {
             return Ok(ActionOutcome {
                 record: issued.record,
@@ -188,8 +177,15 @@ impl Supervisor {
             self.note_agent_action(print_id, requested_at);
         }
         self.follow_the_detectors_pause(print_id, &action, snapshot.as_ref());
-        if let PrintAction::StartPrint { manifest, .. } = &action {
+        if let PrintAction::StartPrint {
+            manifest,
+            file_name,
+            ..
+        } = &action
+        {
             self.attach_manifest(print_id, manifest.clone()).await?;
+            self.follow_the_start(print_id, file_name, &issued, preflight)
+                .await?;
         }
         let intervention = self
             .open_bounded_intervention(print_id, &action, &issued, snapshot.as_ref(), requested_at)
@@ -208,6 +204,119 @@ impl Supervisor {
             executed: issued.executed,
             intervention,
         })
+    }
+
+    /// Write one request into its print's history: what was asked for, the
+    /// filament check a start was held to, and the rejection when there was
+    /// one.
+    async fn write_decision_down(
+        &self,
+        print_id: PrintId,
+        source: &EventSource,
+        action: &PrintAction,
+        issued: &Issued,
+        preflight: Option<&Preflight>,
+    ) -> Result<(), CoreError> {
+        self.append_action_event(
+            print_id,
+            source.clone(),
+            EventBody::of(&ActionRequestedPayload {
+                action_id: issued.record.id,
+                action: action.clone(),
+                actor: action.actor().clone(),
+            })?,
+        )
+        .await?;
+        if let Some(checked) = preflight {
+            self.append_action_event(
+                print_id,
+                source.clone(),
+                EventBody::of(&PreflightCheckedPayload {
+                    preflight: checked.clone(),
+                    action_id: Some(issued.record.id),
+                })?,
+            )
+            .await?;
+        }
+        if let PolicyDecision::Rejected(_) = &issued.record.decision {
+            self.append_action_event(
+                print_id,
+                source.clone(),
+                EventBody::of(&ActionRejectedPayload {
+                    action_id: issued.record.id,
+                    decision: issued.record.decision.clone(),
+                })?,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// What an accepted request is checked against beyond the decision, and
+    /// what it reads first.
+    ///
+    /// A start is held to the filament check ([`crate::preflight`]), whose
+    /// refusal replaces the decision and whose finding is answered. A cancel
+    /// reads where the print had got first: `OctoPrint` clears a job's
+    /// position as it cancels, so this is where the print is known to stop.
+    async fn check_accepted(
+        &self,
+        action: &PrintAction,
+        print: Option<&PrintRecord>,
+        decision: &mut PolicyDecision,
+    ) -> Result<Option<Preflight>, CoreError> {
+        if *decision != PolicyDecision::Accepted {
+            return Ok(None);
+        }
+        match action {
+            PrintAction::StartPrint {
+                file_name,
+                override_filament_check,
+                actor,
+                ..
+            } => {
+                let (checked, refusal) = self
+                    .check_start(file_name, actor, *override_filament_check)
+                    .await?;
+                if let Some(reason) = refusal {
+                    *decision = PolicyDecision::Rejected(reason);
+                }
+                Ok(Some(checked))
+            }
+            PrintAction::Cancel { .. } => {
+                if let Some(print) = print
+                    && let Ok(job) = self.read_job().await
+                {
+                    self.record_position_from(print, &job, self.clock().now())
+                        .await?;
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// What a start the printer took records: that this supervisor saw its
+    /// print begin, and the print's `print_started` naming the start, the
+    /// spools loaded and the check it passed — unless the print has one.
+    async fn follow_the_start(
+        &self,
+        print_id: PrintId,
+        file_name: &FileName,
+        issued: &Issued,
+        preflight: Option<Preflight>,
+    ) -> Result<(), CoreError> {
+        self.note_seen_running(print_id);
+        if self.print_started_of(print_id).await?.is_none() {
+            self.record_print_started(
+                print_id,
+                Some(file_name.as_str().to_owned()),
+                Some(issued.record.id),
+                preflight,
+            )
+            .await?;
+        }
+        Ok(())
     }
 
     /// The print a start is made against.

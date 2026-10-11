@@ -89,6 +89,12 @@ pub enum Call {
     SetBedTargetC(f64),
     /// The fan percentage was set.
     SetFanPercent(f64),
+    /// What the printer knows of one file was read.
+    FileFacts(String),
+    /// Every file carrying a print tally was read.
+    PrintedFiles,
+    /// The filament one file feeds up to a position was read.
+    ExtrudedTo(String, i64),
     /// A received body was normalized.
     Normalize,
     /// An image was retrieved.
@@ -152,7 +158,10 @@ impl Call {
             | Self::SetFlowrateFactor(_)
             | Self::SetToolTargetC(_, _)
             | Self::SetBedTargetC(_)
-            | Self::SetFanPercent(_) => Port::Printer,
+            | Self::SetFanPercent(_)
+            | Self::FileFacts(_)
+            | Self::PrintedFiles
+            | Self::ExtrudedTo(_, _) => Port::Printer,
             Self::Normalize | Self::FetchImage | Self::ClearDetection(_) => Port::Vision,
             Self::RunTurn(_) | Self::CloseSession(_, _) => Port::Supervisor,
         }
@@ -160,13 +169,21 @@ impl Call {
 
     /// Whether this is a call to an **action** method of the printer port.
     ///
-    /// The port's two reads, `snapshot` and `job`, are deliberately not
-    /// actions: the loop reads the printer without taking a decision, so an
-    /// absence that covered them would be one no conforming implementation
-    /// could satisfy.
+    /// The port's reads — `snapshot`, `job` and the three reads of the files
+    /// it holds — are deliberately not actions: the loop reads the printer
+    /// without taking a decision, so an absence that covered them would be one
+    /// no conforming implementation could satisfy.
     #[must_use]
     pub const fn is_printer_action(&self) -> bool {
-        matches!(self.port(), Port::Printer) && !matches!(self, Self::Snapshot | Self::Job)
+        matches!(self.port(), Port::Printer)
+            && !matches!(
+                self,
+                Self::Snapshot
+                    | Self::Job
+                    | Self::FileFacts(_)
+                    | Self::PrintedFiles
+                    | Self::ExtrudedTo(_, _)
+            )
     }
 
     /// Whether this call writes to the store.
