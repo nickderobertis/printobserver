@@ -185,13 +185,19 @@ def _win32_command_line(pid: int) -> str:
         status = ctypes.CDLL("ntdll").NtQueryInformationProcess(
             handle, COMMAND_LINE_CLASS, buffer, len(buffer), ctypes.byref(written)
         )
-        if status != 0 or written.value < ctypes.sizeof(UnicodeString):
-            msg = f"NtQueryInformationProcess answered status {status:#x}"
+        if status != 0 or not ctypes.sizeof(UnicodeString) <= written.value <= len(buffer):
+            msg = f"NtQueryInformationProcess answered status {status:#x}, {written.value} bytes"
             raise MethodError(msg)
         header = UnicodeString.from_buffer(buffer)
         start_of = ctypes.addressof(buffer)
-        if header.Buffer is None or not (
-            start_of <= header.Buffer and header.Buffer + header.Length <= start_of + written.value
+        if (
+            header.Buffer is None
+            or header.Length % 2
+            or header.Length > header.MaximumLength
+            or not start_of
+            <= header.Buffer
+            <= header.Buffer + header.Length
+            <= start_of + written.value
         ):
             msg = "NtQueryInformationProcess answered a string outside its own buffer"
             raise MethodError(msg)

@@ -442,40 +442,50 @@ def test_the_lookup_benchmarks_current_read_is_octoprint_envs_own(tmp_path: Path
         equal((native.is_the_command_line, native.same_as_current), (True, True), describing="it")
 
 
-def test_every_status_nextest_reports_is_read_as_that_status() -> None:
-    """A finished-test line of each status nextest prints is read into that status."""
+def test_a_status_this_does_not_know_is_kept_as_other_rather_than_dropped() -> None:
+    """A finished-test line with an unknown status is read, as `OTHER`, with what nextest said."""
     log = "\n".join(
         [
-            "    Starting 9 tests across 1 binary",
-            *(
-                f"        {status} [   0.{index:03d}s] ({index + 1}/9) crate::binary test_{index}"
-                for index, status in enumerate(NextestStatus)
-            ),
-            "     Summary [   0.100s] 9 tests run",
+            "    Starting 2 tests across 1 binary",
+            "        PASS [   0.010s] (1/2) crate::binary passes",
+            "        TRY 2 WEIRD [   0.020s] (2/2) crate::binary weird",
+            "        SLOW [> 60.000s] (───) crate::binary still-running",
+            "     Summary [   0.100s] 2 tests run",
         ]
     )
     read = rust_figures(log)
     truth(read is not None, describing="figures for a nextest log")
     if read is not None:
         equal(
-            [test.status for test in read.per_test], list(NextestStatus), describing="the statuses"
+            [(test.test, test.status, test.reported) for test in read.per_test],
+            [
+                ("passes", NextestStatus.PASSED, "PASS"),
+                ("weird", NextestStatus.OTHER, "TRY 2 WEIRD"),
+            ],
+            describing="the finished tests, and not the one still running",
         )
-        equal(read.fastest_test_s, 0.0, describing="the fastest passing test, PASS being first")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="the slow stand-in linker is a shell script")
-def test_the_timed_linker_records_how_long_the_link_took(
-    tmp_path: Path, timed_linker: Path
-) -> None:
-    """A link that takes a fifth of a second is recorded at about that many milliseconds."""
-    slow = tmp_path / "slow-linker"
-    slow.write_text("#!/bin/sh\nsleep 0.2\n", encoding="utf-8")
-    slow.chmod(0o755)
-    links = tmp_path / "links.jsonl"
-    run(
-        [str(timed_linker), "-o", "out"],
-        env={**os.environ, REAL_LINKER: str(slow), LINK_TIMINGS: str(links)},
-        check=True,
+@pytest.mark.skipif(not Path("/dev/full").exists(), reason="needs a device every write to fails")
+def test_a_journey_sink_that_refuses_the_write_is_said_and_the_test_passes() -> None:
+    """A sink that opens but refuses the write is named on stderr, and the timed test passes."""
+    ran = run(
+        [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "printobserver",
+            "--features",
+            "test-fixtures",
+            "--test",
+            "journeys",
+            "the_spike_timing_sink_records_a_timed_operation",
+            "--",
+            "--nocapture",
+        ],
+        cwd=ROOT,
+        env={**os.environ, JOURNEY_TIMINGS: "/dev/full"},
     )
-    read = link_figures(links)
-    truth(read is not None and 0.2 <= read.s < 5, describing=f"the link's recorded seconds: {read}")
+    equal(ran.returncode, 0, describing="the timed test's own exit")
+    contains(ran.stderr + ran.stdout, "was not recorded in /dev/full", describing="what it said")

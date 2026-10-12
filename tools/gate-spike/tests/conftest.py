@@ -188,9 +188,31 @@ def fixture_project() -> Iterator[str]:
         shutil.rmtree(root)
 
 
+#: A crate whose four tests end each way the harness reads apart.
+FIXTURE_CRATE = """
+#[test]
+fn passes() {}
+
+#[test]
+fn fails() {
+    panic!("on purpose");
+}
+
+#[test]
+fn times_out() {
+    std::thread::sleep(std::time::Duration::from_secs(30));
+}
+
+#[test]
+fn aborts() {
+    std::process::abort();
+}
+"""
+
+
 @pytest.fixture
 def fixture_crate(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
-    """A project whose one task runs nextest over a crate with one passing and one failing test.
+    """A project whose one task runs nextest over a crate whose tests end four ways.
 
     The crate is outside the repository, so it joins no workspace; the project
     declaring the task is in the tree for the test's length.
@@ -198,7 +220,13 @@ def fixture_crate(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     crate = tmp_path_factory.mktemp("crate") / "fixture"
     run(["cargo", "new", "--quiet", "--lib", "--vcs", "none", str(crate)], check=True)
     (crate / "src" / "lib.rs").write_text(
-        '#[test]\nfn passes() {}\n\n#[test]\nfn fails() {\n    panic!("on purpose");\n}\n',
+        FIXTURE_CRATE,
+        encoding="utf-8",
+    )
+    # nextest terminates a test still running two one-second periods in.
+    (crate / ".config").mkdir()
+    (crate / ".config" / "nextest.toml").write_text(
+        '[profile.default]\nslow-timeout = { period = "1s", terminate-after = 2 }\n',
         encoding="utf-8",
     )
     name = f"spike-crate-{os.getpid()}"

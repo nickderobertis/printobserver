@@ -65,7 +65,7 @@ def read_lines[Record](path: Path, parse: Callable[[dict[str, object]], Record])
 
 
 class NextestStatus(StrEnum):
-    """How nextest reported a test ended."""
+    """How nextest reported a test ended; `OTHER` keeps a status this does not know."""
 
     PASSED = "PASS"
     FAILED = "FAIL"
@@ -76,12 +76,16 @@ class NextestStatus(StrEnum):
     SIGKILL = "SIGKILL"
     ABORT = "ABORT"
     LEAK = "LEAK"
+    OTHER = "OTHER"
 
 
-#: One test nextest finished: its status, seconds, binary and name.
+#: One test nextest finished: its status, seconds, binary and name. Read by the
+#: line's shape — a status, a bracketed duration, then the `(n/m)` counter only a
+#: finished test carries — rather than by a list of statuses, so a status nextest
+#: adds is read as `OTHER` rather than dropped.
 NEXTEST_RESULT = re.compile(
-    r"^\s*(?:\S+:\s+)?(" + "|".join(NextestStatus) + r")\s+\[\s*([\d.]+)s\]\s+"
-    r"(?:\(\s*\d+/\d+\)\s+)?(\S+)\s+(.+?)\s*$"
+    r"^\s*(?:\S+:\s+)?([A-Z][A-Z0-9-]*(?: [A-Z0-9-]+)*)\s+\[\s*([\d.]+)s\]\s+"
+    r"\(\s*\d+/\d+\)\s+(\S+)\s+(.+?)\s*$"
 )
 
 
@@ -93,6 +97,7 @@ class RustTest:
     test: str
     s: float
     status: NextestStatus
+    reported: str
 
 
 @dataclass(frozen=True)
@@ -119,12 +124,16 @@ def rust_figures(log: str) -> RustFigures | None:
     ]
     starting = NEXTEST_STARTING.search(log)
     summary = NEXTEST_SUMMARY.findall(log)
+    known = {member.value for member in NextestStatus} - {NextestStatus.OTHER.value}
     tests = [
         RustTest(
             binary=found.group(3),
             test=found.group(4),
             s=float(found.group(2)),
-            status=NextestStatus(found.group(1)),
+            status=NextestStatus(found.group(1))
+            if found.group(1) in known
+            else NextestStatus.OTHER,
+            reported=found.group(1),
         )
         for found in map(NEXTEST_RESULT.match, log.splitlines())
         if found

@@ -31,13 +31,19 @@ pub fn note(kind: &str, started: Instant) {
         escaped(thread.name().unwrap_or("unnamed")),
     );
     // One write of the whole line, so lines from parallel test processes do not
-    // interleave inside each other.
-    if let Ok(mut file) = std::fs::OpenOptions::new()
+    // interleave inside each other. A sink that cannot take it is said rather
+    // than failing the test it is timing: the record is the spike's, not the
+    // test's.
+    let written = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(sink)
-    {
-        let _ = file.write_all(line.as_bytes());
+        .open(&sink)
+        .and_then(|mut file| file.write_all(line.as_bytes()));
+    if let Err(error) = written {
+        eprintln!(
+            "spike timing sink: `{kind}` was not recorded in {}: {error}",
+            std::path::Path::new(&sink).display()
+        );
     }
 }
 

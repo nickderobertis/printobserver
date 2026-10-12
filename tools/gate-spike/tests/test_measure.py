@@ -525,12 +525,17 @@ def test_a_host_that_fails_mid_preparation_still_gets_its_files_back(
 def test_a_failing_crate_is_read_with_its_failure_out_of_the_passing_figures(
     tmp_path: Path, fixture_crate: str
 ) -> None:
-    """A nextest run with a failing test records it as failed and keeps it out of the medians."""
+    """Each way a test ends is recorded as nextest said, and only passes reach the medians."""
     measured = measure("--targets", fixture_crate, out=tmp_path)
     truth(measured.code != 0, describing="the exit of a run with a failing test")
     rust = mapping(tasks(measured)[0]["rust"], describing="the crate's figures")
     statuses = {test["test"].split("::")[-1]: test["status"] for test in rust["per_test"]}
-    equal(statuses, {"passes": "PASS", "fails": "FAIL"}, describing="each test's status")
+    aborted = "ABORT" if sys.platform == "win32" else "SIGABRT"
+    equal(
+        statuses,
+        {"passes": "PASS", "fails": "FAIL", "times_out": "TIMEOUT", "aborts": aborted},
+        describing="each test's status, as nextest itself reported it",
+    )
     passing = next(test["s"] for test in rust["per_test"] if test["status"] == "PASS")
     equal((rust["fastest_test_s"], rust["median_test_s"]), (passing, passing), describing="it")
 
@@ -588,3 +593,19 @@ def test_a_task_under_base_tree_reads_the_base_branchs_files(
     shown = run(["git", "show", f"{base}:justfile"], cwd=ROOT, check=True).stdout
     seen = (ROOT / "tools" / fixture_project / "seen").read_text(encoding="utf-8")
     equal(seen, shown, describing="the justfile the task read")
+
+
+@pytest.mark.skipif(not HOSTED_WINDOWS, reason="Defender is queried on Windows alone")
+def test_a_defender_query_that_fails_is_kept_as_unreadable(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """With no PowerShell to ask, Defender's state is recorded as unreadable and the run goes on."""
+    measured = measure(
+        "--targets",
+        f"host:defender,{fixture_project}:here",
+        out=tmp_path,
+        environment={"PATH": str(Path(sys.executable).parent)},
+    )
+    report = mapping(measured.report, describing="the report")
+    truth(report["defender_before"]["unreadable"], describing=str(report["defender_before"]))
+    equal(tasks(measured)[1]["exit"], 0, describing="the task after it")
