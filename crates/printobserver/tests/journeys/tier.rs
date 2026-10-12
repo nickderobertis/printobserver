@@ -17,6 +17,7 @@
 //! that takes its own time.
 
 use crate::machine::Reports;
+use crate::spike::timed;
 use crate::world::World;
 
 use super::{
@@ -39,7 +40,9 @@ pub fn run(world: &World, depth: &str) {
         depth == WHOLE || depth == AGAINST_A_REAL_MACHINE,
         "there is no `{depth}` depth to run this tier at"
     );
-    confirming::the_cross_product_walk(world);
+    timed("tier:confirming::the_cross_product_walk", || {
+        confirming::the_cross_product_walk(world);
+    });
     if depth == AGAINST_A_REAL_MACHINE {
         // The environment's own suite asserts a print is running, and this walk
         // took the machine through cancelling and starting to drive the
@@ -47,14 +50,42 @@ pub fn run(world: &World, depth: &str) {
         world.wants(Reports::Printing);
         return;
     }
-    formats::both_renderings_carry_the_same_fields(world);
-    carrying::every_output_carries_only_what_the_answer_carried(world);
-    materializing::an_image_is_a_path_that_opens(world);
-    materializing::a_path_that_names_no_file_here_is_its_own_failure(world);
-    failures::every_command_owes_its_failures(world);
-    failures::no_mutating_command_runs_without_a_reason(world);
-    failures::an_action_the_machine_refuses_is_answered_as_that(world);
-    tainting::every_assertion_here_refuses_the_defect_it_is_about(world);
-    durations::every_adjustment_is_a_bounded_intervention(world);
-    redaction::no_run_of_the_walk_prints_the_credential(world);
+    timed(
+        "tier:formats::both_renderings_carry_the_same_fields",
+        || formats::both_renderings_carry_the_same_fields(world),
+    );
+    timed(
+        "tier:carrying::every_output_carries_only_what_the_answer_carried",
+        || carrying::every_output_carries_only_what_the_answer_carried(world),
+    );
+    timed("tier:materializing::an_image_is_a_path_that_opens", || {
+        materializing::an_image_is_a_path_that_opens(world);
+    });
+    timed(
+        "tier:materializing::a_path_that_names_no_file_here_is_its_own_failure",
+        || materializing::a_path_that_names_no_file_here_is_its_own_failure(world),
+    );
+    timed("tier:failures::every_command_owes_its_failures", || {
+        failures::every_command_owes_its_failures(world);
+    });
+    timed(
+        "tier:failures::no_mutating_command_runs_without_a_reason",
+        || failures::no_mutating_command_runs_without_a_reason(world),
+    );
+    timed(
+        "tier:failures::an_action_the_machine_refuses_is_answered_as_that",
+        || failures::an_action_the_machine_refuses_is_answered_as_that(world),
+    );
+    timed(
+        "tier:tainting::every_assertion_here_refuses_the_defect_it_is_about",
+        || tainting::every_assertion_here_refuses_the_defect_it_is_about(world),
+    );
+    timed(
+        "tier:durations::every_adjustment_is_a_bounded_intervention",
+        || durations::every_adjustment_is_a_bounded_intervention(world),
+    );
+    timed(
+        "tier:redaction::no_run_of_the_walk_prints_the_credential",
+        || redaction::no_run_of_the_walk_prints_the_credential(world),
+    );
 }

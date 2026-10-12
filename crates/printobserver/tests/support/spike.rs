@@ -1,0 +1,64 @@
+//! Spike-only timing sink for `spike-windows-gate-breakdown`.
+//!
+//! When `PRINTOBSERVER_SPIKE_TIMINGS` names a file, every operation timed here
+//! appends one JSON line to it: what kind of operation it was, how long it took,
+//! and which test process and thread took it. Unset, nothing is written and
+//! nothing about the tier changes: no assertion, deadline or order reads it.
+//! `tools/gate-spike/measure.py` sets the variable and folds the lines into its
+//! report.
+
+use std::fmt::Write as _;
+use std::io::Write as _;
+use std::time::Instant;
+
+/// The variable naming the file the lines are appended to.
+const SINK: &str = "PRINTOBSERVER_SPIKE_TIMINGS";
+
+/// Record one operation of `kind` that began at `started`.
+pub fn note(kind: &str, started: Instant) {
+    let Some(sink) = std::env::var_os(SINK) else {
+        return;
+    };
+    let elapsed = started.elapsed();
+    let thread = std::thread::current();
+    let line = format!(
+        "{{\"kind\":\"{}\",\"ms\":{:.3},\"pid\":{},\"thread\":\"{}\"}}\n",
+        escaped(kind),
+        elapsed.as_secs_f64() * 1000.0,
+        std::process::id(),
+        escaped(thread.name().unwrap_or("unnamed")),
+    );
+    // One write of the whole line, so lines from parallel test processes do not
+    // interleave inside each other.
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(sink)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+/// Run `operation`, recording how long it took as one `kind`.
+pub fn timed<T>(kind: &str, operation: impl FnOnce() -> T) -> T {
+    let started = Instant::now();
+    let answer = operation();
+    note(kind, started);
+    answer
+}
+
+/// A string as the inside of a JSON string literal.
+fn escaped(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            control if control.is_control() => {
+                let _ = write!(out, "\\u{:04x}", u32::from(control));
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}

@@ -32,3 +32,4 @@ dist/
 # sources at the pinned revision, the compose override, the build log and the
 # record of what is running.
 /.obico-env/
+spike-out/

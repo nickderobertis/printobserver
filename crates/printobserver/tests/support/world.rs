@@ -248,6 +248,7 @@ impl World {
             || no_harness.as_os_str().to_owned(),
             |path| path.as_os_str().to_owned(),
         );
+        let starting = std::time::Instant::now();
         let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
             .arg("server")
             .arg("--config")
@@ -258,6 +259,7 @@ impl World {
             .expect("the command that runs the supervisor runs");
         let (address, said) =
             announced::serving(&mut server, "the command that runs the supervisor");
+        crate::spike::note("world:supervisor-start-to-announcement", starting);
         let proxy = Proxy::in_front_of(address);
 
         let world = Self {
@@ -344,7 +346,9 @@ impl World {
             if self.reported_state() == Some(state) {
                 return;
             }
-            std::thread::sleep(SETTLING_PAUSE);
+            crate::spike::timed("world:settling-pause", || {
+                std::thread::sleep(SETTLING_PAUSE);
+            });
         }
         panic!(
             "`{after}` did not leave the machine reporting {state:?}: it is reporting {:?}",
@@ -439,11 +443,13 @@ impl World {
     /// the machine cancel or sit idle, the job it is put back to running is a
     /// print of its own: the listing is where that print is found.
     fn follows_the_running_print(&self) {
-        let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-            .args(["prints", "--json", "--config"])
-            .arg(self.client_config())
-            .output()
-            .expect("a listing runs");
+        let read = crate::spike::timed("world:cli-prints", || {
+            Command::new(env!("CARGO_BIN_EXE_printobserver"))
+                .args(["prints", "--json", "--config"])
+                .arg(self.client_config())
+                .output()
+        })
+        .expect("a listing runs");
         let listing: Value =
             printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null);
         if let Some(active) = listing.get("active").and_then(Value::as_str) {
@@ -673,7 +679,9 @@ impl World {
             }
             said = self.one_step_towards(state);
             for _ in 0..SETTLING_POLLS {
-                std::thread::sleep(SETTLING_PAUSE);
+                crate::spike::timed("world:settling-pause", || {
+                    std::thread::sleep(SETTLING_PAUSE);
+                });
                 if self.reported_state() == Some(state) {
                     return;
                 }
@@ -730,7 +738,9 @@ impl World {
             if self.reported_target(at) == Some(degrees) {
                 return;
             }
-            std::thread::sleep(SETTLING_PAUSE);
+            crate::spike::timed("world:settling-pause", || {
+                std::thread::sleep(SETTLING_PAUSE);
+            });
         }
         panic!(
             "the machine never reported {degrees} at `{at}`: it is reporting {:?}, and the \
@@ -746,17 +756,19 @@ impl World {
 
     /// One status read of this world's print, as the document it answers.
     fn status(&self) -> Value {
-        let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-            .args([
-                "status",
-                "--print-id",
-                &self.print_id(),
-                "--json",
-                "--config",
-            ])
-            .arg(self.client_config())
-            .output()
-            .expect("a status read runs");
+        let read = crate::spike::timed("world:cli-status", || {
+            Command::new(env!("CARGO_BIN_EXE_printobserver"))
+                .args([
+                    "status",
+                    "--print-id",
+                    &self.print_id(),
+                    "--json",
+                    "--config",
+                ])
+                .arg(self.client_config())
+                .output()
+        })
+        .expect("a status read runs");
         printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null)
     }
 
@@ -790,12 +802,14 @@ impl World {
             SETTLING_REASON,
         ];
         asked.extend_from_slice(also);
-        let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-            .args(&asked)
-            .arg("--config")
-            .arg(self.client_config())
-            .output()
-            .expect("an action runs");
+        let ran = crate::spike::timed("world:cli-settle", || {
+            Command::new(env!("CARGO_BIN_EXE_printobserver"))
+                .args(&asked)
+                .arg("--config")
+                .arg(self.client_config())
+                .output()
+        })
+        .expect("an action runs");
         format!(
             "`{command}` exited {:?}: {}",
             ran.status.code(),

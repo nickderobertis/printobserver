@@ -66,6 +66,12 @@ use std::sync::Mutex;
 #[cfg(not(target_os = "macos"))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// What the spike's timing sink calls one observed invocation here.
+#[cfg(not(any(target_os = "macos", windows)))]
+const OBSERVED_KIND: &str = "traced:strace-run";
+#[cfg(target_os = "macos")]
+const OBSERVED_KIND: &str = "traced:interposed-run";
+
 /// The tracer this tier reads a process tree's connections out of.
 #[cfg(not(any(target_os = "macos", windows)))]
 const TRACER: &str = "strace";
@@ -170,7 +176,9 @@ pub fn traced(
     scratch: &Path,
 ) -> Ran {
     let environment = &with_its_own_config_home(environment, scratch);
-    let (output, recorded) = observed(program, arguments, environment, scratch);
+    let (output, recorded) = crate::spike::timed(OBSERVED_KIND, || {
+        observed(program, arguments, environment, scratch)
+    });
     Ran {
         code: output.status.code(),
         out: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -322,7 +330,7 @@ pub fn traced(
     // Nextest runs each journey in its own process. The static mutex orders
     // callers inside one process; this operating-system lock orders those
     // processes around Windows' one kernel logger.
-    let _host_trace = kernel_trace_lock();
+    let _host_trace = crate::spike::timed("traced:etw-lock-wait", kernel_trace_lock);
 
     let invocation = format!(
         "{}-{}",
@@ -339,6 +347,7 @@ pub fn traced(
     // directory is refused as one rather than as a home that could not be made.
     let environment = &with_its_own_config_home(environment, scratch);
 
+    let starting = std::time::Instant::now();
     etw::tool(
         "logman",
         &[
@@ -359,6 +368,7 @@ pub fn traced(
             "256".as_ref(),
         ],
     );
+    crate::spike::note("traced:etw-logman-start", starting);
     let mut process = Command::new(program);
     process
         .args(arguments)
@@ -370,39 +380,47 @@ pub fn traced(
     for (name, value) in environment {
         process.env(name, value);
     }
+    let running = std::time::Instant::now();
     let started = process.spawn();
     let output = started.and_then(|child| {
         let root = child.id();
         child.wait_with_output().map(|output| (root, output))
     });
+    crate::spike::note("traced:invocation-run", running);
     // Stopped whatever the invocation did, so a program that could not be
     // started leaves no session behind to fill the host's limit of them.
-    etw::tool(
-        "logman",
-        &[
-            "stop".as_ref(),
-            "NT Kernel Logger".as_ref(),
-            "-ets".as_ref(),
-        ],
-    );
+    crate::spike::timed("traced:etw-logman-stop", || {
+        etw::tool(
+            "logman",
+            &[
+                "stop".as_ref(),
+                "NT Kernel Logger".as_ref(),
+                "-ets".as_ref(),
+            ],
+        );
+    });
     let (root, output) =
         output.unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
-    etw::tool(
-        "tracerpt",
-        &[
-            etl.as_os_str(),
-            "-of".as_ref(),
-            "XML".as_ref(),
-            "-o".as_ref(),
-            dump.as_os_str(),
-            "-y".as_ref(),
-        ],
-    );
+    crate::spike::timed("traced:etw-tracerpt", || {
+        etw::tool(
+            "tracerpt",
+            &[
+                etl.as_os_str(),
+                "-of".as_ref(),
+                "XML".as_ref(),
+                "-o".as_ref(),
+                dump.as_os_str(),
+                "-y".as_ref(),
+            ],
+        );
+    });
+    let parsing = std::time::Instant::now();
     let decoded =
         etw::text_of(&std::fs::read(&dump).unwrap_or_else(|error| {
             panic!("`tracerpt` wrote nothing to {}: {error}", dump.display())
         }));
     let connected = etw::connections_of(&decoded, root);
+    crate::spike::note("traced:etw-decode", parsing);
     for written in [&etl, &dump] {
         let _ = std::fs::remove_file(written);
     }
