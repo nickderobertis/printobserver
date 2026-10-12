@@ -1,8 +1,8 @@
-"""Every cargo invocation inside a clone builds into that clone's own `target`, with line tables.
+"""Every cargo invocation inside a clone builds into that clone's own `target`, with no debuginfo.
 
 `.cargo/config.toml` at the root is the whole of that contract: `build.target-dir`
-names the clone's own `target` and `profile.dev.debug` keeps dev and test builds to
-line tables. Neither shows in any test's outcome — a build that landed somewhere
+names the clone's own `target` and `profile.dev.debug` keeps debuginfo off dev and
+test builds. Neither shows in any test's outcome — a build that landed somewhere
 else, or one carrying full debuginfo, passes exactly as this one does — so each
 journey here reads what cargo itself reports over a copy of the committed tree,
 from inside that copy, the way a second clone or worktree would.
@@ -19,15 +19,16 @@ from repo_checks.expect import absent, contains, equal, passing, truth
 #: The crate the profile is read off: the one under every other, with the
 #: smallest dependency graph to compile into a copy that starts with none built.
 CRATE = "printobserver-types"
-#: The debuginfo level cargo hands rustc under the dev profile: line tables only.
-LINE_TABLES = "-C debuginfo=1"
+#: What cargo hands rustc under a profile at `debug = 0`: no `-C debuginfo` level,
+#: and the standard library's debuginfo stripped.
+ANY_LEVEL = "-C debuginfo="
+STRIPPED = "-C strip=debuginfo"
 
 #: Every variable cargo reads ahead of the file for one of its two keys, or for
 #: the release profile these journeys hold untouched. The gate's runners set one
 #: of them: `actions-rust-lang/setup-rust-toolchain` exports
-#: `CARGO_PROFILE_DEV_DEBUG=0` to keep its cache small, and under it the copy
-#: built at level 0 — carrying `-C strip=debuginfo` and no `debuginfo=` at all —
-#: while the file still said 1. What these journeys prove is the file, so cargo
+#: `CARGO_PROFILE_DEV_DEBUG=0` to keep its cache small, which would answer for the
+#: file whatever it said. What these journeys prove is the file, so cargo
 #: is handed none of them, and the one journey that sets one sets it after.
 OVERRIDES = (
     "CARGO_TARGET_DIR",
@@ -155,7 +156,8 @@ def test_cargo_builds_into_the_clones_own_target_from_anywhere_inside_it(
     )
 
     built = _unit(beside, ["cargo", "build", "-v"], BESIDE)
-    contains(built, LINE_TABLES, describing="the non-member crate's rustc invocation")
+    absent(built, ANY_LEVEL, describing="the non-member crate's rustc invocation")
+    contains(built, STRIPPED, describing="the non-member crate's rustc invocation")
     contains(
         built,
         f"--out-dir {copy.root / 'target' / 'debug' / 'deps'}",
@@ -183,10 +185,10 @@ def test_an_invocation_naming_its_own_target_directory_still_wins(
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
-def test_dev_builds_carry_line_tables_and_release_builds_carry_none(
+def test_dev_test_and_release_builds_carry_no_debuginfo(
     gate_copy: CopiesTheTree,
 ) -> None:
-    """Dev and test hand rustc `debuginfo=1` under the copy's `target`; release hands it none.
+    """Dev, test and release hand rustc no debuginfo level, each under the copy's `target`.
 
     Read off the invocation cargo prints for the crate's own unit rather than
     off the profile summary, because `[unoptimized + debuginfo]` is what cargo
@@ -197,7 +199,8 @@ def test_dev_builds_carry_line_tables_and_release_builds_carry_none(
     debug_deps = f"--out-dir {copy.root / 'target' / 'debug' / 'deps'}"
 
     dev = _check(copy)
-    contains(dev, LINE_TABLES, describing="the dev rustc invocation")
+    absent(dev, ANY_LEVEL, describing="the dev rustc invocation")
+    contains(dev, STRIPPED, describing="the dev rustc invocation")
     contains(dev, debug_deps, describing="the dev rustc invocation")
     truth(
         (copy.root / "target" / "debug").is_dir(),
@@ -205,11 +208,12 @@ def test_dev_builds_carry_line_tables_and_release_builds_carry_none(
     )
 
     test = _check(copy, "--profile", "test")
-    contains(test, LINE_TABLES, describing="the test rustc invocation")
+    absent(test, ANY_LEVEL, describing="the test rustc invocation")
+    contains(test, STRIPPED, describing="the test rustc invocation")
     contains(test, debug_deps, describing="the test rustc invocation")
 
     release = _check(copy, "--release")
-    absent(release, "-C debuginfo=", describing="the release rustc invocation")
+    absent(release, ANY_LEVEL, describing="the release rustc invocation")
     contains(
         release,
         f"--out-dir {copy.root / 'target' / 'release' / 'deps'}",
@@ -250,5 +254,7 @@ def test_an_invocation_is_read_the_same_however_cargo_rendered_its_paths() -> No
     """
     read = _unquoted(WINDOWS_RENDERING)
 
-    contains(read, LINE_TABLES, describing="the recorded Windows rendering")
+    # The recording is cargo's line from before the level moved to 0; its level
+    # argument is read like any other.
+    contains(read, ANY_LEVEL, describing="the recorded Windows rendering")
     contains(read, WINDOWS_OUT_DIR, describing="the recorded Windows rendering")

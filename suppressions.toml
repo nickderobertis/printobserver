@@ -1794,7 +1794,7 @@ reason = "The same ground the entries for this rule at `tests/repo-e2e/project.j
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_cargo_build_contract_journey.py"
-site = "def test_dev_builds_carry_line_tables_and_release_builds_carry_none("
+site = "def test_dev_test_and_release_builds_carry_no_debuginfo("
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs is bounded by design: three `cargo check` runs of the workspace's smallest crate rather than builds, because the profile shows on rustc's command line before anything is linked, and the copy they run over is what proves where the build lands."
 
 [[suppression]]
