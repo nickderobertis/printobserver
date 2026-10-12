@@ -560,12 +560,25 @@ async fn stored_records(world: &World, print_id: printobserver_types::PrintId) -
     let (_, manifest) = world
         .get(&world.operation_url(&path("manifest_get"), print_id))
         .await;
+    // The spool ledger is the printer's rather than the print's, and a spool
+    // command refused for its reason is one that wrote nothing into it either.
+    let (_, spools) = world
+        .get(&format!(
+            "{}?include_retired=true",
+            world.operation_url(&path("spools"), print_id)
+        ))
+        .await;
+    let (_, timeline) = world
+        .get(&world.operation_url(&path("printer_history"), print_id))
+        .await;
     json!({
         "print": status["print"],
         "session": status["session"],
         "interventions": status["interventions"],
         "events": history["events"],
         "manifest": manifest,
+        "spools": spools,
+        "timeline": timeline,
     })
 }
 
@@ -577,9 +590,10 @@ async fn stored_records(world: &World, print_id: printobserver_types::PrintId) -
 /// narrowings, and the record comparison would see it. A body that wrote back
 /// what was already there would leave that comparison proving nothing.
 fn reasonless_body(operation: &Operation, reason: Option<&str>) -> Value {
-    let mut body = match operation.action_kind() {
-        Some(kind) => asked(kind).accepted,
-        None => crate::world::manifest_write(&wider_than_the_envelope()),
+    let mut body = match (operation.action_kind(), operation.command_kind()) {
+        (Some(kind), _) => asked(kind).accepted,
+        (None, Some(kind)) => crate::world::spool_body(kind),
+        (None, None) => crate::world::manifest_write(&wider_than_the_envelope()),
     };
     let object = body.as_object_mut().expect("the body is an object");
     match reason {
@@ -652,10 +666,10 @@ async fn every_adjustment_applies_the_duration_it_is_given() {
 
 /// The operations beside the action vocabulary this journey drives.
 ///
-/// `image`, `prints` and `look` are the three it does not: an image answer is
+/// `image`, `prints` and `look` are three it does not: an image answer is
 /// a path, and what that path has to be is `images.rs`'s whole subject; what
 /// the listing adopts is `finding.rs`'s; and what a look waits for and records
-/// is `looking.rs`'s. Together they are compared against the
+/// is `looking.rs`'s. The four reads of the spool ledger are `spooling.rs`'s. Together they are compared against the
 /// declared set below, so none of them can fall behind it.
 const DRIVEN_HERE: [&str; 5] = [
     "status",
@@ -672,6 +686,7 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     covered.push("image");
     covered.push("prints");
     covered.push("look");
+    covered.extend(crate::spooling::DRIVEN_THERE);
     covered.sort_unstable();
     let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();
     declared.sort_unstable();

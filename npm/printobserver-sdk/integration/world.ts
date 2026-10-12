@@ -19,6 +19,7 @@ export interface Supervisor {
   print_id: string;
   image_id: string;
   event_id: string;
+  spool_id: string;
   file_name: string;
 }
 

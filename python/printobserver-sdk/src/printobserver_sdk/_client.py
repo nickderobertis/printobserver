@@ -31,7 +31,9 @@ from printobserver_sdk.contract import (
     Actor,
     GeneratedClient,
     Range,
+    RejectionReason,
     RejectionReasonOutOfBoundsPayload,
+    SpoolCommandAnswer,
 )
 
 #: The status a rejected action is answered under.
@@ -165,15 +167,27 @@ def _said(said: str) -> str:
 
 def _rejection(status: int, said: str) -> Exception:
     """The policy's own refusal, as the answer to it carries it."""
-    answer = cast(ActionAnswer, _document(status, said))
-    decision = answer["record"]["decision"]
-    if not isinstance(decision, dict) or "rejected" not in decision:
-        return UnreadableError(
-            status,
-            "the supervisor refused this action and answered a record whose decision "
-            "is not a refusal",
-        )
-    reason = decision["rejected"]
+    document = _document(status, said)
+    # An action's answer carries its decision in its record; a spool command's
+    # carries it at the top. Each `cast` below names the type `operations.json`
+    # declares for the refusal the match has just told apart: `_document` hands
+    # back the server's JSON untyped, and the match is the check this client
+    # makes of its shape before naming it.
+    answer: ActionAnswer | SpoolCommandAnswer
+    match document:
+        case {"record": {"decision": {"rejected": refused}}}:
+            answer = cast(ActionAnswer, document)
+        case {"decision": {"rejected": refused}}:
+            answer = cast(SpoolCommandAnswer, document)
+        case _:
+            return UnreadableError(
+                status,
+                "the supervisor refused this action and answered a record whose decision "
+                "is not a refusal",
+            )
+    # What `rejected` holds is the contracts' `RejectionReason`, which the
+    # server serializes it from; the match bound it untyped.
+    reason = cast(RejectionReason, refused)
     requested: float | None = None
     allowed: Range | None = None
     if isinstance(reason, dict) and "out_of_bounds" in reason:

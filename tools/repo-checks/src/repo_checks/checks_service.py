@@ -545,13 +545,15 @@ def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:
     The names in the installed configuration's grants are the contracts'
     vocabulary rather than the installer's, and there is no way to generate a
     shell heredoc from a Rust enum — so what holds them together is this: the
-    generated action schema is read, and a name the template grants that the
-    contracts do not declare is refused.
+    generated action schema and the generated spool command schema are read,
+    and a name the template grants that neither declares is refused.
     """
     try:
-        table = policy_strings(policy_table(repo, "service"), ("granting_table",), "service")[
-            "granting_table"
-        ]
+        service = policy_strings(
+            policy_table(repo, "service"), ("granting_table", "command_schema"), "service"
+        )
+        table = service["granting_table"]
+        command_path = service["command_schema"]
         schema_path = policy_strings(
             policy_table(repo, "supervisor"), ("action_schema",), "supervisor"
         )["action_schema"]
@@ -571,6 +573,16 @@ def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:
     }
     if not declared:
         return [f"`{schema_path}` declares no action, so it is not the vocabulary"]
+    if not repo.exists(command_path):
+        return [f"`{command_path}` is absent: it is the spool command vocabulary this reads"]
+    commands = {
+        variant.get("properties", {}).get("command", {}).get("const")
+        for variant in json.loads(repo.read(command_path)).get("oneOf", [])
+        if isinstance(variant, dict)
+    }
+    if not commands - {None}:
+        return [f"`{command_path}` declares no spool command, so it is not the vocabulary"]
+    declared |= commands
 
     granted: set[str] = set()
     for line in script[script.index(table) + len(table) :].splitlines():
@@ -583,7 +595,7 @@ def _granted_findings(repo: Repo, installer: str, script: str) -> list[str]:
         return [f"`{installer}`'s `{table}` grants nothing at all"]
     return [
         f"`{installer}` grants `{name}`, which the action vocabulary at "
-        f"`{schema_path}` does not declare"
+        f"`{schema_path}` does not declare, and nor does `{command_path}`"
         for name in sorted(granted - declared)
     ]
 

@@ -9,9 +9,12 @@ transformed in.
 
 from __future__ import annotations
 
+import json
+
 from contract_codegen import version
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
+from contract_codegen.examples import is_ledger_refusal
 from contract_codegen.model import (
     ACTOR_PARAMETER,
     ENVELOPE,
@@ -42,7 +45,7 @@ from contract_codegen.naming import (
     pascal,
     python_identifier,
 )
-from contract_codegen.walk import EventStep, LiveStep
+from contract_codegen.walk import ABSENT, EventStep, LiveStep
 
 #: What each scalar of the contracts is in Python.
 SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool"}
@@ -223,11 +226,24 @@ def _declaration(declaration: Declaration) -> list[str]:
             raise TypeError(msg)
 
 
-def _argument(parameter: Parameter) -> str:
-    """One value a generated method takes, as Python declares it."""
+def _argument(parameter: Parameter, identifiers: frozenset[str] = frozenset()) -> str:
+    """One value a generated method takes, as Python declares it.
+
+    An identifier travels as text, and the server describes it as a string; one
+    the contracts declare a type for — a `spool_id` is a `SpoolId` — is
+    declared as that type, so a caller's checker reads which identifier a method
+    takes.
+    """
+    named = pascal(parameter.name)
+    identified = (
+        parameter.name.endswith("_id")
+        and parameter.carried == Scalar("string")
+        and named in identifiers
+    )
+    shape = named if identified else type_name(parameter.carried)
     if parameter.optional:
-        return f"{parameter.name}: {type_name(parameter.carried)} | None = None"
-    return f"{parameter.name}: {type_name(parameter.type)}"
+        return f"{parameter.name}: {shape} | None = None"
+    return f"{parameter.name}: {named if identified else type_name(parameter.type)}"
 
 
 #: The directive every generated call through the published client carries.
@@ -257,6 +273,17 @@ def _string(text: str) -> str:
     return f'f"{text}"' if "{" in text else f'"{text}"'
 
 
+def _query_text(named: str, carried: TypeExpr) -> str:
+    """One query value as the text the server reads it from.
+
+    A flag is spelled `true` or `false` as the server reads it, rather than as
+    Python's own `str` spells one.
+    """
+    if carried == Scalar("boolean"):
+        return f'"true" if {named} else "false"'
+    return f"str({named})"
+
+
 def _target(operation: Operation) -> str:
     """The request target one call is made to, as Python builds it."""
     path = operation.path
@@ -266,10 +293,10 @@ def _target(operation: Operation) -> str:
     return path
 
 
-def _method(operation: Operation) -> list[str]:
+def _method(operation: Operation, identifiers: frozenset[str] = frozenset()) -> list[str]:
     """One operation, as the Python client's own method."""
     supplied = operation.supplied()
-    arguments = ", ".join(["self", *(_argument(parameter) for parameter in supplied)])
+    arguments = ", ".join(["self", *(_argument(parameter, identifiers) for parameter in supplied)])
     lines = [f"    # {NAME_DIRECTIVE}"] if operation.name in NAMED_FOR_WHAT_IS_ASKED else []
     spelled = method_name(operation.name, "python")
     lines.append(f"    def {spelled}({arguments}) -> {operation.answer}:")
@@ -299,7 +326,14 @@ def _method(operation: Operation) -> list[str]:
     lines.append("        asked: list[tuple[str, str]] = []")
     for parameter in query:
         lines.append(f"        if {parameter.name} is not None:")
-        lines.append(f'            asked.append(("{parameter.name}", str({parameter.name})))')
+        if parameter.repeated and isinstance(parameter.carried, ListOf):
+            # A value the description says is repeated travels once per item.
+            lines.append(f"            for value in {parameter.name}:")
+            text = _query_text("value", parameter.carried.item)
+            lines.append(f'                asked.append(("{parameter.name}", {text}))')
+        else:
+            text = _query_text(parameter.name, parameter.carried)
+            lines.append(f'            asked.append(("{parameter.name}", {text}))')
 
     body = [parameter for parameter in operation.parameters if parameter.located == "body"]
     if body:
@@ -479,8 +513,15 @@ def emit(contract: Contract) -> str:
         )
     )
     lines.append("")
+    # The identifiers the contracts declare a type of their own for, which a
+    # method taking one declares it as.
+    identifiers = frozenset(
+        declaration.name
+        for declaration in contract.declarations
+        if isinstance(declaration, Alias) and declaration.name.endswith("Id")
+    )
     for operation in contract.operations:
-        lines.extend(_method(operation))
+        lines.extend(_method(operation, identifiers))
         lines.append("")
     return "\n".join(lines) + "\n"
 
@@ -515,6 +556,8 @@ def _python_argument(parameter: Parameter, value: object) -> str:
             return str(value)
         case Ref(name):
             return f"cast({name}, json.loads({literal(document(value))}))"
+        case ListOf(Scalar("string")):
+            return json.dumps(value)
 
     msg = f"{parameter!r} is not a value a Python walk can supply"
     raise TypeError(msg)
@@ -614,13 +657,28 @@ def emit_walk(contract: Contract) -> str:
                 f"            {ASYNC_DIRECTIVE}",
                 f"            client.{method_name(step.name, 'python')}({call})",
                 "        except RejectedError as refused:",
-                "            equal(refused.requested, 1.5)",
-                '            equal(refused.allowed, {"min": 0.5, "max": 1.25})',
-                "            truth(",
-                "                isinstance(refused.reason, dict)",
-                '                and "out_of_bounds" in refused.reason,',
-                '                describing="the refusal itself to be carried",',
-                "            )",
+                *(
+                    [
+                        "            equal(refused.requested, None)",
+                        "            equal(refused.allowed, None)",
+                        "            truth(",
+                        "                isinstance(refused.reason, dict)",
+                        '                and "spool_refused" in refused.reason,',
+                        '                describing="the ledger\'s refusal itself to be carried",',
+                        "            )",
+                    ]
+                    if is_ledger_refusal(step.rejection)
+                    else [
+                        "            equal(refused.requested, 1.5)",
+                        '            equal(refused.allowed, {"min": 0.5, "max": 1.25})',
+                        "            truth(",
+                        "                isinstance(refused.reason, dict)",
+                        '                and "out_of_bounds" in refused.reason,',
+                        '                describing="the refusal itself to be carried",',
+                        "            )",
+                    ]
+                ),
+                "            equal(refused.answer, refusal)",
                 "        else:",
                 '            truth(False, describing="the policy\'s refusal to arrive as one")',
                 "",
@@ -717,24 +775,36 @@ LIVE_TOKENS = {
     "reason": "REASON",
     "disposition:continue": '"continue"',
     "bool:false": "False",
+    "bool:true": "True",
+    "world.spool_id": "world.spool_id",
+    "absent": "None",
 }
 
 
 def _live_argument(token: str) -> str:
     """One value the real walk calls a Python method with."""
+    from contract_codegen.walk import live_kinds, live_text
+
+    text = live_text(token)
+    if text is not None:
+        return json.dumps(text)
+    kinds = live_kinds(token)
+    if kinds is not None:
+        return json.dumps(kinds)
     return LIVE_TOKENS.get(token, token)
 
 
 def _live_target(step: LiveStep) -> str:
     """The request target one real call must reach, as Python builds it."""
+    from contract_codegen.walk import live_query
+
     path = step.operation.path
     for parameter in step.operation.parameters:
         if parameter.located == "path":
             path = path.replace(f"{{{parameter.name}}}", f"{{world.{parameter.name}}}")
     asked = [
-        f"{parameter.name}={_live_argument(token)}"
-        for parameter, token in step.arguments
-        if parameter.located == "query"
+        f"{one.name}={{world.{one.world}}}" if one.world else f"{one.name}={one.text}"
+        for one in live_query(step)
     ]
     return _string(f"{path}?{'&'.join(asked)}" if asked else path)
 
@@ -753,7 +823,7 @@ def _live_body(step: LiveStep) -> list[str]:
             )
             continue
         token = supplied.get(parameter.name)
-        if token is None:
+        if token is None or token == ABSENT:
             continue
         lines.append(
             f"    equal(\n"

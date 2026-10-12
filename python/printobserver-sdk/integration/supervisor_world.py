@@ -34,6 +34,9 @@ if STARTUP_TIMEOUT_SECONDS <= 0:
 #: The API credential a supervisor serves under, as a request presents it.
 Credential = NewType("Credential", str)
 
+#: A spool's identifier, as the supervisor mints and spells one.
+SpoolId = NewType("SpoolId", str)
+
 
 @dataclass(frozen=True, slots=True)
 class Supervisor:
@@ -45,6 +48,7 @@ class Supervisor:
     print_id: str
     image_id: str
     event_id: str
+    spool_id: SpoolId
     file_name: str
 
 
@@ -122,6 +126,7 @@ class Standing:
             print_id=described["print_id"],
             image_id=described["image_id"],
             event_id=described["event_id"],
+            spool_id=SpoolId(described["spool_id"]),
             file_name=described["file_name"],
         )
 

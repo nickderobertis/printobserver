@@ -8,9 +8,12 @@ the two for a field to be transformed in.
 
 from __future__ import annotations
 
+import json
+
 from contract_codegen import version
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
+from contract_codegen.examples import is_ledger_refusal
 from contract_codegen.model import (
     ACTOR_PARAMETER,
     ENVELOPE,
@@ -43,7 +46,7 @@ from contract_codegen.naming import (
     typescript_member,
     typescript_property,
 )
-from contract_codegen.walk import EventStep, LiveStep
+from contract_codegen.walk import ABSENT, EventStep, LiveStep
 
 #: What each scalar of the contracts is in TypeScript.
 SCALARS = {"string": "string", "number": "number", "integer": "number", "boolean": "boolean"}
@@ -212,7 +215,13 @@ def _method(operation: Operation) -> list[str]:
     for parameter in query:
         spelled = camel(parameter.name)
         lines.append(f"    if ({spelled} !== undefined) {{")
-        lines.append(f'      asked.push(["{parameter.name}", String({spelled})]);')
+        if parameter.repeated:
+            # A value the description says is repeated travels once per item.
+            lines.append(f"      for (const value of {spelled}) {{")
+            lines.append(f'        asked.push(["{parameter.name}", String(value)]);')
+            lines.append("      }")
+        else:
+            lines.append(f'      asked.push(["{parameter.name}", String({spelled})]);')
         lines.append("    }")
 
     body = [parameter for parameter in operation.parameters if parameter.located == "body"]
@@ -410,6 +419,8 @@ def _typescript_argument(parameter: Parameter, value: object) -> str:
             return str(value)
         case Ref(name):
             return f"JSON.parse('{document(value)}') as {name}"
+        case ListOf(Scalar("string")):
+            return json.dumps(value)
     msg = f"{parameter!r} is not a value a Node walk can supply"
     raise TypeError(msg)
 
@@ -509,9 +520,20 @@ def emit_walk(contract: Contract) -> str:
                 "",
                 "  expect(refused).toBeInstanceOf(Rejected);",
                 "  const rejection = refused as Rejected;",
-                "  expect(rejection.requested).toBe(1.5);",
-                "  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });",
-                '  expect(rejection.reason).toHaveProperty("out_of_bounds");',
+                *(
+                    [
+                        "  expect(rejection.requested).toBeUndefined();",
+                        "  expect(rejection.allowed).toBeUndefined();",
+                        '  expect(rejection.reason).toHaveProperty("spool_refused");',
+                    ]
+                    if is_ledger_refusal(step.rejection)
+                    else [
+                        "  expect(rejection.requested).toBe(1.5);",
+                        "  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });",
+                        '  expect(rejection.reason).toHaveProperty("out_of_bounds");',
+                    ]
+                ),
+                "  expect(rejection.answer).toEqual(refusal);",
                 "});",
                 "",
             ]
@@ -595,24 +617,36 @@ LIVE_TOKENS = {
     "reason": "REASON",
     "disposition:continue": '"continue"',
     "bool:false": "false",
+    "bool:true": "true",
+    "world.spool_id": "world.spool_id",
+    "absent": "undefined",
 }
 
 
 def _live_argument(token: str) -> str:
     """One value the real walk calls a Node method with."""
+    from contract_codegen.walk import live_kinds, live_text
+
+    text = live_text(token)
+    if text is not None:
+        return json.dumps(text)
+    kinds = live_kinds(token)
+    if kinds is not None:
+        return json.dumps(kinds)
     return LIVE_TOKENS.get(token, token)
 
 
 def _live_target(step: LiveStep) -> str:
     """The request target one real call must reach, as TypeScript builds it."""
+    from contract_codegen.walk import live_query
+
     path = step.operation.path
     for parameter in step.operation.parameters:
         if parameter.located == "path":
             path = path.replace(f"{{{parameter.name}}}", f"${{world.{parameter.name}}}")
     asked = [
-        f"{parameter.name}=${{{_live_argument(token)}}}"
-        for parameter, token in step.arguments
-        if parameter.located == "query"
+        f"{one.name}=${{world.{one.world}}}" if one.world else f"{one.name}={one.text}"
+        for one in live_query(step)
     ]
     whole = f"{path}?{'&'.join(asked)}" if asked else path
     return f"`{whole}`"
@@ -630,7 +664,7 @@ def _live_body(step: LiveStep) -> list[str]:
             lines.append('  expect(sent.actor).toBe("operator");')
             continue
         token = supplied.get(parameter.name)
-        if token is None:
+        if token is None or token == ABSENT:
             continue
         lines.append(
             f"  expect(sent{typescript_member(parameter.name)}).toEqual({_live_argument(token)});"

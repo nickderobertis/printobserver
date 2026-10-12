@@ -13,6 +13,10 @@
 //! grew an option or a form would grow this product rather than escape it, and
 //! [`covers`] is what refuses a surface it does not cover.
 //!
+//! A command whose values exclude one another — a correction from a remaining
+//! figure *or* from a scale reading — is walked as one entry per alternative,
+//! each giving the values it gives, and is covered by the union of them.
+//!
 //! # The values are distinct per command
 //!
 //! No two commands drive the same reason or the same payload value, so a
@@ -56,10 +60,14 @@ impl Driven {
 
     /// The value it drives for one field, as the caller typed it.
     pub fn text(&self, field: &str) -> String {
-        self.values
-            .get(field)
+        self.given(field)
             .unwrap_or_else(|| panic!("`{}` drives no `{field}`", self.command.name))
-            .clone()
+    }
+
+    /// The value it drives for one field, when it drives one: an entry for one
+    /// of two alternatives leaves the other's out.
+    pub fn given(&self, field: &str) -> Option<String> {
+        self.values.get(field).cloned()
     }
 }
 
@@ -94,6 +102,9 @@ pub fn walk(world: &World) -> Vec<Driven> {
             if field.parameter.located == Located::Path && field.parameter.name == "print_id" {
                 carried.insert(field.parameter.name.clone(), print.clone());
             }
+            if field.parameter.located == Located::Path && field.parameter.name == "spool_id" {
+                carried.insert(field.parameter.name.clone(), spool_about(world, &name));
+            }
         }
         driven.push(Driven {
             command,
@@ -104,10 +115,24 @@ pub fn walk(world: &World) -> Vec<Driven> {
     driven
 }
 
-/// This entry, about the print the world is about now.
+/// The spool one command of the walk is about now: a retirement's own, and
+/// the walk's spool for every other.
+fn spool_about(world: &World, command: &str) -> String {
+    if command == "retire-spool" {
+        world.retiring_spool_id()
+    } else {
+        world.spool_id()
+    }
+}
+
+/// This entry, about the print and the spool the world is about now.
 ///
 /// A walk is built before the machine is put where each command needs it, and
-/// putting it there can replace the print the walk is about.
+/// putting it there can replace the print the walk is about; a retirement is
+/// about a fresh spool each time. It renames and does nothing else: a caller
+/// about to run the entry puts the ledger where it needs it first, with
+/// [`World::prepare_ledger_for`], which is what lets one command be run again and
+/// again.
 #[must_use]
 pub fn about_now(driven: &Driven, world: &World) -> Driven {
     let mut now = driven.clone();
@@ -116,19 +141,36 @@ pub fn about_now(driven: &Driven, world: &World) -> Driven {
             now.values
                 .insert(field.parameter.name.clone(), world.print_id());
         }
+        if field.parameter.located == Located::Path && field.parameter.name == "spool_id" {
+            now.values.insert(
+                field.parameter.name.clone(),
+                spool_about(world, &now.command.name),
+            );
+        }
     }
     now
 }
 
 /// These arguments, naming the print the world is about now wherever they
-/// name a print; the same reason as [`about_now`]. A request asked against the
-/// print that ended before the walk keeps naming that one.
+/// name a print, and the spool a retirement is about now; the same reason as
+/// [`about_now`]. A request asked against the print that ended before the
+/// walk, or the spool already retired, keeps naming that one.
+///
+/// It names and does nothing else: a caller about to run them puts the ledger
+/// where their command needs it first, with [`World::prepare_ledger_for`].
 #[must_use]
-pub fn naming_the_print_now(arguments: &[String], world: &World) -> Vec<String> {
+pub fn naming_the_print_and_spool_now(arguments: &[String], world: &World) -> Vec<String> {
     let mut now = arguments.to_vec();
+    let command = now.first().cloned().unwrap_or_default();
     for index in 1..now.len() {
         if now[index - 1] == "--print-id" && !world.is_the_ended_print(&now[index]) {
             now[index] = world.print_id();
+        }
+        if now[index - 1] == "--spool-id"
+            && command == "retire-spool"
+            && now[index] != world.retired_spool_id()
+        {
+            now[index] = world.retiring_spool_id();
         }
     }
     now
@@ -199,8 +241,77 @@ fn ordered(world: &World) -> Vec<Entry> {
         ],
     ));
     found.push(named("manifest-get", Reports::Operational, vec![]));
+    found.extend(ledger(world));
     found
 }
+
+/// The spool ledger's four reads and five commands, each with values no
+/// other command drives, asked with the machine idle: none of them asks it
+/// for anything.
+fn ledger(world: &World) -> Vec<Entry> {
+    // The cursor is an event written after the walk's own spool was
+    // registered, so a history read before it reaches that registration.
+    let spool = world.spool_id();
+    let cursor = world.register_history_cursor();
+    let acting = |command: &str, mut rest: Vec<(String, String)>| {
+        rest.push(("actor".to_owned(), "operator".to_owned()));
+        rest.push(("reason".to_owned(), reason_of(command)));
+        named(command, Reports::Operational, rest)
+    };
+    let value = |field: &str, given: &str| (field.to_owned(), given.to_owned());
+    vec![
+        named(
+            "spools",
+            Reports::Operational,
+            vec![value("include_retired", "true")],
+        ),
+        named("spool", Reports::Operational, vec![]),
+        named(
+            "printer-history",
+            Reports::Operational,
+            vec![
+                value("kinds", "spool_registered"),
+                value("since", HISTORY_SINCE),
+                value("until", HISTORY_UNTIL),
+                value("spool_id", &spool),
+                value("before", &cursor),
+                value("limit", "5"),
+            ],
+        ),
+        named(
+            "preflight",
+            Reports::Operational,
+            vec![value("file_name", &printable(world))],
+        ),
+        acting(
+            "register-spool",
+            vec![
+                value("name", REGISTERED_NAME),
+                value("material", "PETG"),
+                value("color", "black"),
+                value("diameter_mm", "1.75"),
+                value("density_g_cm3", "1.27"),
+                value("initial_g", "750"),
+                value("remaining_g", "700"),
+                value("tare_g", "180"),
+            ],
+        ),
+        acting("load-spool", vec![value("tool", "0")]),
+        acting("unload-spool", vec![]),
+        acting("adjust-spool", vec![value("remaining_g", "640")]),
+        acting("adjust-spool", vec![value("gross_g", "900")]),
+        acting("retire-spool", vec![]),
+    ]
+}
+
+/// The earliest instant the walk's printer history read reads from.
+pub const HISTORY_SINCE: &str = "2020-01-01T00:00:00Z";
+
+/// The latest instant it reads to.
+pub const HISTORY_UNTIL: &str = "2999-12-31T23:59:59Z";
+
+/// The name the walk's registration gives its spool.
+pub const REGISTERED_NAME: &str = "a spool the walk registers";
 
 /// One entry of the walk: a command, what the machine reports for it, and the
 /// values distinct to it.
@@ -289,7 +400,9 @@ pub fn invocations(driven: &Driven, world: &World) -> Vec<Invocation> {
         options: BTreeSet::new(),
     }];
     for field in &driven.command.fields {
-        let text = driven.text(&field.parameter.name);
+        let Some(text) = driven.given(&field.parameter.name) else {
+            continue;
+        };
         found = found
             .into_iter()
             .flat_map(|so_far| {
@@ -372,18 +485,28 @@ pub fn covers(driven: &[Driven], world: &World) -> Vec<String> {
             .difference(&walked)
             .map(|missing| format!("`{missing}` is a client command this walk does not run")),
     );
+    // Every option one command accepts, against every option any entry of it
+    // drives: two entries for two alternatives cover the command together.
+    let mut given: BTreeMap<String, (printobserver::surface::Command, BTreeSet<String>)> =
+        BTreeMap::new();
     for found in driven {
-        let declared: BTreeSet<String> = found.command.options().into_iter().collect();
-        let given: BTreeSet<String> = invocations(found, world)
-            .into_iter()
-            .flat_map(|invocation| invocation.options)
-            .collect();
-        findings.extend(declared.difference(&given).map(|missing| {
-            format!(
-                "`{}` accepts `{missing}` and this walk never drives it",
-                found.command.name
-            )
-        }));
+        given
+            .entry(found.command.name.clone())
+            .or_insert_with(|| (found.command.clone(), BTreeSet::new()))
+            .1
+            .extend(
+                invocations(found, world)
+                    .into_iter()
+                    .flat_map(|invocation| invocation.options),
+            );
+    }
+    for (name, (command, driven_here)) in given {
+        let declared: BTreeSet<String> = command.options().into_iter().collect();
+        findings.extend(
+            declared.difference(&driven_here).map(|missing| {
+                format!("`{name}` accepts `{missing}` and this walk never drives it")
+            }),
+        );
     }
     findings
 }

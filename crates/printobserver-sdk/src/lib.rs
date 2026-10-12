@@ -61,7 +61,7 @@ mod transport;
 
 pub use client::Client;
 pub use contract::*;
-pub use error::{ClientError, Rejection};
+pub use error::{ClientError, RejectedAnswer, Rejection};
 pub use transport::Answered;
 
 /// The reason a mutating call carries, refused here when it carries none.

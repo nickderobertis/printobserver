@@ -99,11 +99,7 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             );
         }
         ConfigField::Harness => remove(&mut document, "supervisor.harness"),
-        ConfigField::Model => set(
-            &mut document,
-            "supervisor.model",
-            toml::Value::String(String::new()),
-        ),
+        ConfigField::Model => set(&mut document, "supervisor.model", toml::Value::from("")),
         ConfigField::SkillPath => set(
             &mut document,
             "supervisor.skill_path",
@@ -167,8 +163,49 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
             "obico",
             obico(Some("http://127.0.0.1:3334"), None),
         ),
+        ConfigField::SpoolsPreflight
+        | ConfigField::SpoolsBufferPercent
+        | ConfigField::SpoolsBufferMinG
+        | ConfigField::SpoolsAnalysisWaitSeconds => unacceptable_spools(field, &mut document),
     }
     document
+}
+
+/// The `[spools]` key one field is, made unacceptable: a mode outside the
+/// three, a negative margin, a negative wait.
+fn unacceptable_spools(field: ConfigField, document: &mut toml::Value) {
+    match field {
+        // A mode outside the three a start can take.
+        ConfigField::SpoolsPreflight => set(
+            document,
+            "spools",
+            spools("preflight", toml::Value::String("sometimes".to_owned())),
+        ),
+        // A margin below nothing, which asks a spool for less than a print
+        // needs.
+        ConfigField::SpoolsBufferPercent => set(
+            document,
+            "spools",
+            spools("buffer_percent", toml::Value::Float(-5.0)),
+        ),
+        ConfigField::SpoolsBufferMinG => set(
+            document,
+            "spools",
+            spools("buffer_min_g", toml::Value::Float(-1.0)),
+        ),
+        // A wait that ended before it began.
+        ConfigField::SpoolsAnalysisWaitSeconds => set(
+            document,
+            "spools",
+            spools("analysis_wait_seconds", toml::Value::Integer(-30)),
+        ),
+        other => panic!("`{other}` is not a `[spools]` key"),
+    }
+}
+
+/// A `[spools]` table carrying one key.
+fn spools(key: &str, value: toml::Value) -> toml::Value {
+    toml::Value::Table(toml::Table::from_iter([(key.to_owned(), value)]))
 }
 
 /// A token for `Obico`'s API no refusal may quote.

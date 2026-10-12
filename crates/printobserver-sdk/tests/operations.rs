@@ -259,6 +259,112 @@ fn manifest_set_makes_no_request_when_the_reason_is_empty() {
     assert_eq!(host.requests(), 0, "this call reached the server");
 }
 
+/// `spools` sends what it declares and answers what the server sent.
+#[test]
+fn spools_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"at_a_glance": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "pending": [{"analysed_length_mm": 1.5, "charge_key": {"key": "print", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "segment": 7, "tool": 7}, "length_mm": 1.5, "method": "slicer_estimate", "note": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "pended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "position": {"bytes": 7, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "size_bytes": 7}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tool": 7}], "spools": [{"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client.spools(Some(true)).expect("`spools` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(received.target, "/v1/spools?include_retired=true");
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `spool` sends what it declares and answers what the server sent.
+#[test]
+fn spool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"recent": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .spool("0198f0a1-2b3c-7d4e-8f90-123456789abc")
+        .expect("`spool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(
+        received.target,
+        "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc"
+    );
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `printer_history` sends what it declares and answers what the server sent.
+#[test]
+fn printer_history_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "next": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .printer_history(
+            Some(vec!["0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()]),
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(7),
+        )
+        .expect("`printer_history` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(
+        received.target,
+        "/v1/history?kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&since=0198f0a1-2b3c-7d4e-8f90-123456789abc&until=0198f0a1-2b3c-7d4e-8f90-123456789abc&spool_id=0198f0a1-2b3c-7d4e-8f90-123456789abc&before=0198f0a1-2b3c-7d4e-8f90-123456789abc&limit=7"
+    );
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `preflight` sends what it declares and answers what the server sent.
+#[test]
+fn preflight_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"buffer_g": 1.5, "marks": [{"reason": {"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "reason": "uncharged_print"}, "since": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "remaining_g": 1.5, "required_g": 1.5, "spool_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "spool_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tool": 7, "verdict": "passed"}], "verdict": "passed"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .preflight("0198f0a1-2b3c-7d4e-8f90-123456789abc")
+        .expect("`preflight` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(
+        received.target,
+        "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc"
+    );
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
 /// `pause` sends what it declares and answers what the server sent.
 #[test]
 fn pause_sends_what_it_declares_and_answers_what_the_server_sent() {
@@ -324,6 +430,10 @@ fn pause_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `pause` makes no request at all when the reason is empty.
@@ -405,6 +515,10 @@ fn resume_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `resume` makes no request at all when the reason is empty.
@@ -486,6 +600,10 @@ fn cancel_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `cancel` makes no request at all when the reason is empty.
@@ -559,6 +677,10 @@ fn start_print_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `start_print` makes no request at all when the reason is empty.
@@ -643,6 +765,10 @@ fn set_feedrate_factor_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `set_feedrate_factor` makes no request at all when the reason is empty.
@@ -728,6 +854,10 @@ fn set_flowrate_factor_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `set_flowrate_factor` makes no request at all when the reason is empty.
@@ -815,6 +945,10 @@ fn set_tool_target_c_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `set_tool_target_c` makes no request at all when the reason is empty.
@@ -906,6 +1040,10 @@ fn set_bed_target_c_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `set_bed_target_c` makes no request at all when the reason is empty.
@@ -991,6 +1129,10 @@ fn set_fan_percent_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `set_fan_percent` makes no request at all when the reason is empty.
@@ -1076,6 +1218,10 @@ fn acknowledge_failure_surfaces_the_policys_own_refusal() {
         rejection.reason,
         RejectionReason::OutOfBounds { .. }
     ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
 }
 
 /// `acknowledge_failure` makes no request at all when the reason is empty.
@@ -1091,6 +1237,433 @@ fn acknowledge_failure_makes_no_request_when_the_reason_is_empty() {
             &parsed::<EventId>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#),
             "   ",
         )
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `register_spool` sends what it declares and answers what the server sent.
+#[test]
+fn register_spool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .register_spool(
+            1.5,
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(1.5),
+            Some(1.5),
+            Some(1.5),
+            Some(1.5),
+        )
+        .expect("`register_spool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/spools/actions/register_spool");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "initial_g": 1.5, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "reason": "a generated walk is asking", "remaining_g": 1.5, "tare_g": 1.5}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `register_spool` surfaces the policy's own refusal, typed.
+#[test]
+fn register_spool_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .register_spool(
+            1.5,
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(1.5),
+            Some(1.5),
+            Some(1.5),
+            Some(1.5),
+        )
+        .expect_err("`register_spool` is refused");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("the policy's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, None);
+    assert_eq!(rejection.allowed, None);
+    assert!(matches!(
+        rejection.reason,
+        RejectionReason::SpoolRefused { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `register_spool` makes no request at all when the reason is empty.
+#[test]
+fn register_spool_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .register_spool(
+            1.5,
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "   ",
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(1.5),
+            Some(1.5),
+            Some(1.5),
+            Some(1.5),
+        )
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `load_spool` sends what it declares and answers what the server sent.
+#[test]
+fn load_spool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .load_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            7,
+        )
+        .expect("`load_spool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(
+        received.target,
+        "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/load_spool"
+    );
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking", "tool": 7}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `load_spool` surfaces the policy's own refusal, typed.
+#[test]
+fn load_spool_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .load_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            7,
+        )
+        .expect_err("`load_spool` is refused");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("the policy's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, None);
+    assert_eq!(rejection.allowed, None);
+    assert!(matches!(
+        rejection.reason,
+        RejectionReason::SpoolRefused { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `load_spool` makes no request at all when the reason is empty.
+#[test]
+fn load_spool_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .load_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", 7)
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `unload_spool` sends what it declares and answers what the server sent.
+#[test]
+fn unload_spool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .unload_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+        )
+        .expect("`unload_spool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(
+        received.target,
+        "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/unload_spool"
+    );
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `unload_spool` surfaces the policy's own refusal, typed.
+#[test]
+fn unload_spool_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .unload_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+        )
+        .expect_err("`unload_spool` is refused");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("the policy's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, None);
+    assert_eq!(rejection.allowed, None);
+    assert!(matches!(
+        rejection.reason,
+        RejectionReason::SpoolRefused { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `unload_spool` makes no request at all when the reason is empty.
+#[test]
+fn unload_spool_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .unload_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ")
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `adjust_spool` sends what it declares and answers what the server sent.
+#[test]
+fn adjust_spool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .adjust_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            Some(1.5),
+            Some(1.5),
+        )
+        .expect("`adjust_spool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(
+        received.target,
+        "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/adjust_spool"
+    );
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "gross_g": 1.5, "reason": "a generated walk is asking", "remaining_g": 1.5}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `adjust_spool` surfaces the policy's own refusal, typed.
+#[test]
+fn adjust_spool_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .adjust_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            Some(1.5),
+            Some(1.5),
+        )
+        .expect_err("`adjust_spool` is refused");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("the policy's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, None);
+    assert_eq!(rejection.allowed, None);
+    assert!(matches!(
+        rejection.reason,
+        RejectionReason::SpoolRefused { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `adjust_spool` makes no request at all when the reason is empty.
+#[test]
+fn adjust_spool_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .adjust_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "   ",
+            Some(1.5),
+            Some(1.5),
+        )
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `retire_spool` sends what it declares and answers what the server sent.
+#[test]
+fn retire_spool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .retire_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+        )
+        .expect("`retire_spool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(
+        received.target,
+        "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/retire_spool"
+    );
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `retire_spool` surfaces the policy's own refusal, typed.
+#[test]
+fn retire_spool_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"decision": {"rejected": {"spool_refused": {"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .retire_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+        )
+        .expect_err("`retire_spool` is refused");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("the policy's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, None);
+    assert_eq!(rejection.allowed, None);
+    assert!(matches!(
+        rejection.reason,
+        RejectionReason::SpoolRefused { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `retire_spool` makes no request at all when the reason is empty.
+#[test]
+fn retire_spool_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .retire_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ")
         .expect_err("a call with no reason is refused");
 
     assert!(matches!(refused, ClientError::NoReason));

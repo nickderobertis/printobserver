@@ -7,8 +7,9 @@
 //! store to drive: it fails everything it is asked, in the store's own words,
 //! so a journey can read what this server answers for each.
 //!
-//! `startup` is what a start needs before there is anything to serve, so it can
-//! be made to succeed: a store that failed at start refuses the start, and a
+//! `startup` is what a start needs before there is anything to serve — the open
+//! prints, and the printer's tallies the start accounts — so it can be made to
+//! succeed: a store that failed at start refuses the start, and a
 //! store that fails afterwards is a running server answering failures.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -337,16 +338,25 @@ impl FilamentStore for FailingStore {
     }
 
     fn file_tallies(&self) -> BoxFuture<'_, Result<Vec<FileTally>, StoreError>> {
+        if self.starts.load(Ordering::SeqCst) {
+            return Box::pin(async { Ok(Vec::new()) });
+        }
         failed()
     }
 
     fn account_tallies(
         &self,
-        _tallies: Vec<FileTally>,
-        _charges: Vec<Charge>,
-        _marks: Vec<SpoolMutation>,
-        _events: Vec<EventDraft>,
+        tallies: Vec<FileTally>,
+        charges: Vec<Charge>,
+        marks: Vec<SpoolMutation>,
+        events: Vec<EventDraft>,
     ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        // A start over a printer holding no tally accounts nothing, and that
+        // is all a start that is let through asks.
+        let nothing = tallies.is_empty() && charges.is_empty() && marks.is_empty();
+        if self.starts.load(Ordering::SeqCst) && nothing && events.is_empty() {
+            return Box::pin(async { Ok(Vec::new()) });
+        }
         failed()
     }
 }

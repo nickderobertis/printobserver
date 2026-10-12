@@ -217,6 +217,121 @@
     },
     {
       "answers": [
+        "success"
+      ],
+      "command": "spools",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "spools",
+      "options": [
+        {
+          "field": "include_retired",
+          "located": "query",
+          "option": "--include-retired",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "spool",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "spool",
+      "options": [
+        {
+          "field": "spool_id",
+          "located": "path",
+          "option": "--spool-id",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools/{spool_id}"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "printer-history",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "printer_history",
+      "options": [
+        {
+          "field": "kinds",
+          "located": "query",
+          "option": "--kinds",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "since",
+          "located": "query",
+          "option": "--since",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "until",
+          "located": "query",
+          "option": "--until",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "spool_id",
+          "located": "query",
+          "option": "--spool-id",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "before",
+          "located": "query",
+          "option": "--before",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "limit",
+          "located": "query",
+          "option": "--limit",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/history"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "preflight",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "preflight",
+      "options": [
+        {
+          "field": "file_name",
+          "located": "query",
+          "option": "--file-name",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/preflight"
+    },
+    {
+      "answers": [
         "success",
         "rejected"
       ],
@@ -753,6 +868,286 @@
         }
       ],
       "path": "/v1/prints/{print_id}/actions/acknowledge_failure"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "register-spool",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "register_spool",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "color",
+          "located": "body",
+          "option": "--color",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "density_g_cm3",
+          "located": "body",
+          "option": "--density-g-cm3",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "diameter_mm",
+          "located": "body",
+          "option": "--diameter-mm",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "initial_g",
+          "located": "body",
+          "option": "--initial-g",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "material",
+          "located": "body",
+          "option": "--material",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "name",
+          "located": "body",
+          "option": "--name",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "remaining_g",
+          "located": "body",
+          "option": "--remaining-g",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "tare_g",
+          "located": "body",
+          "option": "--tare-g",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools/actions/register_spool"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "load-spool",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "load_spool",
+      "options": [
+        {
+          "field": "spool_id",
+          "located": "path",
+          "option": "--spool-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "tool",
+          "located": "body",
+          "option": "--tool",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/load_spool"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "unload-spool",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "unload_spool",
+      "options": [
+        {
+          "field": "spool_id",
+          "located": "path",
+          "option": "--spool-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/unload_spool"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "adjust-spool",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "adjust_spool",
+      "options": [
+        {
+          "field": "spool_id",
+          "located": "path",
+          "option": "--spool-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "gross_g",
+          "located": "body",
+          "option": "--gross-g",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "remaining_g",
+          "located": "body",
+          "option": "--remaining-g",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/adjust_spool"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "retire-spool",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "retire_spool",
+      "options": [
+        {
+          "field": "spool_id",
+          "located": "path",
+          "option": "--spool-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/spools/{spool_id}/actions/retire_spool"
     }
   ],
   "exits": [

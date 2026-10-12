@@ -3,14 +3,21 @@
 //! # One operation per public operation, and no more
 //!
 //! The list here is the whole API. It is exactly one operation per variant of
-//! [`PrintAction`](printobserver_core::PrintAction) the contracts declare,
-//! plus eight operations beside them — the prints listing, status, context,
-//! image materialization, history, a fresh look, and the manifest's read and
-//! write — and nothing else. The router is built by folding
+//! [`PrintAction`](printobserver_core::PrintAction) and of
+//! [`SpoolCommand`](printobserver_core::SpoolCommand) the contracts declare,
+//! plus twelve operations beside them — the prints listing, status, context,
+//! image materialization, history, a fresh look, the manifest's read and
+//! write, and the four reads of the spool ledger: the spools, one spool, the
+//! printer's own history and a filament check — and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
 //! own, so growing this array and the routes together cannot satisfy it.
+//!
+//! The spool ledger's operations name no print: a spool is the printer's, not
+//! one print's, so they sit beneath `/spools` and `/history` rather than
+//! beneath a print, and a supervision turn's print binding constrains none of
+//! them.
 //!
 //! Every operation sits beneath [`VERSION_PREFIX`], takes JSON where it takes a
 //! body at all, and answers JSON.
@@ -20,10 +27,11 @@
 //! [`Operation::request`] is the request schema of one route — every value a
 //! caller supplies, where it travels and whether it is required — and
 //! [`Operation::response_schema`] is the schema of each answer that route can
-//! produce. Neither is written out for the ten mutating operations: their body
-//! is derived from the contracts' own
-//! [`PrintAction`](printobserver_core::PrintAction) at run time, so a variant
-//! that gains a field gains it here the moment the type does. The
+//! produce. Neither is written out for the fifteen mutating operations: their
+//! body is derived from the contracts' own
+//! [`PrintAction`](printobserver_core::PrintAction) or
+//! [`SpoolCommand`](printobserver_core::SpoolCommand) at run time, so a
+//! variant that gains a field gains it here the moment the type does. The
 //! command-line program builds its own parser from these declarations rather
 //! than from a list of its own, which is what stops the two surfaces drifting.
 //!
@@ -42,7 +50,7 @@ use printobserver_types::serde_json::{Value, json};
 // them: a client of this surface that derives its own commands from these
 // operations — the command-line program — reads which action each is and what
 // that action carries from here, without naming the supervision domain itself.
-pub use printobserver_core::{ActionKind, PrintAction};
+pub use printobserver_core::{ActionKind, PrintAction, SpoolCommand};
 
 /// The one versioned prefix every public operation is served beneath.
 pub const VERSION_PREFIX: &str = "/v1";
@@ -63,6 +71,10 @@ pub const IMAGE_PATH_FIELD: &str = "path";
 /// The field of a request body the action vocabulary's tag travels in, which a
 /// caller never supplies: the operation it sends to is what names the action.
 const ACTION_TAG: &str = "action";
+
+/// The field the spool ledger's vocabulary carries its tag in, which a caller
+/// never supplies either.
+pub const COMMAND_TAG: &str = "command";
 
 /// The method one operation is reached by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -152,6 +164,23 @@ pub struct Declared {
     /// that it is a `JobManifest`. A value this system mints no type for — a
     /// count, a reason — declares none.
     pub shape: Option<&'static str>,
+    /// Whether a request may carry it more than once, each a value of its
+    /// own: only a query value can be, and it is then a list of its kind.
+    pub repeated: bool,
+}
+
+impl Declared {
+    /// One value carried at most once, of a kind and of no named type.
+    #[must_use]
+    pub const fn once(name: &'static str, required: bool, kind: ValueKind) -> Self {
+        Self {
+            name,
+            required,
+            kind,
+            shape: None,
+            repeated: false,
+        }
+    }
 }
 
 /// One value a request to an operation carries.
@@ -165,6 +194,8 @@ pub struct Parameter {
     pub located: Located,
     /// What kind of value it takes.
     pub kind: ValueKind,
+    /// Whether a request may carry it more than once, each a value of its own.
+    pub repeated: bool,
 }
 
 /// One answer a route can produce.
@@ -200,8 +231,55 @@ pub enum Effect {
     Read,
     /// It changes something, so it carries a reason and passes the policy.
     Mutating(ActionKind),
+    /// It asks the spool ledger for one command, so it carries a reason and
+    /// passes the grants every action passes — and asks nothing of the
+    /// machine. Its kind is one of the ledger's five and no print action.
+    Command(SpoolCommandKind),
     /// It writes a record without asking anything of the machine.
     Write,
+}
+
+/// One command of the spool ledger's vocabulary, and nothing else.
+///
+/// A kind of its own rather than the whole [`ActionKind`], so that an
+/// operation declared as a spool command cannot name a print action: the
+/// grants rule on the [`ActionKind`] it answers, and the body is read from the
+/// `SpoolCommand` variant that kind tags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SpoolCommandKind {
+    /// Register a spool.
+    RegisterSpool,
+    /// Load a spool onto a tool.
+    LoadSpool,
+    /// Unload a spool from its tool.
+    UnloadSpool,
+    /// Correct a spool's figure.
+    AdjustSpool,
+    /// Retire a spool.
+    RetireSpool,
+}
+
+impl SpoolCommandKind {
+    /// Every command of the ledger, in the order the contracts declare them.
+    pub const ALL: [Self; 5] = [
+        Self::RegisterSpool,
+        Self::LoadSpool,
+        Self::UnloadSpool,
+        Self::AdjustSpool,
+        Self::RetireSpool,
+    ];
+
+    /// The action kind the envelope grants this command under.
+    #[must_use]
+    pub const fn action_kind(self) -> ActionKind {
+        match self {
+            Self::RegisterSpool => ActionKind::RegisterSpool,
+            Self::LoadSpool => ActionKind::LoadSpool,
+            Self::UnloadSpool => ActionKind::UnloadSpool,
+            Self::AdjustSpool => ActionKind::AdjustSpool,
+            Self::RetireSpool => ActionKind::RetireSpool,
+        }
+    }
 }
 
 /// One public operation: what it is called, how it is reached, and what it does.
@@ -224,8 +302,8 @@ pub struct Operation {
     pub query: &'static [Declared],
     /// The values it takes in its body, for an operation whose body is not one
     /// action of the vocabulary. A mutating operation declares none here: its
-    /// body is the `PrintAction` variant it names, read from the contracts
-    /// themselves by [`Operation::request`].
+    /// body is the `PrintAction` or `SpoolCommand` variant it names, read from
+    /// the contracts themselves by [`Operation::request`].
     pub body: &'static [Declared],
     /// The field of its answer carrying an absolute path to a materialized
     /// image, when its answer carries one.
@@ -245,12 +323,32 @@ impl Operation {
         format!("{VERSION_PREFIX}{}", self.path)
     }
 
-    /// Which action this operation asks for, when it asks for one.
+    /// Which print action this operation asks for, when it asks for one.
     #[must_use]
     pub const fn action_kind(&self) -> Option<ActionKind> {
         match self.effect {
             Effect::Mutating(kind) => Some(kind),
             _ => None,
+        }
+    }
+
+    /// Which spool command this operation asks for, when it asks for one.
+    #[must_use]
+    pub const fn command_kind(&self) -> Option<ActionKind> {
+        match self.effect {
+            Effect::Command(kind) => Some(kind.action_kind()),
+            _ => None,
+        }
+    }
+
+    /// Which action of either vocabulary this operation asks for, when it asks
+    /// for one: the kind the envelope grants it under.
+    #[must_use]
+    pub const fn granted_as(&self) -> Option<ActionKind> {
+        match self.effect {
+            Effect::Mutating(kind) => Some(kind),
+            Effect::Command(kind) => Some(kind.action_kind()),
+            Effect::Read | Effect::Write => None,
         }
     }
 
@@ -262,16 +360,21 @@ impl Operation {
     /// to say why.
     #[must_use]
     pub const fn is_mutating(&self) -> bool {
-        matches!(self.effect, Effect::Mutating(_) | Effect::Write)
+        matches!(
+            self.effect,
+            Effect::Mutating(_) | Effect::Command(_) | Effect::Write
+        )
     }
 
     /// Every value a request to this operation carries, and where it carries it.
     ///
     /// The body of a mutating operation is not written out anywhere: it is the
-    /// fields the contracts' own `PrintAction` declares for the variant this
-    /// operation names, read from that type's own schema. A variant that gains
-    /// a field gains it here without this file changing, which is what stops a
-    /// consumer building a request surface from drifting from the vocabulary.
+    /// fields the contracts' own `PrintAction` or `SpoolCommand` declares for
+    /// the variant this operation names, read from that type's own schema,
+    /// less the tag and any value the path already carries. A variant that
+    /// gains a field gains it here without this file changing, which is what
+    /// stops a consumer building a request surface from drifting from the
+    /// vocabulary.
     ///
     /// # Panics
     ///
@@ -281,9 +384,16 @@ impl Operation {
     pub fn request(&self) -> Vec<Parameter> {
         let mut found = path_parameters(self.path);
         found.extend(declared(self.query, Located::Query));
-        match self.effect {
-            Effect::Mutating(kind) => found.extend(action_parameters(kind)),
-            Effect::Read | Effect::Write => found.extend(declared(self.body, Located::Body)),
+        match Vocabulary::of(self.effect) {
+            Some((vocabulary, kind)) => {
+                let routed: Vec<String> = found.iter().map(|path| path.name.clone()).collect();
+                found.extend(
+                    action_parameters(vocabulary, kind)
+                        .into_iter()
+                        .filter(|field| !routed.contains(&field.name)),
+                );
+            }
+            None => found.extend(declared(self.body, Located::Body)),
         }
         found
     }
@@ -307,9 +417,9 @@ impl Operation {
     /// is a declared list and a closed type that have come apart.
     #[must_use]
     pub fn request_shapes(&self) -> Vec<(Parameter, Value)> {
-        let action = match self.effect {
-            Effect::Mutating(kind) => action_shapes(kind),
-            Effect::Read | Effect::Write => Vec::new(),
+        let action = match Vocabulary::of(self.effect) {
+            Some((vocabulary, kind)) => action_shapes(vocabulary, kind),
+            None => Vec::new(),
         };
         self.request()
             .into_iter()
@@ -350,7 +460,7 @@ impl Operation {
     #[must_use]
     pub const fn answers_with(&self) -> &'static [Answer] {
         match self.effect {
-            Effect::Mutating(_) => &[Answer::Success, Answer::Rejected],
+            Effect::Mutating(_) | Effect::Command(_) => &[Answer::Success, Answer::Rejected],
             Effect::Read | Effect::Write => &[Answer::Success],
         }
     }
@@ -375,6 +485,11 @@ impl Operation {
         );
         let schema = match (self.name, self.effect) {
             (_, Effect::Mutating(_)) => schema_for!(crate::wire::ActionAnswer),
+            (_, Effect::Command(_)) => schema_for!(crate::wire::SpoolCommandAnswer),
+            ("spools", _) => schema_for!(crate::wire::SpoolsAnswer),
+            ("spool", _) => schema_for!(crate::wire::SpoolAnswer),
+            ("printer_history", _) => schema_for!(crate::wire::TimelineAnswer),
+            ("preflight", _) => schema_for!(crate::wire::PreflightAnswer),
             ("prints", _) => schema_for!(crate::wire::PrintsAnswer),
             ("status", _) => schema_for!(crate::wire::StatusAnswer),
             ("context", _) => schema_for!(crate::wire::ContextAnswer),
@@ -395,6 +510,7 @@ fn declared(entries: &'static [Declared], located: Located) -> impl Iterator<Ite
         required: entry.required,
         located,
         kind: entry.kind,
+        repeated: entry.repeated,
     })
 }
 
@@ -407,21 +523,67 @@ fn declared_shape(entries: &'static [Declared], name: &str) -> Value {
     let Some(entry) = entries.iter().find(|entry| entry.name == name) else {
         return json!({ "type": "string" });
     };
-    if let Some(shape) = entry.shape {
-        return json!({ "$ref": format!("#/$defs/{shape}") });
+    let one = if let Some(shape) = entry.shape {
+        json!({ "$ref": format!("#/$defs/{shape}") })
+    } else {
+        match entry.kind {
+            ValueKind::Text => json!({ "type": "string" }),
+            ValueKind::Number => json!({ "type": "number" }),
+            ValueKind::Integer => json!({ "type": "integer" }),
+            ValueKind::Boolean => json!({ "type": "boolean" }),
+            ValueKind::Structured => json!({ "type": "object" }),
+        }
+    };
+    // A value a request may carry more than once is a list of its kind, which
+    // is what a typed consumer sends it as.
+    if entry.repeated {
+        json!({ "type": "array", "items": one })
+    } else {
+        one
     }
-    match entry.kind {
-        ValueKind::Text => json!({ "type": "string" }),
-        ValueKind::Number => json!({ "type": "number" }),
-        ValueKind::Integer => json!({ "type": "integer" }),
-        ValueKind::Boolean => json!({ "type": "boolean" }),
-        ValueKind::Structured => json!({ "type": "object" }),
+}
+
+/// Which of the contracts' two closed vocabularies one mutating operation's
+/// body is a variant of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Vocabulary {
+    /// The print actions, tagged by `action`.
+    Actions,
+    /// The spool ledger's commands, tagged by `command`.
+    Commands,
+}
+
+impl Vocabulary {
+    /// The vocabulary one effect's body is read from, and the variant it names.
+    const fn of(effect: Effect) -> Option<(Self, ActionKind)> {
+        match effect {
+            Effect::Mutating(kind) => Some((Self::Actions, kind)),
+            Effect::Command(kind) => Some((Self::Commands, kind.action_kind())),
+            Effect::Read | Effect::Write => None,
+        }
+    }
+
+    /// The field the vocabulary's tag travels in.
+    const fn tag(self) -> &'static str {
+        match self {
+            Self::Actions => ACTION_TAG,
+            Self::Commands => COMMAND_TAG,
+        }
+    }
+
+    /// The vocabulary's own schema, as the contracts declare it.
+    fn schema(self) -> Value {
+        use printobserver_types::schemars::schema_for;
+        match self {
+            Self::Actions => schema_for!(PrintAction).to_value(),
+            Self::Commands => schema_for!(SpoolCommand).to_value(),
+        }
     }
 }
 
 /// The shape of each field one action of the vocabulary takes.
 ///
-/// Read out of the contracts' own `PrintAction` beside
+/// Read out of the contracts' own `PrintAction` or `SpoolCommand` beside
 /// [`action_parameters`], which walks the same variant for the same fields —
 /// so a field that gains a shape here gains a parameter there, and neither can
 /// carry one the other does not.
@@ -429,15 +591,15 @@ fn declared_shape(entries: &'static [Declared], name: &str) -> Value {
 /// # Panics
 ///
 /// Panics when the contracts declare no variant tagged with this action.
-fn action_shapes(kind: ActionKind) -> Vec<(String, Value)> {
-    let schema = printobserver_types::schemars::schema_for!(PrintAction).to_value();
-    let variant = action_variant(&schema, kind);
+fn action_shapes(vocabulary: Vocabulary, kind: ActionKind) -> Vec<(String, Value)> {
+    let schema = vocabulary.schema();
+    let variant = action_variant(&schema, vocabulary, kind);
     variant
         .get("properties")
         .and_then(Value::as_object)
         .unwrap_or_else(|| panic!("the action `{kind:?}` declares no properties"))
         .iter()
-        .filter(|(name, _)| name.as_str() != ACTION_TAG)
+        .filter(|(name, _)| name.as_str() != vocabulary.tag())
         .map(|(name, field)| (name.clone(), field.clone()))
         .collect()
 }
@@ -448,7 +610,7 @@ fn action_shapes(kind: ActionKind) -> Vec<(String, Value)> {
 ///
 /// Panics when the contracts declare no variant tagged with this action, which
 /// is this server's declared list and that closed type having come apart.
-fn action_variant(schema: &Value, kind: ActionKind) -> Value {
+fn action_variant(schema: &Value, vocabulary: Vocabulary, kind: ActionKind) -> Value {
     let tag = printobserver_types::serde_json::to_value(kind)
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
@@ -458,7 +620,7 @@ fn action_variant(schema: &Value, kind: ActionKind) -> Value {
         .and_then(Value::as_array)
         .and_then(|variants| {
             variants.iter().find(|variant| {
-                variant.pointer(&format!("/properties/{ACTION_TAG}/const"))
+                variant.pointer(&format!("/properties/{}/const", vocabulary.tag()))
                     == Some(&json!(tag.clone()))
             })
         })
@@ -479,6 +641,7 @@ fn path_parameters(path: &str) -> Vec<Parameter> {
             // A path segment is text: what makes one an identifier is the type
             // that minted it rather than anything a route can say.
             kind: ValueKind::Text,
+            repeated: false,
         })
         .collect()
 }
@@ -489,9 +652,9 @@ fn path_parameters(path: &str) -> Vec<Parameter> {
 ///
 /// Panics when the contracts declare no variant tagged with this action, which
 /// is this server's declared list and that closed type having come apart.
-fn action_parameters(kind: ActionKind) -> Vec<Parameter> {
-    let schema = printobserver_types::schemars::schema_for!(PrintAction).to_value();
-    let variant = action_variant(&schema, kind);
+fn action_parameters(vocabulary: Vocabulary, kind: ActionKind) -> Vec<Parameter> {
+    let schema = vocabulary.schema();
+    let variant = action_variant(&schema, vocabulary, kind);
     let required: Vec<&str> = variant
         .get("required")
         .and_then(Value::as_array)
@@ -503,12 +666,13 @@ fn action_parameters(kind: ActionKind) -> Vec<Parameter> {
         .unwrap_or_else(|| panic!("the action `{kind:?}` declares no properties"));
     properties
         .iter()
-        .filter(|(name, _)| name.as_str() != ACTION_TAG)
+        .filter(|(name, _)| name.as_str() != vocabulary.tag())
         .map(|(name, field)| Parameter {
             name: name.clone(),
             required: required.contains(&name.as_str()),
             located: Located::Body,
             kind: kind_of(&resolve(&schema, field)),
+            repeated: false,
         })
         .collect()
 }
@@ -590,6 +754,14 @@ const fn action(name: &'static str, path: &'static str, kind: ActionKind) -> Ope
     }
 }
 
+/// One spool command, at the path its command is asked for under.
+const fn command(name: &'static str, path: &'static str, kind: SpoolCommandKind) -> Operation {
+    Operation {
+        effect: Effect::Command(kind),
+        ..action(name, path, kind.action_kind())
+    }
+}
+
 /// One read, which takes no body.
 const fn read(name: &'static str, path: &'static str) -> Operation {
     Operation {
@@ -617,7 +789,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 18] = [
+pub const OPERATIONS: [Operation; 27] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -632,12 +804,7 @@ pub const OPERATIONS: [Operation; 18] = [
         ..read("image", "/images/{image_id}")
     },
     Operation {
-        query: &[Declared {
-            name: "limit",
-            required: false,
-            kind: ValueKind::Integer,
-            shape: None,
-        }],
+        query: &[Declared::once("limit", false, ValueKind::Integer)],
         ..read("history", "/prints/{print_id}/history")
     },
     read("manifest_get", "/prints/{print_id}/manifest"),
@@ -645,12 +812,7 @@ pub const OPERATIONS: [Operation; 18] = [
     // the print, returning the moment something does, then takes a frame and
     // reads the printer as it is now. A read, so it takes no actor.
     Operation {
-        query: &[Declared {
-            name: "wait_s",
-            required: false,
-            kind: ValueKind::Integer,
-            shape: None,
-        }],
+        query: &[Declared::once("wait_s", false, ValueKind::Integer)],
         image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
         ..read("look", "/prints/{print_id}/look")
     },
@@ -663,20 +825,44 @@ pub const OPERATIONS: [Operation; 18] = [
         answers: MEDIA_TYPE,
         query: &[],
         body: &[
+            Declared::once("reason", true, ValueKind::Text),
             Declared {
-                name: "reason",
-                required: true,
-                kind: ValueKind::Text,
-                shape: None,
-            },
-            Declared {
-                name: "manifest",
-                required: true,
-                kind: ValueKind::Structured,
                 shape: Some("JobManifest"),
+                ..Declared::once("manifest", true, ValueKind::Structured)
             },
         ],
         image_path_field: None,
+    },
+    // Every spool, the retired ones only when asked for, each beside one line
+    // saying what it holds — and the charges held for a tool after a filament
+    // change nobody has confirmed.
+    Operation {
+        query: &[Declared::once("include_retired", false, ValueKind::Boolean)],
+        ..read("spools", "/spools")
+    },
+    read("spool", "/spools/{spool_id}"),
+    // The printer's own history: every print, charge and spool event, newest
+    // first, a page at a time. Named for the printer rather than for a print,
+    // because `history` is one print's.
+    Operation {
+        query: &[
+            Declared {
+                repeated: true,
+                ..Declared::once("kinds", false, ValueKind::Text)
+            },
+            Declared::once("since", false, ValueKind::Text),
+            Declared::once("until", false, ValueKind::Text),
+            Declared::once("spool_id", false, ValueKind::Text),
+            Declared::once("before", false, ValueKind::Text),
+            Declared::once("limit", false, ValueKind::Integer),
+        ],
+        ..read("printer_history", "/history")
+    },
+    // Whether the spools loaded hold enough for one file, read now: it records
+    // nothing and starts nothing.
+    Operation {
+        query: &[Declared::once("file_name", true, ValueKind::Text)],
+        ..read("preflight", "/preflight")
     },
     action(
         "pause",
@@ -728,16 +914,41 @@ pub const OPERATIONS: [Operation; 18] = [
         "/prints/{print_id}/actions/acknowledge_failure",
         ActionKind::AcknowledgeFailure,
     ),
+    command(
+        "register_spool",
+        "/spools/actions/register_spool",
+        SpoolCommandKind::RegisterSpool,
+    ),
+    command(
+        "load_spool",
+        "/spools/{spool_id}/actions/load_spool",
+        SpoolCommandKind::LoadSpool,
+    ),
+    command(
+        "unload_spool",
+        "/spools/{spool_id}/actions/unload_spool",
+        SpoolCommandKind::UnloadSpool,
+    ),
+    command(
+        "adjust_spool",
+        "/spools/{spool_id}/actions/adjust_spool",
+        SpoolCommandKind::AdjustSpool,
+    ),
+    command(
+        "retire_spool",
+        "/spools/{spool_id}/actions/retire_spool",
+        SpoolCommandKind::RetireSpool,
+    ),
 ];
 
-/// The eight operations this server serves beside the action vocabulary.
+/// The twelve operations this server serves beside the two vocabularies.
 ///
-/// Seven of them read and the eighth writes a manifest, which asks nothing of
-/// the machine; what they have in common is that none of them is an action of
-/// the vocabulary the contracts declare. A look writes its own record into the
+/// Eleven of them read and one writes a manifest, which asks nothing of the
+/// machine; what they have in common is that none of them is an action or a
+/// spool command the contracts declare. A look writes its own record into the
 /// print's history, as every read of the camera is kept, and asks nothing of
-/// the machine either.
-pub const BESIDE_THE_ACTIONS: [&str; 8] = [
+/// the machine either; a filament check records nothing at all.
+pub const BESIDE_THE_ACTIONS: [&str; 12] = [
     "prints",
     "status",
     "context",
@@ -746,6 +957,10 @@ pub const BESIDE_THE_ACTIONS: [&str; 8] = [
     "manifest_get",
     "look",
     "manifest_set",
+    "spools",
+    "spool",
+    "printer_history",
+    "preflight",
 ];
 
 /// The operation of one name, when this server serves one.
@@ -794,6 +1009,14 @@ mod tests {
             match declared.effect {
                 Effect::Mutating(kind) => {
                     assert_eq!(declared.action_kind(), Some(kind));
+                    assert_eq!(declared.command_kind(), None);
+                    assert_eq!(declared.granted_as(), Some(kind));
+                    assert!(declared.is_mutating());
+                }
+                Effect::Command(kind) => {
+                    assert_eq!(declared.action_kind(), None);
+                    assert_eq!(declared.command_kind(), Some(kind.action_kind()));
+                    assert_eq!(declared.granted_as(), Some(kind.action_kind()));
                     assert!(declared.is_mutating());
                 }
                 Effect::Write => {
@@ -834,6 +1057,84 @@ mod tests {
         assert_eq!(reading.accepts, None);
         assert_eq!(reading.answers, MEDIA_TYPE);
         assert_eq!(reading.effect, Effect::Read);
+    }
+
+    /// A spool command's body is its command's own fields, less the tag and
+    /// the spool its path already names.
+    #[test]
+    fn a_spool_commands_body_is_its_fields_less_the_tag_and_the_routed_spool() {
+        let load = operation("load_spool").expect("the load is served");
+        let names: Vec<(String, super::Located)> = load
+            .request()
+            .into_iter()
+            .map(|parameter| (parameter.name, parameter.located))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                ("spool_id".to_owned(), super::Located::Path),
+                ("actor".to_owned(), super::Located::Body),
+                ("reason".to_owned(), super::Located::Body),
+                ("tool".to_owned(), super::Located::Body),
+            ]
+        );
+        let register = operation("register_spool").expect("the registration is served");
+        assert!(
+            register
+                .request()
+                .iter()
+                .all(|parameter| parameter.name != super::COMMAND_TAG
+                    && parameter.located == super::Located::Body)
+        );
+    }
+
+    /// The ledger's own kind names exactly the commands the contracts' own
+    /// `SpoolCommand` declares, each by the tag it is spelled with, and every
+    /// spool command operation is declared under one of them.
+    #[test]
+    fn the_ledgers_kinds_are_the_commands_the_contracts_declare() {
+        let schema = super::Vocabulary::Commands.schema();
+        let declared: Vec<String> = schema["oneOf"]
+            .as_array()
+            .expect("the spool vocabulary is a union")
+            .iter()
+            .filter_map(|variant| variant.pointer("/properties/command/const"))
+            .filter_map(|tag| tag.as_str().map(str::to_owned))
+            .collect();
+        let kinds: Vec<String> = super::SpoolCommandKind::ALL
+            .iter()
+            .map(|kind| {
+                printobserver_types::serde_json::to_value(kind.action_kind())
+                    .ok()
+                    .and_then(|tag| tag.as_str().map(str::to_owned))
+                    .expect("an action kind renders as its tag")
+            })
+            .collect();
+        assert_eq!(kinds, declared);
+        let served: Vec<super::SpoolCommandKind> = OPERATIONS
+            .iter()
+            .filter_map(|operation| match operation.effect {
+                Effect::Command(kind) => Some(kind),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(served, super::SpoolCommandKind::ALL.to_vec());
+    }
+
+    /// A value a request may carry more than once is described as a list.
+    #[test]
+    fn a_repeated_value_is_described_as_a_list_of_its_kind() {
+        let history = operation("printer_history").expect("the printer history is served");
+        let kinds = history
+            .request_shapes()
+            .into_iter()
+            .find(|(parameter, _)| parameter.name == "kinds")
+            .expect("the history takes kinds");
+        assert!(kinds.0.repeated);
+        assert_eq!(
+            kinds.1,
+            printobserver_types::serde_json::json!({"type": "array", "items": {"type": "string"}})
+        );
     }
 
     /// An operation this server does not serve is answered as none.

@@ -8,6 +8,7 @@
 //! declared cannot come apart — and the ten mutating operations share one
 //! handler which is given the [`ActionKind`] its own entry declares, so a
 //! request cannot reach an action the operation it was sent to does not name.
+//! The five spool commands share one handler of their own on the same terms.
 //!
 //! # Every action takes the same one path
 //!
@@ -45,6 +46,12 @@
 //! one and replacing a manifest. So the class the policy rules on, and the
 //! agent's minimum interval with it, is the one the credential authenticated
 //! rather than the one the request claimed.
+//!
+//! The spool ledger is the printer's rather than one print's, so its four
+//! reads are open to every caller — a turn included, which is how the agent
+//! reads what is loaded and what a file needs — and its commands are held to
+//! the same claim and then to the envelope's own grants, which the domain rules
+//! on and records.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,20 +64,23 @@ use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Router, routing::MethodRouter};
+use printobserver_core::store::TimelineQuery;
 use printobserver_core::store::{
     EventStore, HistoryQuery, ImageStore, PrintStore, SessionStore, StoreError,
 };
-use printobserver_core::{ActionKind, Actor, ExecutionOutcome, PolicyDecision};
+use printobserver_core::{ActionKind, Actor, ExecutionOutcome, PolicyDecision, SpoolId};
 use printobserver_core::{CoreError, MAX_LOOK_WAIT_S, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
-use printobserver_types::{ImageId, PrintId};
+use printobserver_types::serde_json::Value;
+use printobserver_types::{EventId, EventKind, FileName, ImageId, PrintId, Timestamp};
 
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::server::{CREDENTIAL_ISSUE, OperatorCredential};
 use crate::turns::{TurnBinding, TurnCredentials};
 use crate::wire::{
     ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    ManifestAnswer, ManifestBody, PrintsAnswer, StatusAnswer,
+    ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer, SpoolAnswer, SpoolCommandAnswer,
+    SpoolsAnswer, StatusAnswer, TimelineAnswer, claimed_actor, spool_command_of,
 };
 
 /// What every handler is given: the supervisor, and the stores the reads
@@ -231,6 +241,27 @@ pub struct LookParams {
     pub wait_s: Option<u32>,
 }
 
+/// Whether a spools read asks for the retired ones too.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct SpoolsParams {
+    /// Asked for; absent, the retired spools are left out.
+    #[serde(default)]
+    pub include_retired: Option<bool>,
+}
+
+/// The file a filament check is about.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct PreflightParams {
+    /// The file, as the printer names it.
+    #[serde(default)]
+    pub file_name: Option<String>,
+}
+
+/// How many of a spool's own events its read carries, newest first.
+pub const SPOOL_RECENT_EVENTS: u32 = 20;
+
 /// Every public operation, beneath the one versioned prefix.
 ///
 /// # Panics
@@ -353,6 +384,26 @@ async fn nothing_here() -> Response {
 
 /// The route one declared operation is served by.
 fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
+    if let Effect::Command(spool_command) = operation.effect {
+        let kind = spool_command.action_kind();
+        if operation.path.contains("{spool_id}") {
+            return post(
+                move |state: State<ApiState>,
+                      caller: Extension<Caller>,
+                      Path(spool_id): Path<SpoolId>,
+                      body: Result<Json<Value>, JsonRejection>| async move {
+                    command(kind, state, caller, Some(spool_id), body).await
+                },
+            );
+        }
+        return post(
+            move |state: State<ApiState>,
+                  caller: Extension<Caller>,
+                  body: Result<Json<Value>, JsonRejection>| async move {
+                command(kind, state, caller, None, body).await
+            },
+        );
+    }
     if let Effect::Mutating(kind) = operation.effect {
         return post(
             move |state: State<ApiState>,
@@ -372,6 +423,10 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("look", Method::Get) => get(look),
         ("manifest_get", Method::Get) => get(manifest_get),
         ("manifest_set", Method::Put) => put(manifest_set),
+        ("spools", Method::Get) => get(spools),
+        ("spool", Method::Get) => get(spool),
+        ("printer_history", Method::Get) => get(printer_history),
+        ("preflight", Method::Get) => get(preflight),
         (name, method) => panic!(
             "the operation `{name}` is declared as {method} and this router serves no such route"
         ),
@@ -484,6 +539,219 @@ async fn act(
             printer_refusal,
         },
     )
+}
+
+/// Ask the spool ledger for one command.
+///
+/// The claimed actor is held to the caller before anything else of the body is
+/// read, and a body with no reason is refused before the domain is asked —
+/// so a request refused here is recorded nowhere. Whether the actor may ask at
+/// all is the envelope's grant, which the domain rules on and records like
+/// every refusal: a supervision turn's agent is refused there, under the
+/// default grants, rather than here.
+async fn command(
+    kind: ActionKind,
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    spool_id: Option<SpoolId>,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
+    let Some(fields) = body.as_object() else {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "a spool command's body is a document of its fields",
+        );
+    };
+    let actor = match claimed_actor(fields) {
+        Ok(actor) => actor,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    if let Some(refused) = claim_refused(&caller, &actor) {
+        return refused;
+    }
+    let asked = match spool_command_of(kind, spool_id, body) {
+        Ok(asked) => asked,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    let outcome = match state.supervisor.request_spool_command(asked).await {
+        Ok(outcome) => outcome,
+        Err(error) => return refusal(core_status(&error), error),
+    };
+    let status = match outcome.decision {
+        PolicyDecision::Accepted => StatusCode::OK,
+        // The refusal is the answer, exactly as a print action's is.
+        PolicyDecision::Rejected(_) => StatusCode::CONFLICT,
+    };
+    answer(
+        status,
+        &SpoolCommandAnswer {
+            decision: outcome.decision,
+            spool: outcome.spool,
+            events: outcome.events,
+        },
+    )
+}
+
+/// Every spool, beside one line each and the charges a tool is holding.
+async fn spools(State(state): State<ApiState>, Query(params): Query<SpoolsParams>) -> Response {
+    let listed = match state
+        .supervisor
+        .spools(params.include_retired.unwrap_or(false))
+        .await
+    {
+        Ok(listed) => listed,
+        Err(error) => return refusal(core_status(&error), error),
+    };
+    match state.supervisor.pending_charges(None).await {
+        Ok(pending) => answer(StatusCode::OK, &SpoolsAnswer::of(listed, pending)),
+        Err(error) => refusal(core_status(&error), error),
+    }
+}
+
+/// One spool, and the newest of the printer's own events that name it.
+async fn spool(State(state): State<ApiState>, Path(spool_id): Path<SpoolId>) -> Response {
+    let found = match state.supervisor.spool(spool_id).await {
+        Ok(Some(found)) => found,
+        Ok(None) => {
+            return refusal(
+                StatusCode::NOT_FOUND,
+                format!("there is no spool {spool_id}"),
+            );
+        }
+        Err(error) => return refusal(core_status(&error), error),
+    };
+    let query = TimelineQuery {
+        spool_id: Some(spool_id),
+        limit: Some(SPOOL_RECENT_EVENTS),
+        ..every_timeline_kind()
+    };
+    match state.supervisor.timeline(query).await {
+        Ok(recent) => answer(
+            StatusCode::OK,
+            &SpoolAnswer {
+                spool: found,
+                recent,
+            },
+        ),
+        Err(error) => refusal(core_status(&error), error),
+    }
+}
+
+/// The printer history unfiltered: every timeline kind, the default window.
+const fn every_timeline_kind() -> TimelineQuery {
+    TimelineQuery {
+        kinds: Vec::new(),
+        since: None,
+        until: None,
+        spool_id: None,
+        before: None,
+        limit: None,
+    }
+}
+
+/// One value of a printer history read, refused naming it when it is not one.
+fn read_one<T: core::str::FromStr>(name: &str, text: &str) -> Result<T, String>
+where
+    T::Err: core::fmt::Display,
+{
+    text.parse()
+        .map_err(|error: T::Err| format!("`{name}` is `{text}`, which will not do: {error}"))
+}
+
+/// The printer history query a request's values make.
+///
+/// `kinds` may be given any number of times, each one kind; every other value
+/// at most once. A value this read does not take is refused naming it rather
+/// than ignored, because a filter that was quietly dropped answers more than
+/// was asked for.
+fn timeline_query(asked: &[(String, String)]) -> Result<TimelineQuery, String> {
+    let mut query = every_timeline_kind();
+    let mut seen: Vec<&str> = Vec::new();
+    for (name, text) in asked {
+        if name != "kinds" {
+            if seen.contains(&name.as_str()) {
+                return Err(format!(
+                    "`{name}` was given more than once, and this read takes one"
+                ));
+            }
+            seen.push(name);
+        }
+        match name.as_str() {
+            "kinds" => query.kinds.push(read_one::<EventKind>(name, text)?),
+            "since" => query.since = Some(read_one::<Timestamp>(name, text)?),
+            "until" => query.until = Some(read_one::<Timestamp>(name, text)?),
+            "spool_id" => query.spool_id = Some(read_one::<SpoolId>(name, text)?),
+            "before" => query.before = Some(read_one::<EventId>(name, text)?),
+            "limit" => query.limit = Some(read_one::<u32>(name, text)?),
+            other => return Err(format!("the printer history takes no `{other}`")),
+        }
+    }
+    Ok(query)
+}
+
+/// One page of the printer's own history, newest first, and the cursor for
+/// the page after it when there is one.
+///
+/// The cursor is answered only when an older event exists, so a caller paging
+/// by it stops at the last page rather than one empty page after it.
+async fn printer_history(
+    State(state): State<ApiState>,
+    Query(asked): Query<Vec<(String, String)>>,
+) -> Response {
+    let query = match timeline_query(&asked) {
+        Ok(query) => query,
+        Err(refused) => return refusal(StatusCode::BAD_REQUEST, refused),
+    };
+    let limit = match query.resolved_limit() {
+        Ok(limit) => limit,
+        Err(error) => return refusal(store_status(&error), error),
+    };
+    let events = match state.supervisor.timeline(query.clone()).await {
+        Ok(events) => events,
+        Err(error) => return refusal(core_status(&error), error),
+    };
+    let full = u32::try_from(events.len()).is_ok_and(|read| read == limit);
+    let next = match events.last() {
+        Some(last) if full => {
+            let older = TimelineQuery {
+                before: Some(last.id),
+                limit: Some(1),
+                ..query
+            };
+            match state.supervisor.timeline(older).await {
+                Ok(older) if older.is_empty() => None,
+                Ok(_) => Some(last.id),
+                Err(error) => return refusal(core_status(&error), error),
+            }
+        }
+        _ => None,
+    };
+    answer(StatusCode::OK, &TimelineAnswer { events, next })
+}
+
+/// Whether the spools loaded hold enough for one file, read now.
+async fn preflight(
+    State(state): State<ApiState>,
+    Query(params): Query<PreflightParams>,
+) -> Response {
+    let Some(named) = params.file_name else {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "a filament check needs `file_name`, and this request carries none",
+        );
+    };
+    let file_name = match FileName::new(&named) {
+        Ok(file_name) => file_name,
+        Err(error) => return refusal(StatusCode::BAD_REQUEST, error),
+    };
+    match state.supervisor.preflight(&file_name).await {
+        Ok(preflight) => answer(StatusCode::OK, &PreflightAnswer { preflight }),
+        Err(error) => refusal(core_status(&error), error),
+    }
 }
 
 /// List every print, and name the one the printer's job belongs to.

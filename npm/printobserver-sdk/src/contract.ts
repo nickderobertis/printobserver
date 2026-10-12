@@ -76,6 +76,10 @@ export const OPERATION_NAMES = [
   "manifest_get",
   "look",
   "manifest_set",
+  "spools",
+  "spool",
+  "printer_history",
+  "preflight",
   "pause",
   "resume",
   "cancel",
@@ -86,6 +90,11 @@ export const OPERATION_NAMES = [
   "set_bed_target_c",
   "set_fan_percent",
   "acknowledge_failure",
+  "register_spool",
+  "load_spool",
+  "unload_spool",
+  "adjust_spool",
+  "retire_spool",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
@@ -945,6 +954,12 @@ export interface Preflight {
   verdict: PreflightVerdict;
 }
 
+/** What a filament check answers. */
+export interface PreflightAnswer {
+  /** What the check found, read now. */
+  preflight: Preflight;
+}
+
 /** The filament check before a start was made. */
 export interface PreflightCheckedPayload {
   /** The start it was made for, when it was made for one. */
@@ -1302,6 +1317,17 @@ export interface SpoolAdjustedPayload {
   took_pending?: Array<PendingTaken>;
 }
 
+/**
+ * What one spool's read answers: the spool, and the newest of the printer's
+ * own events that name it.
+ */
+export interface SpoolAnswer {
+  /** The newest timeline events naming it, newest first. */
+  recent: Array<EventRecord>;
+  /** The spool, retired or not. */
+  spool: SpoolRecord;
+}
+
 /** The whole vocabulary of the spool ledger, and there is no other. */
 export type SpoolCommand =
   | {
@@ -1328,6 +1354,23 @@ export type SpoolCommand =
       spool_id: SpoolId;
     }
   | { command: "retire_spool"; actor: Actor; reason: string; spool_id: SpoolId };
+
+/**
+ * What a spool command answers, accepted or refused.
+ *
+ * A refusal is the same shape and deliberately so: the decision carries the
+ * grant or the ledger's own reason, and the events are the record the
+ * refusal
+ * wrote.
+ */
+export interface SpoolCommandAnswer {
+  /** The decision taken on the command. */
+  decision: PolicyDecision;
+  /** Every event it wrote, in the order they were written. */
+  events: Array<EventRecord>;
+  /** The spool it was about, as the command left it, when there is one. */
+  spool?: SpoolRecord | null;
+}
 
 /** A spool command was refused. */
 export interface SpoolCommandRejectedPayload {
@@ -1446,6 +1489,30 @@ export interface SpoolUnverifiedPayload {
 }
 
 /**
+ * What the spools read answers.
+ *
+ * `at_a_glance` is one line per spool, in the order `spools` lists them,
+ * composed here so that what is left on each spool is the first thing a
+ * reader of either rendering meets rather than a figure inside a whole
+ * record. Its name is what puts it first: both renderings walk an answer's
+ * fields in name order, ahead of `pending` and `spools`.
+ */
+export interface SpoolsAnswer {
+  /** One line per spool in `spools`, in the same order. */
+  at_a_glance: Array<string>;
+  /**
+   * Every charge held after a filament change nobody has confirmed, oldest
+   * first: what the next spool loaded on that tool is charged.
+   */
+  pending: Array<PendingCharge>;
+  /**
+   * Every spool, retired ones only when asked for, most recently registered
+   * first.
+   */
+  spools: Array<SpoolRecord>;
+}
+
+/**
  * What one restart put back the way it found it.
  *
  * A supervisor that has been restarted adopts whatever the store holds
@@ -1521,6 +1588,17 @@ export interface SupervisionSessionOpenedPayload {
   harness_identity: string;
   /** The session's own name in the harness. */
   session_name: string;
+}
+
+/** What a printer history read answers: one page of the printer's own events. */
+export interface TimelineAnswer {
+  /** The events, newest first. */
+  events: Array<EventRecord>;
+  /**
+   * The cursor for the following, older page, given as `before`; absent
+   * when there is none.
+   */
+  next?: EventId | null;
 }
 
 /** An instant in UTC, as an RFC 3339 string with a zero offset. */
@@ -1802,6 +1880,99 @@ export class GeneratedClient extends GeneratedSurface {
   }
 
   /**
+   * Call `spools` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async spools(includeRetired?: boolean): Promise<SpoolsAnswer> {
+    const target = `/v1/spools`;
+    const asked: Array<[string, string]> = [];
+    if (includeRetired !== undefined) {
+      asked.push(["include_retired", String(includeRetired)]);
+    }
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolsAnswer>("GET", target, asked, sending);
+  }
+
+  /**
+   * Call `spool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async spool(spoolId: string): Promise<SpoolAnswer> {
+    const target = `/v1/spools/${spoolId}`;
+    const asked: Array<[string, string]> = [];
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolAnswer>("GET", target, asked, sending);
+  }
+
+  /**
+   * Call `printer_history` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async printerHistory(
+    kinds?: Array<string>,
+    since?: string,
+    until?: string,
+    spoolId?: string,
+    before?: string,
+    limit?: number,
+  ): Promise<TimelineAnswer> {
+    const target = `/v1/history`;
+    const asked: Array<[string, string]> = [];
+    if (kinds !== undefined) {
+      for (const value of kinds) {
+        asked.push(["kinds", String(value)]);
+      }
+    }
+    if (since !== undefined) {
+      asked.push(["since", String(since)]);
+    }
+    if (until !== undefined) {
+      asked.push(["until", String(until)]);
+    }
+    if (spoolId !== undefined) {
+      asked.push(["spool_id", String(spoolId)]);
+    }
+    if (before !== undefined) {
+      asked.push(["before", String(before)]);
+    }
+    if (limit !== undefined) {
+      asked.push(["limit", String(limit)]);
+    }
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<TimelineAnswer>("GET", target, asked, sending);
+  }
+
+  /**
+   * Call `preflight` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async preflight(fileName: string): Promise<PreflightAnswer> {
+    const target = `/v1/preflight`;
+    const asked: Array<[string, string]> = [];
+    if (fileName !== undefined) {
+      asked.push(["file_name", String(fileName)]);
+    }
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<PreflightAnswer>("GET", target, asked, sending);
+  }
+
+  /**
    * Call `pause` on the configured supervisor.
    *
    * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
@@ -2064,5 +2235,145 @@ export class GeneratedClient extends GeneratedSurface {
     sending.reason = reason;
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `register_spool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async registerSpool(
+    initialG: number,
+    material: string,
+    name: string,
+    reason: string,
+    color?: string,
+    densityGCm3?: number,
+    diameterMm?: number,
+    remainingG?: number,
+    tareG?: number,
+  ): Promise<SpoolCommandAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/spools/actions/register_spool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (color !== undefined) {
+      sending.color = color;
+    }
+    if (densityGCm3 !== undefined) {
+      sending.density_g_cm3 = densityGCm3;
+    }
+    if (diameterMm !== undefined) {
+      sending.diameter_mm = diameterMm;
+    }
+    sending.initial_g = initialG;
+    sending.material = material;
+    sending.name = name;
+    sending.reason = reason;
+    if (remainingG !== undefined) {
+      sending.remaining_g = remainingG;
+    }
+    if (tareG !== undefined) {
+      sending.tare_g = tareG;
+    }
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `load_spool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async loadSpool(spoolId: string, reason: string, tool: number): Promise<SpoolCommandAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/spools/${spoolId}/actions/load_spool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    sending.tool = tool;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `unload_spool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async unloadSpool(spoolId: string, reason: string): Promise<SpoolCommandAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/spools/${spoolId}/actions/unload_spool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `adjust_spool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async adjustSpool(
+    spoolId: string,
+    reason: string,
+    grossG?: number,
+    remainingG?: number,
+  ): Promise<SpoolCommandAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/spools/${spoolId}/actions/adjust_spool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (grossG !== undefined) {
+      sending.gross_g = grossG;
+    }
+    sending.reason = reason;
+    if (remainingG !== undefined) {
+      sending.remaining_g = remainingG;
+    }
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `retire_spool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async retireSpool(spoolId: string, reason: string): Promise<SpoolCommandAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/spools/${spoolId}/actions/retire_spool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
   }
 }

@@ -434,6 +434,139 @@ def test_manifest_set_makes_no_request_when_the_reason_is_empty() -> None:
         equal(host.requests(), 0, describing="what a blank reason sent")
 
 
+def test_spools_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`spools` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"at_a_glance": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "p'
+        'ending": [{"analysed_length_mm": 1.5, "charge_key": {"key": '
+        '"print", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
+        ' "segment": 7, "tool": 7}, "length_mm": 1.5, "method": "slic'
+        'er_estimate", "note": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        ', "pended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "posi'
+        'tion": {"bytes": 7, "observed_at": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "size_bytes": 7}, "print_id": "0198f0a1-2b3c-'
+        '7d4e-8f90-123456789abc", "tool": 7}], "spools": [{"color": "'
+        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": 1.5,'
+        ' "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "initial_g": 1.5, "loaded_on_tool": 7, "material": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "trust":'
+        ' {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc"}]}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.spools(True)
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(received.target, "/v1/spools?include_retired=true")
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_spool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`spool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"recent": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "spool": {"color'
+        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "density_g_cm3": '
+        '1.5, "diameter_mm": 1.5, "id": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "initial_g": 1.5, "loaded_on_tool": 7, "material"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc", "registered_at": "0198f0a1-2b3'
+        'c-7d4e-8f90-123456789abc", "remaining_g": 1.5, "retired_at":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tare_g": 1.5, "tru'
+        'st": {"state": "verified"}, "updated_at": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.spool("0198f0a1-2b3c-7d4e-8f90-123456789abc")
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(received.target, "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc")
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_printer_history_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`printer_history` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha2'
+        '56": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "actio'
+        'n_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "re'
+        'ceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "next": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc"}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.printer_history(
+            ["0198f0a1-2b3c-7d4e-8f90-123456789abc"],
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            7,
+        )
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(
+        received.target,
+        "/v1/history?kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&since=0198f0a1-2b3c-7d4e-8f90-123456789abc&until=0198f0a1-2b3c-7d4e-8f90-123456789abc&spool_id=0198f0a1-2b3c-7d4e-8f90-123456789abc&before=0198f0a1-2b3c-7d4e-8f90-123456789abc&limit=7",
+    )
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_preflight_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`preflight` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        ', "tools": [{"buffer_g": 1.5, "marks": [{"reason": {"print_i'
+        'd": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "reason": "uncha'
+        'rged_print"}, "since": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}], "remaining_g": 1.5, "required_g": 1.5, "spool_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "spool_name": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc", "tool": 7, "verdict": "passed"'
+        '}], "verdict": "passed"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.preflight("0198f0a1-2b3c-7d4e-8f90-123456789abc")
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(received.target, "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc")
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
 def test_pause_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`pause` sends what it declares and answers what the server sent."""
     answer = json.loads(
@@ -515,6 +648,7 @@ def test_pause_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -624,6 +758,7 @@ def test_resume_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -733,6 +868,7 @@ def test_cancel_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -879,6 +1015,7 @@ def test_start_print_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1026,6 +1163,7 @@ def test_set_feedrate_factor_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1141,6 +1279,7 @@ def test_set_flowrate_factor_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1255,6 +1394,7 @@ def test_set_tool_target_c_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1369,6 +1509,7 @@ def test_set_bed_target_c_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1483,6 +1624,7 @@ def test_set_fan_percent_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1605,6 +1747,7 @@ def test_acknowledge_failure_surfaces_the_policys_own_refusal() -> None:
                 isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
                 describing="the refusal itself to be carried",
             )
+            equal(refused.answer, refusal)
         else:
             truth(False, describing="the policy's refusal to arrive as one")
 
@@ -1635,6 +1778,604 @@ def test_acknowledge_failure_makes_no_request_when_the_reason_is_empty() -> None
                 cast(EventId, json.loads('"0198f0a1-2b3c-7d4e-8f90-123456789abc"')),
                 "   ",
             )
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_register_spool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`register_spool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc"}, "kind": "action_executed", "payload": {"action_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded'
+        '_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "regis'
+        'tered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remainin'
+        'g_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated'
+        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.register_spool(
+            1.5,
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "a generated walk is asking",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            1.5,
+            1.5,
+            1.5,
+            1.5,
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/spools/actions/register_spool")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "color": "0198f0a1-2b3c-7d4e-8f90-1234567'
+            '89abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "initial_g'
+            '": 1.5, "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
+            '"name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "reason": "a'
+            ' generated walk is asking", "remaining_g": 1.5, "tare_g": 1.'
+            "5}"
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_register_spool_surfaces_the_policys_own_refusal() -> None:
+    """`register_spool` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"decision": {"rejected": {"spool_refused": {"detail": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5'
+        ', "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g":'
+        ' 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "tare_g": 1.5, "trust": {"state": "verifie'
+        'd"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.register_spool(
+                1.5,
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                "a generated walk is asking",
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                1.5,
+                1.5,
+                1.5,
+                1.5,
+            )
+        except RejectedError as refused:
+            equal(refused.requested, None)
+            equal(refused.allowed, None)
+            truth(
+                isinstance(refused.reason, dict) and "spool_refused" in refused.reason,
+                describing="the ledger's refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_register_spool_makes_no_request_when_the_reason_is_empty() -> None:
+    """`register_spool` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.register_spool(
+                1.5,
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                "",
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                1.5,
+                1.5,
+                1.5,
+                1.5,
+            )
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.register_spool(
+                1.5,
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                "   ",
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                1.5,
+                1.5,
+                1.5,
+                1.5,
+            )
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_load_spool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`load_spool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc"}, "kind": "action_executed", "payload": {"action_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded'
+        '_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "regis'
+        'tered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remainin'
+        'g_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated'
+        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.load_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 7
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/load_spool")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking", "'
+            'tool": 7}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_load_spool_surfaces_the_policys_own_refusal() -> None:
+    """`load_spool` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"decision": {"rejected": {"spool_refused": {"detail": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5'
+        ', "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g":'
+        ' 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "tare_g": 1.5, "trust": {"state": "verifie'
+        'd"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.load_spool(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 7
+            )
+        except RejectedError as refused:
+            equal(refused.requested, None)
+            equal(refused.allowed, None)
+            truth(
+                isinstance(refused.reason, dict) and "spool_refused" in refused.reason,
+                describing="the ledger's refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_load_spool_makes_no_request_when_the_reason_is_empty() -> None:
+    """`load_spool` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.load_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "", 7)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.load_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", 7)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_unload_spool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`unload_spool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc"}, "kind": "action_executed", "payload": {"action_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded'
+        '_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "regis'
+        'tered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remainin'
+        'g_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated'
+        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.unload_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/unload_spool")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_unload_spool_surfaces_the_policys_own_refusal() -> None:
+    """`unload_spool` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"decision": {"rejected": {"spool_refused": {"detail": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5'
+        ', "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g":'
+        ' 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "tare_g": 1.5, "trust": {"state": "verifie'
+        'd"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.unload_spool(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
+            )
+        except RejectedError as refused:
+            equal(refused.requested, None)
+            equal(refused.allowed, None)
+            truth(
+                isinstance(refused.reason, dict) and "spool_refused" in refused.reason,
+                describing="the ledger's refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_unload_spool_makes_no_request_when_the_reason_is_empty() -> None:
+    """`unload_spool` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.unload_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.unload_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_adjust_spool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`adjust_spool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc"}, "kind": "action_executed", "payload": {"action_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded'
+        '_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "regis'
+        'tered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remainin'
+        'g_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated'
+        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.adjust_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 1.5, 1.5
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/adjust_spool")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "gross_g": 1.5, "reason": "a generated wa'
+            'lk is asking", "remaining_g": 1.5}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_adjust_spool_surfaces_the_policys_own_refusal() -> None:
+    """`adjust_spool` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"decision": {"rejected": {"spool_refused": {"detail": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5'
+        ', "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g":'
+        ' 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "tare_g": 1.5, "trust": {"state": "verifie'
+        'd"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.adjust_spool(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", 1.5, 1.5
+            )
+        except RejectedError as refused:
+            equal(refused.requested, None)
+            equal(refused.allowed, None)
+            truth(
+                isinstance(refused.reason, dict) and "spool_refused" in refused.reason,
+                describing="the ledger's refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_adjust_spool_makes_no_request_when_the_reason_is_empty() -> None:
+    """`adjust_spool` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.adjust_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "", 1.5, 1.5)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.adjust_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", 1.5, 1.5)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_retire_spool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`retire_spool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"decision": "accepted", "events": [{"id": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc"}, "kind": "action_executed", "payload": {"action_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "density_g_cm3": 1.5, "diameter_mm": 1.5, "id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g": 1.5, "loaded'
+        '_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "regis'
+        'tered_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "remainin'
+        'g_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "tare_g": 1.5, "trust": {"state": "verified"}, "updated'
+        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.retire_spool(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/spools/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/retire_spool")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_retire_spool_surfaces_the_policys_own_refusal() -> None:
+    """`retire_spool` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"decision": {"rejected": {"spool_refused": {"detail": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}}}, "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}], "spool": {"color": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "density_g_cm3": 1.5, "diameter_mm": 1.5'
+        ', "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "initial_g":'
+        ' 1.5, "loaded_on_tool": 7, "material": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "registered_at": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "remaining_g": 1.5, "retired_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "tare_g": 1.5, "trust": {"state": "verifie'
+        'd"}, "updated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.retire_spool(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
+            )
+        except RejectedError as refused:
+            equal(refused.requested, None)
+            equal(refused.allowed, None)
+            truth(
+                isinstance(refused.reason, dict) and "spool_refused" in refused.reason,
+                describing="the ledger's refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_retire_spool_makes_no_request_when_the_reason_is_empty() -> None:
+    """`retire_spool` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.retire_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.retire_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ")
         except NoReasonError:
             pass
         else:

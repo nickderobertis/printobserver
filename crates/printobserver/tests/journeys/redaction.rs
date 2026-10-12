@@ -89,6 +89,7 @@ pub fn no_run_of_the_walk_prints_the_credential(world: &World) {
 fn a_refused_credential_is_named_and_neither_credential_is_printed(world: &World) {
     for one in walk::walk(world) {
         world.wants(one.reports);
+        world.prepare_ledger_for(&one.command.name);
         let one = walk::about_now(&one, world);
         let ran = running::configured(world, &failures::succeeding(&one), OTHER_CREDENTIAL);
         let said = ran.said();
@@ -387,6 +388,7 @@ fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, S
     let mut said = Vec::new();
     for one in walk::walk(world) {
         world.wants(one.reports);
+        world.prepare_ledger_for(&one.command.name);
         let one = walk::about_now(&one, world);
         let arguments = failures::succeeding(&one);
         let name = one.command.name.clone();
@@ -410,7 +412,7 @@ fn everything_every_path_says(world: &World, credential: &str) -> Vec<(String, S
             format!("{name} against a refused configuration"),
             refused_configuration(world, &arguments, credential),
         ));
-        if one.operation().action_kind().is_some() {
+        if one.operation().granted_as().is_some() {
             world.wants(failures::rejected_from(&one));
             let rejected = failures::rejected(world, &one);
             said.push((

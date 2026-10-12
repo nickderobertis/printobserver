@@ -7,7 +7,19 @@
 //! sentence, because a caller that can read the range allowed can ask again
 //! for something inside it.
 
-use crate::contract::{ActionAnswer, PolicyDecision, Range, RejectionReason};
+use crate::contract::{ActionAnswer, PolicyDecision, Range, RejectionReason, SpoolCommandAnswer};
+
+/// The whole answer a refusal arrived in: an action's, whose record carries
+/// the request and the decision, or a spool command's, carrying the decision
+/// and the events its refusal wrote.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(untagged)]
+pub enum RejectedAnswer {
+    /// A print action's answer.
+    Action(Box<ActionAnswer>),
+    /// A spool command's answer.
+    SpoolCommand(Box<SpoolCommandAnswer>),
+}
 
 /// The policy's own refusal of one action, as a caller reads it.
 ///
@@ -23,15 +35,19 @@ pub struct Rejection {
     pub requested: Option<f64>,
     /// The range that is allowed, where the policy ruled on a value.
     pub allowed: Option<Range>,
-    /// The whole answer, whose record carries the request and the decision.
-    pub answer: Box<ActionAnswer>,
+    /// The whole answer the refusal arrived in.
+    pub answer: RejectedAnswer,
 }
 
 impl Rejection {
     /// The refusal one answer carries, when the decision on it was a refusal.
     #[must_use]
-    pub fn of(answer: ActionAnswer) -> Option<Self> {
-        let PolicyDecision::Rejected(reason) = &answer.record.decision else {
+    pub fn of(answer: RejectedAnswer) -> Option<Self> {
+        let decision = match &answer {
+            RejectedAnswer::Action(action) => &action.record.decision,
+            RejectedAnswer::SpoolCommand(command) => &command.decision,
+        };
+        let PolicyDecision::Rejected(reason) = decision else {
             return None;
         };
         let (requested, allowed) = match reason {
@@ -44,7 +60,7 @@ impl Rejection {
             reason: reason.clone(),
             requested,
             allowed,
-            answer: Box::new(answer),
+            answer,
         })
     }
 }

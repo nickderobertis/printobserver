@@ -488,6 +488,7 @@ impl Server {
             .camera_snapshot_url
             .clone_from(&config.camera_snapshot_url);
         core_config.observation_interval = config.observation_interval;
+        core_config.spools = config.spools;
         let supervisor = Supervisor::new(
             core_config,
             Arc::clone(&ports.printer),

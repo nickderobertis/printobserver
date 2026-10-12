@@ -1,9 +1,9 @@
 //! The served route set, held to the contracts rather than to a list here.
 //!
 //! The required operation set is **derived from the contracts' own
-//! `PrintAction`** — one operation per variant it declares, read out of the
-//! schema that type generates in this process — plus the seven operations this
-//! server is required to serve beside them. Growing the declared list and the routes together
+//! `PrintAction` and `SpoolCommand`** — one operation per variant each declares,
+//! read out of the schema that type generates in this process — plus the
+//! operations this server is required to serve beside them. Growing the declared list and the routes together
 //! cannot satisfy this, because the side it is compared against is another
 //! crate's closed type.
 //!
@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use printobserver_core::PrintAction;
+use printobserver_core::{PrintAction, SpoolCommand};
 use printobserver_server::{BESIDE_THE_ACTIONS, Effect, MEDIA_TYPE, Method, OPERATIONS, Operation};
 use printobserver_types::serde_json::{Value, json};
 
@@ -77,6 +77,24 @@ fn required() -> BTreeSet<String> {
         "the contracts declare only {} actions, which is not the vocabulary",
         found.len()
     );
+    let ledger = printobserver_types::contract::schema_of::<SpoolCommand>();
+    let commands: Vec<String> = ledger["oneOf"]
+        .as_array()
+        .expect("the spool vocabulary is a union")
+        .iter()
+        .map(|variant| {
+            variant["properties"]["command"]["const"]
+                .as_str()
+                .expect("every spool command is tagged with its own name")
+                .to_owned()
+        })
+        .collect();
+    assert!(
+        commands.len() >= 5,
+        "the contracts declare only {} spool commands, which is not the vocabulary",
+        commands.len()
+    );
+    found.extend(commands);
     found.extend(BESIDE_THE_ACTIONS.iter().map(|name| (*name).to_owned()));
     found
 }
@@ -244,6 +262,11 @@ async fn every_declared_route_is_served_and_answers_json() {
         // not JSON, and a path no route is served at answers nothing at all —
         // so reaching a JSON answer at every declared path is what says the
         // fold from the declaration to the router reached the network.
+        let url = if operation.name == "preflight" {
+            format!("{url}?file_name=benchy.gcode")
+        } else {
+            url
+        };
         let (status, _) = match operation.method {
             Method::Get => world.get(&url.replace("{image_id}", &image_id())).await,
             Method::Post => world.post(&url, &body_for(&operation)).await,
@@ -367,6 +390,9 @@ fn manifest() -> Value {
 
 /// A body one mutating operation takes, carrying whatever that action needs.
 pub fn body_for(operation: &Operation) -> Value {
+    if let Effect::Command(kind) = operation.effect {
+        return crate::world::spool_body(kind.action_kind());
+    }
     let Effect::Mutating(kind) = operation.effect else {
         return json!({});
     };

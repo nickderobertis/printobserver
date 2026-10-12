@@ -87,6 +87,15 @@ const SETTLING_MANIFEST: &str = concat!(
     r#""slicer_profile":"the profile settling drove","allowed":{},"metadata":{}}"#
 );
 
+/// The reason every spool the world registers for itself is registered with.
+const REGISTERING_REASON: &str = "a roll on the shelf, registered before it is used";
+
+/// The name the walk's own spool is registered under.
+pub const WALK_SPOOL: &str = "PLA black";
+
+/// The empty weight the walk's own spool is registered with, in grams.
+pub const SPOOL_TARE_G: f64 = 250.0;
+
 /// The world whose printer port reaches a socket.
 pub const STOOD_IN: &str = "stood-in";
 
@@ -150,6 +159,19 @@ pub struct World {
     /// time a journey asks for it, so a world nobody asks it of lists no print
     /// beside its own.
     ended: std::sync::OnceLock<String>,
+    /// The spool the walk's spool commands are about: registered the first
+    /// time a journey asks for it, with a tare so a scale reading can correct
+    /// it, and put on or off tool 0 as each command needs it.
+    spool: std::sync::OnceLock<String>,
+    /// The spool a retirement is about now: a fresh one before each, because
+    /// a spool is retired once.
+    retiring: std::sync::Mutex<Option<String>>,
+    /// A spool already retired, which every command about one is refused for
+    /// by the ledger.
+    retired: std::sync::OnceLock<String>,
+    /// An event of the printer's history written after the walk's spool was
+    /// registered, which a history read pages from.
+    cursor: std::sync::OnceLock<String>,
     /// The camera a look takes its frame from.
     pub camera: Host,
     /// The skill the supervisor is configured with.
@@ -268,6 +290,10 @@ impl World {
             image_id,
             event_id,
             ended: std::sync::OnceLock::new(),
+            spool: std::sync::OnceLock::new(),
+            retiring: std::sync::Mutex::new(None),
+            retired: std::sync::OnceLock::new(),
+            cursor: std::sync::OnceLock::new(),
             camera,
             skill: skill.to_path_buf(),
             server,
@@ -418,6 +444,167 @@ impl World {
         self.ended.get().is_some_and(|ended| ended == print_id)
     }
 
+    /// The spool every spool command of the walk is about, registered the
+    /// first time this is asked.
+    #[must_use]
+    pub fn spool_id(&self) -> String {
+        self.spool
+            .get_or_init(|| self.registered(WALK_SPOOL, "PLA", Some(SPOOL_TARE_G)))
+            .clone()
+    }
+
+    /// The spool a retirement is about now, registering one the first time.
+    #[must_use]
+    pub fn retiring_spool_id(&self) -> String {
+        self.retiring
+            .lock()
+            .expect("the spool a retirement is about")
+            .get_or_insert_with(|| self.registered("a spool to retire", "PLA", None))
+            .clone()
+    }
+
+    /// A spool already retired, retired the first time this is asked.
+    #[must_use]
+    pub fn retired_spool_id(&self) -> String {
+        self.retired
+            .get_or_init(|| {
+                let spool = self.registered("a spool already retired", "PLA", None);
+                self.ledger(&["retire-spool", "--spool-id", &spool]);
+                spool
+            })
+            .clone()
+    }
+
+    /// Register a spool after the walk's own, the first time this is asked,
+    /// and answer the event that registered it — the same event every time
+    /// after: a cursor a history read pages from.
+    #[must_use]
+    pub fn register_history_cursor(&self) -> String {
+        let _ = self.spool_id();
+        self.cursor
+            .get_or_init(|| {
+                self.ledger(&[
+                    "register-spool",
+                    "--name",
+                    "a spool a history read pages from",
+                    "--material",
+                    "PLA",
+                    "--initial-g",
+                    "1000",
+                ])
+                .pointer("/events/0/id")
+                .and_then(Value::as_str)
+                .expect("a registration answers the event it wrote")
+                .to_owned()
+            })
+            .clone()
+    }
+
+    /// Put the ledger where one command needs it, through this same surface:
+    /// the walk's spool on tool 0 for an unload of it, and off every tool for
+    /// anything else — so a load of it can be taken and a start is judged on
+    /// no spool the walk left loaded — at its full figure before a correction,
+    /// and a fresh spool for a retirement.
+    pub fn prepare_ledger_for(&self, command: &str) {
+        // A spool command names the print it was taken during, so one asked
+        // while the supervisor still holds the last print open answers a
+        // different record from the same command asked a moment later.
+        if command.ends_with("-spool") {
+            self.no_print_is_open();
+        }
+        if command == "retire-spool" {
+            let fresh = self.registered("a spool to retire", "PLA", None);
+            *self
+                .retiring
+                .lock()
+                .expect("the spool a retirement is about") = Some(fresh);
+            return;
+        }
+        // Nothing has loaded the walk's spool before it is registered.
+        if self.spool.get().is_none() && !command.contains("spool") {
+            return;
+        }
+        let spool = self.spool_id();
+        let read = self.ledger(&["spool", "--spool-id", &spool]);
+        let on_tool = read
+            .pointer("/spool/loaded_on_tool")
+            .and_then(Value::as_i64);
+        match (command == "unload-spool", on_tool) {
+            (true, None) => {
+                self.ledger(&["load-spool", "--spool-id", &spool, "--tool", "0"]);
+            }
+            (false, Some(_)) => {
+                self.ledger(&["unload-spool", "--spool-id", &spool]);
+            }
+            _ => {}
+        }
+        // A correction is from a figure of its own, so every run of one
+        // answers the same correction rather than one from the run before.
+        if command == "adjust-spool" {
+            self.ledger(&[
+                "adjust-spool",
+                "--spool-id",
+                &spool,
+                "--remaining-g",
+                "1000",
+            ]);
+        }
+    }
+
+    /// Register one spool through this same surface, and answer its identifier.
+    fn registered(&self, name: &str, material: &str, tare_g: Option<f64>) -> String {
+        let tare = tare_g.map(|tare| tare.to_string());
+        let mut asked = vec![
+            "register-spool",
+            "--name",
+            name,
+            "--material",
+            material,
+            "--initial-g",
+            "1000",
+        ];
+        if let Some(tare) = tare.as_deref() {
+            asked.extend_from_slice(&["--tare-g", tare]);
+        }
+        // The one registration a reader of the worked examples meets, so it
+        // says what a person registering a roll would.
+        self.ledger_saying(&asked, REGISTERING_REASON)
+            .pointer("/spool/id")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("the walk could not register `{name}`"))
+            .to_owned()
+    }
+
+    /// Ask the ledger for one thing, for no reason but setting the walk up,
+    /// and answer what it said.
+    fn ledger(&self, asked: &[&str]) -> Value {
+        self.ledger_saying(asked, SETTLING_REASON)
+    }
+
+    /// The same, giving a reason of its own.
+    fn ledger_saying(&self, asked: &[&str], reason: &str) -> Value {
+        let mut given = asked.to_vec();
+        if given.first().is_some_and(|command| {
+            printobserver::surface::command(command)
+                .and_then(|found| found.operation)
+                .is_some_and(|operation| operation.is_mutating())
+        }) {
+            given.extend_from_slice(&["--actor", "operator", "--reason", reason]);
+        }
+        let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+            .args(&given)
+            .args(["--json", "--config"])
+            .arg(self.client_config())
+            .output()
+            .expect("a ledger command runs");
+        assert!(
+            ran.status.success(),
+            "the walk could not set the ledger up with {given:?}: {}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
+        printobserver_types::serde_json::from_slice(&ran.stdout).unwrap_or(Value::Null)
+    }
+
     /// The print every command in the walk is about now.
     #[must_use]
     pub fn print_id(&self) -> String {
@@ -449,6 +636,61 @@ impl World {
         if let Some(active) = listing.get("active").and_then(Value::as_str) {
             self.follows(active);
         }
+    }
+
+    /// Wait until the supervisor holds no print open, reading the listing that
+    /// closes every print the machine shows is over.
+    ///
+    /// The machine reporting idle is not the supervisor having seen it: a
+    /// print closes on the next read of the machine, and not while a
+    /// supervision turn still holds it, which on a slow host outlasts a
+    /// command or two.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the listing is refused or is not a list of prints, and
+    /// when a print is still open after every look, naming it.
+    fn no_print_is_open(&self) {
+        let mut open = Vec::new();
+        for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
+            let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+                .args(["prints", "--json", "--config"])
+                .arg(self.client_config())
+                .output()
+                .expect("a listing runs");
+            assert!(
+                read.status.success(),
+                "the walk could not list the prints: {}",
+                String::from_utf8_lossy(&read.stderr)
+            );
+            let listing: Value = printobserver_types::serde_json::from_slice(&read.stdout)
+                .unwrap_or_else(|error| panic!("the listing is not a document ({error})"));
+            let prints = listing
+                .get("prints")
+                .and_then(Value::as_array)
+                .unwrap_or_else(|| panic!("the listing carries no list of prints: {listing}"));
+            // A record with no identifier is still an open print, so it is
+            // named by the whole record rather than left out.
+            open = prints
+                .iter()
+                .filter(|print| match print.get("ended_at") {
+                    None | Some(Value::Null) => true,
+                    Some(Value::String(_)) => false,
+                    Some(other) => panic!("a print ended at {other}, which is no instant: {print}"),
+                })
+                .map(|print| {
+                    print
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map_or_else(|| print.to_string(), str::to_owned)
+                })
+                .collect();
+            if open.is_empty() {
+                return;
+            }
+            std::thread::sleep(SETTLING_PAUSE);
+        }
+        panic!("the supervisor still holds {open:?} open with the machine idle");
     }
 
     /// Put the machine in one state, through whatever drives it.
@@ -950,7 +1192,8 @@ fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
                 "operator": [
                     "pause", "resume", "cancel", "start_print", "set_feedrate_factor",
                     "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-                    "set_fan_percent", "acknowledge_failure",
+                    "set_fan_percent", "acknowledge_failure", "register_spool",
+                    "load_spool", "unload_spool", "adjust_spool", "retire_spool",
                 ],
                 "agent": [],
                 // The supervisor puts a prior value back through the same
