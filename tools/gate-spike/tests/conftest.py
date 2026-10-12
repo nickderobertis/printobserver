@@ -77,6 +77,10 @@ def test_sleeps():
     time.sleep(0.05)
 
 
+def test_writes_a_large_temporary(tmp_path):
+    (tmp_path / "large").write_bytes(bytes(40_000_000))
+
+
 def test_a_sleep_that_raises_is_still_timed():
     with pytest.raises(TypeError):
         time.sleep("not a duration")
@@ -127,7 +131,7 @@ def test_fails_in_teardown(breaks_in_teardown):
 """
 
 #: How `CASES`' tests come out.
-CASES_OUTCOMES = {"failed": 3, "passed": 10, "skipped": 1}
+CASES_OUTCOMES = {"failed": 3, "passed": 11, "skipped": 1}
 CASES_TESTS = sum(CASES_OUTCOMES.values())
 
 
@@ -161,6 +165,7 @@ def fixture_project() -> Iterator[str]:
     (root / "cases").mkdir(parents=True)
     (root / "cases" / "test_cases.py").write_text(CASES, encoding="utf-8")
     cases = f"tools/{name}/cases -p no:cacheprovider"
+    observing = f"\"import shutil; shutil.copy('justfile', 'tools/{name}/seen')\""
     manifest = {
         "name": name,
         "root": f"tools/{name}",
@@ -168,6 +173,8 @@ def fixture_project() -> Iterator[str]:
             "fails": {"command": "exit 3"},
             "suite": {"command": f"uv run -q pytest {cases}"},
             "covered": {"command": f"uv run -q coverage run -m pytest {cases}"},
+            "pause": {"command": 'python -c "import time; time.sleep(1)"'},
+            "observe": {"command": f"python -c {observing}"},
             "here": {
                 "command": "python -c \"import pathlib; pathlib.Path('ran-here').touch()\"",
                 "options": {"cwd": f"tools/{name}/cases"},

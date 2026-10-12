@@ -66,6 +66,8 @@ def test_the_journeys_timing_sink_writes_what_the_harness_reads(tmp_path: Path) 
         return
     equal(read.unreadable, 0, describing="lines the harness could not read")
     equal(list(read.by_kind), ['spike "sink" \x01'], describing="the kind, escaped and read back")
+    (cost,) = read.by_kind.values()
+    truth(0.05 <= cost.s < 5, describing=f"a 50 ms sleep's seconds as recorded: {cost.s}")
 
 
 def test_a_sink_nothing_can_be_written_to_changes_nothing_about_the_test(tmp_path: Path) -> None:
@@ -125,6 +127,10 @@ def test_the_lookup_benchmark_reads_this_hosts_command_line(tmp_path: Path) -> N
     equal(ran.returncode, 0, describing=f"the benchmark's exit: {ran.stderr}")
     read = LookupReport.read(report)
     equal(read.failed, [], describing="methods that did not answer")
+    for method in read.methods:
+        if method.present:
+            ordered = 0 < (method.min_s or 0) <= (method.median_s or 0) <= (method.max_s or 0)
+            truth(ordered, describing=f"min, median and max of {method}")
     truth(read.methods[0].is_the_command_line, describing="the current read answering the line")
 
 
@@ -455,3 +461,21 @@ def test_every_status_nextest_reports_is_read_as_that_status() -> None:
             [test.status for test in read.per_test], list(NextestStatus), describing="the statuses"
         )
         equal(read.fastest_test_s, 0.0, describing="the fastest passing test, PASS being first")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the slow stand-in linker is a shell script")
+def test_the_timed_linker_records_how_long_the_link_took(
+    tmp_path: Path, timed_linker: Path
+) -> None:
+    """A link that takes a fifth of a second is recorded at about that many milliseconds."""
+    slow = tmp_path / "slow-linker"
+    slow.write_text("#!/bin/sh\nsleep 0.2\n", encoding="utf-8")
+    slow.chmod(0o755)
+    links = tmp_path / "links.jsonl"
+    run(
+        [str(timed_linker), "-o", "out"],
+        env={**os.environ, REAL_LINKER: str(slow), LINK_TIMINGS: str(links)},
+        check=True,
+    )
+    read = link_figures(links)
+    truth(read is not None and 0.2 <= read.s < 5, describing=f"the link's recorded seconds: {read}")

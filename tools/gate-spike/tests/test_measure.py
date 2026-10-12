@@ -117,8 +117,26 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
         equal(by_cost[cost]["count"], count, describing=f"`{cost}` in {by_cost}")
     truth(by_cost["sleep"]["s"] >= 0.05, describing=f"the sleep's seconds in {by_cost}")
     absent(by_cost, "spawn:spike-no-such-program-anywhere", describing="a child that never ran")
-    equal(by_cost["sleep"]["count"], 2, describing="both sleeps, the one that raised included")
+    sleeping = next(
+        test for test in pytest_run["per_test"] if test["nodeid"].endswith("test_sleeps")
+    )
+    truth(sleeping["phases"]["call"] >= 0.05, describing=f"the sleeping call's phase in {sleeping}")
+    truth(
+        abs(sleeping["s"] - sum(sleeping["phases"].values())) < 0.01,
+        describing=f"a test's seconds as the sum of its phases in {sleeping}",
+    )
     (session,) = pytest_run["sessions"]
+    equal((session["exitstatus"], session["tests"]), (1, CASES_TESTS), describing=str(session))
+    truth(
+        session["collect_s"] > 0 and session["wall_s"] >= pytest_run["test_s"],
+        describing=f"collection and wall time against the tests' own in {session}",
+    )
+    disk = suite["disk"]
+    truth(
+        disk["freed_after_gb"] >= 0.03 and all(space["free_gb"] > 0 for space in disk["before"]),
+        describing=f"the large temporary freed after the task, and free space read, in {disk}",
+    )
+    equal(by_cost["sleep"]["count"], 2, describing="both sleeps, the one that raised included")
     equal(session["outside_tests"]["spawn:git"]["count"], 1, describing="the spawn at import")
     own = [line for line in measured.out.splitlines() if line.startswith("measure: ")]
     equal(len(own), 1, describing="the lines the harness itself prints on standard output")
@@ -543,3 +561,30 @@ def test_compile_only_gives_an_unfiltered_nextest_its_own_filter(
     (crate,) = tasks(measured)
     contains(str(crate["command"]), 'nextest run --no-tests=pass -E "none()"', describing="it")
     equal(crate["rust"]["tests"], 0, describing="the tests it ran")
+
+
+def test_a_task_and_the_report_are_timed_by_the_wall_clock(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """A task that sleeps a second is reported at about a second, inside the report's own wall."""
+    measured = measure(
+        "--targets", f"{fixture_project}:pause,{fixture_project}:pause", out=tmp_path
+    )
+    report = mapping(measured.report, describing="the report")
+    for task in report["tasks"]:
+        truth(1.0 <= task["s"] < 30, describing=f"a one-second task's seconds: {task['s']}")
+    truth(report["wall_s"] >= sum(task["s"] for task in report["tasks"]), describing="the wall")
+
+
+def test_a_task_under_base_tree_reads_the_base_branchs_files(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """What a task reads under `base-tree` is the merge base's copy, not the spike's."""
+    measured = measure(
+        "--experiment", "base-tree", "--targets", f"{fixture_project}:observe", out=tmp_path
+    )
+    equal(measured.code, 0, describing="the observing task's run")
+    base = run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, check=True).stdout.strip()
+    shown = run(["git", "show", f"{base}:justfile"], cwd=ROOT, check=True).stdout
+    seen = (ROOT / "tools" / fixture_project / "seen").read_text(encoding="utf-8")
+    equal(seen, shown, describing="the justfile the task read")
