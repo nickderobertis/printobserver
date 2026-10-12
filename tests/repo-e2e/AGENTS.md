@@ -10,9 +10,11 @@ ones only this suite carries.
   repository root, a build into that root's `target`, a host service, a program
   its own deadline bounds that another journey would slow — is one of
   `tests/journey.py`'s xdist groups, set as the module's `pytestmark`. A group keeps its journeys on one worker, one after
-  another. A journey is never made to pass beside another by loosening what it
-  asserts or how long it waits. Something it only reads is no group's, and
-  `journey.py` says what that covers.
+  another. A journey that cannot share the host with any other is marked
+  `alone` instead, saying why, and runs after the parallel session. A journey is
+  never made to pass beside another by loosening what it asserts or how long it
+  waits. Something it only reads is no group's, and `journey.py` says what that
+  covers.
 - **It waits on one build.** The target `dependsOn` `printobserver:build`, the
   debug program the journeys run, and on nothing else, so the gate starts it
   beside the test tier wherever the root `justfile`'s `check` overlaps them.

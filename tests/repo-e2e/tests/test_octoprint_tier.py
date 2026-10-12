@@ -82,6 +82,11 @@ def _windows_exit_code(pid: int) -> int | None:
         kernel32.CloseHandle(handle)
 
 
+# Alone, after the parallel session: on Windows the bring-down reads the process
+# table through a PowerShell CIM query it bounds at 30 seconds, which takes
+# about 23 seconds on a Windows ARM runner with nothing else running, so any
+# journey beside it pushes it past its own bound.
+@pytest.mark.alone
 def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started(
     gate_copy: Callable[[], GateCopy],
 ) -> None:

@@ -66,6 +66,7 @@ addopts = "-q --strict-markers --strict-config"
 # refuses a marker it does not know, wherever pytest is pointed.
 markers = [
     "skilltest_e2e: opt-in skill test through a real harness; needs SKILLTEST_E2E=1",
+    "alone: an end-to-end journey run after the parallel session, with nothing beside it",
 ]
 pythonpath = [
     "tools/repo-checks/src",
