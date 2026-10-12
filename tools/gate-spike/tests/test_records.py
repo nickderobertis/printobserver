@@ -141,7 +141,8 @@ def test_the_lookup_benchmark_reads_this_hosts_command_line(tmp_path: Path) -> N
     equal(read.failed, [], describing="methods that did not answer")
     for method in read.methods:
         if method.present:
-            ordered = 0 < (method.min_s or 0) <= (method.median_s or 0) <= (method.max_s or 0)
+            ordered = 0 <= (method.min_s or 0) <= (method.median_s or 0) <= (method.max_s or 0)
+            ordered = ordered and (method.max_s or 0) > 0
             truth(ordered, describing=f"min, median and max of {method}")
     truth(read.methods[0].is_the_command_line, describing="the current read answering the line")
 

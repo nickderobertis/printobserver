@@ -147,7 +147,10 @@ def _defender_off(name: str) -> Preparation:
     if not WINDOWS:
         return Preparation(name, applied=False, detail="no Defender off Windows")
     _powershell("Set-MpPreference -DisableRealtimeMonitoring $true")
-    return Preparation(name, applied=True, detail=f"now {defender_state()}")
+    # Applied only if Defender then says so: an image can refuse the change
+    # (windows-11-arm keeps real-time scanning on).
+    state = defender_state()
+    return Preparation(name, applied=state.realtime is False, detail=f"now {state}")
 
 
 #: What the spike's changed files held before `base-tree` replaced them, put

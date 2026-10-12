@@ -355,7 +355,7 @@ HOSTED_WINDOWS = sys.platform == "win32" and os.environ.get("RUNNER_ENVIRONMENT"
     not HOSTED_WINDOWS, reason="changes Defender and TEMP; only on a disposable runner"
 )
 def test_the_windows_host_levers_change_the_host(tmp_path: Path, fixture_project: str) -> None:
-    """On a hosted Windows runner the Defender and D: levers take effect on the host."""
+    """On a hosted Windows runner each host lever reports what it actually did to the host."""
     measured = measure(
         "--experiment",
         "defender-excluded+defender-off+temp-on-d",
@@ -365,13 +365,12 @@ def test_the_windows_host_levers_change_the_host(tmp_path: Path, fixture_project
     )
     report = mapping(measured.report, describing="the report")
     has_d = Path("D:/").is_dir()
+    state = defender_state()
     equal(
         [step["applied"] for step in report["prepared"]],
-        [True, True, has_d],
-        describing=str(report["prepared"]),
+        [True, state.realtime is False, has_d],
+        describing=f"what each lever says it did, against {state}",
     )
-    state = defender_state()
-    equal(state.realtime, False, describing="real-time scanning after `defender-off`")
     contains(state.excluded, str(ROOT), describing="the workspace among Defender's exclusions")
     if has_d:
         truth(
