@@ -11,6 +11,12 @@
 # `just test-integration` step measured project by project. Every cell uploads
 # its `spike-out` directory as an artifact. The real workflow is the base
 # branch's; nothing here is meant to land.
+#
+# The cells below are the spike's second run: each Python cell measures its
+# lever against a baseline taken on the same runner, under `base-tree`. The
+# first run's cells (per-crate Rust tests with and without coverage and with
+# Defender exclusions, the Rust build levers, and the first Python and
+# end-to-end cells) are this file at commit c0c597d.
 
 name: ci
 
@@ -35,90 +41,62 @@ jobs:
       fail-fast: false
       matrix:
         cell:
-          - id: windows-x86_64/rust-baseline
+          - id: windows-x86_64/py-nocov
             platform: windows-x86_64
             runner: windows-2025
-            runs: "baseline|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: windows-x86_64/rust-nocov
+            runs: "base-tree|repo-checks:test;base-tree+no-py-coverage|repo-checks:test"
+          - id: windows-x86_64/py-sysmon
             platform: windows-x86_64
             runner: windows-2025
-            runs: "no-rust-coverage|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: windows-x86_64/rust-defender
+            runs: "base-tree|repo-checks:test;base-tree+sysmon|repo-checks:test"
+          - id: windows-x86_64/py-xdist-2
             platform: windows-x86_64
             runner: windows-2025
-            runs: "defender-excluded|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: windows-x86_64/rust-levers
+            runs: "base-tree|repo-checks:test;base-tree+xdist-2|repo-checks:test"
+          - id: windows-x86_64/py-xdist-3
             platform: windows-x86_64
             runner: windows-2025
-            runs: "compile-only|printobserver:test;compile-only+line-tables-only|printobserver:test;compile-only+debug-0|printobserver:test;compile-only+rust-lld|printobserver:test"
-          - id: windows-x86_64/py-baseline
+            runs: "base-tree|repo-checks:test;base-tree+xdist-3|repo-checks:test"
+          - id: windows-x86_64/py-xdist-4
             platform: windows-x86_64
             runner: windows-2025
-            runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test"
-          - id: windows-x86_64/py-coverage
-            platform: windows-x86_64
-            runner: windows-2025
-            runs: "no-py-coverage|repo-checks:test;sysmon|repo-checks:test"
-          - id: windows-x86_64/py-xdist
-            platform: windows-x86_64
-            runner: windows-2025
-            runs: "xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
-          - id: windows-x86_64/py-defender
-            platform: windows-x86_64
-            runner: windows-2025
-            runs: "defender-excluded|repo-checks:test,release-artifacts:test,printobserver:build,repo-e2e:test-e2e"
+            runs: "base-tree|repo-checks:test,release-artifacts:test;base-tree+xdist-4|repo-checks:test,release-artifacts:test"
           - id: windows-x86_64/e2e
             platform: windows-x86_64
             runner: windows-2025
-            runs: "baseline|bench:octoprint-lookup,host:defender,printobserver:build,repo-e2e:test-e2e"
-          - id: windows-aarch64/rust-baseline
+            runs: "base-tree|printobserver:build,repo-e2e:test-e2e"
+          - id: windows-x86_64/py-temp-on-d
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "base-tree|repo-checks:test;base-tree+temp-on-d|repo-checks:test"
+          - id: windows-aarch64/py-nocov
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "baseline|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: windows-aarch64/rust-nocov
+            runs: "base-tree|repo-checks:test;base-tree+no-py-coverage|repo-checks:test"
+          - id: windows-aarch64/py-sysmon
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "no-rust-coverage|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: windows-aarch64/rust-defender
+            runs: "base-tree|repo-checks:test;base-tree+sysmon|repo-checks:test"
+          - id: windows-aarch64/py-xdist-2
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "defender-excluded|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: windows-aarch64/rust-levers
+            runs: "base-tree|repo-checks:test;base-tree+xdist-2|repo-checks:test"
+          - id: windows-aarch64/py-xdist-3
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "compile-only|printobserver:test;compile-only+line-tables-only|printobserver:test;compile-only+debug-0|printobserver:test;compile-only+rust-lld|printobserver:test"
-          - id: windows-aarch64/py-baseline
+            runs: "base-tree|repo-checks:test;base-tree+xdist-3|repo-checks:test"
+          - id: windows-aarch64/py-xdist-4
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test"
-          - id: windows-aarch64/py-coverage
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "no-py-coverage|repo-checks:test;sysmon|repo-checks:test"
-          - id: windows-aarch64/py-xdist
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
-          - id: windows-aarch64/py-defender
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "defender-excluded|repo-checks:test,release-artifacts:test,printobserver:build,repo-e2e:test-e2e"
+            runs: "base-tree|repo-checks:test,release-artifacts:test;base-tree+xdist-4|repo-checks:test,release-artifacts:test"
           - id: windows-aarch64/e2e
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "baseline|bench:octoprint-lookup,host:defender,printobserver:build,repo-e2e:test-e2e"
-          - id: linux-x86_64/rust-baseline
-            platform: linux-x86_64
-            runner: ubuntu-24.04
-            runs: "baseline|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
-          - id: linux-x86_64/rust-nocov
-            platform: linux-x86_64
-            runner: ubuntu-24.04
-            runs: "no-rust-coverage|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+            runs: "base-tree|printobserver:build,repo-e2e:test-e2e"
           - id: linux-x86_64/py
             platform: linux-x86_64
             runner: ubuntu-24.04
-            runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test;no-py-coverage|repo-checks:test;sysmon|repo-checks:test;xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
+            runs: "base-tree|repo-checks:test,release-artifacts:test;base-tree+no-py-coverage|repo-checks:test;base-tree+sysmon|repo-checks:test;base-tree+xdist-2|repo-checks:test;base-tree+xdist-3|repo-checks:test;base-tree+xdist-4|repo-checks:test,release-artifacts:test"
     runs-on: ${{ matrix.cell.runner }}
     timeout-minutes: 300
     permissions:
