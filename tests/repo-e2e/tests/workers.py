@@ -70,33 +70,22 @@ def memory_bytes() -> int:
 
 
 def _windows_memory_bytes() -> int:
-    """Windows' own answer for its physical memory, from `GlobalMemoryStatusEx`.
+    """Windows' own answer for its installed memory.
+
+    `GetPhysicallyInstalledSystemMemory` writes one unsigned 64-bit count of
+    kilobytes through the one pointer it takes, so no structure's layout is
+    restated here.
 
     Raises:
         OSError: On a host that is not Windows, or where Windows refused the query.
     """
     if sys.platform != "win32":
-        message = "only Windows answers GlobalMemoryStatusEx"
+        message = "only Windows answers GetPhysicallyInstalledSystemMemory"
         raise OSError(message)
-
-    class MemoryStatus(ctypes.Structure):
-        _fields_ = (
-            ("dwLength", ctypes.c_ulong),
-            ("dwMemoryLoad", ctypes.c_ulong),
-            ("ullTotalPhys", ctypes.c_ulonglong),
-            ("ullAvailPhys", ctypes.c_ulonglong),
-            ("ullTotalPageFile", ctypes.c_ulonglong),
-            ("ullAvailPageFile", ctypes.c_ulonglong),
-            ("ullTotalVirtual", ctypes.c_ulonglong),
-            ("ullAvailVirtual", ctypes.c_ulonglong),
-            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-        )
-
-    status = MemoryStatus()
-    status.dwLength = ctypes.sizeof(MemoryStatus)
-    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+    kilobytes = ctypes.c_ulonglong()
+    if not ctypes.windll.kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(kilobytes)):
         raise ctypes.WinError()
-    return int(status.ullTotalPhys)
+    return kilobytes.value * 1024
 
 
 def here(temporary: Path) -> Host:
