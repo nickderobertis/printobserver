@@ -76,6 +76,18 @@ def test_a_sink_nothing_can_be_written_to_changes_nothing_about_the_test(tmp_pat
 
 
 @pytest.fixture(scope="module")
+def noop_linker(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """A real linker's stand-in that takes any arguments and succeeds: `true`, or a built one."""
+    if sys.platform != "win32":
+        return "true"
+    source = tmp_path_factory.mktemp("noop") / "noop.rs"
+    source.write_text("fn main() {}\n", encoding="utf-8")
+    built = source.with_suffix(".exe")
+    run(["rustc", str(source), "-o", str(built)], check=True)
+    return str(built)
+
+
+@pytest.fixture(scope="module")
 def timed_linker() -> Path:
     """The wrapper, built the way `measure.py` builds it."""
     built = Path(tempfile.mkdtemp(prefix="timed-linker-")) / (
@@ -182,10 +194,12 @@ def test_the_timed_linker_reports_a_signal_as_a_shell_does(
     equal(ran.returncode, 128 + 15, describing="the wrapper's exit over a terminated linker")
 
 
-def test_the_timed_linker_names_what_each_link_wrote(tmp_path: Path, timed_linker: Path) -> None:
+def test_the_timed_linker_names_what_each_link_wrote(
+    tmp_path: Path, timed_linker: Path, noop_linker: str
+) -> None:
     """Each record says whether a path, a response file or nothing named the output."""
     links = tmp_path / "links.jsonl"
-    real = "true" if sys.platform != "win32" else "whoami"
+    real = noop_linker
     for arguments in (["-o", 'out"put'], ["/OUT:C:\\out.exe"], ["@response"], []):
         run(
             [str(timed_linker), *arguments],
@@ -208,10 +222,10 @@ def test_the_timed_linker_names_what_each_link_wrote(tmp_path: Path, timed_linke
 
 
 def test_a_link_sink_nothing_can_be_written_to_still_exits_as_the_linker_did(
-    tmp_path: Path, timed_linker: Path
+    tmp_path: Path, timed_linker: Path, noop_linker: str
 ) -> None:
     """With the sink naming a directory, the wrapper still exits as the real linker did."""
-    real = "true" if sys.platform != "win32" else "whoami"
+    real = noop_linker
     ran = run(
         [str(timed_linker)], env={**os.environ, REAL_LINKER: real, LINK_TIMINGS: str(tmp_path)}
     )
