@@ -137,7 +137,13 @@ def _wrap_popen() -> None:
         STATE.children[id(self)] = Child(
             time.perf_counter(), _program(kwargs.get("args", args[0] if args else None))
         )
-        original_init(self, *args, **kwargs)
+        try:
+            original_init(self, *args, **kwargs)
+        except BaseException:
+            # A child that never started is nobody's to charge, and its id may
+            # be the next Popen's.
+            STATE.children.pop(id(self), None)
+            raise
 
     def wait(self: subprocess.Popen[str], timeout: float | None = None) -> int:
         answer = original_wait(self, timeout)

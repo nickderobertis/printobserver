@@ -62,6 +62,17 @@ def test_spawns_git():
     subprocess.run(["git", "--version"], check=True, capture_output=True)
 
 
+def test_waits_on_a_child_by_polling_alone():
+    child = subprocess.Popen(["git", "--version"], stdout=subprocess.DEVNULL)
+    while child.poll() is None:
+        pass
+
+
+def test_a_child_that_never_starts_is_charged_to_nobody():
+    with pytest.raises(OSError):
+        subprocess.run(["spike-no-such-program-anywhere"], check=True)
+
+
 def test_sleeps():
     time.sleep(0.05)
 
@@ -116,7 +127,7 @@ def test_fails_in_teardown(breaks_in_teardown):
 """
 
 #: How `CASES`' tests come out.
-CASES_OUTCOMES = {"failed": 3, "passed": 8, "skipped": 1}
+CASES_OUTCOMES = {"failed": 3, "passed": 10, "skipped": 1}
 CASES_TESTS = sum(CASES_OUTCOMES.values())
 
 

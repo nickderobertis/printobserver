@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import spike_pytest
 from conftest import HERE, PYTHONPATH, ROOT
-from figures import journey_figures, link_figures, pytest_figures
+from figures import TestStatus, journey_figures, link_figures, pytest_figures, rust_figures
 from levers import read_defender_state
 from lookup_bench import CURRENT, LookupReport, MethodError
 from repo_checks.expect import contains, equal, truth
@@ -434,3 +434,22 @@ def test_the_lookup_benchmarks_current_read_is_octoprint_envs_own(tmp_path: Path
     if sys.platform == "win32":
         native = next(m for m in read.methods if m.name == "win32 NtQueryInformationProcess")
         equal((native.is_the_command_line, native.same_as_current), (True, True), describing="it")
+
+
+def test_every_status_nextest_reports_is_read_as_that_status() -> None:
+    """A finished-test line of each status nextest prints is read into that status."""
+    log = "\n".join(
+        [
+            "    Starting 9 tests across 1 binary",
+            *(
+                f"        {status} [   0.{index:03d}s] ({index + 1}/9) crate::binary test_{index}"
+                for index, status in enumerate(TestStatus)
+            ),
+            "     Summary [   0.100s] 9 tests run",
+        ]
+    )
+    read = rust_figures(log)
+    truth(read is not None, describing="figures for a nextest log")
+    if read is not None:
+        equal([test.status for test in read.per_test], list(TestStatus), describing="the statuses")
+        equal(read.fastest_test_s, 0.0, describing="the fastest passing test, PASS being first")

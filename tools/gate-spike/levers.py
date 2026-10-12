@@ -1,9 +1,10 @@
 """The levers one experiment pulls: how a task's command, environment or host changes.
 
 A lever rewrites a task's command, adds to its environment, or prepares the host
-before the experiment's tasks run and puts it back afterwards. Each preparation
-answers a `Preparation` saying whether it applied and what it did, so a report
-records which of them took effect on that host.
+before the experiment's tasks run; one with a `restore` (`base-tree`) is put
+back afterwards, and the host levers are left in place on the disposable runner
+they changed. Each preparation answers a `Preparation` saying whether it
+applied and what it did, so a report records which of them took effect.
 """
 
 from __future__ import annotations
@@ -208,11 +209,30 @@ def _no_rust_coverage(command: str) -> str:
     )
 
 
+class LeverError(ValueError):
+    """A lever that cannot be pulled on the task it was asked of."""
+
+
+#: Where a task's command starts nextest, which is where `compile-only` filters.
+NEXTEST = re.compile(r"(cargo llvm-cov nextest|cargo nextest run)")
+
+
 def _compile_only(command: str) -> str:
-    """Build and list every test binary, and run none: nextest's `none()` filter."""
+    """Build and list every test binary, and run none: nextest's `none()` filter.
+
+    A command's own `-E` filter is kept inside it; a command with none is given
+    one, and told that a run of no tests passes.
+
+    Raises:
+        LeverError: If the command starts no nextest run to filter.
+    """
+    if not NEXTEST.search(command):
+        msg = f"compile-only filters a nextest run, and `{command}` starts none"
+        raise LeverError(msg)
     if '-E "' in command:
         return re.sub(r'-E "([^"]*)"', r'-E "none() & (\1)"', command, count=1)
-    return command.replace("--no-tests=pass", '--no-tests=pass -E "none()"', 1)
+    passing = "" if "--no-tests=" in command else " --no-tests=pass"
+    return NEXTEST.sub(lambda found: f'{found.group(1)}{passing} -E "none()"', command, count=1)
 
 
 #: Every way a task's command starts pytest.
@@ -303,17 +323,17 @@ def pytest_temporaries() -> set[Path]:
     }
 
 
-def clear_pytest_temporaries(before: set[Path], keep: Path) -> float:
+def clear_pytest_temporaries(before: set[Path]) -> float:
     """Remove the base temporaries pytest made since `before`, answering the GB freed.
 
     Called as one task ends, so what it removes is what appeared while that task
     ran: the task's own, and any an unrelated pytest on this host started in the
     meantime, which a CI cell running one task at a time does not have. One that
-    already existed, or that holds `keep` (this run's own output), is left.
+    already existed — the directory this run writes its report into among them,
+    which exists before any task starts — is left.
     """
     temp = Path(tempfile.gettempdir())
     free = shutil.disk_usage(temp).free
     for made in pytest_temporaries() - before:
-        if not keep.resolve().is_relative_to(made.resolve()):
-            shutil.rmtree(made, ignore_errors=True)
+        shutil.rmtree(made, ignore_errors=True)
     return round((shutil.disk_usage(temp).free - free) / 2**30, 2)

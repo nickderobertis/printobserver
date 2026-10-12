@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import statistics
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,7 +15,7 @@ import pytest
 from conftest import CASES_OUTCOMES, CASES_TESTS, PYTHONPATH, ROOT, mapping, measure, tasks
 from levers import LEVERS, SPIKE_CHANGED, defender_state, pytest_temporaries
 from measure import PSEUDO_TARGETS
-from repo_checks.expect import contains, equal, truth
+from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.shell import run
 from spike_names import PYTEST_OUT, REAL_LINKER
 
@@ -89,10 +91,14 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
     tmp_path: Path, fixture_project: str
 ) -> None:
     """A pytest task is recorded test by test with what each spent, and a failed task named."""
+    standing = Path(tempfile.gettempdir()) / f"pytest-of-spike-{os.getpid()}" / "pytest-standing"
+    standing.mkdir(parents=True)
     before = pytest_temporaries()
     measured = measure(
         "--targets", f"{fixture_project}:suite,{fixture_project}:fails", out=tmp_path
     )
+    truth(standing.is_dir(), describing="a pytest temporary that stood before the run")
+    shutil.rmtree(standing.parent)
     equal(measured.code, 1, describing="the exit when a task failed")
     contains(measured.err, f"{fixture_project}:fails exited 3", describing="the failure's naming")
     suite, fails = tasks(measured)
@@ -102,7 +108,7 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
     equal(pytest_run["outcomes"], CASES_OUTCOMES, describing="their outcomes")
     by_cost = pytest_run["by_cost"]
     for cost, count in (
-        ("spawn:git", 1),
+        ("spawn:git", 2),
         ("copytree", 1),
         ("copy2", 1),
         ("rmtree", 1),
@@ -110,6 +116,7 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
     ):
         equal(by_cost[cost]["count"], count, describing=f"`{cost}` in {by_cost}")
     truth(by_cost["sleep"]["s"] >= 0.05, describing=f"the sleep's seconds in {by_cost}")
+    absent(by_cost, "spawn:spike-no-such-program-anywhere", describing="a child that never ran")
     equal(by_cost["sleep"]["count"], 2, describing="both sleeps, the one that raised included")
     (session,) = pytest_run["sessions"]
     equal(session["outside_tests"]["spawn:git"]["count"], 1, describing="the spawn at import")
@@ -508,3 +515,31 @@ def test_a_failing_crate_is_read_with_its_failure_out_of_the_passing_figures(
     equal(statuses, {"passes": "PASS", "fails": "FAIL"}, describing="each test's status")
     passing = next(test["s"] for test in rust["per_test"] if test["status"] == "PASS")
     equal((rust["fastest_test_s"], rust["median_test_s"]), (passing, passing), describing="it")
+
+
+def test_compile_only_refuses_a_task_that_runs_no_nextest(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """`compile-only` over a task that starts no nextest runs nothing and names why."""
+    measured = measure(
+        "--experiment", "compile-only", "--targets", f"{fixture_project}:here", out=tmp_path
+    )
+    equal(measured.code, 1, describing="the run's exit")
+    (task,) = tasks(measured)
+    equal(task["exit"], 2, describing="the task's own")
+    contains(measured.err, "starts none", describing="why it was not run")
+    truth(
+        not (ROOT / "tools" / fixture_project / "cases" / "ran-here").exists(),
+        describing="the command left unrun",
+    )
+
+
+def test_compile_only_gives_an_unfiltered_nextest_its_own_filter(
+    tmp_path: Path, fixture_crate: str
+) -> None:
+    """A nextest command with neither a filter nor `--no-tests` still builds and runs no test."""
+    measured = measure("--experiment", "compile-only", "--targets", fixture_crate, out=tmp_path)
+    equal(measured.code, 0, describing="a build-only run of the fixture crate")
+    (crate,) = tasks(measured)
+    contains(str(crate["command"]), 'nextest run --no-tests=pass -E "none()"', describing="it")
+    equal(crate["rust"]["tests"], 0, describing="the tests it ran")

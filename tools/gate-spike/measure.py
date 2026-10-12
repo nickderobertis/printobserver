@@ -54,6 +54,7 @@ from levers import (
     DiskSpace,
     HostError,
     Lever,
+    LeverError,
     Preparation,
     clear_pytest_temporaries,
     defender_state,
@@ -261,9 +262,13 @@ def run_task(task: TaskId, levers: Sequence[Lever], env: dict[str, str], out: Pa
     project, target = task.split(":", 1)
     declared = _declared(project, target, _projects()[project])
     command = declared.command
-    for lever in levers:
-        if lever.rewrite is not None:
-            command = lever.rewrite(command)
+    try:
+        for lever in levers:
+            if lever.rewrite is not None:
+                command = lever.rewrite(command)
+    except LeverError as error:
+        print(f"measure: {task} was not run: {error}", file=sys.stderr)
+        return TaskResult(task, 0.0, 2, command=declared.command, cwd=str(declared.cwd))
     command = _with_spike_plugin(command)
     task_dir = out / _slug(task)
     # A directory an earlier run of this task left would add its records to these.
@@ -370,7 +375,7 @@ def experiment(names: Sequence[str], tasks: Sequence[TaskId], out: Path) -> Repo
             before = disk()
             result = run_task(task, levers, env, out)
             after = disk()
-            result.disk = TaskDisk(before, after, clear_pytest_temporaries(temporaries, out))
+            result.disk = TaskDisk(before, after, clear_pytest_temporaries(temporaries))
             report.tasks.append(result)
             if result.exit != 0:
                 log = out / f"{_slug(task)}.log"
