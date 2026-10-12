@@ -4,9 +4,12 @@ Loaded by `measure.py` with `-p spike_pytest` and `SPIKE_PYTEST_OUT` naming a
 directory. Each pytest process (an xdist worker included) appends one JSON line
 per test to a file of its own there: the test's phases and outcome, and the
 seconds it spent in child processes (by program), in `shutil.copytree` and
-`shutil.rmtree`, in `time.sleep`, and in `urllib.request.urlopen`. It changes no
-test, assertion or timeout: every wrapper calls the real function and only
-records how long it took.
+`shutil.rmtree` (and in `shutil.copy2`, which `copytree` also calls), in
+`time.sleep`, and in `urllib.request.urlopen`. It changes no test, assertion or
+timeout: every wrapper calls the real function and only records how long it
+took. With `SPIKE_STABLE_IDS` set, each parametrized test's id is its index
+within its function instead of its parameters' rendering, so xdist workers that
+render a generated parameter differently still collect one list.
 """
 
 from __future__ import annotations
@@ -147,6 +150,7 @@ def pytest_configure(config: pytest.Config) -> None:
     STATE.started = time.perf_counter()
     _wrap_popen()
     for owner, name, category in (
+        (shutil, "copy2", "copy2"),
         (shutil, "copytree", "copytree"),
         (shutil, "rmtree", "rmtree"),
         (time, "sleep", "sleep"),
@@ -160,6 +164,18 @@ def pytest_configure(config: pytest.Config) -> None:
 
         STATE.coverage = coverage.Coverage(data_suffix=True)
         STATE.coverage.start()
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Under `SPIKE_STABLE_IDS`, name each parametrized case by its index alone."""
+    if not os.environ.get("SPIKE_STABLE_IDS"):
+        return
+    seen: dict[str, int] = defaultdict(int)
+    for item in items:
+        base, bracket, _ = item.nodeid.partition("[")
+        if bracket:
+            item._nodeid = f"{base}[{seen[base]}]"
+            seen[base] += 1
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

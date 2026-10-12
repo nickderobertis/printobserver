@@ -34,6 +34,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -60,6 +61,7 @@ class Lever:
     env: dict[str, str] = field(default_factory=dict)
     rewrite: Callable[[str, str], str] | None = None
     prepare: Callable[[Path], dict[str, Any]] | None = None
+    restore: Callable[[], None] | None = None
 
 
 def _replace(old: str, new: str) -> Callable[[str, str], str]:
@@ -138,6 +140,56 @@ def _defender_off(_out: Path) -> dict[str, Any]:
     return {"exit": off.returncode, "said": off.stderr.strip(), "after": defender_state()}
 
 
+#: The files this spike's own branch changes that the suites read as the
+#: committed tree: its cut-down workflow and its justfile recipes. A run under
+#: `base-tree` has the base branch's copies in their place, so a suite holding
+#: the real workflow and recipes to the repository's policy is not refused for
+#: the spike's own harness.
+SPIKE_CHANGED = (".github/workflows/ci.yml", "justfile", ".gitignore")
+
+
+def _base_tree(_out: Path) -> dict[str, Any]:
+    base = run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, check=True).stdout.strip()
+    for path in SPIKE_CHANGED:
+        shown = run(["git", "show", f"{base}:{path}"], cwd=ROOT, check=True).stdout
+        (ROOT / path).write_text(shown, encoding="utf-8", newline="")
+    return {"base": base, "replaced": list(SPIKE_CHANGED)}
+
+
+def _spike_tree() -> None:
+    run(["git", "checkout", "HEAD", "--", *SPIKE_CHANGED], cwd=ROOT, check=True)
+
+
+def _temp_on_d(out: Path) -> dict[str, Any]:
+    del out
+    if not WINDOWS or not Path("D:/").exists():
+        return {"applies": False}
+    temp = Path("D:/spike-temp")
+    temp.mkdir(parents=True, exist_ok=True)
+    # Every task's environment is built from this process's, and `tempfile`
+    # caches the directory it found first, so both are pointed there.
+    os.environ["TEMP"] = os.environ["TMP"] = str(temp)
+    tempfile.tempdir = None
+    return {"applies": True, "temp": str(temp)}
+
+
+def disk() -> dict[str, Any]:
+    """Free space on the drive holding the temporary directory and on the workspace's."""
+    answer = {}
+    for name, path in (("temp", Path(tempfile.gettempdir())), ("workspace", ROOT)):
+        usage = shutil.disk_usage(path)
+        answer[name] = {"path": str(path), "free_gb": round(usage.free / 2**30, 2)}
+    return answer
+
+
+def _clear_pytest_temp() -> float:
+    """Remove the pytest base temporaries an earlier task left, answering the GB freed."""
+    before = shutil.disk_usage(tempfile.gettempdir()).free
+    for left in Path(tempfile.gettempdir()).glob("pytest-of-*"):
+        shutil.rmtree(left, ignore_errors=True)
+    return round((shutil.disk_usage(tempfile.gettempdir()).free - before) / 2**30, 2)
+
+
 def _rust_target() -> str:
     host = run(["rustc", "-vV"], check=True).stdout
     return next(line.split(": ", 1)[1] for line in host.splitlines() if line.startswith("host: "))
@@ -174,15 +226,26 @@ LEVERS: dict[str, Lever] = {
         env={"CARGO_PROFILE_DEV_SPLIT_DEBUGINFO": "unpacked"},
     ),
     "rust-lld": Lever("link with the toolchain's own rust-lld"),
+    "base-tree": Lever(
+        "the base branch's ci.yml, justfile and .gitignore in place of the spike's, for the run",
+        prepare=_base_tree,
+        restore=_spike_tree,
+    ),
+    "temp-on-d": Lever(
+        "TEMP and TMP on the D: drive (windows-2025 only has one)",
+        prepare=_temp_on_d,
+    ),
 }
 for _workers in (2, 3, 4):
     LEVERS[f"xdist-{_workers}"] = Lever(
         f"pytest-xdist at {_workers} workers, each worker under Python coverage",
-        env={"SPIKE_WORKER_COVERAGE": "1"},
+        env={"SPIKE_WORKER_COVERAGE": "1", "SPIKE_STABLE_IDS": "1"},
         rewrite=_xdist(_workers),
     )
     LEVERS[f"xdist-{_workers}-nocov"] = Lever(
-        f"pytest-xdist at {_workers} workers, no Python coverage", rewrite=_xdist(_workers)
+        f"pytest-xdist at {_workers} workers, no Python coverage",
+        env={"SPIKE_STABLE_IDS": "1"},
+        rewrite=_xdist(_workers),
     )
 
 PSEUDO_TARGETS = {
@@ -295,7 +358,13 @@ def _by_kind(
     }
 
 
+#: A terminal colour sequence, which cargo and nextest write when the job asks
+#: for colour (`CARGO_TERM_COLOR=always` on GitHub's runners).
+COLOUR = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _rust_figures(log: str) -> dict[str, Any] | None:
+    log = COLOUR.sub("", log)
     if "nextest" not in log and "Summary [" not in log:
         return None
     compiled = [int(m.group(1) or 0) * 60 + float(m.group(2)) for m in CARGO_FINISHED.finditer(log)]
@@ -486,11 +555,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         "tasks": [],
     }
     started = time.perf_counter()
-    for target in targets:
-        print(f"measure: {target} …", flush=True)
-        result = run_task(target, levers, env, out)
-        document["tasks"].append(result)
-        print(f"measure: {target} took {result['s']:.1f}s, exit {result['exit']}", flush=True)
+    try:
+        for target in targets:
+            print(f"measure: {target} …", flush=True)
+            freed = _clear_pytest_temp()
+            before = disk()
+            result = run_task(target, levers, env, out)
+            result["disk"] = {"freed_before_gb": freed, "before": before, "after": disk()}
+            document["tasks"].append(result)
+            print(f"measure: {target} took {result['s']:.1f}s, exit {result['exit']}", flush=True)
+    finally:
+        for lever in levers:
+            if lever.restore is not None:
+                lever.restore()
     links = _jsonl(out / "links.jsonl")
     if links:
         document["links"] = {
