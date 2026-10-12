@@ -64,7 +64,7 @@ def read_lines[Record](path: Path, parse: Callable[[dict[str, object]], Record])
     return Lines(records, unreadable)
 
 
-class TestStatus(StrEnum):
+class NextestStatus(StrEnum):
     """How nextest reported a test ended."""
 
     PASSED = "PASS"
@@ -80,7 +80,7 @@ class TestStatus(StrEnum):
 
 #: One test nextest finished: its status, seconds, binary and name.
 NEXTEST_RESULT = re.compile(
-    r"^\s*(?:\S+:\s+)?(" + "|".join(TestStatus) + r")\s+\[\s*([\d.]+)s\]\s+"
+    r"^\s*(?:\S+:\s+)?(" + "|".join(NextestStatus) + r")\s+\[\s*([\d.]+)s\]\s+"
     r"(?:\(\s*\d+/\d+\)\s+)?(\S+)\s+(.+?)\s*$"
 )
 
@@ -92,7 +92,7 @@ class RustTest:
     binary: str
     test: str
     s: float
-    status: TestStatus
+    status: NextestStatus
 
 
 @dataclass(frozen=True)
@@ -124,12 +124,12 @@ def rust_figures(log: str) -> RustFigures | None:
             binary=found.group(3),
             test=found.group(4),
             s=float(found.group(2)),
-            status=TestStatus(found.group(1)),
+            status=NextestStatus(found.group(1)),
         )
         for found in map(NEXTEST_RESULT.match, log.splitlines())
         if found
     ]
-    passed = [test.s for test in tests if test.status is TestStatus.PASSED]
+    passed = [test.s for test in tests if test.status is NextestStatus.PASSED]
     return RustFigures(
         compile_s=round(sum(compiled), 3),
         run_s=float(summary[-1]) if summary else None,

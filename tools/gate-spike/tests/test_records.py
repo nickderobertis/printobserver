@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import spike_pytest
 from conftest import HERE, PYTHONPATH, ROOT
-from figures import TestStatus, journey_figures, link_figures, pytest_figures, rust_figures
+from figures import NextestStatus, journey_figures, link_figures, pytest_figures, rust_figures
 from levers import read_defender_state
 from lookup_bench import CURRENT, LookupReport, MethodError
 from repo_checks.expect import contains, equal, truth
@@ -443,7 +443,7 @@ def test_every_status_nextest_reports_is_read_as_that_status() -> None:
             "    Starting 9 tests across 1 binary",
             *(
                 f"        {status} [   0.{index:03d}s] ({index + 1}/9) crate::binary test_{index}"
-                for index, status in enumerate(TestStatus)
+                for index, status in enumerate(NextestStatus)
             ),
             "     Summary [   0.100s] 9 tests run",
         ]
@@ -451,5 +451,7 @@ def test_every_status_nextest_reports_is_read_as_that_status() -> None:
     read = rust_figures(log)
     truth(read is not None, describing="figures for a nextest log")
     if read is not None:
-        equal([test.status for test in read.per_test], list(TestStatus), describing="the statuses")
+        equal(
+            [test.status for test in read.per_test], list(NextestStatus), describing="the statuses"
+        )
         equal(read.fastest_test_s, 0.0, describing="the fastest passing test, PASS being first")
