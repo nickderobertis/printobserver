@@ -648,7 +648,8 @@ impl World {
     ///
     /// # Panics
     ///
-    /// Panics when a print is still open after every look, naming it.
+    /// Panics when the listing is refused or is not a list of prints, and
+    /// when a print is still open after every look, naming it.
     fn no_print_is_open(&self) {
         let mut open = Vec::new();
         for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
@@ -657,21 +658,30 @@ impl World {
                 .arg(self.client_config())
                 .output()
                 .expect("a listing runs");
-            let listing: Value =
-                printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null);
-            open = listing
+            assert!(
+                read.status.success(),
+                "the walk could not list the prints: {}",
+                String::from_utf8_lossy(&read.stderr)
+            );
+            let listing: Value = printobserver_types::serde_json::from_slice(&read.stdout)
+                .unwrap_or_else(|error| panic!("the listing is not a document ({error})"));
+            let prints = listing
                 .get("prints")
                 .and_then(Value::as_array)
-                .map(|prints| {
-                    prints
-                        .iter()
-                        .filter(|print| print.get("ended_at").is_none_or(Value::is_null))
-                        .filter_map(|print| print.get("id").and_then(Value::as_str))
-                        .map(str::to_owned)
-                        .collect()
+                .unwrap_or_else(|| panic!("the listing carries no list of prints: {listing}"));
+            // A record with no identifier is still an open print, so it is
+            // named by the whole record rather than left out.
+            open = prints
+                .iter()
+                .filter(|print| print.get("ended_at").is_none_or(Value::is_null))
+                .map(|print| {
+                    print
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map_or_else(|| print.to_string(), str::to_owned)
                 })
-                .unwrap_or_default();
-            if read.status.success() && open.is_empty() {
+                .collect();
+            if open.is_empty() {
                 return;
             }
             std::thread::sleep(SETTLING_PAUSE);
