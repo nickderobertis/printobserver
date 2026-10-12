@@ -38,14 +38,6 @@ jobs:
       fail-fast: false
       matrix:
         cell:
-          - id: windows-x86_64/py-nocov
-            platform: windows-x86_64
-            runner: windows-2025
-            runs: "base-tree|repo-checks:test;base-tree+no-py-coverage|repo-checks:test"
-          - id: windows-x86_64/py-sysmon
-            platform: windows-x86_64
-            runner: windows-2025
-            runs: "base-tree|repo-checks:test;base-tree+sysmon|repo-checks:test"
           - id: windows-x86_64/py-xdist-2
             platform: windows-x86_64
             runner: windows-2025
@@ -57,27 +49,23 @@ jobs:
           - id: windows-x86_64/py-xdist-4
             platform: windows-x86_64
             runner: windows-2025
-            runs: "base-tree|repo-checks:test,release-artifacts:test;base-tree+xdist-4|repo-checks:test,release-artifacts:test"
-          - id: windows-x86_64/e2e
-            platform: windows-x86_64
-            runner: windows-2025
-            runs: "base-tree|printobserver:build,repo-e2e:test-e2e"
+            runs: "base-tree|repo-checks:test;base-tree+xdist-4|repo-checks:test"
           - id: windows-x86_64/py-temp-on-d
             platform: windows-x86_64
             runner: windows-2025
             runs: "base-tree|repo-checks:test;base-tree+temp-on-d|repo-checks:test"
-          - id: windows-aarch64/py-nocov
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "base-tree|repo-checks:test;base-tree+no-py-coverage|repo-checks:test"
-          - id: windows-aarch64/py-sysmon
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "base-tree|repo-checks:test;base-tree+sysmon|repo-checks:test"
-          - id: windows-aarch64/py-xdist-2
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "base-tree|repo-checks:test;base-tree+xdist-2|repo-checks:test"
+          - id: windows-x86_64/py-temp-on-d-xdist-3
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "base-tree+temp-on-d|repo-checks:test;base-tree+temp-on-d+xdist-3|repo-checks:test"
+          - id: windows-x86_64/e2e-temp-on-d
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "base-tree|printobserver:build,repo-e2e:test-e2e;base-tree+temp-on-d|repo-e2e:test-e2e"
+          - id: windows-x86_64/journey-temp-on-d
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "baseline|printobserver:test;temp-on-d|printobserver:test"
           - id: windows-aarch64/py-xdist-3
             platform: windows-aarch64
             runner: windows-11-arm
@@ -85,15 +73,7 @@ jobs:
           - id: windows-aarch64/py-xdist-4
             platform: windows-aarch64
             runner: windows-11-arm
-            runs: "base-tree|repo-checks:test,release-artifacts:test;base-tree+xdist-4|repo-checks:test,release-artifacts:test"
-          - id: windows-aarch64/e2e
-            platform: windows-aarch64
-            runner: windows-11-arm
-            runs: "base-tree|printobserver:build,repo-e2e:test-e2e"
-          - id: linux-x86_64/py
-            platform: linux-x86_64
-            runner: ubuntu-24.04
-            runs: "base-tree|repo-checks:test,release-artifacts:test;base-tree+no-py-coverage|repo-checks:test;base-tree+sysmon|repo-checks:test;base-tree+xdist-2|repo-checks:test;base-tree+xdist-3|repo-checks:test;base-tree+xdist-4|repo-checks:test,release-artifacts:test"
+            runs: "base-tree|repo-checks:test;base-tree+xdist-4|repo-checks:test"
     runs-on: ${{ matrix.cell.runner }}
     timeout-minutes: 300
     permissions:
@@ -127,57 +107,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: spike-${{ strategy.job-index }}-${{ matrix.cell.platform }}
-          path: ${{ runner.temp }}/spike-out
-          if-no-files-found: warn
-
-  spike-integration:
-    name: spike-integration (${{ matrix.platform.id }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - id: linux-x86_64
-            runner: ubuntu-24.04
-            runs: "baseline|*:test-integration"
-          - id: linux-aarch64
-            runner: ubuntu-24.04-arm
-            runs: "baseline|*:test-integration"
-          - id: macos-aarch64
-            runner: macos-15
-            runs: "baseline|*:test-integration"
-          - id: windows-x86_64
-            runner: windows-2025
-            runs: "baseline|*:test-integration,bench:octoprint-lookup"
-          - id: windows-aarch64
-            runner: windows-11-arm
-            runs: "baseline|*:test-integration,bench:octoprint-lookup"
-    runs-on: ${{ matrix.platform.runner }}
-    timeout-minutes: 120
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-      # The real integration job's own Rust cache, restored and never saved:
-      # its compile inside `just test-integration` is measured as that job
-      # pays it.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache-shared-key: integration
-          cache-save-if: false
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest,cargo-llvm-cov
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      - run: just bootstrap
-      - run: just octoprint-up
-      - run: just spike-cell "${{ matrix.platform.runs }}" "${{ runner.temp }}/spike-out"
-      - if: always()
-        run: just octoprint-down
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: spike-integration-${{ matrix.platform.id }}
           path: ${{ runner.temp }}/spike-out
           if-no-files-found: warn
