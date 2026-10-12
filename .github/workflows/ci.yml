@@ -12,11 +12,8 @@
 # its `spike-out` directory as an artifact. The real workflow is the base
 # branch's; nothing here is meant to land.
 #
-# The cells below are the spike's second run: each Python cell measures its
-# lever against a baseline taken on the same runner, under `base-tree`. The
-# first run's cells (per-crate Rust tests with and without coverage and with
-# Defender exclusions, the Rust build levers, and the first Python and
-# end-to-end cells) are this file at commit c0c597d.
+# Each Python cell measures its lever against a baseline taken on the same
+# runner, because two runners of one image differ by more than most levers do.
 
 name: ci
 
@@ -141,19 +138,19 @@ jobs:
         platform:
           - id: linux-x86_64
             runner: ubuntu-24.04
-            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration"
+            runs: "baseline|*:test-integration"
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration"
+            runs: "baseline|*:test-integration"
           - id: macos-aarch64
             runner: macos-15
-            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration"
+            runs: "baseline|*:test-integration"
           - id: windows-x86_64
             runner: windows-2025
-            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration,bench:octoprint-lookup"
+            runs: "baseline|*:test-integration,bench:octoprint-lookup"
           - id: windows-aarch64
             runner: windows-11-arm
-            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration,bench:octoprint-lookup"
+            runs: "baseline|*:test-integration,bench:octoprint-lookup"
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 120
     defaults:
