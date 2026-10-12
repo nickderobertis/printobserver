@@ -536,3 +536,35 @@ obico-down:
 test-obico:
     just node-modules
     bunx nx run-many -t test-obico --output-style=stream
+
+# EXPERIMENT is levers joined by `+` and TARGETS `project:target` tasks joined
+# by `,`; `just spike-measure-list` names every lever and pseudo-target. OUT is
+# outside the repository, because the suites measured copy its tree.
+#
+# SPIKE (spike-windows-gate-breakdown): one experiment over one target set, as JSON in OUT/measure.json.
+spike-measure EXPERIMENT TARGETS OUT:
+    just node-modules
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --experiment {{quote(EXPERIMENT)}} --targets {{quote(TARGETS)}} --out {{quote(OUT)}}
+
+# SPIKE: every lever and pseudo-target `spike-measure` takes.
+# llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+spike-measure-list:
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --list
+
+# RUNS is `experiment|targets` pairs joined by `;`, each measured in turn into
+# OUT/<n>-<experiment>, which is outside the repository. Every run is made
+# whatever an earlier one answered, the cell says once how many failed, and it
+# fails if any did.
+#
+# SPIKE: one experiment cell of the spike's workflow, run by run.
+spike-cell RUNS OUT:
+    just node-modules
+    failed=0; n=0; IFS=';' read -ra runs <<< {{quote(RUNS)}}; \
+    for run in "${runs[@]}"; do n=$((n+1)); \
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --quiet --experiment "${run%%|*}" --targets "${run#*|}" --out {{quote(OUT)}}"/$n-${run%%|*}" || failed=$((failed+1)); \
+    done; if [ "$failed" = 0 ]; then echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}"; else echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}" >&2; fi; [ "$failed" = 0 ]
+
+# SPIKE: the harness's own tests; the gate-spike project's test target runs this.
+spike-harness-test:
+    just node-modules
+    uv run -q pytest tools/gate-spike/tests -p no:cacheprovider -o pythonpath="tools/gate-spike tools/gate-spike/tests tools/octoprint-env tools/repo-checks/src"

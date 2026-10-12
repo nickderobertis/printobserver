@@ -319,7 +319,9 @@ fn the_answer_the_supervisor_sent(world: &World, command: &str) -> Value {
             started.elapsed() < ANSWER_WAIT,
             "the supervisor answered `{command}` with no intervention within {ANSWER_WAIT:?}"
         );
-        std::thread::sleep(PROXY_POLL);
+        crate::spike::timed("durations:proxy-poll", || {
+            std::thread::sleep(PROXY_POLL);
+        });
     }
 }
 
@@ -578,6 +580,14 @@ fn instant(answer: &Value, at: &str) -> Timestamp {
 /// also counted as elapsed time from the moment the wall clock was seen past
 /// the instant, and the wait ends only when both have run out.
 fn just_after(when: Timestamp, margin: Duration) -> Timestamp {
+    let waiting = Instant::now();
+    let answer = just_after_unrecorded(when, margin);
+    crate::spike::note("durations:wait-until-expiry", waiting);
+    answer
+}
+
+/// [`just_after`]'s own wait, apart from the spike's timing of it.
+fn just_after_unrecorded(when: Timestamp, margin: Duration) -> Timestamp {
     let instant = when.as_utc().timestamp_micros();
     until(instant);
     let crossed = Instant::now();

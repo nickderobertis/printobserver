@@ -685,7 +685,9 @@ fn the_machine_holds_what_this_invocation_asked_for(world: &World, one: &Driven)
         if world.reported_target(heater.at) == Some(asked) {
             return;
         }
-        std::thread::sleep(HOLDING_PAUSE);
+        crate::spike::timed("confirming:holding-pause", || {
+            std::thread::sleep(HOLDING_PAUSE);
+        });
     }
     panic!(
         "`{}` asked for {asked} and the machine is reporting {:?} at `{}`",

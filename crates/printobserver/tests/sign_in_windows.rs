@@ -11,6 +11,8 @@
 
 #![cfg(windows)]
 
+#[path = "support/spike.rs"]
+mod spike;
 #[path = "support/traced.rs"]
 mod traced;
 
