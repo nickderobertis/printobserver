@@ -41,7 +41,14 @@ from pathlib import Path
 from typing import NamedTuple, NewType, Self
 
 import pytest
-from journey import REPO_ROOT, CopiesTheTree, capture, clean_environment, output
+from journey import (
+    RELEASE_DRAFTING,
+    REPO_ROOT,
+    CopiesTheTree,
+    capture,
+    clean_environment,
+    output,
+)
 from release_artifacts.registries import released_by
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.shell import run as shell_run
@@ -141,13 +148,16 @@ BODY_LIMIT = 64 * 1024 * 1024
 PUBLISH_TIMEOUT_SECONDS = 300
 RELEASE_TIMEOUT_SECONDS = 900
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("release-plz") is None,
-    reason=(
-        "release-plz is installed by `just install-tools release-plz`, which "
-        "`just test-e2e` runs before this tier"
+pytestmark = [
+    RELEASE_DRAFTING,
+    pytest.mark.skipif(
+        shutil.which("release-plz") is None,
+        reason=(
+            "release-plz is installed by `just install-tools release-plz`, which "
+            "`just test-e2e` runs before this tier"
+        ),
     ),
-)
+]
 
 
 def sparse_path(name: str) -> str:

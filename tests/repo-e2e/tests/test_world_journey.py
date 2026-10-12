@@ -7,11 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT
+from journey import RELEASE_BUILD, REPO_ROOT
 from release_artifacts.build import program
 from release_artifacts.world import Machine, Printer, World
 from repo_checks.expect import truth
 from repo_checks.model import Repo
+
+pytestmark = RELEASE_BUILD
 
 
 class HeldPrinter(Machine):

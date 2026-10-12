@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+import workers
 from journey import GateCopy
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    """What `-n auto` means for this tier on this host, said once before it starts.
+
+    `workers` reads the host and chooses; the line it says is the record of
+    which figures a run's worker count came from.
+    """
+    del config
+    host = workers.here(Path(tempfile.gettempdir()))
+    print(host.said(), file=sys.stderr)
+    return host.workers
 
 
 @pytest.fixture(autouse=True)

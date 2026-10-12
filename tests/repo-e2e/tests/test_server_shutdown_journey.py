@@ -28,11 +28,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, SKILL_DIRECTORY, clean_environment, run
+from journey import DEBUG_BUILD, REPO_ROOT, SKILL_DIRECTORY, clean_environment, run
 from repo_checks.expect import equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import host
 from repo_checks.shell import start
+
+pytestmark = DEBUG_BUILD
 
 CREDENTIAL = "a-credential-this-journey-configures-4f1c7d2e9b"
 SERVING = "printobserver is serving on "

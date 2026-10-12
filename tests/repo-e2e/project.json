@@ -13,7 +13,8 @@
       "command": "uv run -q ty check tests/repo-e2e && uv run -q ty check --python-platform win32 tests/repo-e2e"
     },
     "test-e2e": { "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason." },
-      "command": "uv run -q pytest tests/repo-e2e/tests"
+      "dependsOn": [{ "projects": ["printobserver"], "target": "build" }],
+      "command": "uv run -q pytest tests/repo-e2e/tests -n auto --dist loadgroup --durations=15 -m \"not alone\" && uv run -q pytest tests/repo-e2e/tests -m alone"
     }
   }
 }

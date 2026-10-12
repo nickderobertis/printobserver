@@ -60,16 +60,35 @@ tool-version TOOL:
 # a tier reaches and says why before it runs. The repository-level steps — the
 # coverage floors, the Windows-target lint, the workflow lint and the repository
 # checks — run whichever tier it is.
+#
+# Off Windows the end-to-end tier starts beside the test tier rather than after
+# every other one: what it reads of this tree's build, its graph target builds
+# first, so the gate's two longest tiers overlap. Both are waited out whatever
+# either answers, so a run reports every failure of both, and fails if either
+# failed. On Windows it runs last, as the other tiers do in turn: either tier
+# alone fills a 4-processor Windows runner, so beside each other they only slow
+# both down, where every other platform's runner has the room to gain.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
     just typecheck {{quote(tier)}}
-    just test {{quote(tier)}}
-    just coverage {{quote(tier)}}
-    just build {{quote(tier)}}
-    just lint-workflows
-    just check-repo
-    just test-e2e {{quote(tier)}}
+    status=0; if {{E2E_BESIDE_TESTS}}; then \
+    just test-e2e {{quote(tier)}} & e2e=$!; \
+    fi; \
+    just test {{quote(tier)}} && \
+    just coverage {{quote(tier)}} && \
+    just build {{quote(tier)}} && \
+    just lint-workflows && \
+    just check-repo || status=$?; \
+    if {{E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
+    elif [ "$status" = 0 ]; then \
+    just test-e2e {{quote(tier)}} || status=$?; \
+    fi; \
+    exit "$status"
+
+# Whether `just check` starts the end-to-end tier beside the test tier: `true`
+# everywhere but Windows, for the reason the recipe above gives.
+E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any

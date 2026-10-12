@@ -17,7 +17,7 @@ from collections.abc import Callable
 
 import pytest
 import yaml
-from journey import REPO_ROOT, GateCopy, output, run
+from journey import RELEASE_BUILD, REPO_ROOT, GateCopy, output, run
 from repo_checks.expect import absent, contains, equal, failing
 
 RELEASE_WORKFLOW = REPO_ROOT / ".github/workflows/release-plz.yml"
@@ -49,13 +49,16 @@ def release_step_arguments() -> list[str]:
     return step_arguments("release-plz release")
 
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("release-plz") is None,
-    reason=(
-        "release-plz is installed by `just install-tools release-plz`, which "
-        "`just test-e2e` runs before this tier"
+pytestmark = [
+    RELEASE_BUILD,
+    pytest.mark.skipif(
+        shutil.which("release-plz") is None,
+        reason=(
+            "release-plz is installed by `just install-tools release-plz`, which "
+            "`just test-e2e` runs before this tier"
+        ),
     ),
-)
+]
 
 
 def test_the_committed_step_runs_the_release_program_the_toolchain_installs() -> None:

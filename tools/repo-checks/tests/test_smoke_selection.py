@@ -38,8 +38,8 @@ def test_the_check_recipe_invoking_it_is_refused(tree: Callable[[], Tree]) -> No
     copy = tree()
     copy.edit(
         "justfile",
-        "    just test-e2e {{quote(tier)}}\n",
-        f"    just test-e2e {{{{quote(tier)}}}}\n    just {RECIPE}\n",
+        "    just typecheck {{quote(tier)}}\n",
+        f"    just typecheck {{{{quote(tier)}}}}\n    just {RECIPE}\n",
     )
 
     refused_naming(smoke_selection(copy.repo), "the `check` recipe invokes", RECIPE)

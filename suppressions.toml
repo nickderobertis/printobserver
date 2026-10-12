@@ -546,8 +546,8 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
-site = "Keep the OctoPrint journey in the required gate"
-reason = "This is a repository-wide gate and merge-protection constraint spanning the e2e project and CI workflows; neither project subtree alone owns where the required gate runs."
+site = "The OctoPrint tier runs in the required `integration` jobs, not in the gate"
+reason = "This is a repository-wide gate and merge-protection statement spanning the e2e project and CI workflows; neither project subtree alone owns which required job runs the OctoPrint tier."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
@@ -558,8 +558,8 @@ reason = "Required content rather than session history. The release-path repair 
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
-site = "Keep the OctoPrint journey in the required gate"
-reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection constraint is scanned through this path too; neither the e2e nor CI subtree alone owns it."
+site = "The OctoPrint tier runs in the required `integration` jobs, not in the gate"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection statement is scanned through this path too; neither the e2e nor CI subtree alone owns it."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
@@ -889,7 +889,7 @@ reason = "The operator's command is `gh skill install nickderobertis/printobserv
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
 site = "implicitDependencies"
-reason = "The same finding as the `test-e2e` entry below, read at the edge rather than the target: each edge is a project this suite's journeys drive or import — the built program, both clients, the release tooling, the checks, the OctoPrint environment and the smoke — so a change to any of them has to select the suite, and dropping one would let the affected tier skip journeys that change can break. Splitting the suite into per-component projects with narrower edges is the optional split this change was told is out of its scope; until that split happens, this edge set is the narrowest that is still correct."
+reason = "The same finding as the `test-e2e` entry below, read at the edge rather than the target. The project has two kinds of edge, and each is exactly what its journeys use. Its `implicitDependencies` are project-graph edges, which is all the affected tier selects by: each is a project those journeys drive or import — the built program (and through it every crate it is built from), both clients, the release tooling, the checks, the OctoPrint environment and the smoke — so a change to any of them selects the suite, and `test_gate_tier_journey.py` drives `just test-e2e` over a change to each and over one to the Obico environment, which selects nothing. Its `test-e2e` target's one `dependsOn`, `printobserver:build`, is a task-graph edge and selects nothing: it is the debug program the journeys run, built before they start, and nothing else, so the target starts beside the gate's test tier instead of waiting on every other one. Nx's `dependsOn` adds no project-graph edge, so the selection edges cannot be folded into it without the affected tier skipping journeys a change can break. Splitting the suite into per-component projects with narrower edges is the optional split this change was told is out of its scope; until that split happens, this edge set is the narrowest that is still correct."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
