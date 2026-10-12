@@ -1,32 +1,22 @@
-# The gate, on the supported platform matrix, plus the judged-lint tier and the
-# pull-request-title lint as jobs of their own.
+# SPIKE ONLY — spike-windows-gate-breakdown. Never merged.
 #
-# The gate runs `just check` at the tier `just gate-tier` answers for the event:
-# the affected tier on an ordinary pull request and on a push to `main`, each
-# against an explicitly derived base, and the full sweep on the release pull
-# request `release-plz` opens — the one point every batched release passes
-# through before it ships. AGENTS.md's "Commits, releases, and merging" records
-# why the sweep sits there.
-#
-# The matrices below are derived from AGENTS.md's "Supported platforms" list and
-# `just check-repo` refuses one if the two disagree, so this file cannot be
-# narrowed independently of that list.
-# Which jobs carry one at all is `repo-policy.toml`'s
-# `workflows.platform_dependent_kinds`.
+# This branch's `ci.yml` is cut down to an experiment matrix, so that one
+# pull-request run measures where the Windows gate's and every integration
+# job's time goes on GitHub's real runners without spending the twelve
+# ordinary jobs. Each `experiment` cell runs the gate's own checkout,
+# toolchain and `just bootstrap` steps and then only the targets its
+# experiment measures, through `just spike-cell`, which runs
+# `tools/gate-spike/measure.py` once per `experiment|targets` pair; each
+# `spike-integration` cell is one platform's `integration` job with its
+# `just test-integration` step measured project by project. Every cell uploads
+# its `spike-out` directory as an artifact. The real workflow is the base
+# branch's; nothing here is meant to land.
 
 name: ci
 
-# The pull-request trigger names GitHub's three default activity types and not
-# `ready_for_review`: a pull request opened as a draft has already run every
-# check on its commit, and lifting it out of draft changes no commit, so a run
-# on the lift would repeat the draft's run on the same commit (the macOS and
-# Windows gates take about two hours) while the merge waits on it. The draft's
-# results stand, because a check reports on the commit.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -36,100 +26,166 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate:
+  experiment:
+    name: experiment (${{ matrix.cell.id }})
     env:
-      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
-      # The service-manager journey skips a case whose prerequisite a host lacks
-      # (Docker for systemd, a password-free `sudo` for launchd); every hosted
-      # runner here has its own, so on the merge path a missing one fails the
-      # journey rather than skipping it.
+      PRINTOBSERVER_PLATFORM: ${{ matrix.cell.platform }}
       PRINTOBSERVER_SERVICE_JOURNEY: required
-    # The cell's platform is in the name because that name is the status context
-    # a branch-protection rule names: two cells reporting under one name are two
-    # check runs the rule cannot tell apart, so it cannot require both.
-    name: gate (${{ matrix.platform.id }})
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - id: linux-x86_64
-            runner: ubuntu-24.04
-          - id: linux-aarch64
-            runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
-          - id: windows-x86_64
+        cell:
+          - id: windows-x86_64/rust-baseline
+            platform: windows-x86_64
             runner: windows-2025
-          - id: windows-aarch64
+            runs: "baseline|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: windows-x86_64/rust-nocov
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "no-rust-coverage|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: windows-x86_64/rust-defender
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "defender-excluded|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: windows-x86_64/rust-levers
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "compile-only|printobserver:test;compile-only+line-tables-only|printobserver:test;compile-only+debug-0|printobserver:test;compile-only+rust-lld|printobserver:test"
+          - id: windows-x86_64/py-baseline
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test"
+          - id: windows-x86_64/py-coverage
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "no-py-coverage|repo-checks:test;sysmon|repo-checks:test"
+          - id: windows-x86_64/py-xdist
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
+          - id: windows-x86_64/py-defender
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "defender-excluded|repo-checks:test,release-artifacts:test,printobserver:build,repo-e2e:test-e2e"
+          - id: windows-x86_64/e2e
+            platform: windows-x86_64
+            runner: windows-2025
+            runs: "baseline|bench:octoprint-lookup,host:defender,printobserver:build,repo-e2e:test-e2e"
+          - id: windows-aarch64/rust-baseline
+            platform: windows-aarch64
             runner: windows-11-arm
-    runs-on: ${{ matrix.platform.runner }}
-    permissions:
-      contents: read
-      # `nx-set-shas` reads this workflow's own runs on `main` to find the last
-      # commit the gate passed on, which is the base a push is diffed against.
-      actions: read
-    # Git's own bash on the Windows runners rather than PowerShell, so that
-    # every cell runs its steps, and `just` finds the bash its recipes name, the
-    # same way.
+            runs: "baseline|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: windows-aarch64/rust-nocov
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "no-rust-coverage|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: windows-aarch64/rust-defender
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "defender-excluded|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: windows-aarch64/rust-levers
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "compile-only|printobserver:test;compile-only+line-tables-only|printobserver:test;compile-only+debug-0|printobserver:test;compile-only+rust-lld|printobserver:test"
+          - id: windows-aarch64/py-baseline
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test"
+          - id: windows-aarch64/py-coverage
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "no-py-coverage|repo-checks:test;sysmon|repo-checks:test"
+          - id: windows-aarch64/py-xdist
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
+          - id: windows-aarch64/py-defender
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "defender-excluded|repo-checks:test,release-artifacts:test,printobserver:build,repo-e2e:test-e2e"
+          - id: windows-aarch64/e2e
+            platform: windows-aarch64
+            runner: windows-11-arm
+            runs: "baseline|bench:octoprint-lookup,host:defender,printobserver:build,repo-e2e:test-e2e"
+          - id: linux-x86_64/rust-baseline
+            platform: linux-x86_64
+            runner: ubuntu-24.04
+            runs: "baseline|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: linux-x86_64/rust-nocov
+            platform: linux-x86_64
+            runner: ubuntu-24.04
+            runs: "no-rust-coverage|printobserver-types:test,printobserver-printer-api:test,printobserver-supervisor-api:test,printobserver-vision-api:test,printobserver-store-sqlite:test,printobserver-core:test,printobserver-octoprint:test,printobserver-obico:test,printobserver-oneharness:test,printobserver-server:test,printobserver-sdk:test,printobserver:test"
+          - id: linux-x86_64/py
+            platform: linux-x86_64
+            runner: ubuntu-24.04
+            runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test;no-py-coverage|repo-checks:test;sysmon|repo-checks:test;xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
+    runs-on: ${{ matrix.cell.runner }}
+    timeout-minutes: 300
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v5
         with:
-          # The affected tier, the end-to-end tier and the suppression check all
-          # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
-      # The base the affected tier is diffed against, derived explicitly and
-      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
-      # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
+      # No Rust cache: the Windows gate cells restore none today (the
+      # repository's caches are over GitHub's 10 GB and the Windows gate's are
+      # evicted), so a cold build is what is measured; and a spike that saved
+      # caches would evict the real jobs' ones.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      # `just` from the same action as the cargo tools: `extractions/setup-just`
-      # has no build for the `windows-11-arm` runner.
+        with:
+          cache: false
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check "$(just gate-tier)"
+      - run: just install-tools release-plz
+      - run: just spike-cell "${{ matrix.cell.runs }}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spike-${{ strategy.job-index }}-${{ matrix.cell.platform }}
+          path: spike-out
+          if-no-files-found: warn
 
-  integration:
-    # Named by platform id, not runner, so a new runner image renames no
-    # required check; each cell reports the context AGENTS.md's required-checks
-    # record names, and that record says how the live protection follows a rename.
-    name: integration (${{ matrix.platform.id }})
-    # The printer integration tier, against a real OctoPrint. It is a job of
-    # its own rather than one of `just check`'s tiers because it installs
-    # OctoPrint, starts it and waits a print out — but it runs on every change,
-    # on every platform AGENTS.md's supported-platform list names for which its
-    # "Virtual printer availability" block records no exclusion.
+  spike-integration:
+    name: spike-integration (${{ matrix.platform.id }})
     strategy:
       fail-fast: false
       matrix:
         platform:
           - id: linux-x86_64
             runner: ubuntu-24.04
+            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration"
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
+            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration"
           - id: macos-aarch64
             runner: macos-15
+            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration"
           - id: windows-x86_64
             runner: windows-2025
+            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration,bench:octoprint-lookup"
           - id: windows-aarch64
             runner: windows-11-arm
+            runs: "baseline|printobserver-octoprint:test-integration,printobserver-server:test-integration,printobserver-sdk:test-integration,printobserver-sdk-python:test-integration,printobserver-sdk-node:test-integration,printobserver:test-integration,octoprint-env:test-integration,bench:octoprint-lookup"
     runs-on: ${{ matrix.platform.runner }}
-    # Git's own bash on the Windows runners rather than PowerShell, so that
-    # every cell runs its steps, and `just` finds the bash its recipes name, the
-    # same way.
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+      # The real integration job's own Rust cache, restored and never saved:
+      # its compile inside `just test-integration` is measured as that job
+      # pays it.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: integration
+          cache-save-if: false
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
@@ -137,94 +193,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
       - run: just octoprint-up
-      - run: just test-integration
-      # The one condition in this job, and it is on the teardown: an
-      # environment that outlived a failing tier is a runner nobody stopped.
+      - run: just spike-cell "${{ matrix.platform.runs }}"
       - if: always()
         run: just octoprint-down
-
-  llmlint:
-    name: llmlint
-    # The judged tier is a job of its own rather than a step inside the gate:
-    # it is non-deterministic and needs a harness credential, and a gate that
-    # could not run without one would stop being the deterministic gate.
-    # No matrix: a second cell over a text diff would be a second verdict from
-    # that non-deterministic judge, not a second platform.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
-          fetch-depth: 0
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just setup-llmlint
-      # The deterministic half runs first: a config, plugin or suppression slip
-      # fails here without spending a harness call.
-      - run: just lint-llm-validate
-      - run: just lint-llm-diff
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-  skill-install:
-    name: skill-install
-    # A real `gh skill install` of this repository's Agent Skill, from a copy of
-    # the tree and with no GitHub credentials, and `gh skill publish --dry-run`
-    # over it. A job of its own rather than a tier of the gate: it needs GitHub
-    # CLI at the release `repo-policy.toml` holds, which this job installs and
-    # the gate's runners are not given. No matrix: what `gh skill` reads and
-    # writes is the tree's own files, the same whichever host reads them.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      # The release `repo-policy.toml` holds gh at, installed from that
-      # release's own archive once its published checksums vouch for it, ahead
-      # of the runner's own gh on PATH.
-      - id: held
-        run: just tool-version gh >> "$GITHUB_OUTPUT"
-      - run: just install-gh ${{ steps.held.outputs.version }}
-      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - run: just test-skill-install
-
-  supply-chain:
-    name: supply-chain
-    # The Rust supply-chain gate: `deny.toml`'s advisory, licence, ban and
-    # source policy, and no unused dependency. A job of its own rather than a
-    # tier of the gate, and no matrix: what it reads is the lockfile's
-    # dependency graph, which is the same on every platform, so a second cell
-    # would read the same graph again. Nothing needs it.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      # The releases `repo-policy.toml` holds the two tools at, installed
-      # prebuilt, so the recipe's own install finds them held and compiles
-      # nothing.
-      - id: deny
-        run: just tool-version cargo-deny >> "$GITHUB_OUTPUT"
-      - id: machete
-        run: just tool-version cargo-machete >> "$GITHUB_OUTPUT"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny@${{ steps.deny.outputs.version }},cargo-machete@${{ steps.machete.outputs.version }}
-      - run: just supply-chain
-
-  pr-title:
-    name: pr-title
-    # Under squash-merge the pull-request title becomes the commit release
-    # automation reads, so it is linted as a required check.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just check-pr-title
-        env:
-          # Passed through the environment rather than interpolated into the
-          # shell: the title is attacker-controlled on a fork pull request.
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          name: spike-integration-${{ matrix.platform.id }}
+          path: spike-out
+          if-no-files-found: warn
