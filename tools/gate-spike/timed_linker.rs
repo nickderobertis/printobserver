@@ -4,7 +4,8 @@
 //! host target. `SPIKE_REAL_LINKER` names the linker it stands in front of
 //! (`link.exe` on Windows, `cc` elsewhere) and `SPIKE_LINK_TIMINGS` the file one
 //! JSON line per link is appended to, in the shape `spike_names.LinkTiming`
-//! reads. It exits as the real linker did: with its code, or on Unix with 128
+//! reads. Standing in front of `rust-lld`, it names the flavor that driver
+//! needs. It exits as the real linker did: with its code, or on Unix with 128
 //! plus the signal that ended it, as a shell reports one.
 
 use std::io::Write as _;
@@ -85,7 +86,17 @@ fn main() {
         .unwrap_or_else(|_| if cfg!(windows) { "link.exe" } else { "cc" }.to_owned());
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let started = Instant::now();
-    let status = Command::new(&real).args(&arguments).status();
+    // rust-lld is a generic driver that has to be told which linker to be.
+    let flavor: &[&str] = if std::path::Path::new(&real).file_stem() == Some("rust-lld".as_ref()) {
+        if cfg!(windows) {
+            &["-flavor", "link"]
+        } else {
+            &["-flavor", "gnu"]
+        }
+    } else {
+        &[]
+    };
+    let status = Command::new(&real).args(flavor).args(&arguments).status();
     let elapsed = started.elapsed();
     if let Ok(sink) = std::env::var("SPIKE_LINK_TIMINGS") {
         if let Ok(mut file) = std::fs::OpenOptions::new()

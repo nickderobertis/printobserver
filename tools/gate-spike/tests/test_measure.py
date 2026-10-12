@@ -8,13 +8,59 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from conftest import CASES_FAILING, CASES_TESTS, ROOT, mapping, measure, tasks
+from conftest import CASES_OUTCOMES, CASES_TESTS, PYTHONPATH, ROOT, mapping, measure, tasks
 from levers import LEVERS, SPIKE_CHANGED, pytest_temporaries
 from measure import PSEUDO_TARGETS
 from repo_checks.expect import contains, equal, truth
 from repo_checks.shell import run
+from spike_names import PYTEST_OUT, REAL_LINKER
 
 VISION = "printobserver-vision-api:test"
+
+#: Every step `tier::run` times at its `WHOLE` depth.
+TIER_STEPS = [
+    f"tier:{step}"
+    for step in (
+        "confirming::the_cross_product_walk",
+        "formats::both_renderings_carry_the_same_fields",
+        "carrying::every_output_carries_only_what_the_answer_carried",
+        "materializing::an_image_is_a_path_that_opens",
+        "materializing::a_path_that_names_no_file_here_is_its_own_failure",
+        "failures::every_command_owes_its_failures",
+        "failures::no_mutating_command_runs_without_a_reason",
+        "failures::an_action_the_machine_refuses_is_answered_as_that",
+        "tainting::every_assertion_here_refuses_the_defect_it_is_about",
+        "durations::every_adjustment_is_a_bounded_intervention",
+        "redaction::no_run_of_the_walk_prints_the_credential",
+    )
+]
+#: Every operation the world and the journeys' waits time.
+WORLD_OPERATIONS = [
+    "world:supervisor-start-to-announcement",
+    "world:settling-pause",
+    "world:cli-prints",
+    "world:cli-status",
+    "world:cli-settle",
+    "confirming:holding-pause",
+    "durations:proxy-poll",
+    "durations:wait-until-expiry",
+]
+#: What each platform's observation of one invocation times.
+OBSERVATION = {
+    "linux": ["traced:strace-run"],
+    "darwin": ["traced:interposed-run"],
+    "win32": [
+        f"traced:{phase}"
+        for phase in (
+            "etw-lock-wait",
+            "etw-logman-start",
+            "invocation-run",
+            "etw-logman-stop",
+            "etw-tracerpt",
+            "etw-decode",
+        )
+    ],
+}
 
 
 def test_every_lever_and_pseudo_target_is_listed(tmp_path: Path) -> None:
@@ -58,15 +104,18 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
     equal(fails["exit"], 3, describing="the failing task's own exit")
     pytest_run = mapping(suite["pytest"], describing="the suite's figures")
     equal(pytest_run["tests"], CASES_TESTS, describing="the tests the plugin recorded")
-    equal(
-        pytest_run["outcomes"],
-        {"failed": CASES_FAILING, "passed": CASES_TESTS - CASES_FAILING},
-        describing="their outcomes",
-    )
+    equal(pytest_run["outcomes"], CASES_OUTCOMES, describing="their outcomes")
     by_cost = pytest_run["by_cost"]
-    for cost, count in (("spawn:git", 1), ("copytree", 1), ("rmtree", 1), ("http", 1)):
+    for cost, count in (
+        ("spawn:git", 1),
+        ("copytree", 1),
+        ("copy2", 1),
+        ("rmtree", 1),
+        ("http", 1),
+    ):
         equal(by_cost[cost]["count"], count, describing=f"`{cost}` in {by_cost}")
     truth(by_cost["sleep"]["s"] >= 0.05, describing=f"the sleep's seconds in {by_cost}")
+    equal(by_cost["sleep"]["count"], 2, describing="both sleeps, the one that raised included")
     (session,) = pytest_run["sessions"]
     equal(session["outside_tests"]["spawn:git"]["count"], 1, describing="the spawn at import")
     own = [line for line in measured.out.splitlines() if line.startswith("measure: ")]
@@ -226,3 +275,132 @@ def test_a_cell_runs_every_run_and_fails_if_any_did(tmp_path: Path, fixture_proj
     truth(ran.returncode != 0, describing="the cell's exit after a failed run")
     for run_dir in ("1-baseline", "2-baseline"):
         truth((tmp_path / run_dir / "measure.json").is_file(), describing=f"{run_dir}'s report")
+
+
+@pytest.mark.parametrize(
+    ("lever", "variable", "value"),
+    [
+        ("line-tables-only", "CARGO_PROFILE_DEV_DEBUG", "line-tables-only"),
+        ("debug-0", "CARGO_PROFILE_DEV_DEBUG", "0"),
+        ("incremental-on", "CARGO_INCREMENTAL", "1"),
+        ("split-unpacked", "CARGO_PROFILE_DEV_SPLIT_DEBUGINFO", "unpacked"),
+    ],
+)
+def test_a_build_lever_reaches_the_build_it_measures(
+    tmp_path: Path, lever: str, variable: str, value: str
+) -> None:
+    """Each build-profile lever is in the environment the crate's build ran under."""
+    # No compiler cache in front of rustc, as on the runners the levers are measured on:
+    # sccache refuses an incremental build outright.
+    measured = measure(
+        "--experiment",
+        f"compile-only+{lever}",
+        "--targets",
+        VISION,
+        out=tmp_path,
+        environment={"RUSTC_WRAPPER": ""},
+    )
+    equal(measured.code, 0, describing=f"a build under `{lever}`")
+    env = mapping(measured.report, describing="the report")["env"]
+    equal(env[variable], value, describing=f"`{variable}` in {env}")
+    log = (tmp_path / "printobserver-vision-api_test.log").read_text(encoding="utf-8")
+    contains(log, "Compiling printobserver-vision-api", describing="the crate rebuilt under it")
+
+
+def test_a_linker_the_smoke_link_refuses_leaves_the_build_on_its_own_linker(
+    tmp_path: Path,
+) -> None:
+    """A real linker that fails the smoke link is reported, and the task builds without it."""
+    measured = measure("--targets", VISION, out=tmp_path, environment={REAL_LINKER: "false"})
+    equal(measured.code, 0, describing="the task's run on its own linker")
+    linker = mapping(measured.report, describing="the report")["linker"]
+    equal(linker["used"], False, describing=str(linker))
+    contains(linker["why"], "smoke link failed", describing="why it was not used")
+
+
+def test_a_wrapper_that_does_not_build_is_reported_and_the_run_goes_on(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """A `rustc` that cannot build the wrapper is reported, and the tasks still run."""
+    refusing = tmp_path / "bin"
+    refusing.mkdir()
+    rustc = refusing / ("rustc.bat" if sys.platform == "win32" else "rustc")
+    rustc.write_text(
+        "@exit /b 1\n" if sys.platform == "win32" else "#!/bin/sh\nexit 1\n", encoding="utf-8"
+    )
+    rustc.chmod(0o755)
+    measured = measure(
+        "--targets",
+        f"{fixture_project}:here",
+        out=tmp_path / "out",
+        environment={"PATH": os.pathsep.join([str(refusing), os.environ["PATH"]])},
+    )
+    equal(measured.code, 0, describing="the run's exit")
+    linker = mapping(measured.report, describing="the report")["linker"]
+    contains(linker["why"], "did not build", describing=str(linker))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="on Windows the lever names rust-lld for real")
+def test_rust_lld_off_windows_says_it_did_not_apply(tmp_path: Path, fixture_project: str) -> None:
+    """Off Windows `rust-lld` names no linker, and the report says so."""
+    measured = measure(
+        "--experiment", "rust-lld", "--targets", f"{fixture_project}:here", out=tmp_path
+    )
+    report = mapping(measured.report, describing="the report")
+    equal(
+        [step["applied"] for step in report["prepared"]],
+        [False],
+        describing=str(report["prepared"]),
+    )
+    truth(report["linker"]["used"], describing="the timed linker in front of the usual one")
+
+
+HOSTED_WINDOWS = sys.platform == "win32" and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+
+
+@pytest.mark.skipif(
+    not HOSTED_WINDOWS, reason="changes Defender and TEMP; only on a disposable runner"
+)
+def test_the_windows_host_levers_change_the_host(tmp_path: Path, fixture_project: str) -> None:
+    """On a hosted Windows runner the Defender and D: levers take effect, as the report says."""
+    measured = measure(
+        "--experiment",
+        "defender-excluded+defender-off+temp-on-d",
+        "--targets",
+        f"{fixture_project}:here",
+        out=tmp_path,
+    )
+    report = mapping(measured.report, describing="the report")
+    equal(
+        [step["applied"] for step in report["prepared"]], [True, True, True], describing=str(report)
+    )
+
+
+def test_the_plugin_unloaded_or_unconfigured_leaves_pytest_as_it_was(tmp_path: Path) -> None:
+    """Loaded with no output named it writes nothing; configured, it puts back what it wrapped."""
+    script = tmp_path / "check.py"
+    script.write_text(
+        "import shutil, subprocess, sys, time, urllib.request\n"
+        "import pytest\n"
+        "before = (shutil.copy2, shutil.copytree, shutil.rmtree, time.sleep,\n"
+        "          urllib.request.urlopen, subprocess.Popen.__init__, subprocess.Popen.wait)\n"
+        "code = pytest.main([sys.argv[1], '-q', '-p', 'spike_pytest', '-p', 'no:cacheprovider'])\n"
+        "after = (shutil.copy2, shutil.copytree, shutil.rmtree, time.sleep,\n"
+        "         urllib.request.urlopen, subprocess.Popen.__init__, subprocess.Popen.wait)\n"
+        "print('restored' if all(a is b for a, b in zip(before, after)) else 'left wrapped')\n"
+        "sys.exit(code)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "test_one.py").write_text("def test_one():\n    pass\n", encoding="utf-8")
+    out = tmp_path / "records"
+    for environment, written in (({}, False), ({PYTEST_OUT: str(out)}, True)):
+        ran = run(
+            [sys.executable, str(script), str(tmp_path / "test_one.py")],
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": PYTHONPATH, **environment},
+        )
+        equal(ran.returncode, 0, describing=f"the suite under {environment}: {ran.stdout}")
+        contains(ran.stdout, "restored", describing="every wrapped function after the session")
+        equal(
+            out.is_dir() and any(out.iterdir()), written, describing=f"records under {environment}"
+        )

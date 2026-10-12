@@ -14,9 +14,18 @@ import re
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from spike_names import Cost, JourneyTiming, LinkTiming, PytestSession, PytestTest, RecordError
+from spike_names import (
+    Cost,
+    JourneyTiming,
+    LinkTiming,
+    Outcome,
+    PytestSession,
+    PytestTest,
+    RecordError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -59,6 +68,20 @@ def read_lines[Record](path: Path, parse: Callable[[dict[str, object]], Record])
     return Lines(records, unreadable)
 
 
+class TestStatus(StrEnum):
+    """How nextest reported a test ended."""
+
+    PASSED = "PASS"
+    FAILED = "FAIL"
+    FLAKY = "FLAKY"
+    TIMEOUT = "TIMEOUT"
+    SIGSEGV = "SIGSEGV"
+    SIGABRT = "SIGABRT"
+    SIGKILL = "SIGKILL"
+    ABORT = "ABORT"
+    LEAK = "LEAK"
+
+
 @dataclass(frozen=True)
 class RustTest:
     """One test nextest ran, and how long it took."""
@@ -66,7 +89,7 @@ class RustTest:
     binary: str
     test: str
     s: float
-    status: str
+    status: TestStatus
 
 
 @dataclass(frozen=True)
@@ -98,12 +121,12 @@ def rust_figures(log: str) -> RustFigures | None:
             binary=found.group(3),
             test=found.group(4),
             s=float(found.group(2)),
-            status=found.group(1),
+            status=TestStatus(found.group(1)),
         )
         for found in map(NEXTEST_RESULT.match, log.splitlines())
         if found
     ]
-    passed = [test.s for test in tests if test.status == "PASS"]
+    passed = [test.s for test in tests if test.status is TestStatus.PASSED]
     return RustFigures(
         compile_s=round(sum(compiled), 3),
         run_s=float(summary[-1]) if summary else None,
@@ -130,7 +153,15 @@ class PytestFigures:
 
 
 def _pytest_record(document: dict[str, object]) -> PytestTest | PytestSession:
-    return PytestSession.parse(document) if document.get("session") else PytestTest.parse(document)
+    """A session line carries `"session": true`; a test line carries no `session` at all."""
+    match document.get("session", False):
+        case True:
+            return PytestSession.parse(document)
+        case False if "session" not in document:
+            return PytestTest.parse(document)
+        case marker:
+            msg = f"`session` is {marker!r}, neither true nor absent, in {document!r}"
+            raise RecordError(msg)
 
 
 def pytest_figures(directory: Path) -> PytestFigures | None:
@@ -149,8 +180,8 @@ def pytest_figures(directory: Path) -> PytestFigures | None:
     return PytestFigures(
         tests=len(tests),
         test_s=round(sum(test.s for test in tests), 3),
-        outcomes=dict(sorted(Counter(test.outcome for test in tests).items())),
-        failed=[test.nodeid for test in tests if test.outcome == "failed"],
+        outcomes=dict(sorted(Counter(str(test.outcome) for test in tests).items())),
+        failed=[test.nodeid for test in tests if test.outcome is Outcome.FAILED],
         by_cost={name: Cost(cost.count, round(cost.s, 3)) for name, cost in sorted(costs.items())},
         sessions=[record for record in records if isinstance(record, PytestSession)],
         per_test=tests,

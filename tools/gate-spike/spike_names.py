@@ -34,8 +34,13 @@ class RecordError(ValueError):
 
 def _number(record: dict[str, object], key: str) -> float:
     value = record.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-        msg = f"`{key}` is not a finite number in {record!r}"
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        msg = f"`{key}` is not a finite number of at least zero in {record!r}"
         raise RecordError(msg)
     return float(value)
 
@@ -119,6 +124,19 @@ class LinkTiming:
         )
 
 
+class Outcome(StrEnum):
+    """What pytest reported a test came to; `unknown` before any phase reported."""
+
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    UNKNOWN = "unknown"
+
+
+#: The phases pytest reports a test in.
+PHASES = ("setup", "call", "teardown")
+
+
 @dataclass
 class Cost:
     """How many times one kind of thing happened during a test, and for how long."""
@@ -154,7 +172,7 @@ class PytestTest:
 
     nodeid: str
     worker: str
-    outcome: str
+    outcome: Outcome
     s: float
     phases: dict[str, float]
     costs: dict[str, Cost]
@@ -163,13 +181,17 @@ class PytestTest:
     def parse(cls, record: dict[str, object]) -> PytestTest:
         """Read one test line."""
         phases = record.get("phases")
-        if not isinstance(phases, dict):
-            msg = f"`phases` is not an object in {record!r}"
+        if not isinstance(phases, dict) or not set(phases) <= set(PHASES):
+            msg = f"`phases` is not an object of {PHASES} in {record!r}"
+            raise RecordError(msg)
+        outcome = _text(record, "outcome")
+        if outcome not in {member.value for member in Outcome}:
+            msg = f"`outcome` is not one pytest reports in {record!r}"
             raise RecordError(msg)
         return cls(
             nodeid=_text(record, "nodeid"),
             worker=_text(record, "worker"),
-            outcome=_text(record, "outcome"),
+            outcome=Outcome(outcome),
             s=_number(record, "s"),
             phases={str(phase): _number(phases, phase) for phase in phases},
             costs=_costs(record, "costs"),

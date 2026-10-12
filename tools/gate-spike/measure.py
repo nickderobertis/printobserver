@@ -39,7 +39,7 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NewType
 
 import figures
 import lookup_bench
@@ -47,6 +47,7 @@ from levers import (
     LEVERS,
     PYTEST,
     ROOT,
+    RUST_LLD,
     WINDOWS,
     DefenderState,
     DiskSpace,
@@ -72,6 +73,10 @@ PSEUDO_TARGETS = {
 }
 
 
+#: A `project:target` task, or a pseudo-target, that `resolve` found declared.
+TaskId = NewType("TaskId", str)
+
+
 class UsageError(ValueError):
     """An invocation naming a lever, target or project that does not exist."""
 
@@ -80,7 +85,7 @@ class UsageError(ValueError):
 class Declared:
     """One Nx task as its project declares it."""
 
-    task: str
+    task: TaskId
     command: str
     cwd: Path
 
@@ -108,16 +113,16 @@ def _declared(project: str, target: str, targets: dict[str, object]) -> Declared
     if cwd is not None and not isinstance(cwd, str):
         msg = f"`{project}:{target}` names a cwd that is not a path: {cwd!r}"
         raise UsageError(msg)
-    return Declared(f"{project}:{target}", command, ROOT / cwd if cwd else ROOT)
+    return Declared(TaskId(f"{project}:{target}"), command, ROOT / cwd if cwd else ROOT)
 
 
-def resolve(targets: Sequence[str]) -> list[str]:
+def resolve(targets: Sequence[str]) -> list[TaskId]:
     """Each target as the tasks it names, refusing one that names nothing."""
     projects = _projects()
-    tasks: list[str] = []
+    tasks: list[TaskId] = []
     for target in targets:
         if target in PSEUDO_TARGETS:
-            tasks.append(target)
+            tasks.append(TaskId(target))
             continue
         if not TASK.match(target):
             msg = f"`{target}` is neither `project:target` nor a pseudo-target"
@@ -128,13 +133,12 @@ def resolve(targets: Sequence[str]) -> list[str]:
             if not every:
                 msg = f"no project declares `{name}`"
                 raise UsageError(msg)
-            tasks.extend(f"{found}:{name}" for found in every)
+            tasks.extend(TaskId(f"{found}:{name}") for found in every)
             continue
         if project not in projects:
             msg = f"no project.json names a project `{project}`"
             raise UsageError(msg)
-        _declared(project, name, projects[project])
-        tasks.append(target)
+        tasks.append(_declared(project, name, projects[project]).task)
     return tasks
 
 
@@ -169,7 +173,7 @@ def _timed_linker(out: Path, env: dict[str, str]) -> LinkerSetup:
     )
     if built.returncode != 0:
         return LinkerSetup(used=False, why="the wrapper did not build: " + built.stderr[-2000:])
-    real = env.get(REAL_LINKER) or ("link.exe" if WINDOWS else "cc")
+    real = env.get(REAL_LINKER) or os.environ.get(REAL_LINKER) or ("link.exe" if WINDOWS else "cc")
     variable = _linker_variable()
     timed = {variable: str(binary), REAL_LINKER: real}
     # Outside the repository: a crate made inside it would join its workspace.
@@ -205,7 +209,7 @@ class TaskDisk:
 class TaskResult:
     """What one task cost, with whichever figures its output carried."""
 
-    task: str
+    task: TaskId
     s: float
     exit: int
     command: str = ""
@@ -222,7 +226,7 @@ def _slug(task: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", task)
 
 
-def _bench(task: str, out: Path) -> TaskResult:
+def _bench(task: TaskId, out: Path) -> TaskResult:
     report = out / _slug(task) / "lookup.json"
     report.parent.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
@@ -234,7 +238,7 @@ def _bench(task: str, out: Path) -> TaskResult:
     return result
 
 
-def run_task(task: str, levers: Sequence[Lever], env: dict[str, str], out: Path) -> TaskResult:
+def run_task(task: TaskId, levers: Sequence[Lever], env: dict[str, str], out: Path) -> TaskResult:
     """Run one task under the levers, and answer what it cost."""
     if task == "bench:octoprint-lookup":
         return _bench(task, out)
@@ -313,7 +317,7 @@ class Report:
     wall_s: float = 0.0
 
 
-def experiment(names: Sequence[str], tasks: Sequence[str], out: Path) -> Report:
+def experiment(names: Sequence[str], tasks: Sequence[TaskId], out: Path) -> Report:
     """Pull the levers, run every task, and answer the report.
 
     A lever with a `restore` (`base-tree`) is put back however the run ended;
@@ -340,11 +344,10 @@ def experiment(names: Sequence[str], tasks: Sequence[str], out: Path) -> Report:
             env.update(lever.env)
             if lever.prepare is not None:
                 report.prepared.append(lever.prepare(name))
-        if "rust-lld" in names:
-            env[REAL_LINKER] = "rust-lld"
         report.linker = _timed_linker(out, env)
-        if "rust-lld" in names and not report.linker.used:
-            env[_linker_variable()] = "rust-lld"
+        if os.environ.get(REAL_LINKER) == RUST_LLD and not report.linker.used:
+            # Untimed, rather than not at all: the lever's build is still measured.
+            env[_linker_variable()] = RUST_LLD
         for task in tasks:
             temporaries = pytest_temporaries()
             before = disk()
@@ -406,7 +409,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         report = experiment(names, tasks, out)
     except HostError as error:
-        print(f"measure: the host could not be prepared: {error}", file=sys.stderr)
+        print(
+            f"measure: the host could not be prepared: {error}. Run the experiment without that "
+            "lever, or on a host that has the program it names (a GitHub-hosted runner of the "
+            "platform the lever is for)",
+            file=sys.stderr,
+        )
         return 1
     (out / "measure.json").write_text(json.dumps(asdict(report), indent=1), encoding="utf-8")
     failed = sum(1 for task in report.tasks if task.exit != 0)

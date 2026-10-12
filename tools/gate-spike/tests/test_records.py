@@ -7,18 +7,31 @@ renamed a field fails here rather than as a report silently missing it.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from conftest import HERE, PYTHONPATH, ROOT
 from figures import journey_figures, link_figures, pytest_figures
-from lookup_bench import LookupReport
+from lookup_bench import LookupReport, MethodError
 from repo_checks.expect import contains, equal, truth
 from repo_checks.shell import run
-from spike_names import JOURNEY_TIMINGS, LINK_TIMINGS, REAL_LINKER, LinkOutput
+from spike_names import (
+    JOURNEY_TIMINGS,
+    LINK_TIMINGS,
+    REAL_LINKER,
+    Cost,
+    JourneyTiming,
+    LinkOutput,
+    LinkTiming,
+    PytestSession,
+    PytestTest,
+    RecordError,
+)
 
 
 def _sink_test(sink: Path) -> int:
@@ -165,7 +178,7 @@ def test_the_timed_linker_names_what_each_link_wrote(tmp_path: Path, timed_linke
     """Each record says whether a path, a response file or nothing named the output."""
     links = tmp_path / "links.jsonl"
     real = "true" if sys.platform != "win32" else "whoami"
-    for arguments in (["-o", 'out"put'], ["@response"], []):
+    for arguments in (["-o", 'out"put'], ["/OUT:C:\\out.exe"], ["@response"], []):
         run(
             [str(timed_linker), *arguments],
             env={**os.environ, REAL_LINKER: real, LINK_TIMINGS: str(links)},
@@ -178,6 +191,7 @@ def test_the_timed_linker_names_what_each_link_wrote(tmp_path: Path, timed_linke
             [(link.output_kind, link.output) for link in read.per_output],
             [
                 (LinkOutput.PATH, 'out"put'),
+                (LinkOutput.PATH, "C:\\out.exe"),
                 (LinkOutput.RESPONSE_FILE, "@response"),
                 (LinkOutput.UNKNOWN, ""),
             ],
@@ -207,3 +221,91 @@ def test_a_lookup_method_that_cannot_answer_fails_the_benchmark_naming_it(tmp_pa
     read = LookupReport.read(report)
     truth(read.failed, describing="the method that failed, named in the report")
     contains(ran.stderr, read.failed[0], describing="the failure named on standard error")
+
+
+@pytest.mark.parametrize(
+    ("parse", "record"),
+    [
+        (JourneyTiming.parse, {"kind": "k", "ms": -1.0, "pid": 1, "thread": "t"}),
+        (JourneyTiming.parse, {"kind": 3, "ms": 1.0, "pid": 1, "thread": "t"}),
+        (LinkTiming.parse, {"linker": "cc", "output_kind": "elsewhere", "output": "", "ms": 1.0}),
+        (LinkTiming.parse, {"linker": "cc", "output_kind": "path", "output": "o", "ms": True}),
+        (Cost.parse, {"count": -1, "s": 1.0}),
+        (Cost.parse, [1, 2]),
+        (
+            PytestTest.parse,
+            {"nodeid": "n", "worker": "w", "outcome": "won", "s": 1.0, "phases": {}, "costs": {}},
+        ),
+        (
+            PytestTest.parse,
+            {
+                "nodeid": "n",
+                "worker": "w",
+                "outcome": "passed",
+                "s": 1.0,
+                "phases": {"lunch": 1.0},
+                "costs": {},
+            },
+        ),
+        (
+            PytestSession.parse,
+            {"worker": "w", "wall_s": 1, "collect_s": 1, "exitstatus": 0.5, "tests": 1},
+        ),
+        (
+            PytestSession.parse,
+            {
+                "worker": "w",
+                "wall_s": 1,
+                "collect_s": 1,
+                "exitstatus": 0,
+                "tests": 1,
+                "outside_tests": [],
+            },
+        ),
+    ],
+)
+def test_a_record_its_producer_could_not_have_written_is_refused(
+    parse: Callable[[object], object], record: object
+) -> None:
+    """Each parser refuses a record outside the shape its producer writes."""
+    with pytest.raises(RecordError):
+        parse(record)
+
+
+def test_a_session_marker_that_is_neither_true_nor_absent_is_unreadable(tmp_path: Path) -> None:
+    """Only `"session": true` is a session line; `"session": "false"` is counted unreadable."""
+    (tmp_path / "pytest-main-1.jsonl").write_text('{"session": "false"}\n', encoding="utf-8")
+    read = pytest_figures(tmp_path)
+    truth(read is not None and read.unreadable == 1, describing=f"the line counted in {read}")
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "[]",
+        '{"rounds": 5, "pid": 1}',
+        '{"rounds": -1, "pid": 1, "methods": []}',
+        '{"rounds": 5, "pid": 1, "methods": [{"name": "x"}]}',
+        '{"rounds": 5, "pid": 1, "methods": ['
+        + json.dumps(
+            {
+                "name": "x",
+                "present": True,
+                "median_s": float("nan"),
+                "min_s": 0.1,
+                "max_s": 0.1,
+                "answered": "",
+                "failure": "",
+                "is_the_command_line": False,
+                "same_as_current": False,
+            }
+        )
+        + "]}",
+    ],
+)
+def test_a_report_the_benchmark_did_not_write_is_refused(tmp_path: Path, document: str) -> None:
+    """`LookupReport.read` refuses a report of any shape but the benchmark's own."""
+    report = tmp_path / "lookup.json"
+    report.write_text(document, encoding="utf-8")
+    with pytest.raises(MethodError):
+        LookupReport.read(report)

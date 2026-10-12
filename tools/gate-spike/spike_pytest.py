@@ -33,7 +33,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from spike_names import PYTEST_OUT, STABLE_IDS, WORKER_COVERAGE, Cost, PytestSession, PytestTest
+from spike_names import (
+    PHASES,
+    PYTEST_OUT,
+    STABLE_IDS,
+    WORKER_COVERAGE,
+    Cost,
+    Outcome,
+    PytestSession,
+    PytestTest,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -41,7 +50,6 @@ if TYPE_CHECKING:
     import coverage
 
 OUTSIDE_A_TEST = "<outside a test>"
-PHASES = ("setup", "call", "teardown")
 
 
 @dataclass
@@ -49,7 +57,7 @@ class Phases:
     """A test's phase durations and its outcome, as pytest reported them."""
 
     seconds: dict[str, float] = field(default_factory=dict)
-    outcome: str = "unknown"
+    outcome: Outcome = Outcome.UNKNOWN
 
 
 @dataclass
@@ -240,8 +248,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """Keep each phase's duration, and the outcome that decides the test's."""
     phases = STATE.phases[report.nodeid]
     phases.seconds[str(report.when)] = report.duration
-    if report.failed or phases.outcome == "unknown" or report.when == "call":
-        phases.outcome = report.outcome
+    if report.failed or phases.outcome is Outcome.UNKNOWN or report.when == "call":
+        phases.outcome = Outcome(report.outcome)
 
 
 def pytest_runtest_logfinish(nodeid: str, location: object) -> None:

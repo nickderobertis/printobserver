@@ -42,12 +42,28 @@ import pytest
 subprocess.run(["git", "--version"], check=True, capture_output=True)
 
 
+@pytest.fixture
+def breaks_in_setup():
+    raise RuntimeError("this fixture fails on purpose")
+
+
+@pytest.fixture
+def breaks_in_teardown():
+    yield
+    raise RuntimeError("this fixture fails on purpose")
+
+
 def test_spawns_git():
     subprocess.run(["git", "--version"], check=True, capture_output=True)
 
 
 def test_sleeps():
     time.sleep(0.05)
+
+
+def test_a_sleep_that_raises_is_still_timed():
+    with pytest.raises(TypeError):
+        time.sleep("not a duration")
 
 
 def test_copies_and_removes_a_tree(tmp_path):
@@ -57,11 +73,17 @@ def test_copies_and_removes_a_tree(tmp_path):
     shutil.rmtree(tmp_path / "to")
 
 
+def test_copies_one_file(tmp_path):
+    (tmp_path / "file").write_text("x")
+    shutil.copy2(tmp_path / "file", tmp_path / "copy")
+
+
 def test_asks_a_local_server():
     handler = http.server.SimpleHTTPRequestHandler
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/").read()
     finally:
         server.shutdown()
@@ -72,13 +94,25 @@ def test_a_parameter_rendered_differently_by_each_process(value):
     pass
 
 
+def test_skipped():
+    pytest.skip("skipped on purpose")
+
+
 def test_fails():
     raise AssertionError("this case fails on purpose")
+
+
+def test_fails_in_setup(breaks_in_setup):
+    pass
+
+
+def test_fails_in_teardown(breaks_in_teardown):
+    pass
 """
 
-#: How many tests `CASES` holds, and how many of them fail.
-CASES_TESTS = 7
-CASES_FAILING = 1
+#: How `CASES`' tests come out.
+CASES_OUTCOMES = {"failed": 3, "passed": 8, "skipped": 1}
+CASES_TESTS = sum(CASES_OUTCOMES.values())
 
 
 @dataclass(frozen=True)
@@ -91,12 +125,12 @@ class Measured:
     report: dict[str, Any] | None
 
 
-def measure(*arguments: str, out: Path) -> Measured:
+def measure(*arguments: str, out: Path, environment: dict[str, str] | None = None) -> Measured:
     """Run `measure.py` as the `spike-measure` recipe does, into `out`."""
     ran = run(
         [sys.executable, str(HERE / "measure.py"), "--out", str(out), *arguments],
         cwd=ROOT,
-        env={**os.environ, "PYTHONPATH": PYTHONPATH},
+        env={**os.environ, "PYTHONPATH": PYTHONPATH, **(environment or {})},
     )
     written = out / "measure.json"
     report = json.loads(written.read_text(encoding="utf-8")) if written.is_file() else None

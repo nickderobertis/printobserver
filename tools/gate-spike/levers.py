@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from repo_checks.shell import run
-from spike_names import STABLE_IDS, WORKER_COVERAGE
+from spike_names import REAL_LINKER, STABLE_IDS, WORKER_COVERAGE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -173,6 +173,20 @@ def _temp_on_d(name: str) -> Preparation:
     return Preparation(name, applied=True, detail=f"TEMP and TMP are {temp}")
 
 
+#: The linker the `rust-lld` lever names, which rustc puts on the linker's path.
+RUST_LLD = "rust-lld"
+
+
+def _rust_lld(name: str) -> Preparation:
+    """Name rust-lld as the linker on Windows, where its `link` flavor is a drop-in for link.exe."""
+    if not WINDOWS:
+        return Preparation(
+            name, applied=False, detail="rust-lld is this lever's linker on windows-msvc alone"
+        )
+    os.environ[REAL_LINKER] = RUST_LLD
+    return Preparation(name, applied=True, detail=f"{REAL_LINKER}={RUST_LLD}")
+
+
 def _replace(old: str, new: str) -> Callable[[str], str]:
     return lambda command: command.replace(old, new)
 
@@ -232,7 +246,7 @@ LEVERS: dict[str, Lever] = {
         "split-debuginfo unpacked (windows-msvc supports packed alone)",
         env={"CARGO_PROFILE_DEV_SPLIT_DEBUGINFO": "unpacked"},
     ),
-    "rust-lld": Lever("link with the toolchain's own rust-lld"),
+    "rust-lld": Lever("link with the toolchain's own rust-lld (windows-msvc)", prepare=_rust_lld),
     "base-tree": Lever(
         "the base branch's ci.yml and justfile in place of the spike's, for the run",
         prepare=_base_tree,

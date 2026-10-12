@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import math
 import shutil
 import statistics
 import sys
@@ -110,8 +111,11 @@ def _method(path: Path, method: object) -> Method:
         raise MethodError(msg)
     for name, types in _FIELD_TYPES.items():
         value = method[name]
-        numeric = float in types and isinstance(value, bool)
-        if numeric or not isinstance(value, types):
+        numeric = float in types and value is not None
+        unusable = numeric and (
+            isinstance(value, bool) or not math.isfinite(float(value)) or float(value) < 0
+        )
+        if unusable or not isinstance(value, types):
             msg = f"{path} carries a method whose `{name}` is {value!r}"
             raise MethodError(msg)
     return Method(**method)
