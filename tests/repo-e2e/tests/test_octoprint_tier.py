@@ -28,11 +28,6 @@ OCTOPRINT_LOG = f"{STATE}/instance/logs/octoprint.log"
 #: How much of that log a failing tier prints.
 LOG_TAIL_LINES = 200
 
-#: How long the tier is given before it is taken to have hung. Windows is the
-#: slowest host, because every command the walk drives there pays for a trace
-#: session of its own, and the gate runs the tier beside everything else.
-TIER_TIMEOUT_SECONDS = 3600
-
 #: The access a Windows process handle is opened with: enough to read its exit
 #: code, and nothing that could change it.
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -91,7 +86,6 @@ def _windows_exit_code(pid: int) -> int | None:
         kernel32.CloseHandle(handle)
 
 
-# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
@@ -105,7 +99,7 @@ def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
     pid = int(record["pid"])
     truth(running(pid), describing=f"the process {pid} the bring-up recipe started")
 
-    tier = copy.just("test-integration", timeout=TIER_TIMEOUT_SECONDS)
+    tier = copy.just("test-integration", timeout=2400)
     if tier.returncode != 0 and (copy.root / OCTOPRINT_LOG).is_file():
         # Read before the bring-down, and printed rather than asserted: what the
         # printer last said is the diagnosis the tier's own failure cannot give.
