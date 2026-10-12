@@ -621,3 +621,22 @@ def test_a_build_lever_reaches_the_build_it_measures(
         "Compiling printobserver-vision-api",
         describing="the crate rebuilt under it",
     )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="a directory's own permissions bar removal on Unix"
+)
+def test_records_an_earlier_run_left_that_cannot_be_cleared_stop_the_run(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """A task directory the harness cannot clear stops the run rather than mixing two runs."""
+    stuck = tmp_path / f"{fixture_project}_here" / "stuck"
+    stuck.mkdir(parents=True)
+    (stuck / "record").write_text("an earlier run's", encoding="utf-8")
+    stuck.chmod(0o500)
+    try:
+        measured = measure("--targets", f"{fixture_project}:here", out=tmp_path)
+    finally:
+        stuck.chmod(0o700)
+    equal(measured.code, 1, describing="the exit when the records could not be cleared")
+    contains(measured.err, "could not be cleared", describing="what it said")

@@ -524,3 +524,27 @@ def test_a_journey_sink_that_refuses_the_write_is_said_and_the_test_passes() -> 
     )
     equal(ran.returncode, 0, describing="the timed test's own exit")
     contains(ran.stderr + ran.stdout, "was not recorded in /dev/full", describing="what it said")
+
+
+def test_concurrent_links_write_whole_records_to_one_sink(
+    tmp_path: Path, timed_linker: Path, noop_linker: str
+) -> None:
+    """Eight links through the wrapper at once leave eight readable records."""
+    links = tmp_path / "links.jsonl"
+    started = [
+        start(
+            [str(timed_linker), "-o", f"out-{index}"],
+            env={**os.environ, REAL_LINKER: noop_linker, LINK_TIMINGS: str(links)},
+        )
+        for index in range(8)
+    ]
+    equal([process.wait() for process in started], [0] * 8, describing="each link's exit")
+    read = link_figures(links)
+    truth(read is not None, describing="records in the sink")
+    if read is not None:
+        equal((read.count, read.unreadable), (8, 0), describing="whole records")
+        equal(
+            sorted(link.output for link in read.per_output),
+            [f"out-{i}" for i in range(8)],
+            describing="it",
+        )

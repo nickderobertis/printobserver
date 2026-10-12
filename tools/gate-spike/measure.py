@@ -272,8 +272,13 @@ def run_task(task: TaskId, levers: Sequence[Lever], env: dict[str, str], out: Pa
     command = _with_spike_plugin(command)
     task_dir = out / _slug(task)
     # A directory an earlier run of this task left would add its records to these.
-    shutil.rmtree(task_dir, ignore_errors=True)
-    task_dir.mkdir(parents=True)
+    try:
+        if task_dir.exists():
+            shutil.rmtree(task_dir)
+        task_dir.mkdir(parents=True)
+    except OSError as error:
+        msg = f"an earlier run's records at {task_dir} could not be cleared: {error}"
+        raise HostError(msg) from error
     timings = task_dir / "journey-timings.jsonl"
     log = out / f"{_slug(task)}.log"
     log.write_text(f"$ {command}\n", encoding="utf-8")
