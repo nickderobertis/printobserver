@@ -213,10 +213,12 @@ impl Command {
                 } else {
                     "<value>"
                 };
+                // A value given as often as it is wanted says so.
+                let more = if field.parameter.repeated { "..." } else { "" };
                 if field.required() {
-                    format!("{option} {value}")
+                    format!("{option} {value}{more}")
                 } else {
-                    format!("[{option} {value}]")
+                    format!("[{option} {value}]{more}")
                 }
             })
             .chain(self.flags.iter().map(|flag| format!("[{flag}]")))

@@ -100,6 +100,14 @@ HISTORY_ANSWER_FILE = f"{SERVER_DIR}/HistoryAnswer.json"
 #: A look's answer, which lists the events that arrived while it waited.
 LOOK_ANSWER_FILE = f"{SCHEMAS_DIR}/printobserver-core/Look.json"
 
+#: The spool ledger's answers that list events, each with the field it lists
+#: them in.
+LEDGER_EVENT_LISTS = (
+    (f"{SERVER_DIR}/SpoolAnswer.json", "recent"),
+    (f"{SERVER_DIR}/SpoolCommandAnswer.json", "events"),
+    (f"{SERVER_DIR}/TimelineAnswer.json", "events"),
+)
+
 
 def _module(path: Path) -> ModuleType:
     """The generated Python module of one copy, imported from that copy."""
@@ -412,6 +420,12 @@ def test_a_kind_table_no_read_lists_events_for_stops_the_walk(
 
     _rewrite(copy / HISTORY_ANSWER_FILE, one_event)
     _rewrite(copy / LOOK_ANSWER_FILE, one_arrival)
+    for file, field in LEDGER_EVENT_LISTS:
+
+        def one_of(schema: dict[str, Any], field: str = field) -> None:
+            schema["properties"][field] = {"$ref": f"#/$defs/{ENVELOPE}"}
+
+        _rewrite(copy / file, one_of)
     contract = load(copy)
 
     with pytest.raises(ValueError, match="no operation answers a list of"):

@@ -27,6 +27,8 @@ pub struct Supervisor {
     pub image_id: String,
     /// The failure event an acknowledgement is about.
     pub event_id: String,
+    /// The spool every spool command is about.
+    pub spool_id: String,
     /// The file the start step asks the machine to print.
     pub file_name: String,
 }
@@ -139,17 +141,24 @@ pub fn standing(into: &Path, refusing: bool) -> Standing {
             .unwrap_or_else(|| panic!("the world says its `{key}`"))
             .to_owned()
     };
-    Standing {
-        at: Supervisor {
-            server: named("server"),
-            credential: named("credential"),
-            print_id: named("print_id"),
-            image_id: named("image_id"),
-            event_id: named("event_id"),
-            file_name: named("file_name"),
-        },
-        holding,
-    }
+    let at = Supervisor {
+        server: named("server"),
+        credential: named("credential"),
+        print_id: named("print_id"),
+        image_id: named("image_id"),
+        event_id: named("event_id"),
+        spool_id: named("spool_id"),
+        file_name: named("file_name"),
+    };
+    // A spool every spool command is about is one this system could have
+    // minted: its identifier is the 36 characters every identifier here is.
+    assert_eq!(
+        at.spool_id.len(),
+        36,
+        "the world described a spool by no identifier: {:?}",
+        at.spool_id
+    );
+    Standing { at, holding }
 }
 
 /// Ask the world to stop, without waiting for it to be dropped.

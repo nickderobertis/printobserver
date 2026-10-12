@@ -7,6 +7,8 @@
 
 #[path = "support/agent.rs"]
 mod agent;
+#[path = "support/committing_store.rs"]
+mod committing_store;
 #[path = "support/failing_store.rs"]
 mod failing_store;
 #[path = "support/held_events.rs"]
@@ -36,6 +38,8 @@ mod finding;
 mod images;
 #[path = "journeys/ingress.rs"]
 mod ingress;
+#[path = "journeys/ledger_restarts.rs"]
+mod ledger_restarts;
 #[path = "journeys/looking.rs"]
 mod looking;
 #[path = "journeys/observing.rs"]
@@ -56,5 +60,7 @@ mod restarting;
 #[cfg(feature = "test-responder")]
 #[path = "journeys/skilled.rs"]
 mod skilled;
+#[path = "journeys/spooling.rs"]
+mod spooling;
 #[path = "journeys/surface.rs"]
 mod surface;

@@ -374,6 +374,19 @@ shared_secret = ""
 # url = "http://127.0.0.1:3334"
 # access_token = ""
 
+# How a start checks the spools loaded against what its file needs, by
+# OctoPrint's own analysis of it. Every key is optional; left out, a start is
+# refused while the spool on a tool holds less than the print needs plus 10%
+# (and at least 5 g), while its figure is unverified, or while OctoPrint has
+# no analysis of the file after waiting 300 seconds for one. "warn" lets such
+# a start go ahead and records that it warned; "off" checks nothing. An
+# operator may start one anyway with "--override-filament-check true".
+# [spools]
+# preflight = "refuse"
+# buffer_percent = 10.0
+# buffer_min_g = 5.0
+# analysis_wait_seconds = 300
+
 # What any actor may ask for at all. A manifest may narrow these; nothing may
 # widen them. The system resumes a print the detector paused once the agent's
 # adjustment to it is in, and puts back a bounded adjustment when it expires.
@@ -387,10 +400,14 @@ fan = { min = 0.0, max = 100.0 }
 bed_target = { min = 0.0, max = 110.0 }
 "tool_target:0" = { min = 0.0, max = 260.0 }
 
+# Who may ask for what. The spool commands (registering, loading,
+# unloading, correcting and retiring a spool) are the operator's, and the
+# agent is granted none of them.
 [safety.actions]
 operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-            "set_fan_percent", "acknowledge_failure"]
+            "set_fan_percent", "acknowledge_failure", "register_spool",
+            "load_spool", "unload_spool", "adjust_spool", "retire_spool"]
 agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
          "set_fan_percent", "acknowledge_failure"]
 system = ["resume", "set_feedrate_factor", "set_flowrate_factor",

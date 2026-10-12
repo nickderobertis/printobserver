@@ -14,12 +14,14 @@ use printobserver_core::PrintContext;
 use printobserver_core::store::ImageLookup;
 use printobserver_core::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, ImageRecord, Intervention,
-    JobManifest, ManifestNarrowing, PrintRecord,
+    JobManifest, ManifestNarrowing, PendingCharge, PolicyDecision, Preflight, PrintRecord,
+    SpoolCommand, SpoolId, SpoolRecord, SpoolTrust,
 };
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::serde_json::{Map, Value};
 use printobserver_types::{EventId, EventRecord, FileName, PrintId};
 
 /// Why a request could not be turned into one action of the vocabulary.
@@ -279,6 +281,210 @@ pub struct ActionAnswer {
     /// What the printer said, when the request reached it and it refused.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub printer_refusal: Option<String>,
+}
+
+/// The spool command one request asks for, assembled from its body.
+///
+/// The body is the command's own fields, less the two a caller never supplies:
+/// the tag, which the operation it was sent to names, and — for a command about
+/// one spool — the spool, which its path names. Everything else is read by the
+/// contracts' own type, so a field it refuses is refused in its own words and
+/// a field it gains is one this reads with nothing written here. The reason is
+/// ruled on first and travels trimmed, exactly as a print action's does.
+///
+/// # Errors
+///
+/// Returns [`BodyRefusal`] when the body is not a document, carries no reason,
+/// names the tag or the spool itself, or is not the command's own fields.
+pub fn spool_command_of(
+    kind: ActionKind,
+    spool_id: Option<SpoolId>,
+    body: Value,
+) -> Result<SpoolCommand, BodyRefusal> {
+    let Value::Object(mut fields) = body else {
+        return Err(BodyRefusal {
+            detail: "a spool command's body is a document of its fields".to_owned(),
+        });
+    };
+    let reason = reason_of(fields.get("reason").and_then(Value::as_str))?;
+    fields.insert("reason".to_owned(), Value::String(reason));
+    let tag = crate::operations::COMMAND_TAG;
+    for routed in [tag, "spool_id"] {
+        if fields.contains_key(routed) {
+            return Err(BodyRefusal {
+                detail: format!(
+                    "a spool command's body does not carry `{routed}`: the operation it is \
+                     sent to names it"
+                ),
+            });
+        }
+    }
+    let named = printobserver_types::serde_json::to_value(kind).map_err(|error| BodyRefusal {
+        detail: error.to_string(),
+    })?;
+    fields.insert(tag.to_owned(), named);
+    if let Some(spool_id) = spool_id {
+        fields.insert("spool_id".to_owned(), Value::String(spool_id.to_string()));
+    }
+    let command: SpoolCommand = printobserver_types::serde_json::from_value(Value::Object(fields))
+        .map_err(|error| BodyRefusal {
+            detail: format!("this is not a `{}` body: {error}", spool_command_name(kind)),
+        })?;
+    if command.kind() == kind {
+        Ok(command)
+    } else {
+        Err(BodyRefusal {
+            detail: format!("this body is not a `{}`", spool_command_name(kind)),
+        })
+    }
+}
+
+/// One command's own name, as the wire spells it.
+fn spool_command_name(kind: ActionKind) -> String {
+    printobserver_types::serde_json::to_value(kind)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| format!("{kind:?}"))
+}
+
+/// The actor a spool command's body claims, read before anything else of it,
+/// so the claim is held to the caller before the body is ruled on.
+///
+/// # Errors
+///
+/// Returns [`BodyRefusal`] when the body names no actor this system has.
+pub fn claimed_actor(body: &Map<String, Value>) -> Result<Actor, BodyRefusal> {
+    let Some(actor) = body.get("actor") else {
+        return missing("actor");
+    };
+    printobserver_types::serde_json::from_value(actor.clone()).map_err(|error| BodyRefusal {
+        detail: format!("`actor` is not an actor this system has: {error}"),
+    })
+}
+
+/// What a spool command answers, accepted or refused.
+///
+/// A refusal is the same shape and deliberately so: the decision carries the
+/// grant or the ledger's own reason, and the events are the record the refusal
+/// wrote.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SpoolCommandAnswer {
+    /// The decision taken on the command.
+    pub decision: PolicyDecision,
+    /// The spool it was about, as the command left it, when there is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spool: Option<SpoolRecord>,
+    /// Every event it wrote, in the order they were written.
+    pub events: Vec<EventRecord>,
+}
+
+/// What the spools read answers.
+///
+/// `at_a_glance` is one line per spool, in the order `spools` lists them,
+/// composed here so that what is left on each spool is the first thing a
+/// reader of either rendering meets rather than a figure inside a whole
+/// record. Its name is what puts it first: both renderings walk an answer's
+/// fields in name order, ahead of `pending` and `spools`.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SpoolsAnswer {
+    /// One line per spool in `spools`, in the same order.
+    pub at_a_glance: Vec<String>,
+    /// Every spool, retired ones only when asked for, most recently registered
+    /// first.
+    pub spools: Vec<SpoolRecord>,
+    /// Every charge held after a filament change nobody has confirmed, oldest
+    /// first: what the next spool loaded on that tool is charged.
+    pub pending: Vec<PendingCharge>,
+}
+
+impl SpoolsAnswer {
+    /// The answer for these spools and these held charges.
+    #[must_use]
+    pub fn of(spools: Vec<SpoolRecord>, pending: Vec<PendingCharge>) -> Self {
+        Self {
+            at_a_glance: spools.iter().map(at_a_glance).collect(),
+            spools,
+            pending,
+        }
+    }
+}
+
+/// One spool, in one line: its name, its material, what is left of what it
+/// held, where it is, whether its figure can be trusted, and whether it is
+/// retired.
+///
+/// `PLA white | PLA | 812.4 g of 1000.0 g left | on tool 0 | verified`, and
+/// for a spool whose figure is in doubt the oldest reason, with how many more
+/// it holds: `| unverified: uncharged_print (+1 more)`.
+#[must_use]
+pub fn at_a_glance(spool: &SpoolRecord) -> String {
+    let place = spool
+        .loaded_on_tool
+        .map_or_else(|| "not loaded".to_owned(), |tool| format!("on tool {tool}"));
+    let trust = match &spool.trust {
+        SpoolTrust::Verified => "verified".to_owned(),
+        SpoolTrust::Unverified { marks } => {
+            let oldest = marks.first().map_or_else(String::new, |mark| {
+                printobserver_types::serde_json::to_value(mark.reason.kind())
+                    .ok()
+                    .and_then(|named| named.as_str().map(str::to_owned))
+                    .unwrap_or_default()
+            });
+            let more = marks.len().saturating_sub(1);
+            if more == 0 {
+                format!("unverified: {oldest}")
+            } else {
+                format!("unverified: {oldest} (+{more} more)")
+            }
+        }
+    };
+    let retired = if spool.retired_at.is_some() {
+        " | retired"
+    } else {
+        ""
+    };
+    format!(
+        "{} | {} | {:.1} g of {:.1} g left | {place} | {trust}{retired}",
+        spool.name, spool.material, spool.remaining_g, spool.initial_g
+    )
+}
+
+/// What one spool's read answers: the spool, and the newest of the printer's
+/// own events that name it.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SpoolAnswer {
+    /// The spool, retired or not.
+    pub spool: SpoolRecord,
+    /// The newest timeline events naming it, newest first.
+    pub recent: Vec<EventRecord>,
+}
+
+/// What a printer history read answers: one page of the printer's own events.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct TimelineAnswer {
+    /// The events, newest first.
+    pub events: Vec<EventRecord>,
+    /// The cursor for the following, older page, given as `before`; absent
+    /// when there is none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<EventId>,
+}
+
+/// What a filament check answers.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PreflightAnswer {
+    /// What the check found, read now.
+    pub preflight: Preflight,
 }
 
 /// What a status read answers.

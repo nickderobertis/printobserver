@@ -7,8 +7,8 @@
 
 use serde::de::DeserializeOwned;
 
-use crate::contract::{ActionAnswer, Actor, ErrorAnswer};
-use crate::error::{ClientError, Rejection};
+use crate::contract::{ActionAnswer, Actor, ErrorAnswer, SpoolCommandAnswer};
+use crate::error::{ClientError, RejectedAnswer, Rejection};
 use crate::transport::send;
 
 /// The status a rejected action is answered under.
@@ -125,7 +125,18 @@ impl Client {
 
 /// The policy's own refusal, as the answer to it carries it.
 fn rejection(body: &str, status: u16) -> ClientError {
-    match serde_json::from_str::<ActionAnswer>(body).map(Rejection::of) {
+    // An action's answer carries its decision in its record; a spool command's
+    // carries it at the top.
+    let answered = serde_json::from_str::<serde_json::Value>(body).and_then(|document| {
+        if document.get("record").is_some() {
+            serde_json::from_value::<ActionAnswer>(document)
+                .map(|answer| RejectedAnswer::Action(Box::new(answer)))
+        } else {
+            serde_json::from_value::<SpoolCommandAnswer>(document)
+                .map(|answer| RejectedAnswer::SpoolCommand(Box::new(answer)))
+        }
+    });
+    match answered.map(Rejection::of) {
         Ok(Some(rejection)) => ClientError::Rejected(Box::new(rejection)),
         Ok(None) => ClientError::Unreadable {
             status,

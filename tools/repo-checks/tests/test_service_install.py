@@ -136,6 +136,43 @@ def test_an_installer_granting_an_action_the_contracts_do_not_declare_is_refused
     refused(findings, "grants `reboot`")
 
 
+def test_an_installer_granting_the_spool_commands_is_accepted(
+    tree: Callable[[], Tree],
+) -> None:
+    """A spool command is granted exactly as a print action is."""
+    findings = service_install(tree().repo)
+
+    truth(
+        not [finding for finding in findings if "spool" in finding],
+        describing=f"the committed grants of the spool commands to be accepted: {findings}",
+    )
+
+
+def test_an_installer_granting_a_spool_command_the_contracts_do_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A spool command the contracts do not declare is no grant at all."""
+    broken = tree()
+    broken.write(
+        INSTALLER,
+        broken.read(INSTALLER).replace('"register_spool"', '"refill_spool"'),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "grants `refill_spool`")
+
+
+def test_an_absent_spool_command_schema_is_refused(tree: Callable[[], Tree]) -> None:
+    """With no spool command vocabulary to read, a spool grant is ruled on by nothing."""
+    broken = tree()
+    broken.remove("schemas/printobserver-core/SpoolCommand.json")
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "SpoolCommand.json` is absent")
+
+
 def test_an_installer_that_prints_the_next_command_is_accepted(
     tree: Callable[[], Tree],
 ) -> None:

@@ -7,6 +7,12 @@
 //! and remembers what it was asked, so a journey can assert an operation's own
 //! effect rather than its status code.
 //!
+//! It holds the files a printer holds too — each with the analysis `OctoPrint`
+//! makes of it and the tally of how often it was printed — and answers how far
+//! a file's own moves fed each tool up to a byte of it, so a journey can tell
+//! the story the filament ledger is charged from: a file printed while nothing
+//! was watching, a tally reset by a re-upload, a print cancelled part-way.
+//!
 //! It is not a substitute for the real thing. What proves the same operations
 //! against a real `OctoPrint` is this crate's integration tier, which runs
 //! against the instance `just octoprint-up` starts; the two tiers walk the same
@@ -21,7 +27,8 @@ const PATIENCE: Duration = Duration::from_millis(400);
 
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_printer_api::{
-    BoxFuture, HeaterSnapshot, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
+    BoxFuture, FileFacts, FilePrint, HeaterSnapshot, JobSnapshot, PrinterError, PrinterPort,
+    PrinterSnapshot, ToolFilament,
 };
 use printobserver_types::{FileName, Reported, Timestamp};
 
@@ -59,6 +66,8 @@ struct Held {
     calls: Vec<Call>,
     /// Whether it answers no read at all, as a machine switched off does.
     unreadable: bool,
+    /// The files it holds, with their analysis and their print tallies.
+    files: Vec<FileFacts>,
 }
 
 /// A printer these journeys drive the server against.
@@ -141,6 +150,7 @@ impl RecordingPrinter {
                 },
                 calls: Vec::new(),
                 unreadable: false,
+                files: Vec::new(),
             }),
             meeting: Mutex::new((0, 0)),
             arrived: Condvar::new(),
@@ -196,6 +206,53 @@ impl RecordingPrinter {
             .then(|| PrinterError::Unreachable {
                 detail: "the machine is switched off".to_owned(),
             })
+    }
+
+    /// Hold one file, `size_bytes` long, whose analysis says each tool feeds
+    /// `filament` — or, given none, that has no analysis yet — replacing any
+    /// file of that name, tally and all, as a re-upload does.
+    pub fn holds_file(&self, name: &str, size_bytes: i64, filament: Option<Vec<ToolFilament>>) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        held.files.retain(|file| file.file_name != name);
+        held.files.push(FileFacts {
+            file_name: name.to_owned(),
+            origin: "local".to_owned(),
+            size_bytes: Some(size_bytes),
+            filament,
+            successes: 0,
+            failures: 0,
+            last_print: None,
+        });
+    }
+
+    /// Count one finished print of a held file in its tally, at `at`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when it holds no such file.
+    pub fn counts_print(&self, name: &str, success: bool, at: Timestamp) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        let file = held
+            .files
+            .iter_mut()
+            .find(|file| file.file_name == name)
+            .unwrap_or_else(|| panic!("the machine holds no `{name}`"));
+        if success {
+            file.successes += 1;
+        } else {
+            file.failures += 1;
+        }
+        file.last_print = Some(FilePrint { at, success });
+    }
+
+    /// Report the job at this byte of its file, as a print part-way through
+    /// it does.
+    pub fn at_byte(&self, position_bytes: i64) {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .job
+            .file_position_bytes = Some(position_bytes);
     }
 
     /// Everything it has been asked, in order.
@@ -358,6 +415,81 @@ impl PrinterPort for RecordingPrinter {
             Err,
         );
         Box::pin(async move { job })
+    }
+
+    fn file_facts(&self, file_name: FileName) -> BoxFuture<'_, Result<FileFacts, PrinterError>> {
+        let found = self.unread().map_or_else(
+            || {
+                self.held
+                    .lock()
+                    .expect("the machine is not poisoned")
+                    .files
+                    .iter()
+                    .find(|file| file.file_name == file_name.as_str())
+                    .cloned()
+                    .ok_or_else(|| PrinterError::Refused {
+                        status: 404,
+                        detail: format!("there is no file {file_name}"),
+                    })
+            },
+            Err,
+        );
+        Box::pin(async move { found })
+    }
+
+    fn printed_files(&self) -> BoxFuture<'_, Result<Vec<FileFacts>, PrinterError>> {
+        let files = self.unread().map_or_else(
+            || {
+                Ok(self
+                    .held
+                    .lock()
+                    .expect("the machine is not poisoned")
+                    .files
+                    .clone())
+            },
+            Err,
+        );
+        Box::pin(async move { files })
+    }
+
+    /// The file's analysed feed, in proportion to how far into its bytes the
+    /// position is: a file whose moves are spread evenly through it.
+    fn extruded_to(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> BoxFuture<'_, Result<Vec<ToolFilament>, PrinterError>> {
+        let fed = self.unread().map_or_else(
+            || {
+                let held = self.held.lock().expect("the machine is not poisoned");
+                let file = held
+                    .files
+                    .iter()
+                    .find(|file| file.file_name == file_name.as_str())
+                    .ok_or_else(|| PrinterError::Refused {
+                        status: 404,
+                        detail: format!("there is no file {file_name}"),
+                    })?;
+                // A test file is far shorter than a `u32` counts, so the
+                // conversions lose nothing.
+                let size = file.size_bytes.unwrap_or(1).max(1);
+                let bytes = |count: i64| f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+                let fraction = bytes(position_bytes.clamp(0, size)) / bytes(size);
+                Ok(file
+                    .filament
+                    .clone()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|tool| ToolFilament {
+                        length_mm: tool.length_mm * fraction,
+                        volume_cm3: None,
+                        ..tool
+                    })
+                    .collect())
+            },
+            Err,
+        );
+        Box::pin(async move { fed })
     }
 
     fn start(&self, file_name: FileName) -> BoxFuture<'_, Result<(), PrinterError>> {

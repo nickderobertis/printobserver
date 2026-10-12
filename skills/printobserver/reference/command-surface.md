@@ -6,8 +6,8 @@ and the commands — each with its arguments, its output and its failures.
 
 Nothing here is a list somebody maintains. The set of commands is one per
 operation the server serves, and each command's options are that operation's own
-declared request — for an action, the fields the contracts' action vocabulary
-declares for that variant. The program writes that declaration out as
+declared request — for an action or a spool command, the fields the contracts'
+own vocabulary declares for that variant. The program writes that declaration out as
 `surface.json` beside this document, and the check behind this document reads it
 there — it is generated from the program rather than written by hand, and an
 installed copy of these documents carries it too.
@@ -34,6 +34,14 @@ that turn's print, and no other. No command takes either as an option, because
 the closure that matters is the closure of the action surface: a path to a file
 reaches no printer.
 
+**A value that may be given more than once says so.** `printer-history`'s
+`--kinds` is the one: each `--kinds` names one more kind to read. Every other
+option is given at most once, and one given twice is refused.
+
+**Every change carries a reason, and an empty one is none.** A command that
+changes something takes `--reason`, and one given nothing but whitespace is
+refused with `usage` before any request is made.
+
 **Images are a path, never bytes.** Every answer that carries an image carries an
 absolute path on the *server's* own filesystem. This program transports no image
 content at all.
@@ -57,7 +65,7 @@ class has a status of its own.
 - `usage` (2) — the arguments name nothing this program does.
 - `unreachable` (3) — nothing answered at the configured address.
 - `unconfigured` (4) — nothing configured this program with a server to talk to, or the server refused the credential it was configured with; the message says where the credential is read from and that `credential issue` issues one.
-- `rejected` (5) — the policy refused the action, and the rejection is the answer.
+- `rejected` (5) — the policy refused the action, the filament check refused a start, or the spool ledger refused a spool command, and the rejection is the answer. Beside it the program prints what to do next: for a value out of bounds, ask again inside the range the answer carries; for `insufficient_filament`, `unverified_spool` and `analysis_unavailable`, the spool, its figures and its mark or the file, and the commands that settle each; for `spool_refused`, the ledger's own words.
 - `image-elsewhere` (6) — the answer named an image path, and no file is there on this host.
 - `refused` (7) — the supervisor answered something this program will not act on, a `403` among them: a request whose `--actor` is not the identity its credential authenticated, which names another print than a turn's own, or which asks a turn's credential for `start-print` or `manifest-set`.
 
@@ -222,6 +230,67 @@ Reached at `PUT /v1/prints/{print_id}/manifest`.
 
 **Failures.** The request is refused before anything is written when it carries no reason. `unreachable` and `refused` as for every command.
 
+### spools
+
+Every spool the ledger holds, the retired ones only when asked for, each beside one line saying what it holds — and the charges a tool is holding after a filament change nobody has confirmed.
+
+Reached at `GET /v1/spools`.
+
+**Arguments.**
+
+- `--include-retired` — `true` to list the retired spools too (optional; left out, they are not listed).
+
+**Output.** `at_a_glance` first: one line per spool, in the order `spools` lists them — `<name> | <material> | <remaining> g of <initial> g left | on tool <n>`, or `| not loaded`, then `| verified`, or `| unverified: <the oldest mark's reason>` followed by `(+<k> more)` when the spool holds more marks, with `| retired` at the end of a retired spool's line and both figures to one decimal. Then `pending`, every charge held for a tool after an unconfirmed filament change — what the next spool loaded onto that tool is charged — and `spools`, every spool's whole record, most recently registered first.
+
+**Failures.** `unreachable` and `refused` as for every command.
+
+### spool
+
+One spool, retired or not, and the newest twenty of the printer's own events that name it.
+
+Reached at `GET /v1/spools/{spool_id}`.
+
+**Arguments.**
+
+- `--spool-id` — the spool this command is about (required).
+
+**Output.** The spool's whole record — what it held full and holds now, its diameter, density and tare, the tool it is on, when it was registered and retired, and every mark that puts its figure in doubt — and `recent`, the newest twenty events naming it, newest first.
+
+**Failures.** `refused` for a spool nothing holds, which the server answers `404`. `unreachable` and `refused` as for every command.
+
+### printer-history
+
+The printer's own history, newest first, a page at a time: every print started and ended, every charge of filament, every spool command and every refusal of one, every filament check a start made, every filament change signalled, and every print the printer counted that nothing watched. A print's own `history` is that print's events; this is the printer's.
+
+Reached at `GET /v1/history`.
+
+**Arguments.**
+
+- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked` and `file_tally_rebaselined`; any other is refused.
+- `--since` — the earliest instant to read from, inclusive, in RFC 3339 (optional).
+- `--until` — the latest instant to read to, inclusive (optional).
+- `--spool-id` — only the events naming this spool (optional).
+- `--before` — only the events older than this one: the `next` a page answers (optional).
+- `--limit` — how many events to answer (optional; 100 when left out, and more than 1,000 is refused).
+
+**Output.** `events`, newest first, and `next`, the cursor to give as `--before` for the following, older page — absent on the last page.
+
+**Failures.** `refused` for a kind outside this list, a limit above 1,000, or an instant or identifier spelled any other way. `unreachable` and `refused` as for every command.
+
+### preflight
+
+Whether the spools loaded hold enough for one file, read now. It records nothing, starts nothing and waits for no analysis.
+
+Reached at `GET /v1/preflight`.
+
+**Arguments.**
+
+- `--file-name` — the file, as the printer names it (required).
+
+**Output.** For each tool `OctoPrint`'s analysis of the file says it feeds: the spool loaded there and its name, what the print needs from it in grams, the buffer asked beyond that, what the spool holds, the spool's marks, and a verdict — `passed`, `insufficient`, `unverified_spool` or `unchecked`, the last for a tool no tracked spool is on — and the worst of them for the whole print. A file with no analysis yet answers `no_analysis` for every loaded spool, or `unverified_spool` for one in doubt.
+
+**Failures.** `refused` for a file name the printer could not have. `unreachable` and `refused` as for every command.
+
 ### pause
 
 Pause the print. Valid only while the printer is printing.
@@ -287,12 +356,14 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 - `--file-name` — the file to print, as the printer names it (required).
 - `--manifest` — the manifest itself, as JSON (required).
 - `--manifest-file` — the path of a file carrying that JSON instead (optional).
-- `--override-filament-check` — `true` to start despite an insufficient or unverified spool, or a file `OctoPrint` has not analysed, with this start's reason as the override's (optional). It is recorded on the action; nothing checks spools before a start yet.
+- `--override-filament-check` — written `--override-filament-check true` to start despite a spool too short or in doubt, or a file `OctoPrint` has not analysed, with this start's reason as the override's (optional). Only an operator's override counts; it is recorded on the action and on the filament check the start made.
 - `--reason` — why this change is being made, in the actor's own words (required).
+
+Before the machine is asked, the start checks the spools loaded against what `OctoPrint`'s analysis of the file says each tool needs, waiting for that analysis when the file has none yet and a tool holds a tracked spool. In the default mode a start is refused while a loaded spool holds less than the print needs plus its buffer, while its figure is in doubt, or while the file still has no analysis; the server's `[spools]` table can set it to warn instead, or to check nothing.
 
 **Output.** The action record, carrying the request, who asked, the reason and the policy's decision; the bounded intervention it opened, when it opened one; and what the printer said, when the request reached it and it refused.
 
-**Failures.** `rejected` when the policy refuses: the answer is still the record, and it carries the rejection's reason, the value asked for and the range allowed, which is what a second request is composed from. `refused` when the policy accepted it and the machine did not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the policy refuses, and when the filament check does: `insufficient_filament`, `unverified_spool` or `analysis_unavailable`, the record carrying the spool, its name and its figures, or the file and how long the start waited. The printer is not started, and the program says beside the record what settles it — load a spool holding enough, weigh the spool and run `adjust-spool`, start again once `OctoPrint` has analysed the file, or start again with `--override-filament-check true`. `refused` when the policy accepted it and the machine did not. `unreachable` when nothing answers at the configured address.
 
 ### set-feedrate-factor
 
@@ -408,3 +479,98 @@ Reached at `POST /v1/prints/{print_id}/actions/acknowledge_failure`.
 **Output.** The action record, carrying the request, who asked, the reason and the policy's decision; the bounded intervention it opened, when it opened one; and what the printer said, when the request reached it and it refused.
 
 **Failures.** `rejected` when the policy refuses: the answer is still the record, and it carries the rejection's reason, the value asked for and the range allowed, which is what a second request is composed from. `refused` when the policy accepted it and the machine did not. `unreachable` when nothing answers at the configured address.
+
+### register-spool
+
+Register one spool on the shelf.
+
+Reached at `POST /v1/spools/actions/register_spool`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--name` — your own label for it (required).
+- `--material` — the material, such as `PLA` (required).
+- `--color` — the filament's colour (optional).
+- `--diameter-mm` — the filament's diameter (optional; 1.75 when left out).
+- `--density-g-cm3` — the material's density (optional; the known density of the material when left out, and a material with none known is refused).
+- `--initial-g` — the net filament on the spool when full, in grams (required).
+- `--remaining-g` — the filament on it now (optional; the full figure when left out).
+- `--tare-g` — the empty spool's own weight, which a scale reading needs (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+
+**Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
+
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+
+### load-spool
+
+Load a spool onto a tool. Onto an occupied tool it is a swap, and the spool there is unloaded in the same write. During a print, what the tool fed up to now is charged to the spool that was feeding it. After a filament change nobody confirmed, loading another spool takes every charge held for that tool; naming the spool already there confirms it was never swapped.
+
+Reached at `POST /v1/spools/{spool_id}/actions/load_spool`.
+
+**Arguments.**
+
+- `--spool-id` — the spool this command is about (required).
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--tool` — the tool, in the printer's own numbering (required).
+
+**Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
+
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+
+### unload-spool
+
+Unload a spool from its tool. During a print, what the tool fed up to now is charged to it first.
+
+Reached at `POST /v1/spools/{spool_id}/actions/unload_spool`.
+
+**Arguments.**
+
+- `--spool-id` — the spool this command is about (required).
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+
+**Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
+
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+
+### adjust-spool
+
+Correct a spool's figure: from what is left, or from a scale reading of the whole spool, which its tare turns into what is left. Give exactly one of the two. A correction clears every mark on the spool.
+
+Reached at `POST /v1/spools/{spool_id}/actions/adjust_spool`.
+
+**Arguments.**
+
+- `--spool-id` — the spool this command is about (required).
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--gross-g` — a scale reading of the spool, in grams (optional; needs the spool's tare).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--remaining-g` — the filament left, in grams (optional).
+
+**Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
+
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. A command giving both figures or neither, and a scale reading of a spool registered with no tare, are `spool_refused`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+
+### retire-spool
+
+Retire a spool. A retired spool takes no further command, and is listed only when the retired ones are asked for.
+
+Reached at `POST /v1/spools/{spool_id}/actions/retire_spool`.
+
+**Arguments.**
+
+- `--spool-id` — the spool this command is about (required).
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+
+**Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
+
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.

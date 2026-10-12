@@ -89,7 +89,8 @@ bed_target = {{ min = 0.0, max = 110.0 }}
 [safety.actions]
 operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-            "set_fan_percent", "acknowledge_failure"]
+            "set_fan_percent", "acknowledge_failure", "register_spool", "load_spool",
+            "unload_spool", "adjust_spool", "retire_spool"]
 agent = ["pause", "set_feedrate_factor", "set_fan_percent"]
 system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]
@@ -230,6 +231,12 @@ impl World {
     /// This is what a restart is: the store and the session directory are the
     /// whole of the state, and nothing else is carried across.
     pub async fn restart(self) -> Self {
+        self.restart_over(|stores| stores).await
+    }
+
+    /// The same, with the durable stores of the new server as one journey
+    /// stands something between them and it.
+    pub async fn restart_over(self, between: impl FnOnce(Stores) -> Stores) -> Self {
         let Self {
             root,
             server,
@@ -241,7 +248,7 @@ impl World {
         } = self;
         let config = server.config().clone();
         server.stop().await;
-        let (server, stores) = start(&config, &printer, &agent, |stores| stores).await;
+        let (server, stores) = start(&config, &printer, &agent, between).await;
         Self {
             root,
             server,
@@ -251,6 +258,64 @@ impl World {
             client,
             credential,
         }
+    }
+
+    /// Stop this server, attempt a start over the same state directory with
+    /// something stood between the store and it that the start is refused
+    /// over, and then start again with nothing between them — answering why
+    /// the attempt was refused.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the attempt started, which is a journey whose refusal did
+    /// not happen.
+    pub async fn restart_refused_over(
+        self,
+        between: impl FnOnce(Stores) -> Stores,
+    ) -> (Self, String) {
+        let config = self.server.config().clone();
+        let Self {
+            root,
+            server,
+            printer,
+            agent,
+            client,
+            credential,
+            ..
+        } = self;
+        server.stop().await;
+        let stores = between(Stores::of(Arc::new(
+            SqliteStore::open(&config.state_dir).expect("the store opens on the state directory"),
+        )));
+        let vision = Arc::new(
+            ObicoVision::new(ObicoVisionConfig::default())
+                .expect("the adapter is built")
+                .with_api(config.obico_api.clone()),
+        );
+        let refused = Server::start_with(
+            config.clone(),
+            Ports {
+                printer: Arc::clone(&printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
+                stores,
+                vision,
+                agent: Arc::clone(&agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+            },
+        )
+        .await
+        .expect_err("the start was refused");
+        let (server, stores) = start(&config, &printer, &agent, |stores| stores).await;
+        (
+            Self {
+                root,
+                server,
+                printer,
+                agent,
+                stores,
+                client,
+                credential,
+            },
+            refused.to_string(),
+        )
     }
 
     /// The state directory this world's store lives in.
@@ -276,8 +341,23 @@ impl World {
     /// The path an operation declares already carries the versioned prefix, so
     /// this is taken as a whole path rather than beneath one.
     #[must_use]
+    ///
+    /// A spool command's path names a spool rather than a print, and is given
+    /// one nothing holds: a journey about a spool it registered names that one
+    /// with [`World::spool_url`].
     pub fn operation_url(&self, path: &str, print_id: PrintId) -> String {
-        self.at(&path.replace("{print_id}", &print_id.to_string()))
+        self.at(&path.replace("{print_id}", &print_id.to_string()).replace(
+            "{spool_id}",
+            &printobserver_core::SpoolId::new().to_string(),
+        ))
+    }
+
+    /// One spool operation's URL, about one spool.
+    #[must_use]
+    pub fn spool_url(&self, operation: &str, spool_id: &str) -> String {
+        let declared =
+            printobserver_server::operation(operation).expect("the operation is declared");
+        self.at(&declared.full_path().replace("{spool_id}", spool_id))
     }
 
     /// Open one print to act on.
@@ -422,6 +502,34 @@ async fn start(
     .await
     .expect("the server starts");
     (server, stores)
+}
+
+/// A body one spool command takes, carrying a reason, the operator as its
+/// actor, and whatever else the command needs: the registration of a spool of
+/// PLA, a load onto tool 0, an adjustment to a figure.
+#[must_use]
+pub fn spool_body(kind: printobserver_core::ActionKind) -> serde_json::Value {
+    use printobserver_core::ActionKind;
+    let mut body = serde_json::json!({
+        "reason": "a journey is asking the ledger",
+        "actor": "operator",
+    });
+    let object = body.as_object_mut().expect("the body is an object");
+    match kind {
+        ActionKind::RegisterSpool => {
+            object.insert("name".to_owned(), serde_json::json!("a journey's spool"));
+            object.insert("material".to_owned(), serde_json::json!("PLA"));
+            object.insert("initial_g".to_owned(), serde_json::json!(1000.0));
+        }
+        ActionKind::LoadSpool => {
+            object.insert("tool".to_owned(), serde_json::json!(0));
+        }
+        ActionKind::AdjustSpool => {
+            object.insert("remaining_g".to_owned(), serde_json::json!(500.0));
+        }
+        _ => {}
+    }
+    body
 }
 
 /// The body a manifest write takes: the manifest, and why it is being written.

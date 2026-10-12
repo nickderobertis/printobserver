@@ -1174,6 +1174,20 @@ file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
 site = 'test("every method is answered by a real supervisor"'
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Node walk, so that the directive standing in `npm/printobserver-sdk/integration/live.test.ts` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
+# --- the generated Rust client's spool registration ---------------------------
+
+[[suppression]]
+rule = "clippy::too_many_arguments"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub fn register_spool("
+reason = "A generated method takes one argument per value its operation declares, in the order every client takes them, and the contracts' `register_spool` declares nine: the spool's name, material, colour, diameter, density, full and current figures and tare, and the reason. Gathering them into a struct for this one method would give the Rust client a calling convention its sixteen other methods and the two other clients do not have, and would be a second, hand-kept copy of the `SpoolCommand` variant the method is generated from. The generator writes this directive only above a method past the lint's limit, so a later operation within it carries none."
+
+[[suppression]]
+rule = "clippy::too_many_arguments"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = 'lines.append("    #[expect(clippy::too_many_arguments)]")'
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated method past the lint's limit, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
 # --- the generated Python client's calls, and the prints read -----------------
 
 [[suppression]]
@@ -1616,6 +1630,30 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "`upload` puts a named file on the instance and leaves the job as it was."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suite that already drives that instance for `up`, beside the journeys for its other commands; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "A file put on an instance nothing started is refused naming what comes first."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suite that already drives that instance for every way `up` can fail, beside the journeys for its other commands; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "one sequential read of its instance"
+reason = "Each is one read of the OctoPrint `just octoprint-up` started, made by a journey that acts on the answer before its next step — the job before an upload, the file after it, the job again — through the same blocking helpers every journey of this suite reads that instance with, which `tests/environment.py` gives the reason for. A test of a provisioning script's upload has nothing to overlap, and an async client would be a second client of an instance the product never reaches from here."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "status, answer = call("
+reason = "The one request `upload` makes: a file put on an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before it starts that file. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -2202,6 +2240,12 @@ rule = "modern_domain_modeling"
 file = "tests/skilltest/scenario.py"
 site = "record: dict[str, Any] = {"
 reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "def _spool_answers("
+reason = "This function composes the spool ledger's answers and events a stub hands the agent as the JSON documents the server would serve, and holds the spool, the preflight and every event payload to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the answer it returns is checked against each operation's answer schema by skilltest-wiring. A Python model would restate those schemas a second time beside the generated ones."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"

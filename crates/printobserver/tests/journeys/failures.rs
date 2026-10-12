@@ -6,7 +6,9 @@
 //! every one of them is a request to a server it has to find and be configured
 //! for; and every command carrying an action of the vocabulary owes the policy
 //! rejection, because every action reaches the same policy and an action the
-//! policy cannot reject is an action that escaped it.
+//! policy cannot reject is an action that escaped it. Every spool command owes
+//! the ledger's own refusal, which says what the ledger would not do and why
+//! rather than telling its caller to ask again inside a range.
 
 use printobserver::failure::Exit;
 
@@ -32,8 +34,32 @@ fn outside_the_bounds(field: &str) -> Option<&'static str> {
 pub fn succeeding(one: &Driven) -> Vec<String> {
     let mut given = vec![one.command.name.clone()];
     for field in &one.command.fields {
+        let Some(value) = one.given(&field.parameter.name) else {
+            continue;
+        };
         given.push(field.forms[0].option.clone());
-        given.push(one.text(&field.parameter.name));
+        given.push(value);
+    }
+    given
+}
+
+/// The arguments one spool command is refused by the ledger for: a spool with
+/// no diameter for a registration, and the spool already retired for every
+/// command about one.
+pub fn refused_by_the_ledger(world: &World, one: &Driven) -> Vec<String> {
+    let mut given = succeeding(one);
+    if one.command.name == "register-spool" {
+        let at = given
+            .iter()
+            .position(|word| word == "--diameter-mm")
+            .expect("the walk's registration gives a diameter");
+        "0".clone_into(&mut given[at + 1]);
+    } else {
+        let at = given
+            .iter()
+            .position(|word| word == "--spool-id")
+            .expect("every spool command about a spool names it");
+        given[at + 1] = world.retired_spool_id();
     }
     given
 }
@@ -47,6 +73,9 @@ pub fn succeeding(one: &Driven) -> Vec<String> {
 /// credential every command here is configured with, and who is granted every
 /// action.
 pub fn rejected(world: &World, one: &Driven) -> Vec<String> {
+    if one.operation().command_kind().is_some() {
+        return refused_by_the_ledger(world, one);
+    }
     let mut given = vec![one.command.name.clone()];
     let mut out_of_bounds = false;
     for field in &one.command.fields {
@@ -90,6 +119,7 @@ pub fn rejected_from(one: &Driven) -> Reports {
 pub fn every_command_owes_its_failures(world: &World) {
     for one in walk::walk(world) {
         world.wants(one.reports);
+        world.prepare_ledger_for(&one.command.name);
         let one = walk::about_now(&one, world);
         let arguments = succeeding(&one);
 
@@ -129,7 +159,54 @@ pub fn every_command_owes_its_failures(world: &World) {
         if one.operation().action_kind().is_some() {
             the_policy_refuses_it(world, &one);
         }
+        if one.operation().command_kind().is_some() {
+            the_ledger_refuses_it(world, &one);
+        }
     }
+}
+
+/// The ledger refuses this spool command, and the refusal says why in the
+/// ledger's own words rather than telling its caller to ask again inside a
+/// range.
+fn the_ledger_refuses_it(world: &World, one: &Driven) {
+    let arguments = refused_by_the_ledger(world, one);
+    let mut asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    asked.push("--json");
+    let ran = running::command(world, &asked);
+
+    assert_eq!(
+        ran.code,
+        Some(i32::from(Exit::Rejected.status())),
+        "`{}` was not refused by the ledger: {}",
+        one.command.name,
+        ran.said()
+    );
+    let answer: printobserver_types::serde_json::Value =
+        printobserver_types::serde_json::from_str(&ran.out)
+            .unwrap_or_else(|error| panic!("the refusal is not a document ({error}): {}", ran.out));
+    let detail = answer
+        .pointer("/decision/rejected/spool_refused/detail")
+        .and_then(printobserver_types::serde_json::Value::as_str)
+        .unwrap_or_else(|| {
+            panic!(
+                "`{}` was refused other than by the ledger: {answer}",
+                one.command.name
+            )
+        });
+    assert!(
+        ran.err
+            .contains("spool ledger refused this command: spool_refused")
+            && ran.err.contains(detail),
+        "`{}`'s refusal does not carry the ledger's own detail: {}",
+        one.command.name,
+        ran.said()
+    );
+    assert!(
+        !ran.err.contains("Ask again inside"),
+        "`{}`'s refusal tells its caller to ask again inside a range: {}",
+        one.command.name,
+        ran.said()
+    );
 }
 
 /// One failure exits with its own status and says what to do next.
@@ -206,6 +283,7 @@ pub fn an_action_the_machine_refuses_is_answered_as_that(world: &World) {
         .find(|found| found.command.name == "pause")
         .expect("this walk drives a pause");
     world.wants(one.reports);
+    world.prepare_ledger_for(&one.command.name);
     let one = walk::about_now(&one, world);
     if !world.machine_refuses(true) {
         return;

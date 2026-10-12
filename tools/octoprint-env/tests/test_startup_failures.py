@@ -119,6 +119,20 @@ def test_an_instance_that_never_answers_is_reported_by_name(
     refused_naming(lines, "next action:", "read the server log")
 
 
+def test_an_upload_to_no_running_instance_is_reported_by_name(
+    state_dir: Callable[[str], str],
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
+    """A file put on an instance nothing started is refused naming what comes first."""
+    held = Path(state_dir("upload")) / "a.gcode"
+    held.parent.mkdir(parents=True, exist_ok=True)
+    held.write_text("G4 S1\n", encoding="utf-8")
+
+    result = script("upload", "--state-dir", str(held.parent), "--file", str(held))
+
+    failing(result, naming="octoprint-env: failed: upload-refused")
+    contains(said(result), "run `up` first", describing="what an upload with nothing up says")
+
+
 def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_text(
     state_dir: Callable[[str], str],
 ) -> None:

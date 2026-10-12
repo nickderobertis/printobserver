@@ -1,9 +1,9 @@
 //! The closed surface: which commands exist, and what each one accepts.
 //!
 //! Nothing here is compared against a list this crate keeps. The command set is
-//! compared against the contracts' own `PrintAction` and the seven reads the
-//! server declares beside that vocabulary; each command's accepted options are
-//! compared against the fields that `PrintAction` variant declares, or against
+//! compared against the contracts' own `PrintAction` and `SpoolCommand` and the
+//! reads the server declares beside them; each command's accepted options are
+//! compared against the fields that variant declares, or against
 //! the request schema the server declares for that route; and the global
 //! options are compared against the four this program's own task fixes and
 //! spells out below. So growing a declaration in this crate cannot satisfy any
@@ -32,18 +32,20 @@ use printobserver::surface::{
     CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, Field, Form, GLOBAL_OPTIONS,
     LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, command_for, option_for, surface,
 };
-use printobserver_server::operations::{ActionKind, PrintAction};
+use printobserver_server::operations::{ActionKind, PrintAction, SpoolCommand};
 use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, ValueKind};
 use printobserver_types::serde_json::Value;
 
-/// The reads this program has beside the action vocabulary, as its own task
-/// names them: the prints listing, status, context, the image read and
-/// materialization, history, a fresh look, and the manifest's read and write.
+/// The reads this program has beside the two vocabularies, as its own tasks
+/// name them: the prints listing, status, context, the image read and
+/// materialization, history, a fresh look, the manifest's read and write, and
+/// the spool ledger's four reads — the spools, one spool, the printer's own
+/// history and a filament check.
 ///
 /// Written out here rather than read from the server, and then held against
-/// what the server declares — so a server that grew a ninth read would fail
+/// what the server declares — so a server that grew another read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 8] = [
+const READS: [&str; 12] = [
     "prints",
     "status",
     "context",
@@ -52,6 +54,10 @@ const READS: [&str; 8] = [
     "look",
     "manifest_get",
     "manifest_set",
+    "spools",
+    "spool",
+    "printer_history",
+    "preflight",
 ];
 
 /// The four options every command takes beside its own values, as this
@@ -93,6 +99,69 @@ fn variant(tag: &str) -> Value {
         })
         .unwrap_or_else(|| panic!("the contracts declare no action tagged `{tag}`"))
         .clone()
+}
+
+/// The contracts' own spool vocabulary, as its schema declares it.
+fn command_schema() -> Value {
+    printobserver_types::schemars::schema_for!(SpoolCommand).to_value()
+}
+
+/// Every tag the contracts' own spool vocabulary declares.
+fn command_tags() -> BTreeSet<String> {
+    command_schema()
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .expect("the spool vocabulary is a closed set of variants")
+        .iter()
+        .map(|variant| {
+            variant
+                .pointer("/properties/command/const")
+                .and_then(Value::as_str)
+                .expect("every variant is tagged with the command it is")
+                .to_owned()
+        })
+        .collect()
+}
+
+/// The fields one spool command declares, and which it declares as required,
+/// less its tag.
+fn command_fields(tag: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+    let declared = command_schema()
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .and_then(|variants| {
+            variants
+                .iter()
+                .find(|variant| {
+                    variant
+                        .pointer("/properties/command/const")
+                        .and_then(Value::as_str)
+                        == Some(tag)
+                })
+                .cloned()
+        })
+        .unwrap_or_else(|| panic!("the contracts declare no spool command tagged `{tag}`"));
+    let all = declared
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("a variant declares its fields")
+        .keys()
+        .filter(|name| name.as_str() != "command")
+        .cloned()
+        .collect();
+    let required = declared
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|name| *name != "command")
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    (all, required)
 }
 
 /// Every tag the contracts' own action vocabulary declares.
@@ -176,17 +245,24 @@ fn outside_the_body(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
 fn derived(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     let operation = printobserver_server::operation(name).expect("the server serves this");
     let (mut all, mut required) = outside_the_body(name);
-    match operation.action_kind() {
-        Some(kind) => {
-            let tag = printobserver_types::serde_json::to_value(kind)
-                .ok()
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .expect("an action renders as the tag it is spelled by");
-            let (fields, needed) = variant_fields(&tag);
+    let tag_of = |kind: ActionKind| {
+        printobserver_types::serde_json::to_value(kind)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .expect("an action renders as the tag it is spelled by")
+    };
+    match (operation.action_kind(), operation.command_kind()) {
+        (Some(kind), _) => {
+            let (fields, needed) = variant_fields(&tag_of(kind));
             all.extend(fields);
             required.extend(needed);
         }
-        None => {
+        (None, Some(kind)) => {
+            let (fields, needed) = command_fields(&tag_of(kind));
+            all.extend(fields);
+            required.extend(needed);
+        }
+        (None, None) => {
             for parameter in operation.request() {
                 if parameter.located != Located::Body {
                     continue;
@@ -209,6 +285,7 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
     let mut found = Vec::new();
 
     let mut wanted: BTreeSet<String> = action_tags().iter().map(|tag| command_for(tag)).collect();
+    wanted.extend(command_tags().iter().map(|tag| command_for(tag)));
     wanted.extend(READS.iter().map(|read| command_for(read)));
     wanted.insert("server".to_owned());
     wanted.insert("sign-in".to_owned());
@@ -315,9 +392,9 @@ fn the_surface_this_program_ships_is_the_one_the_contracts_and_the_server_declar
     );
 }
 
-/// The server declares exactly the eight reads this program's own task names.
+/// The server declares exactly the reads this program's own tasks name.
 #[test]
-fn the_server_declares_exactly_the_eight_reads_this_task_names() {
+fn the_server_declares_exactly_the_reads_this_task_names() {
     assert_eq!(
         BESIDE_THE_ACTIONS.iter().copied().collect::<BTreeSet<_>>(),
         READS.iter().copied().collect::<BTreeSet<_>>(),
@@ -326,7 +403,7 @@ fn the_server_declares_exactly_the_eight_reads_this_task_names() {
     );
     assert_eq!(
         OPERATIONS.len(),
-        action_tags().len() + READS.len(),
+        action_tags().len() + command_tags().len() + READS.len(),
         "the server serves an operation that is neither an action of the vocabulary nor one \
          of the reads this program's own task names"
     );
@@ -377,6 +454,7 @@ fn invented_field(name: &str, kind: ValueKind, required: bool) -> Field {
             required,
             located: Located::Body,
             kind,
+            repeated: false,
         },
         forms: vec![Form {
             option: option_for(name),

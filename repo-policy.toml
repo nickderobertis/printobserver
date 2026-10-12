@@ -311,6 +311,10 @@ required_block_keys = ["posting timeout", "source", "release", "retries"]
 # contracts do not declare, so a vocabulary that moves cannot leave an installed
 # configuration granting something that no longer exists.
 granting_table = "[safety.actions]"
+# A grant names an action of either vocabulary the contracts declare: a print
+# action of `supervisor.action_schema`, or a spool command of this one — each
+# granted per actor class exactly as a print action is.
+command_schema = "schemas/printobserver-core/SpoolCommand.json"
 
 # One table per service manager, keyed by the manager's own name as the
 # supported-platform list spells it. `installer` is the committed script the

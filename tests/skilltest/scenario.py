@@ -943,7 +943,127 @@ def _answers(
         answers[operation] = composer.records(operation, {"reason": ECHOED_REASON})
     for adjustment in ADJUSTMENTS:
         answers[adjustment.command] = [_adjusted(composer, adjustment, adjustment.nominal)]
+    answers.update(_spool_answers(composer))
     return answers, replayed
+
+
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
+def _spool_answers(composer: _Composer) -> dict[str, list[dict[str, Any]]]:
+    """The spool ledger's answers: one verified spool, loaded on the print's tool.
+
+    The printer's file has no analysis yet, so a preflight of it answers
+    `no_analysis`, as the generated example does. A spool command is answered
+    accepted, as every other action here is, and echoes the reason it was given.
+    Each event's kind is the one its crate declares for its payload, and the
+    spool and every payload are held to their generated schemas.
+    """
+    actor = json.loads(composer.actor)
+    loaded_at = _instant(composer.now - timedelta(hours=2))
+    spool = conforming(
+        {
+            "density_g_cm3": 1.24,
+            "diameter_mm": 1.75,
+            "id": _id(),
+            "initial_g": 1000.0,
+            "loaded_on_tool": TOOL,
+            "material": "PLA",
+            "name": "PLA black",
+            "registered_at": _instant(composer.now - timedelta(days=3)),
+            "remaining_g": 650.0,
+            "tare_g": 250.0,
+            "trust": {"state": "verified"},
+            "updated_at": loaded_at,
+        },
+        _schema_path("SpoolRecord"),
+        "the spool",
+    )
+    unloaded = {key: value for key, value in spool.items() if key != "loaded_on_tool"}
+    commanded = _instant(composer.now)
+
+    def event(payload_type: str, payload: dict[str, Any], by: object, at: str) -> dict[str, Any]:
+        source = "operator" if by == "operator" else "agent"
+        return {
+            "id": _id(),
+            "kind": event_kind(payload_type),
+            "payload": conforming(
+                {"actor": by, **payload}, _schema_path(payload_type), payload_type
+            ),
+            "print_id": composer.print_id,
+            "received_at": at,
+            "source": source,
+        }
+
+    def command(
+        payload_type: str, record: dict[str, Any], **payload: object
+    ) -> list[dict[str, Any]]:
+        asked = {"reason": ECHOED_REASON, **payload}
+        return [
+            {
+                "decision": "accepted",
+                "events": [event(payload_type, asked, actor, commanded)],
+                "spool": record,
+            }
+        ]
+
+    on_tool = {"spool_id": spool["id"], "tool": TOOL}
+    loaded = event(
+        "SpoolLoadedPayload",
+        {"reason": "the black roll is going on the printer", **on_tool},
+        "operator",
+        loaded_at,
+    )
+    return {
+        "spools": [
+            {
+                "at_a_glance": [
+                    f"{spool['name']} | {spool['material']} | {spool['remaining_g']:.1f} g of "
+                    f"{spool['initial_g']:.1f} g left | on tool {TOOL} | verified"
+                ],
+                "pending": [],
+                "spools": [spool],
+            }
+        ],
+        "spool": [{"recent": [loaded], "spool": spool}],
+        "printer-history": [{"events": [loaded]}],
+        "preflight": [
+            {
+                "preflight": conforming(
+                    {
+                        "checked_at": commanded,
+                        "file_name": composer.file_name,
+                        "tools": [
+                            {
+                                "remaining_g": spool["remaining_g"],
+                                "spool_id": spool["id"],
+                                "spool_name": spool["name"],
+                                "tool": TOOL,
+                                "verdict": "no_analysis",
+                            }
+                        ],
+                        "verdict": "no_analysis",
+                    },
+                    _schema_path("Preflight"),
+                    "the preflight",
+                )
+            }
+        ],
+        "register-spool": command("SpoolRegisteredPayload", unloaded, spool=unloaded),
+        "load-spool": command("SpoolLoadedPayload", spool, **on_tool),
+        "unload-spool": command("SpoolUnloadedPayload", unloaded, **on_tool),
+        "adjust-spool": command(
+            "SpoolAdjustedPayload",
+            spool,
+            remaining_after_g=spool["remaining_g"],
+            remaining_before_g=700.0,
+            spool_id=spool["id"],
+        ),
+        "retire-spool": command(
+            "SpoolRetiredPayload",
+            {**unloaded, "retired_at": commanded},
+            remaining_g=spool["remaining_g"],
+            spool_id=spool["id"],
+        ),
+    }
 
 
 def _adjusted(composer: _Composer, adjustment: Adjustment, value: float) -> dict[str, Any]:

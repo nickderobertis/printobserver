@@ -590,6 +590,46 @@ fn a_service_under_a_plaintext_credential_warns_and_serves() {
     );
 }
 
+/// What a start that could not read the printer's per-file tallies says, which
+/// is that it skipped accounting the prints nobody watched — said before it
+/// reports running, and the service then serves.
+///
+/// The machine here answers every request with an empty document, which the
+/// printer's file list cannot be read from; the next start that can read it
+/// accounts what this one skipped.
+#[test]
+fn a_service_that_cannot_read_the_printers_tallies_says_it_skipped_them_and_serves() {
+    let root = TempDir::new().expect("the tier's own root");
+    let octoprint = format!("http://{}", answering_host());
+    let configuration = configuration(root.path(), &octoprint);
+    let mut child = start(&configuration);
+    let mut reports = BufReader::new(child.stdout.take().expect("the fixture's reports")).lines();
+
+    assert_eq!(
+        next_report(&mut reports).map(|report| report.state),
+        Some(ServiceState::StartPending.name().to_owned())
+    );
+    assert_eq!(
+        next_report(&mut reports).map(|report| report.state),
+        Some(ServiceState::Running.name().to_owned()),
+        "the service did not report running: {}",
+        said(&mut child)
+    );
+    let (address, credential) = where_it_serves(&root.path().join("state"));
+    assert!(ask(&address, &credential).contains("HTTP/1.1 200"));
+
+    let mut stdin = child.stdin.take().expect("the fixture's stop control");
+    writeln!(stdin, "stop").expect("the stop control is sent");
+    drop(stdin);
+    exits_within(&mut child, SETTLES_WITHIN);
+    let said = said(&mut child);
+    assert!(
+        said.contains("printobserver: the printer could not be read")
+            && said.contains("were not accounted on this start"),
+        "the start that could not read the tallies did not say it skipped them: {said}"
+    );
+}
+
 /// The console form of `printobserver server` on Windows — what runs whenever
 /// the service control manager did not start it — stops the way a console
 /// process is asked to: on `CTRL_BREAK`, it shuts the server down and exits

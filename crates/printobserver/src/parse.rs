@@ -7,6 +7,10 @@
 //! otherwise. So a command cannot accept an option the server's declaration
 //! does not name, and cannot fail to accept one it does.
 //!
+//! A value its parameter declares repeatable may be given any number of times,
+//! each one value of its kind, and travels as one query value per time it was
+//! given; every other value is given at most once.
+//!
 //! # A value the caller must supply is one the caller supplies
 //!
 //! A required field with no form given is refused naming it, before anything is
@@ -61,16 +65,26 @@ impl Call {
             let Some(value) = self.values.get(&field.parameter.name) else {
                 continue;
             };
-            let plain = match value {
-                Value::String(text) => text.clone(),
-                other => other.to_string(),
+            let each = match value {
+                Value::Array(given) if field.parameter.repeated => given.clone(),
+                one => vec![one.clone()],
             };
-            match field.parameter.located {
-                Located::Path => {
-                    target = target.replace(&format!("{{{}}}", field.parameter.name), &plain);
+            for one in each {
+                let plain = match one {
+                    Value::String(text) => text,
+                    other => other.to_string(),
+                };
+                match field.parameter.located {
+                    Located::Path => {
+                        target = target.replace(&format!("{{{}}}", field.parameter.name), &plain);
+                    }
+                    Located::Query => asked.push(format!(
+                        "{}={}",
+                        field.parameter.name,
+                        query_escaped(&plain)
+                    )),
+                    Located::Body => {}
                 }
-                Located::Query => asked.push(format!("{}={plain}", field.parameter.name)),
-                Located::Body => {}
             }
         }
         if !asked.is_empty() {
@@ -98,6 +112,27 @@ impl Call {
             .collect();
         Some(Value::Object(carried).to_string())
     }
+}
+
+/// One query value, with every character that would end it or change what it
+/// says escaped: `&`, `=`, `+`, `#`, `%`, a space, and anything outside ASCII.
+/// Everything else a request target admits is left as it was given, so a
+/// timestamp or an identifier travels as the caller typed it.
+#[must_use]
+pub fn query_escaped(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        let kept = byte.is_ascii_graphic() && !b"&=+#%?".contains(&byte);
+        if kept {
+            escaped.push(char::from(byte));
+        } else {
+            const HEX: &[u8; 16] = b"0123456789ABCDEF";
+            escaped.push('%');
+            escaped.push(char::from(HEX[usize::from(byte >> 4)]));
+            escaped.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    escaped
 }
 
 /// What the arguments name.
@@ -214,7 +249,9 @@ pub fn parse(arguments: &[String]) -> Invocation {
         let Some(given_value) = rest.next() else {
             return refused(format!("`{option}` takes a value."));
         };
-        if let Some(already) = given.get(&field.parameter.name) {
+        if let Some(already) = given.get(&field.parameter.name)
+            && !field.parameter.repeated
+        {
             return refused(format!(
                 "`{}` was given twice, as `{already}` and as `{option}`.",
                 field.parameter.name
@@ -222,6 +259,14 @@ pub fn parse(arguments: &[String]) -> Invocation {
         }
         given.insert(field.parameter.name.clone(), option.to_owned());
         match read_value(field, supply, given_value) {
+            Ok(value) if field.parameter.repeated => {
+                let held = values
+                    .entry(field.parameter.name.clone())
+                    .or_insert_with(|| Value::Array(Vec::new()));
+                if let Value::Array(each) = held {
+                    each.push(value);
+                }
+            }
             Ok(value) => {
                 values.insert(field.parameter.name.clone(), value);
             }
@@ -352,8 +397,25 @@ fn read_value(field: &Field, supply: Supply, given: &str) -> Result<Value, Strin
     Ok(value)
 }
 
+/// The field every change carries its reason in.
+const REASON_FIELD: &str = "reason";
+
 /// What a value has to be beside being of its own kind.
 fn check(field: &Field, value: &Value) -> Result<(), String> {
+    // Every change carries a reason, and one that is nothing but whitespace is
+    // none: it is refused here, before any request is made, as every client
+    // of the server refuses it.
+    if field.parameter.name == REASON_FIELD
+        && field.parameter.located == Located::Body
+        && value
+            .as_str()
+            .is_some_and(|reason| reason.trim().is_empty())
+    {
+        return Err(format!(
+            "every change carries a reason, given with `{}`, and an empty one is none",
+            field.forms[0].option
+        ));
+    }
     if field.parameter.located == Located::Path {
         let Value::String(text) = value else {
             return Ok(());
@@ -388,7 +450,7 @@ mod tests {
     use printobserver_server::{Located, Parameter, ValueKind};
     use printobserver_types::serde_json::json;
 
-    use super::read_value;
+    use super::{query_escaped, read_value};
     use crate::surface::{Field, Form, Supply};
 
     /// One field of one kind, in the form that carries the value itself.
@@ -399,6 +461,7 @@ mod tests {
                 required: true,
                 located: Located::Body,
                 kind,
+                repeated: false,
             },
             forms: vec![Form {
                 option: "--asked".to_owned(),
@@ -428,6 +491,21 @@ mod tests {
                 .unwrap_or_else(|refusal| panic!("`{given}` as {kind:?}: {refusal}"));
 
             assert_eq!(read, expected, "`{given}` was read as {read} for {kind:?}");
+        }
+    }
+
+    /// A query value is escaped exactly where it would otherwise end early or
+    /// say something else, and left as it was given everywhere else.
+    #[test]
+    fn a_query_value_is_escaped_where_it_would_say_something_else() {
+        for (given, sent) in [
+            ("2026-10-11T08:00:00Z", "2026-10-11T08:00:00Z"),
+            ("2026-10-11T08:00:00+02:00", "2026-10-11T08:00:00%2B02:00"),
+            ("a file.gcode", "a%20file.gcode"),
+            ("a&b=c#d%e?f", "a%26b%3Dc%23d%25e%3Ff"),
+            ("é", "%C3%A9"),
+        ] {
+            assert_eq!(query_escaped(given), sent, "`{given}`");
         }
     }
 

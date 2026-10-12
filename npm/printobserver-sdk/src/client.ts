@@ -13,7 +13,13 @@
  * transport stack of its own.
  */
 
-import type { ActionAnswer, Actor, Range, RejectionReason } from "./contract.ts";
+import type {
+  ActionAnswer,
+  Actor,
+  Range,
+  RejectionReason,
+  SpoolCommandAnswer,
+} from "./contract.ts";
 import { GeneratedClient } from "./contract.ts";
 import { PrinterRefused, Refused, Rejected, Unreachable, Unreadable } from "./surface.ts";
 
@@ -152,8 +158,10 @@ function refusalText(said: string): string {
 
 /** The policy's own refusal, as the answer to it carries it. */
 function rejection(status: number, said: string): Error {
-  const answer = document<ActionAnswer>(status, said);
-  const decision = answer.record.decision;
+  const answer = document<ActionAnswer | SpoolCommandAnswer>(status, said);
+  // An action's answer carries its decision in its record; a spool command's
+  // carries it at the top.
+  const decision = "record" in answer ? answer.record.decision : answer.decision;
   if (typeof decision !== "object" || !("rejected" in decision)) {
     return new Unreadable(
       status,

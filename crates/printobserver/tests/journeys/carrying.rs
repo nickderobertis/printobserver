@@ -32,7 +32,7 @@ use super::{failures, running};
 pub fn every_output_carries_only_what_the_answer_carried(world: &World) {
     for one in walk::walk(world) {
         on_this_path(world, &one, &failures::succeeding(&one), one.reports);
-        if one.operation().action_kind().is_some() {
+        if one.operation().granted_as().is_some() {
             on_this_path(
                 world,
                 &one,
@@ -97,7 +97,10 @@ fn run(
     machine_readable: bool,
 ) -> (Ran, String) {
     world.wants(from);
-    let arguments = walk::naming_the_print_now(arguments, world);
+    if let Some(command) = arguments.first() {
+        world.prepare_ledger_for(command);
+    }
+    let arguments = walk::naming_the_print_and_spool_now(arguments, world);
     let mut asked: Vec<&str> = arguments.iter().map(String::as_str).collect();
     if machine_readable {
         asked.push("--json");

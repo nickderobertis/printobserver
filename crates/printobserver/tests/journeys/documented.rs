@@ -1078,7 +1078,7 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         "the escalation path",
     )?;
     // The tier this runs in leaves the machine as it found it.
-    put_the_print_back(world);
+    put_the_print_back(world, &escalating);
     Ok(())
 }
 
@@ -1093,6 +1093,14 @@ const PUT_BACK_ROUNDS: usize = 4;
 /// through pausing.
 const PUT_BACK_PAUSE: core::time::Duration = core::time::Duration::from_secs(12);
 
+/// How long a pause the escalation asked for is given to land.
+///
+/// `OctoPrint` reports a pause it has accepted as `Pausing` until the machine
+/// reaches a command boundary, and this program reads `Pausing` as printing.
+/// So a put-back that looked before the pause landed read a print about to stop
+/// as running, and left it paused behind it for the tier's next suite to find.
+const PAUSE_LANDS_WITHIN: core::time::Duration = core::time::Duration::from_secs(120);
+
 /// Put the print back where this tier found it, and make sure it stays there.
 ///
 /// A real machine finishes pausing at the next command boundary. Until it does
@@ -1101,10 +1109,25 @@ const PUT_BACK_PAUSE: core::time::Duration = core::time::Duration::from_secs(12)
 /// pausing, be told it was printing, and leave it paused a dwell later — which
 /// is what this tier's next run would find instead of a running print.
 ///
+/// When the escalation was a pause, that pause is waited for until the machine
+/// reports itself stopped, because only then is a resume one it acts on.
+///
 /// # Panics
 ///
-/// Panics when the machine will not stay printing, saying what it is reporting.
-fn put_the_print_back(world: &World) {
+/// Panics when the escalation's pause never lands, or when the machine will not
+/// stay printing, saying what it is reporting.
+fn put_the_print_back(world: &World, escalated_with: &str) {
+    if escalated_with == "pause" {
+        let deadline = std::time::Instant::now() + PAUSE_LANDS_WITHIN;
+        while world.reported_state() != Some(Reports::Paused) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the escalation's pause never landed: the machine is reporting {:?}",
+                world.reported_state()
+            );
+            std::thread::sleep(core::time::Duration::from_secs(1));
+        }
+    }
     for _ in 0..PUT_BACK_ROUNDS {
         world.wants(Reports::Printing);
         std::thread::sleep(PUT_BACK_PAUSE);

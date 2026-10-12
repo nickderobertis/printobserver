@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
+from contract_codegen.examples import is_ledger_refusal
 from contract_codegen.model import (
     ACTOR_PARAMETER,
     ENVELOPE,
@@ -35,7 +38,7 @@ from contract_codegen.naming import (
     pascal,
     rust_identifier,
 )
-from contract_codegen.walk import EventStep, LiveStep
+from contract_codegen.walk import ABSENT, EventStep, LiveStep
 
 #: What each scalar of the contracts is in Rust.
 SCALARS = {
@@ -190,6 +193,26 @@ def _argument(parameter: Parameter) -> str:
     raise TypeError(msg)
 
 
+#: The most arguments `clippy::too_many_arguments` admits, the receiver
+#: included.
+CLIPPY_ARGUMENT_LIMIT = 7
+
+#: Why a generated method past that limit takes its arguments one by one, as
+#: the comment above its directive says at its own site.
+TOO_MANY_REASON = (
+    "One argument per value the operation declares, as every client takes them; "
+    "suppressions.toml has the reason."
+)
+
+
+def _query_owned(parameter: Parameter) -> str:
+    """One required query value, as the owned text a request carries it as."""
+    spelled = rust_identifier(parameter.name)
+    if parameter.carried == Scalar("string"):
+        return f"{spelled}.to_owned()"
+    return f"{spelled}.to_string()"
+
+
 def _target(operation: Operation) -> str:
     """The request target one call is made to, as Rust builds it."""
     path = operation.path
@@ -220,6 +243,12 @@ def _method(operation: Operation) -> list[str]:
     )
     if operation.name in NAMED_FOR_WHAT_IS_ASKED:
         lines.append(f"    // {NAME_DIRECTIVE}")
+    if len(supplied) + 1 > CLIPPY_ARGUMENT_LIMIT:
+        # A method takes the values its operation declares, one argument
+        # each, so one whose contract variant has more fields than the lint
+        # admits says so at its own site; `suppressions.toml` has the reason.
+        lines.append(f"    // {TOO_MANY_REASON}")
+        lines.append("    #[expect(clippy::too_many_arguments)]")
     lines.append(
         f"    pub fn {method_name(operation.name, 'rust')}({arguments}) "
         f"-> Result<{operation.answer}, ClientError> {{"
@@ -233,14 +262,30 @@ def _method(operation: Operation) -> list[str]:
     lines.append(f"        let target = {built};")
 
     query = [parameter for parameter in supplied if parameter.located == "query"]
+    required = [parameter for parameter in query if not parameter.optional]
     if query:
-        lines.append("        let mut asked: Vec<(String, String)> = Vec::new();")
+        # The values every call carries are the list's own start; the rest
+        # are pushed onto it when they are given.
+        start = ", ".join(
+            f'("{parameter.name}".to_owned(), {_query_owned(parameter)})' for parameter in required
+        )
+        mutable = "mut " if len(required) < len(query) else ""
+        initial = f"vec![{start}]" if required else "Vec::new()"
+        lines.append(f"        let {mutable}asked: Vec<(String, String)> = {initial};")
         for parameter in query:
             spelled = rust_identifier(parameter.name)
-            lines.append(f"        if let Some(value) = {spelled} {{")
-            lines.append(
-                f'            asked.push(("{parameter.name}".to_owned(), value.to_string()));'
-            )
+            carried = parameter.carried
+            item = carried.item if isinstance(carried, ListOf) else carried
+            if not parameter.optional:
+                continue
+            if parameter.repeated:
+                # A value the description says is repeated travels once per item.
+                lines.append(f"        for value in {spelled}.into_iter().flatten() {{")
+            else:
+                lines.append(f"        if let Some(value) = {spelled} {{")
+            # A string is already the text it travels as.
+            text = "value" if item == Scalar("string") else "value.to_string()"
+            lines.append(f'            asked.push(("{parameter.name}".to_owned(), {text}));')
             lines.append("        }")
     else:
         lines.append("        let asked: Vec<(String, String)> = Vec::new();")
@@ -391,6 +436,9 @@ def _rust_argument(parameter: Parameter, value: object, contract: Contract) -> s
             given = str(value).lower() if isinstance(value, bool) else str(value)
         case Ref(name):
             given = f'&parsed::<{name}>(r#"{document(value)}"#)'
+        case ListOf(Scalar("string")) if isinstance(value, list):
+            listed = ", ".join(f'"{item}".to_owned()' for item in value)
+            given = f"vec![{listed}]"
         case _:
             msg = f"{parameter!r} is not a value a Rust walk can supply"
             raise TypeError(msg)
@@ -398,6 +446,8 @@ def _rust_argument(parameter: Parameter, value: object, contract: Contract) -> s
         return given
     if isinstance(shape, Ref):
         return f"Some({given.removeprefix('&')})"
+    if shape == Scalar("string"):
+        return f"Some({given}.to_owned())"
     return f"Some({given})"
 
 
@@ -520,12 +570,28 @@ def emit_walk(contract: Contract) -> str:
                 "    let ClientError::Rejected(rejection) = refused else {",
                 '        panic!("the policy\'s refusal did not arrive as one");',
                 "    };",
-                "    assert_eq!(rejection.requested, Some(1.5));",
+                *(
+                    [
+                        "    assert_eq!(rejection.requested, None);",
+                        "    assert_eq!(rejection.allowed, None);",
+                        "    assert!(matches!(rejection.reason, "
+                        "RejectionReason::SpoolRefused { .. }));",
+                    ]
+                    if is_ledger_refusal(step.rejection)
+                    else [
+                        "    assert_eq!(rejection.requested, Some(1.5));",
+                        "    assert_eq!(",
+                        "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),",
+                        "        Some((0.5, 1.25))",
+                        "    );",
+                        "    assert!(matches!(rejection.reason, "
+                        "RejectionReason::OutOfBounds { .. }));",
+                    ]
+                ),
                 "    assert_eq!(",
-                "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),",
-                "        Some((0.5, 1.25))",
+                '        serde_json::to_value(&rejection.answer).expect("an answer renders"),',
+                "        refusal",
                 "    );",
-                "    assert!(matches!(rejection.reason, RejectionReason::OutOfBounds { .. }));",
                 "}",
                 "",
             ]
@@ -625,6 +691,8 @@ LIVE_TOKENS = {
     "reason": "REASON",
     "disposition:continue": "&printobserver_sdk::AcknowledgementDisposition::Continue",
     "bool:false": "false",
+    "bool:true": "true",
+    "world.spool_id": "&world.spool_id",
 }
 
 #: The same tokens as the value a body field must have carried, where that is
@@ -642,9 +710,25 @@ def _live_argument(parameter: Parameter, token: str) -> str:
     and all: a reference added here would be one the compiler immediately
     takes off again, which is a lint of its own.
     """
-    written = LIVE_TOKENS.get(token, token)
+    from contract_codegen.walk import Absent, FromWorld, Kinds, Text, parsed
+
+    match parsed(token):
+        case Absent():
+            return "None"
+        case Text(text) if parameter.optional:
+            return f"Some({json.dumps(text)}.to_owned())"
+        case Text(text):
+            return json.dumps(text)
+        case Kinds(kinds):
+            listed = ", ".join(f"{json.dumps(kind)}.to_owned()" for kind in kinds)
+            return f"Some(vec![{listed}])" if parameter.optional else f"vec![{listed}]"
+        case FromWorld(attribute) if parameter.optional:
+            return f"Some(world.{attribute}.clone())"
+        case _:
+            pass
     if parameter.optional:
-        return f"Some({written})"
+        return f"Some({LIVE_TOKENS.get(token, token)})"
+    written = LIVE_TOKENS.get(token, token)
     if token not in LIVE_TOKENS and isinstance(parameter.carried, Ref):
         return f"&{written}"
     return written
@@ -788,11 +872,14 @@ def emit_live(contract: Contract) -> str:
         call = ", ".join(_live_argument(parameter, token) for parameter, token in step.arguments)
         spelled = method_name(step.name, "rust")
         carried = _carries_manifest(step)
+        # A step whose call names nothing of the world still takes it, as every
+        # refused step does, and says so in the name it binds it by.
+        named = any(token.startswith("world.") for _, token in step.arguments)
         lines += [
             f"/// `{step.name}`, refused by a real supervisor's own policy.",
             f"fn refused_{step.name}(",
             "    client: &Client,",
-            "    world: &supervisor::Supervisor,",
+            f"    {'world' if named else '_world'}: &supervisor::Supervisor,",
             "    proxy: &live::Proxy,",
             *(["    manifest: &printobserver_sdk::JobManifest,"] if carried else []),
             ") {",
@@ -809,7 +896,7 @@ def emit_live(contract: Contract) -> str:
             "    );",
             "    let seen = proxy.last();",
             f'    assert_eq!(seen.status, 409, "`{step.name}`");',
-            f'    live::same("{step.name}", rejection.answer.as_ref(), &seen.answer);',
+            f'    live::same("{step.name}", &rejection.answer, &seen.answer);',
             "}",
             "",
         ]
@@ -897,17 +984,16 @@ def _live_target(step: LiveStep) -> str:
     for parameter in operation.parameters:
         if parameter.located == "path":
             path = path.replace(f"{{{parameter.name}}}", f"{{{parameter.name}}}")
+    from contract_codegen.walk import live_query
+
+    query = live_query(step)
     asked = [
-        f"{parameter.name}={token}"
-        for parameter, token in step.arguments
-        if parameter.located == "query"
+        f"{one.name}={{{one.world}}}" if one.world else f"{one.name}={one.text}" for one in query
     ]
     whole = f"{path}?{'&'.join(asked)}" if asked else path
-    bindings = ", ".join(
-        f"{parameter.name} = world.{parameter.name}"
-        for parameter in operation.parameters
-        if parameter.located == "path"
-    )
+    bound = [parameter.name for parameter in operation.parameters if parameter.located == "path"]
+    bound += [one.world for one in query if one.world and one.world not in bound]
+    bindings = ", ".join(f"{name} = world.{name}" for name in bound)
     return f'format!("{whole}", {bindings})' if bindings else f'"{whole}"'
 
 
@@ -929,7 +1015,7 @@ def _live_body_assertions(step: LiveStep) -> list[str]:
         if parameter.name == "actor":
             continue
         token = supplied.get(parameter.name)
-        if token is None:
+        if token is None or token == ABSENT:
             continue
         lines.append(
             f"    assert_eq!(\n"
@@ -944,5 +1030,10 @@ def _live_body_assertions(step: LiveStep) -> list[str]:
 
 def _live_sent(parameter: Parameter, token: str) -> str:
     """The value one body field must have carried, as Rust names it."""
+    from contract_codegen.walk import live_text
+
     _ = parameter
+    text = live_text(token)
+    if text is not None:
+        return json.dumps(text)
     return LIVE_SENT.get(token) or LIVE_TOKENS.get(token, token)

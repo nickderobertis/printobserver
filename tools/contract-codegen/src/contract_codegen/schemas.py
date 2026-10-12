@@ -56,6 +56,11 @@ EVENT_KIND_MARKER = "x-event-kind"
 #: The file the operation list is checked in under.
 OPERATIONS_FILE = "operations.json"
 
+#: The version of the description's own shape this reader knows how to read.
+#: Version 2 gave every parameter `repeated`; a description at any other
+#: version is refused rather than read as if it were this one.
+DESCRIPTION_VERSION = 2
+
 #: The reference every named type is pointed at by.
 REF_PREFIX = "#/$defs/"
 
@@ -376,15 +381,45 @@ def _operation(described: dict[str, Any], answers: dict[str, str]) -> Operation:
         rejection=answers.get("rejected", ""),
         image_path_field=str(described.get("image_path_field") or ""),
         parameters=tuple(
-            Parameter(
-                name=str(value["name"]),
-                type=type_of(value["shape"]),
-                required=bool(value["required"]),
-                located=str(value["located"]),
-            )
+            _parameter(str(described.get("name")), value)
             for value in described.get("parameters", [])
         ),
     )
+
+
+def _parameter(operation: str, value: dict[str, Any]) -> Parameter:
+    """One described value of one operation's request.
+
+    `repeated` is read rather than inferred from the shape, and held to it: a
+    repeated value is a query list, and a query list is repeated. Either half
+    alone would have a client send a list as one value, or send one value as
+    though it were many.
+
+    Raises:
+        ContractError: If `repeated` is absent, is not a flag, or disagrees
+            with where the value travels and the shape it has.
+    """
+    name = str(value["name"])
+    repeated = value.get("repeated")
+    if not isinstance(repeated, bool):
+        msg = f"`{operation}` describes `{name}` with no `repeated` flag"
+        raise ContractError(msg)
+    parameter = Parameter(
+        name=name,
+        type=type_of(value["shape"]),
+        required=bool(value["required"]),
+        located=str(value["located"]),
+        repeated=repeated,
+    )
+    query_list = parameter.located == "query" and isinstance(parameter.carried, ListOf)
+    if repeated != query_list:
+        said = "repeated" if repeated else "not repeated"
+        msg = (
+            f"`{operation}` describes `{name}` as {said}, and a value is repeated exactly "
+            f"when it is a list carried after the question mark"
+        )
+        raise ContractError(msg)
+    return parameter
 
 
 def schema_files(root: Path) -> list[Path]:
@@ -508,6 +543,13 @@ def load(root: Path) -> Contract:
     event_kinds = event_kinds_of(schemas)
 
     description = _read(root / SERVER_DIR / OPERATIONS_FILE)
+    version = description.get("description_version")
+    if version != DESCRIPTION_VERSION:
+        msg = (
+            f"the description is at version {version!r}, and this generator reads version "
+            f"{DESCRIPTION_VERSION}: a shape it does not know is refused rather than guessed at"
+        )
+        raise ContractError(msg)
     operations = tuple(_operation(described, {}) for described in description["operations"])
 
     roots = sorted(

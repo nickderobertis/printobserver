@@ -3,8 +3,10 @@
 What may be asked for, what happens when it may not, and what happens to a
 change that was only meant to stand for a while. This document covers where the
 bounds come from, what a rejection carries, how a bounded intervention is
-restored, what expiry does when no prior value was available, and what happens
-to a print the detector paused.
+restored, what expiry does when no prior value was available, what happens
+to a print the detector paused, who may command the spool ledger, the filament
+check a start is held to, and what marks a spool unverified, and what clears
+each mark.
 
 Every claim here is stated against the thing it describes: the fields a
 rejection carries are the fields the contracts' rejection type declares, the
@@ -68,8 +70,9 @@ second, acceptable request would be composed from.
 - `unsupported_adjustable` — the adjustable is not one this printer has. It
   carries `adjustable`.
 
-Four more belong to the filament ledger, which this server declares and does
-not produce yet:
+Four more belong to the filament ledger. The first three refuse a start the
+filament check objected to, and the fourth a spool command the ledger could not
+carry out:
 
 - `insufficient_filament` — a start was refused because the spool on a tool
   holds less than the print needs and its buffer. It carries `tool`,
@@ -160,3 +163,119 @@ alone; so is a print somebody else resumed or cancelled.
 `a_system_not_granted_resume_leaves_the_print_paused` in
 `crates/printobserver-core/tests/journeys/detector_pause.rs` are the journeys
 that assert it.
+
+## Who may command the spool ledger
+
+The five spool commands — `register_spool`, `load_spool`, `unload_spool`,
+`adjust_spool` and `retire_spool` — are actions of their own kind, granted per
+actor class in `[safety.actions]` exactly as a print action is. A command an
+actor is not granted is refused `actor_may_not_request` and written into the
+printer's history as a `spool_command_rejected`, and a claim to be another
+actor, or to be the system, is refused before the grants are asked, as every
+request is. The ledger is the printer's rather than one print's, so a
+supervision turn's credential reaches all four reads — the spools, one spool,
+the printer's history and a filament check — whichever print the turn is about.
+
+The configuration every installer writes grants the operator all five and the
+agent none: the agent reads what is loaded and what a file needs, and a person
+says which spool is on which tool.
+
+**An installation whose configuration predates the ledger grants the operator
+none of them.** Nothing edits an existing configuration, so until the operator
+row of `[safety.actions]` names the five, every spool command an operator asks
+for is refused `actor_may_not_request`. Add `"register_spool"`,
+`"load_spool"`, `"unload_spool"`, `"adjust_spool"` and `"retire_spool"` to that
+row of the server's configuration and restart the service.
+
+## The filament check a start is held to
+
+A start the policy accepted is checked against the spools loaded before the
+printer is asked anything. For every tool `OctoPrint`'s analysis of the file
+says it feeds, the spool loaded there must hold what the print needs — the
+analysed length turned into grams by that spool's own diameter and density —
+plus a buffer, and its figure must not be in doubt. A tool with no tracked spool
+on it is not checked. When a tool holds a tracked spool and the file has no
+analysis yet, the start first waits for `OctoPrint`'s, reading the file again
+until it appears or the wait runs out: this system works out no estimate of its
+own.
+
+The server's `[spools]` table configures it, and every key is optional:
+
+- `preflight` — `refuse`, the default, refuses a start whose loaded spool is
+  short, in doubt, or whose file still has no analysis; `warn` lets it go ahead
+  and records that it warned; `off` checks nothing.
+- `buffer_percent` and `buffer_min_g` — the buffer asked beyond what the print
+  needs: that percentage of it, or that many grams, whichever is more. 10 and 5
+  by default.
+- `analysis_wait_seconds` — how long a start waits for an analysis, 300 by
+  default; zero waits not at all.
+
+A negative buffer or wait, or a mode outside the three, refuses the server's
+start naming the key.
+
+**The override.** An operator who knows better — a spool just weighed, a file
+they trust — starts again with `--override-filament-check true`. The start goes
+ahead and the check is recorded as `overridden`, with the start's own reason.
+Only an operator's override counts; the agent's is ignored, because a turn
+starts no print at all.
+
+**What the program says beside a refusal.** The command-line program exits
+with its rejected status on a start this check refused and prints the record,
+and beside it says what settles the refusal rather than a range to ask inside:
+for `insufficient_filament` the spool's name, the tool, what the print needs
+plus its buffer against what the spool holds, and its mark when it has one,
+then that a spool holding enough can be loaded, this one weighed and corrected
+with `adjust-spool`, or the start made again with
+`--override-filament-check true`; for `unverified_spool` the spool, the tool and its mark, then weighing it
+and `adjust-spool`, or the override; and for `analysis_unavailable` the file and
+how long the start waited, then starting again once OctoPrint has analysed the
+file, or the override. A spool command the ledger refused is printed beside the
+ledger's own `detail`.
+
+Every check a start makes is written into the printer's history as a
+`preflight_checked`, and the start's `print_started` carries it. `printobserver
+preflight` makes the same check without starting anything, records nothing and
+waits for no analysis — which is how to see a start's figures before asking for
+it. Its verdicts are those above: `passed`, `insufficient`, `unverified_spool`,
+`no_analysis` and `unchecked`, and a start adds `overridden` and `warned`.
+
+## What marks a spool unverified, and what clears each mark
+
+A spool's figure is always what it held full less every charge against it plus
+every correction. Something that could not be charged exactly does not change
+that rule; it marks the spool instead, and the mark stays until the command
+that settles that doubt clears it. The marks are:
+
+- `uncharged_print` — a print ran on the spool's tool and nothing could be
+  charged for it: the file had no analysis and no position was read, or the
+  print ended unfinished while nothing was watching.
+- `unaccounted_print` — the printer's tallies counted a print of a file nobody
+  watched that did not complete, or whose file has no analysis, so what it fed
+  is unknown. One that completed, of a file with an analysis, is charged that
+  analysis instead.
+- `filament_change_unconfirmed` — a filament change was signalled and nobody has
+  said which spool is now loaded. The spool was charged up to the position read
+  at the signal, and what the tool feeds after it is held as a pending charge
+  rather than charged to it.
+- `filament_change_unconfirmed_position` — the same, when no position could be
+  read at the signal, so the spool was charged only to the last one recorded and
+  its figure may be too high.
+- `tally_reset` — a file's print tally went down, as a re-upload does, and the
+  prints since could not be told from the ones already charged.
+
+What clears which, exactly as the contract's `marks_cleared_by` states it:
+
+- **`adjust-spool` clears every mark.** A correction from a scale reading or a
+  remaining figure replaces whatever the doubt was about.
+- **A load of another spool onto the tool clears only the outgoing spool's
+  `filament_change_unconfirmed`.** It says what is on the tool now, and takes
+  every charge held for that tool to the spool loaded; the doubt over a position
+  that could not be read stays with the outgoing spool.
+- **A load naming the spool already on the tool clears both filament-change
+  marks** — `filament_change_unconfirmed` and
+  `filament_change_unconfirmed_position` — because it confirms the spool was
+  never swapped. It takes the held charges to that spool.
+
+Nothing else clears a mark. A spool in doubt is listed `unverified` in
+`spools`' `at_a_glance`, with its oldest mark, and refuses a start
+`unverified_spool` while the check is set to refuse.

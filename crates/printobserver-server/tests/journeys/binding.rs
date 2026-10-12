@@ -37,7 +37,7 @@ async fn alert(world: &World) {
 
 /// A world with a print, and one turn about it held open: what the turn was
 /// issued.
-async fn held_turn(world: &World) -> (PrintId, Pass) {
+pub async fn held_turn(world: &World) -> (PrintId, Pass) {
     let print_id = world.open_print().await;
     world.agent.hold_turns();
     alert(world).await;
@@ -72,12 +72,12 @@ fn manifest() -> Value {
 }
 
 /// The actor document of one agent session.
-fn agent(session_name: &str) -> Value {
+pub fn agent(session_name: &str) -> Value {
     json!({ "agent": { "session_name": session_name } })
 }
 
 /// Send one request and read its status and its error text.
-async fn sent(request: reqwest::RequestBuilder) -> (reqwest::StatusCode, Value) {
+pub async fn sent(request: reqwest::RequestBuilder) -> (reqwest::StatusCode, Value) {
     let response = request.send().await.expect("the server answers");
     let status = response.status();
     let body: Value = response.json().await.expect("the answer is JSON");
