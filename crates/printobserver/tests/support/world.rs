@@ -673,7 +673,11 @@ impl World {
             // named by the whole record rather than left out.
             open = prints
                 .iter()
-                .filter(|print| print.get("ended_at").is_none_or(Value::is_null))
+                .filter(|print| match print.get("ended_at") {
+                    None | Some(Value::Null) => true,
+                    Some(Value::String(_)) => false,
+                    Some(other) => panic!("a print ended at {other}, which is no instant: {print}"),
+                })
                 .map(|print| {
                     print
                         .get("id")
