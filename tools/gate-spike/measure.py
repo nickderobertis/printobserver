@@ -368,8 +368,9 @@ def experiment(names: Sequence[str], tasks: Sequence[TaskId], out: Path) -> Repo
                 report.prepared.append(lever.prepare(name))
         report.linker = _timed_linker(out, env)
         if os.environ.get(REAL_LINKER) == RUST_LLD and not report.linker.used:
-            # Untimed, rather than not at all: the lever's build is still measured.
-            env[_linker_variable()] = RUST_LLD
+            # A build that silently fell back to link.exe would be measured as rust-lld's.
+            msg = f"rust-lld could not link through the timed linker: {report.linker.why}"
+            raise HostError(msg)
         for task in tasks:
             temporaries = pytest_temporaries()
             before = disk()

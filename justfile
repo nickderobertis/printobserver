@@ -564,7 +564,7 @@ spike-cell RUNS OUT:
     PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --quiet --experiment "${run%%|*}" --targets "${run#*|}" --out {{quote(OUT)}}"/$n-${run%%|*}" || failed=$((failed+1)); \
     done; echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}"; [ "$failed" = 0 ]
 
-# SPIKE: the harness's own tests, as the gate-spike project's test target runs them.
+# SPIKE: the harness's own tests; the gate-spike project's test target runs this.
 spike-harness-test:
     just node-modules
     uv run -q pytest tools/gate-spike/tests -p no:cacheprovider -o pythonpath="tools/gate-spike tools/gate-spike/tests tools/octoprint-env tools/repo-checks/src"

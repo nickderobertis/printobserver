@@ -453,8 +453,28 @@ def test_the_lookup_benchmarks_current_read_is_octoprint_envs_own(tmp_path: Path
     equal(read.methods[0].name, CURRENT, describing="the first method")
     equal(read.methods[0].same_as_current, True, describing="the current read against itself")
     if sys.platform == "win32":
-        native = next(m for m in read.methods if m.name == "win32 NtQueryInformationProcess")
-        equal((native.is_the_command_line, native.same_as_current), (True, True), describing="it")
+        by_name = {method.name: method for method in read.methods}
+        for name in (
+            "pwsh Get-CimInstance",
+            "pwsh Get-Process .CommandLine",
+            "win32 NtQueryInformationProcess",
+        ):
+            if by_name[name].present:
+                equal(
+                    (by_name[name].is_the_command_line, by_name[name].same_as_current),
+                    (True, True),
+                    describing=f"`{name}`, a read of the same command line",
+                )
+        for name in (
+            "powershell Get-Process .Path",
+            "tasklist /FI",
+            "win32 QueryFullProcessImageNameW",
+        ):
+            answered = by_name[name].answered.lower()
+            truth(
+                "python" in answered and not by_name[name].is_the_command_line,
+                describing=f"`{name}`, a read of the image alone: {answered!r}",
+            )
 
 
 def test_a_status_this_does_not_know_is_kept_as_other_rather_than_dropped() -> None:

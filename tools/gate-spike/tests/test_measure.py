@@ -383,16 +383,13 @@ def test_the_windows_host_levers_change_the_host(tmp_path: Path, fixture_project
     not HOSTED_WINDOWS, reason="rust-lld is this lever's linker on windows-msvc alone"
 )
 def test_rust_lld_links_the_build_on_windows(tmp_path: Path) -> None:
-    """On Windows the build links through rust-lld, timed where the wrapper could front it."""
+    """On Windows the build links through rust-lld, every link timed by the wrapper in front."""
     measured = measure("--experiment", "compile-only+rust-lld", "--targets", VISION, out=tmp_path)
     equal(measured.code, 0, describing="a build linked by rust-lld")
     report = mapping(measured.report, describing="the report")
     linker = report["linker"]
-    if linker["used"]:
-        equal(linker["real"], "rust-lld", describing="the linker the wrapper stood in front of")
-        truth(report["links"]["count"] > 0, describing="the links it timed")
-    else:
-        contains(list(report["env"].values()), "rust-lld", describing="the untimed fallback")
+    equal((linker["used"], linker["real"]), (True, "rust-lld"), describing=str(linker))
+    truth(report["links"]["count"] > 0, describing="the links it timed")
 
 
 def test_the_plugin_unloaded_or_unconfigured_leaves_pytest_as_it_was(tmp_path: Path) -> None:
