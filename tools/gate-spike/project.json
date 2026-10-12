@@ -1,0 +1,17 @@
+{
+  "name": "gate-spike",
+  "root": "tools/gate-spike",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "metadata": { "description": "spike-windows-gate-breakdown's measurement harness: one experiment over one target set, as `just spike-measure`. Spike branch only." },
+  "implicitDependencies": ["repo-checks", "printobserver"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/gate-spike && rustfmt --edition 2021 tools/gate-spike/timed_linker.rs" },
+    "format-check": { "command": "uv run -q ruff format --check tools/gate-spike && rustfmt --edition 2021 --check tools/gate-spike/timed_linker.rs" },
+    "lint": { "command": "uv run -q ruff check tools/gate-spike" },
+    "typecheck": {
+      "command": "uv run -q ty check --extra-search-path tools/gate-spike --extra-search-path tools/gate-spike/tests tools/gate-spike && uv run -q ty check --python-platform win32 --extra-search-path tools/gate-spike --extra-search-path tools/gate-spike/tests tools/gate-spike"
+    },
+    "test": { "command": "uv run -q pytest tools/gate-spike/tests -p no:cacheprovider" }
+  }
+}

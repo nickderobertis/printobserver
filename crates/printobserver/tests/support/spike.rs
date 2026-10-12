@@ -5,13 +5,15 @@
 //! and which test process and thread took it. Unset, nothing is written and
 //! nothing about the tier changes: no assertion, deadline or order reads it.
 //! `tools/gate-spike/measure.py` sets the variable and folds the lines into its
-//! report.
+//! report; the line is the shape `tools/gate-spike/spike_names.py`'s
+//! `JourneyTiming` reads, and `tools/gate-spike/tests/test_records.py` holds the
+//! two together by running `the_spike_timing_sink_records_a_timed_operation`.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::time::Instant;
 
-/// The variable naming the file the lines are appended to.
+/// Read on every call, so a process started without it writes nothing.
 const SINK: &str = "PRINTOBSERVER_SPIKE_TIMINGS";
 
 /// Record one operation of `kind` that began at `started`.

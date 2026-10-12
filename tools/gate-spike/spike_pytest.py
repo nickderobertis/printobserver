@@ -1,15 +1,18 @@
 """Spike-only pytest plugin: what each test spent its time on.
 
-Loaded by `measure.py` with `-p spike_pytest` and `SPIKE_PYTEST_OUT` naming a
+Loaded by `measure.py` with `-p spike_pytest`, with `SPIKE_PYTEST_OUT` naming a
 directory. Each pytest process (an xdist worker included) appends one JSON line
-per test to a file of its own there: the test's phases and outcome, and the
-seconds it spent in child processes (by program), in `shutil.copytree` and
-`shutil.rmtree` (and in `shutil.copy2`, which `copytree` also calls), in
-`time.sleep`, and in `urllib.request.urlopen`. It changes no test, assertion or
-timeout: every wrapper calls the real function and only records how long it
-took. With `SPIKE_STABLE_IDS` set, each parametrized test's id is its index
-within its function instead of its parameters' rendering, so xdist workers that
-render a generated parameter differently still collect one list.
+per test to a file of its own there — the test's phases and outcome, and the
+seconds it spent in child processes (by program), in `shutil.copy2`,
+`shutil.copytree` and `shutil.rmtree`, in `time.sleep`, and in
+`urllib.request.urlopen` — and one line for the process itself. `copytree`
+calls `copy2`, so a copy it makes is counted under both.
+
+It changes no test, assertion or timeout: every wrapper calls the real function
+and only records how long it took. With `SPIKE_STABLE_IDS` set, each
+parametrized case is named by its index within its function instead of its
+parameters' rendering, so xdist workers that render a generated parameter
+differently still collect one list.
 """
 
 from __future__ import annotations
@@ -17,23 +20,43 @@ from __future__ import annotations
 import functools
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import threading
 import time
 import urllib.request
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 import pytest
+from spike_names import PYTEST_OUT, STABLE_IDS, WORKER_COVERAGE, Cost, PytestSession, PytestTest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-#: Where costs charged outside any test are kept.
-OUTSIDE = "<outside a test>"
+    import coverage
+
+OUTSIDE_A_TEST = "<outside a test>"
+PHASES = ("setup", "call", "teardown")
+
+
+@dataclass
+class Phases:
+    """A test's phase durations and its outcome, as pytest reported them."""
+
+    seconds: dict[str, float] = field(default_factory=dict)
+    outcome: str = "unknown"
+
+
+@dataclass
+class Child:
+    """A child process this plugin is timing."""
+
+    started: float
+    program: str
 
 
 @dataclass
@@ -46,72 +69,73 @@ class State:
     started: float = 0.0
     collect_started: float = 0.0
     collect_s: float = 0.0
-    coverage: Any = None
+    measured: coverage.Coverage | None = None
     patches: pytest.MonkeyPatch = field(default_factory=pytest.MonkeyPatch)
-    costs: dict[str, dict[str, list[float]]] = field(
-        default_factory=lambda: defaultdict(lambda: defaultdict(lambda: [0.0, 0.0]))
+    costs: dict[str, dict[str, Cost]] = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(Cost))
     )
-    phases: dict[str, dict[str, Any]] = field(default_factory=lambda: defaultdict(dict))
-    children: dict[int, tuple[float, str]] = field(default_factory=dict)
+    phases: dict[str, Phases] = field(default_factory=lambda: defaultdict(Phases))
+    children: dict[int, Child] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def charge(self, category: str, seconds: float) -> None:
         """Add one occurrence of `category` lasting `seconds` to the running test."""
         with self.lock:
-            cost = self.costs[self.current or OUTSIDE][category]
-            cost[0] += 1
-            cost[1] += seconds
+            self.costs[self.current or OUTSIDE_A_TEST][category].add(seconds)
 
-    def costs_of(self, key: str) -> dict[str, dict[str, float]]:
+    def costs_of(self, key: str) -> dict[str, Cost]:
         """The costs charged to `key`, forgotten once read."""
         with self.lock:
-            charged = self.costs.pop(key, {})
-        return {name: {"count": int(c), "s": round(s, 3)} for name, (c, s) in charged.items()}
+            return dict(self.costs.pop(key, {}))
 
 
 STATE = State()
 
 
 def _program(args: object) -> str:
-    """The bare program name a `Popen` was asked to run."""
-    if isinstance(args, (str, bytes, os.PathLike)):
-        words = os.fsdecode(args).split()
-        first = words[0] if words else ""
-    elif isinstance(args, (list, tuple)):
-        first = os.fsdecode(args[0]) if args else ""
-    else:
-        first = ""
+    """The bare program name a `Popen` was asked to run, without its suffix."""
+    match args:
+        case str() | bytes() | os.PathLike():
+            words = shlex.split(os.fsdecode(args), posix=os.name != "nt")
+            first = words[0] if words else ""
+        case [str() | bytes() | os.PathLike() as head, *_]:
+            first = os.fsdecode(head)
+        case _:
+            first = ""
     name = Path(first.strip('"')).name.lower()
     for suffix in (".exe", ".cmd", ".bat"):
         name = name.removesuffix(suffix)
     return name or "<unnamed>"
 
 
-def _ended(process: subprocess.Popen[Any]) -> None:
+def _ended(process: subprocess.Popen[str] | subprocess.Popen[bytes]) -> None:
     """Charge a child process the first time it is seen to have ended."""
     if process.returncode is None:
         return
-    started = STATE.children.pop(id(process), None)
-    if started is not None:
-        STATE.charge(f"spawn:{started[1]}", time.perf_counter() - started[0])
+    child = STATE.children.pop(id(process), None)
+    if child is not None:
+        STATE.charge(f"spawn:{child.program}", time.perf_counter() - child.started)
 
 
 def _wrap_popen() -> None:
     """Time every child process from its start until it is first seen ended."""
-    original_init = subprocess.Popen.__init__
+    # Popen's overloads are its callers' to satisfy; this forwards whatever they passed.
+    original_init = cast("Callable[..., None]", subprocess.Popen.__init__)
     original_wait = subprocess.Popen.wait
     original_poll = subprocess.Popen.poll
 
-    def init(self: subprocess.Popen[Any], args: object, *rest: object, **kwargs: object) -> None:
-        STATE.children[id(self)] = (time.perf_counter(), _program(args))
-        original_init(self, args, *rest, **kwargs)
+    def init(self: subprocess.Popen[str], *args: object, **kwargs: object) -> None:
+        STATE.children[id(self)] = Child(
+            time.perf_counter(), _program(kwargs.get("args", args[0] if args else None))
+        )
+        original_init(self, *args, **kwargs)
 
-    def wait(self: subprocess.Popen[Any], timeout: float | None = None) -> int:
+    def wait(self: subprocess.Popen[str], timeout: float | None = None) -> int:
         answer = original_wait(self, timeout)
         _ended(self)
         return answer
 
-    def poll(self: subprocess.Popen[Any]) -> int | None:
+    def poll(self: subprocess.Popen[str]) -> int | None:
         answer = original_poll(self)
         _ended(self)
         return answer
@@ -135,9 +159,15 @@ def _timed(category: str, function: Callable[..., object]) -> Callable[..., obje
     return timed
 
 
+def _write(record: dict[str, object]) -> None:
+    if STATE.sink is not None:
+        with STATE.sink.open("a", encoding="utf-8") as sink:
+            sink.write(json.dumps(record) + "\n")
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Install the wrappers and name this process's own output file."""
-    out = os.environ.get("SPIKE_PYTEST_OUT")
+    out = os.environ.get(PYTEST_OUT)
     if not out:
         return
     worker = os.environ.get("PYTEST_XDIST_WORKER")
@@ -157,18 +187,18 @@ def pytest_configure(config: pytest.Config) -> None:
         (urllib.request, "urlopen", "http"),
     ):
         STATE.patches.setattr(owner, name, _timed(category, getattr(owner, name)))
-    if os.environ.get("SPIKE_WORKER_COVERAGE") and worker is not None:
-        # Each xdist worker measured on its own, as pytest-cov measures them;
-        # the configuration is the project's own, read from `pyproject.toml`.
+    if os.environ.get(WORKER_COVERAGE) and worker is not None:
+        # Each worker under the project's own coverage configuration, which
+        # `pyproject.toml` declares; the controller runs no test to measure.
         import coverage
 
-        STATE.coverage = coverage.Coverage(data_suffix=True)
-        STATE.coverage.start()
+        STATE.measured = coverage.Coverage(data_suffix=True)
+        STATE.measured.start()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Under `SPIKE_STABLE_IDS`, name each parametrized case by its index alone."""
-    if not os.environ.get("SPIKE_STABLE_IDS"):
+    if not os.environ.get(STABLE_IDS):
         return
     seen: dict[str, int] = defaultdict(int)
     for item in items:
@@ -181,9 +211,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 def pytest_unconfigure(config: pytest.Config) -> None:
     """Save a measured worker's coverage and put every wrapped function back."""
     del config
-    if STATE.coverage is not None:
-        STATE.coverage.stop()
-        STATE.coverage.save()
+    if STATE.measured is not None:
+        STATE.measured.stop()
+        STATE.measured.save()
     STATE.patches.undo()
 
 
@@ -206,50 +236,42 @@ def pytest_runtest_logstart(nodeid: str, location: object) -> None:
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    """Keep each phase's duration and the test's outcome."""
+    """Keep each phase's duration, and the outcome that decides the test's."""
     phases = STATE.phases[report.nodeid]
-    phases[report.when] = report.duration
-    if report.failed or "outcome" not in phases or report.when == "call":
-        phases["outcome"] = report.outcome
-
-
-def _write(line: dict[str, Any]) -> None:
-    if STATE.sink is not None:
-        with STATE.sink.open("a", encoding="utf-8") as sink:
-            sink.write(json.dumps(line) + "\n")
+    phases.seconds[str(report.when)] = report.duration
+    if report.failed or phases.outcome == "unknown" or report.when == "call":
+        phases.outcome = report.outcome
 
 
 def pytest_runtest_logfinish(nodeid: str, location: object) -> None:
     """Write the test's line and stop charging to it."""
     del location
     STATE.current = None
-    phases = STATE.phases.pop(nodeid, {})
+    phases = STATE.phases.pop(nodeid, Phases())
     costs = STATE.costs_of(nodeid)
     if STATE.controller:
         return
-    when = ("setup", "call", "teardown")
-    _write(
-        {
-            "nodeid": nodeid,
-            "worker": os.environ.get("PYTEST_XDIST_WORKER", "main"),
-            "outcome": phases.get("outcome", "unknown"),
-            "s": round(sum(phases.get(phase, 0.0) for phase in when), 3),
-            "phases": {phase: round(phases[phase], 3) for phase in when if phase in phases},
-            "costs": costs,
-        }
+    record = PytestTest(
+        nodeid=nodeid,
+        worker=os.environ.get("PYTEST_XDIST_WORKER", "main"),
+        outcome=phases.outcome,
+        s=round(sum(phases.seconds.get(phase, 0.0) for phase in PHASES), 3),
+        phases={
+            phase: round(phases.seconds[phase], 3) for phase in PHASES if phase in phases.seconds
+        },
+        costs=costs,
     )
+    _write(asdict(record))
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Write the process's own line: its wall time, collection and exit status."""
-    _write(
-        {
-            "session": True,
-            "worker": os.environ.get("PYTEST_XDIST_WORKER", "main"),
-            "wall_s": round(time.perf_counter() - STATE.started, 3),
-            "collect_s": round(STATE.collect_s, 3),
-            "exitstatus": int(exitstatus),
-            "tests": session.testscollected,
-            "outside_tests": STATE.costs_of(OUTSIDE),
-        }
+    record = PytestSession(
+        worker=os.environ.get("PYTEST_XDIST_WORKER", "main"),
+        wall_s=round(time.perf_counter() - STATE.started, 3),
+        collect_s=round(STATE.collect_s, 3),
+        exitstatus=int(exitstatus),
+        tests=session.testscollected,
+        outside_tests=STATE.costs_of(OUTSIDE_A_TEST),
     )
+    _write({"session": True, **asdict(record)})

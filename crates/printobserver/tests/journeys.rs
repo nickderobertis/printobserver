@@ -185,3 +185,16 @@ fn a_stopped_supervisors_output_is_read_no_longer_than_the_drain() {
 fn a_supervisor_that_announces_itself_is_answered_at_once() {
     announcing::a_supervisor_that_announces_is_answered_at_once();
 }
+
+/// The spike's timing sink records what it timed, and answers what the timed
+/// operation answered. `tools/gate-spike/tests/test_records.py` runs this with
+/// the sink named, and with it naming a directory nothing can be written to,
+/// and reads the record back.
+#[test]
+fn the_spike_timing_sink_records_a_timed_operation() {
+    let answer = spike::timed("spike \"sink\" \u{1}", || 7);
+    assert_eq!(
+        answer, 7,
+        "a timed operation answers what the operation answered"
+    );
+}

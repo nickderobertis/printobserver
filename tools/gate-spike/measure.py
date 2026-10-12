@@ -2,29 +2,29 @@
 
 `spike-windows-gate-breakdown`'s harness. It runs each named Nx task's own
 command — read from the project's `project.json`, so it is the command Nx would
-run — one task at a time, under one experiment's levers, and writes one JSON
-document of what each task cost:
+run — one task at a time, under one experiment's levers (`levers.py`), and
+writes one `Report` as JSON of what each task cost (`figures.py`):
 
-* every task's wall time and exit status;
+* every task's wall time, exit status and the free disk around it;
 * for a nextest task, cargo's compile time, nextest's run time, its test and
-  binary counts, every test's own duration, and — where the timed linker could
-  be put in front of the real one — every link cargo made;
-* for a pytest task, every test's duration and what it spent it on (child
-  processes by program, tree copies and removals, sleeps, HTTP requests), from
+  binary counts and every test's own duration, and — where the timed linker
+  could stand in front of the real one — every link cargo made;
+* for a pytest task, every test's duration and what it spent it on, from
   `spike_pytest.py`;
 * for the client-command journeys, every operation `support/spike.rs` timed.
 
 Usage (from the repository root, after `just bootstrap`):
 
-    uv run -q python tools/gate-spike/measure.py \
-        --experiment baseline --targets printobserver:test,repo-checks:test \
-        --out spike-out
+    just spike-measure baseline printobserver:test,repo-checks:test spike-out
 
-`--experiment` takes one or more levers joined by `+`, and `--list` names every
-lever and pseudo-target. The document is `<out>/measure.json`; each task's own
-output is beside it as `<out>/<task>.log`. The exit status is 0 when every task
-succeeded, 1 when any failed (the document is written either way), and 2 for an
-invocation naming a lever or target that does not exist.
+`EXPERIMENT` is one or more levers joined by `+`; `TARGETS` is `project:target`
+tasks or pseudo-targets joined by `,`, where `*:<target>` is every project that
+declares `<target>`; `--list` names every lever and pseudo-target. The report is
+`<out>/measure.json`, and each task's own output is beside it as
+`<out>/<task>.log`. Success prints one line naming the report; a task that
+failed is named on standard error. Exit status: 0 when every task succeeded, 1
+when any failed (the report is written either way), 2 for an invocation naming
+a lever or target that does not exist.
 """
 
 from __future__ import annotations
@@ -34,462 +34,329 @@ import json
 import os
 import platform
 import re
-import shutil
 import sys
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+import figures
+import lookup_bench
+from levers import (
+    LEVERS,
+    PYTEST,
+    ROOT,
+    WINDOWS,
+    DefenderState,
+    DiskSpace,
+    HostError,
+    Lever,
+    Preparation,
+    clear_pytest_temporaries,
+    defender_state,
+    disk,
+    pytest_temporaries,
+)
 from repo_checks.shell import run
+from spike_names import JOURNEY_TIMINGS, LINK_TIMINGS, PYTEST_OUT, REAL_LINKER
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-    from subprocess import CompletedProcess
+    from collections.abc import Sequence
 
-ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
-WINDOWS = sys.platform == "win32"
-
-
-@dataclass(frozen=True)
-class Lever:
-    """One change to how a task runs, and nothing else."""
-
-    description: str
-    env: dict[str, str] = field(default_factory=dict)
-    rewrite: Callable[[str, str], str] | None = None
-    prepare: Callable[[Path], dict[str, Any]] | None = None
-    restore: Callable[[], None] | None = None
-
-
-def _replace(old: str, new: str) -> Callable[[str, str], str]:
-    return lambda command, _task: command.replace(old, new)
-
-
-def _no_rust_coverage(command: str, _task: str) -> str:
-    return command.replace("cargo llvm-cov nextest", "cargo nextest run").replace(
-        " --no-report", ""
-    )
-
-
-def _compile_only(command: str, _task: str) -> str:
-    """Build and list every test binary, and run none: nextest's `none()` filter."""
-    if '-E "' in command:
-        return re.sub(r'-E "([^"]*)"', r'-E "none() & (\1)"', command, count=1)
-    return command.replace("--no-tests=pass", '--no-tests=pass -E "none()"', 1)
-
-
-def _xdist(workers: int) -> Callable[[str, str], str]:
-    def rewrite(command: str, _task: str) -> str:
-        # `coverage run` alone would measure only the controller, which runs no
-        # test under xdist; with SPIKE_WORKER_COVERAGE set, `spike_pytest.py`
-        # measures each worker instead, the way pytest-cov does.
-        command = command.replace("uv run -q coverage run -m pytest", "uv run -q python -m pytest")
-        return command.replace("-m pytest ", f"-m pytest -n {workers} --dist load ", 1)
-
-    return rewrite
-
-
-def _powershell(script: str) -> CompletedProcess[str]:
-    return run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
-
-
-def defender_state(_out: Path | None = None) -> dict[str, Any]:
-    """What Defender's real-time scanning is doing on this host, and what it excludes."""
-    if not WINDOWS:
-        return {"applies": False}
-    status = _powershell(
-        "$s = Get-MpComputerStatus; $p = Get-MpPreference; "
-        "@{realtime=$s.RealTimeProtectionEnabled; antivirus=$s.AntivirusEnabled; "
-        "mode=$s.AMRunningMode; excluded=@($p.ExclusionPath); "
-        "excluded_processes=@($p.ExclusionProcess)} | ConvertTo-Json -Compress"
-    )
-    try:
-        return {"applies": True, **json.loads(status.stdout)}
-    except json.JSONDecodeError:
-        return {"applies": True, "unreadable": status.stdout + status.stderr}
-
-
-def _excluded_paths() -> list[str]:
-    home = Path.home()
-    uv_cache = run(["uv", "cache", "dir"]).stdout.strip()
-    paths = [str(ROOT), str(home / ".cargo"), str(home / ".rustup"), os.environ.get("TEMP", "")]
-    return [path for path in [*paths, uv_cache] if path]
-
-
-def _exclude_from_defender(_out: Path) -> dict[str, Any]:
-    if not WINDOWS:
-        return {"applies": False}
-    paths = _excluded_paths()
-    quoted = ",".join("'" + path.replace("'", "''") + "'" for path in paths)
-    added = _powershell(f"Add-MpPreference -ExclusionPath {quoted}")
-    return {
-        "asked": paths,
-        "exit": added.returncode,
-        "said": added.stderr.strip(),
-        "after": defender_state(),
-    }
-
-
-def _defender_off(_out: Path) -> dict[str, Any]:
-    if not WINDOWS:
-        return {"applies": False}
-    off = _powershell("Set-MpPreference -DisableRealtimeMonitoring $true")
-    return {"exit": off.returncode, "said": off.stderr.strip(), "after": defender_state()}
-
-
-#: The files this spike's own branch changes that the suites read as the
-#: committed tree: its cut-down workflow and its justfile recipes. A run under
-#: `base-tree` has the base branch's copies in their place, so a suite holding
-#: the real workflow and recipes to the repository's policy is not refused for
-#: the spike's own harness.
-SPIKE_CHANGED = (".github/workflows/ci.yml", "justfile", ".gitignore")
-
-
-def _base_tree(_out: Path) -> dict[str, Any]:
-    base = run(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT, check=True).stdout.strip()
-    for path in SPIKE_CHANGED:
-        shown = run(["git", "show", f"{base}:{path}"], cwd=ROOT, check=True).stdout
-        (ROOT / path).write_text(shown, encoding="utf-8", newline="")
-    return {"base": base, "replaced": list(SPIKE_CHANGED)}
-
-
-def _spike_tree() -> None:
-    run(["git", "checkout", "HEAD", "--", *SPIKE_CHANGED], cwd=ROOT, check=True)
-
-
-def _temp_on_d(out: Path) -> dict[str, Any]:
-    del out
-    if not WINDOWS or not Path("D:/").exists():
-        return {"applies": False}
-    temp = Path("D:/spike-temp")
-    temp.mkdir(parents=True, exist_ok=True)
-    # Every task's environment is built from this process's, and `tempfile`
-    # caches the directory it found first, so both are pointed there.
-    os.environ["TEMP"] = os.environ["TMP"] = str(temp)
-    tempfile.tempdir = None
-    return {"applies": True, "temp": str(temp)}
-
-
-def disk() -> dict[str, Any]:
-    """Free space on the drive holding the temporary directory and on the workspace's."""
-    answer = {}
-    for name, path in (("temp", Path(tempfile.gettempdir())), ("workspace", ROOT)):
-        usage = shutil.disk_usage(path)
-        answer[name] = {"path": str(path), "free_gb": round(usage.free / 2**30, 2)}
-    return answer
-
-
-def _clear_pytest_temp() -> float:
-    """Remove the pytest base temporaries an earlier task left, answering the GB freed."""
-    before = shutil.disk_usage(tempfile.gettempdir()).free
-    for left in Path(tempfile.gettempdir()).glob("pytest-of-*"):
-        shutil.rmtree(left, ignore_errors=True)
-    return round((shutil.disk_usage(tempfile.gettempdir()).free - before) / 2**30, 2)
-
-
-def _rust_target() -> str:
-    host = run(["rustc", "-vV"], check=True).stdout
-    return next(line.split(": ", 1)[1] for line in host.splitlines() if line.startswith("host: "))
-
-
-def _linker_variable() -> str:
-    return "CARGO_TARGET_" + re.sub(r"[-.]", "_", _rust_target()).upper() + "_LINKER"
-
-
-LEVERS: dict[str, Lever] = {
-    "baseline": Lever("each task's own command, unchanged"),
-    "no-rust-coverage": Lever(
-        "`cargo llvm-cov nextest` replaced by `cargo nextest run`: no instrumentation",
-        rewrite=_no_rust_coverage,
-    ),
-    "no-py-coverage": Lever(
-        "`coverage run -m pytest` replaced by `python -m pytest`",
-        rewrite=_replace("uv run -q coverage run -m pytest", "uv run -q python -m pytest"),
-    ),
-    "sysmon": Lever("Python coverage on sys.monitoring", env={"COVERAGE_CORE": "sysmon"}),
-    "defender-excluded": Lever(
-        "Defender excludes the workspace, ~/.cargo, ~/.rustup, %TEMP% and the uv cache",
-        prepare=_exclude_from_defender,
-    ),
-    "defender-off": Lever("Defender real-time scanning off", prepare=_defender_off),
-    "compile-only": Lever("build and list every test binary, run no test", rewrite=_compile_only),
-    "line-tables-only": Lever(
-        "dev/test debuginfo line tables only", env={"CARGO_PROFILE_DEV_DEBUG": "line-tables-only"}
-    ),
-    "debug-0": Lever("dev/test debuginfo off", env={"CARGO_PROFILE_DEV_DEBUG": "0"}),
-    "incremental-on": Lever("cargo incremental compilation on", env={"CARGO_INCREMENTAL": "1"}),
-    "split-unpacked": Lever(
-        "split-debuginfo unpacked (not supported on windows-msvc, which only packs)",
-        env={"CARGO_PROFILE_DEV_SPLIT_DEBUGINFO": "unpacked"},
-    ),
-    "rust-lld": Lever("link with the toolchain's own rust-lld"),
-    "base-tree": Lever(
-        "the base branch's ci.yml, justfile and .gitignore in place of the spike's, for the run",
-        prepare=_base_tree,
-        restore=_spike_tree,
-    ),
-    "temp-on-d": Lever(
-        "TEMP and TMP on the D: drive (windows-2025 only has one)",
-        prepare=_temp_on_d,
-    ),
-}
-for _workers in (2, 3, 4):
-    LEVERS[f"xdist-{_workers}"] = Lever(
-        f"pytest-xdist at {_workers} workers, each worker under Python coverage",
-        env={"SPIKE_WORKER_COVERAGE": "1", "SPIKE_STABLE_IDS": "1"},
-        rewrite=_xdist(_workers),
-    )
-    LEVERS[f"xdist-{_workers}-nocov"] = Lever(
-        f"pytest-xdist at {_workers} workers, no Python coverage",
-        env={"SPIKE_STABLE_IDS": "1"},
-        rewrite=_xdist(_workers),
-    )
-
+TASK = re.compile(r"^(\*|[\w.-]+):[\w-]+$")
 PSEUDO_TARGETS = {
-    "bench:octoprint-lookup": "time each way of reading which program a process id is (Windows)",
+    "bench:octoprint-lookup": "time each way of reading which program a process id is",
     "host:defender": "record Defender's state",
 }
 
-NEXTEST_RESULT = re.compile(
-    r"^\s*(?:\S+:\s+)?(PASS|FAIL|FLAKY|TIMEOUT|SIGSEGV|SIGABRT|SIGKILL|ABORT|LEAK)\s+\[\s*([\d.]+)s\]\s+"
-    r"(?:\(\s*\d+/\d+\)\s+)?(\S+)\s+(.+?)\s*$"
-)
-CARGO_FINISHED = re.compile(r"Finished `[^`]+` profile .* target\(s\) in (?:(\d+)m )?([\d.]+)s")
-NEXTEST_STARTING = re.compile(r"Starting (\d+) tests? across (\d+) binar")
-NEXTEST_SUMMARY = re.compile(r"Summary \[\s*([\d.]+)s\]")
+
+class UsageError(ValueError):
+    """An invocation naming a lever, target or project that does not exist."""
 
 
-def _project(name: str) -> tuple[Path, dict[str, Any]]:
-    for manifest in ROOT.glob("*/*/project.json"):
-        if "node_modules" in manifest.parts:
-            continue
+@dataclass(frozen=True)
+class Declared:
+    """One Nx task as its project declares it."""
+
+    task: str
+    command: str
+    cwd: Path
+
+
+def _projects() -> dict[str, dict[str, object]]:
+    """Every project.json under the repository's project roots, by name."""
+    found: dict[str, dict[str, object]] = {}
+    for manifest in sorted(ROOT.glob("*/*/project.json")):
         document = json.loads(manifest.read_text(encoding="utf-8"))
-        if document.get("name") == name:
-            return manifest.parent, document
-    msg = f"no project.json names a project `{name}`"
-    raise LookupError(msg)
+        name = document.get("name") if isinstance(document, dict) else None
+        targets = document.get("targets") if isinstance(document, dict) else None
+        if isinstance(name, str) and isinstance(targets, dict):
+            found[name] = targets
+    return found
 
 
-def _command_of(task: str) -> tuple[str, Path]:
-    project, target = task.split(":", 1)
-    _, document = _project(project)
-    declared = document.get("targets", {}).get(target)
-    if declared is None or "command" not in declared:
+def _declared(project: str, target: str, targets: dict[str, object]) -> Declared:
+    declared = targets.get(target)
+    command = declared.get("command") if isinstance(declared, dict) else None
+    if not isinstance(declared, dict) or not isinstance(command, str):
         msg = f"`{project}` declares no `{target}` command"
-        raise LookupError(msg)
-    cwd = declared.get("options", {}).get("cwd")
-    return declared["command"], ROOT / cwd if cwd else ROOT
+        raise UsageError(msg)
+    options = declared.get("options")
+    cwd = options.get("cwd") if isinstance(options, dict) else None
+    if cwd is not None and not isinstance(cwd, str):
+        msg = f"`{project}:{target}` names a cwd that is not a path: {cwd!r}"
+        raise UsageError(msg)
+    return Declared(f"{project}:{target}", command, ROOT / cwd if cwd else ROOT)
+
+
+def resolve(targets: Sequence[str]) -> list[str]:
+    """Each target as the tasks it names, refusing one that names nothing."""
+    projects = _projects()
+    tasks: list[str] = []
+    for target in targets:
+        if target in PSEUDO_TARGETS:
+            tasks.append(target)
+            continue
+        if not TASK.match(target):
+            msg = f"`{target}` is neither `project:target` nor a pseudo-target"
+            raise UsageError(msg)
+        project, name = target.split(":", 1)
+        if project == "*":
+            every = [found for found, declared in projects.items() if name in declared]
+            if not every:
+                msg = f"no project declares `{name}`"
+                raise UsageError(msg)
+            tasks.extend(f"{found}:{name}" for found in every)
+            continue
+        if project not in projects:
+            msg = f"no project.json names a project `{project}`"
+            raise UsageError(msg)
+        _declared(project, name, projects[project])
+        tasks.append(target)
+    return tasks
 
 
 def _with_spike_plugin(command: str) -> str:
     """Load the timing plugin into every pytest the command starts, and ask for all durations."""
-    loaded = "-p spike_pytest --durations=0 "
-    command = re.sub(r"(-m pytest )", r"\1" + loaded, command)
-    return re.sub(r"(uv run -q pytest )", r"\1" + loaded, command)
+    return PYTEST.sub(lambda found: f"{found.group(1)}-p spike_pytest --durations=0 ", command)
 
 
-def _timed_linker(out: Path, env: dict[str, str]) -> dict[str, Any]:
-    """Put a timing wrapper in front of this target's linker, when a smoke link proves it works."""
-    wrapper_dir = out / "timed-linker"
-    wrapper_dir.mkdir(parents=True, exist_ok=True)
-    binary = wrapper_dir / ("timed-linker.exe" if WINDOWS else "timed-linker")
+@dataclass(frozen=True)
+class LinkerSetup:
+    """Whether the timed linker stands in front of this target's linker, and why not."""
+
+    used: bool
+    variable: str = ""
+    real: str = ""
+    why: str = ""
+
+
+def _linker_variable() -> str:
+    host = run(["rustc", "-vV"], check=True).stdout
+    target = next(line.split(": ", 1)[1] for line in host.splitlines() if line.startswith("host: "))
+    return "CARGO_TARGET_" + re.sub(r"[-.]", "_", target).upper() + "_LINKER"
+
+
+def _timed_linker(out: Path, env: dict[str, str]) -> LinkerSetup:
+    """Put the timed linker in front of this target's linker, when a smoke link proves it works."""
+    wrapper = out / "timed-linker"
+    wrapper.mkdir(parents=True, exist_ok=True)
+    binary = wrapper / ("timed-linker.exe" if WINDOWS else "timed-linker")
     built = run(
         ["rustc", "--edition", "2021", "-O", str(HERE / "timed_linker.rs"), "-o", str(binary)]
     )
     if built.returncode != 0:
-        return {"used": False, "why": "the wrapper did not build: " + built.stderr[-2000:]}
-    real = env.get("SPIKE_REAL_LINKER") or ("link.exe" if WINDOWS else "cc")
+        return LinkerSetup(used=False, why="the wrapper did not build: " + built.stderr[-2000:])
+    real = env.get(REAL_LINKER) or ("link.exe" if WINDOWS else "cc")
     variable = _linker_variable()
-    trial = {
-        **os.environ,
-        **env,
-        variable: str(binary),
-        "SPIKE_REAL_LINKER": real,
-        "SPIKE_LINK_TIMINGS": str(out / "smoke-links.jsonl"),
-    }
+    timed = {variable: str(binary), REAL_LINKER: real}
     # Outside the repository: a crate made inside it would join its workspace.
     smoke = Path(tempfile.mkdtemp(prefix="spike-smoke-")) / "smoke"
     created = run(["cargo", "new", "--quiet", "--vcs", "none", str(smoke)])
     linked = run(
         ["cargo", "build", "--quiet", "--manifest-path", str(smoke / "Cargo.toml")],
-        env={**trial, "CARGO_TARGET_DIR": str(smoke / "target")},
+        env={
+            **os.environ,
+            **env,
+            **timed,
+            LINK_TIMINGS: str(out / "smoke-links.jsonl"),
+            "CARGO_TARGET_DIR": str(smoke / "target"),
+        },
     )
     if created.returncode != 0 or linked.returncode != 0:
-        return {
-            "used": False,
-            "why": "the smoke link failed: " + (created.stderr + linked.stderr)[-2000:],
-        }
-    env.update(
-        {
-            variable: str(binary),
-            "SPIKE_REAL_LINKER": real,
-            "SPIKE_LINK_TIMINGS": str(out / "links.jsonl"),
-        }
-    )
-    return {"used": True, "variable": variable, "real": real}
+        why = "the smoke link failed: " + (created.stderr + linked.stderr)[-2000:]
+        return LinkerSetup(used=False, why=why)
+    env.update({**timed, LINK_TIMINGS: str(out / "links.jsonl")})
+    return LinkerSetup(used=True, variable=variable, real=real)
 
 
-def _jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    lines = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        try:
-            lines.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return lines
+@dataclass(frozen=True)
+class TaskDisk:
+    """Free disk before and after one task, and what removing its pytest temporaries freed."""
+
+    before: tuple[DiskSpace, ...]
+    after: tuple[DiskSpace, ...]
+    freed_after_gb: float
 
 
-def _by_kind(
-    lines: Sequence[dict[str, Any]], key: str, seconds: str, scale: float = 1.0
-) -> dict[str, Any]:
-    grouped: dict[str, dict[str, float]] = {}
-    for line in lines:
-        bucket = grouped.setdefault(str(line.get(key)), {"count": 0, "s": 0.0})
-        bucket["count"] += 1
-        bucket["s"] += float(line.get(seconds, 0.0)) * scale
-    return {
-        name: {"count": int(v["count"]), "s": round(v["s"], 3)}
-        for name, v in sorted(grouped.items())
-    }
+@dataclass
+class TaskResult:
+    """What one task cost, with whichever figures its output carried."""
+
+    task: str
+    s: float
+    exit: int
+    command: str = ""
+    cwd: str = ""
+    disk: TaskDisk | None = None
+    rust: figures.RustFigures | None = None
+    pytest: figures.PytestFigures | None = None
+    journey: figures.JourneyFigures | None = None
+    lookup: lookup_bench.LookupReport | None = None
+    defender: DefenderState | None = None
 
 
-#: A terminal colour sequence, which cargo and nextest write when the job asks
-#: for colour (`CARGO_TERM_COLOR=always` on GitHub's runners).
-COLOUR = re.compile(r"\x1b\[[0-9;]*m")
+def _slug(task: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", task)
 
 
-def _rust_figures(log: str) -> dict[str, Any] | None:
-    log = COLOUR.sub("", log)
-    if "nextest" not in log and "Summary [" not in log:
-        return None
-    compiled = [int(m.group(1) or 0) * 60 + float(m.group(2)) for m in CARGO_FINISHED.finditer(log)]
-    starting = NEXTEST_STARTING.search(log)
-    summary = NEXTEST_SUMMARY.findall(log)
-    tests = []
-    for line in log.splitlines():
-        match = NEXTEST_RESULT.match(line)
-        if match:
-            status, seconds, binary, name = match.groups()
-            tests.append({"binary": binary, "test": name, "s": float(seconds), "status": status})
-    trivial = sorted(test["s"] for test in tests if test["status"] == "PASS")
-    return {
-        "compile_s": round(sum(compiled), 3),
-        "run_s": float(summary[-1]) if summary else None,
-        "tests": int(starting.group(1)) if starting else len(tests),
-        "binaries": int(starting.group(2)) if starting else None,
-        "fastest_test_s": trivial[0] if trivial else None,
-        "median_test_s": trivial[len(trivial) // 2] if trivial else None,
-        "per_test": tests,
-    }
+def _bench(task: str, out: Path) -> TaskResult:
+    report = out / _slug(task) / "lookup.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    started = time.perf_counter()
+    bench = run([sys.executable, str(HERE / "lookup_bench.py"), str(report)])
+    (out / f"{_slug(task)}.log").write_text(bench.stdout + bench.stderr, encoding="utf-8")
+    result = TaskResult(task, round(time.perf_counter() - started, 3), bench.returncode)
+    if report.is_file():
+        result.lookup = lookup_bench.LookupReport.read(report)
+    return result
 
 
-def _pytest_figures(directory: Path) -> dict[str, Any] | None:
-    lines = [line for path in sorted(directory.glob("pytest-*.jsonl")) for line in _jsonl(path)]
-    if not lines:
-        return None
-    tests = [line for line in lines if "nodeid" in line]
-    sessions = [line for line in lines if line.get("session")]
-    costs: dict[str, dict[str, float]] = {}
-    for test in tests:
-        for name, cost in test.get("costs", {}).items():
-            bucket = costs.setdefault(name, {"count": 0, "s": 0.0})
-            bucket["count"] += cost["count"]
-            bucket["s"] += cost["s"]
-    total = sum(test["s"] for test in tests)
-    return {
-        "tests": len(tests),
-        "test_s": round(total, 3),
-        "outcomes": {
-            o: sum(1 for t in tests if t["outcome"] == o)
-            for o in sorted({t["outcome"] for t in tests})
-        },
-        "failed": [t["nodeid"] for t in tests if t["outcome"] == "failed"],
-        "by_cost": {
-            n: {"count": int(c["count"]), "s": round(c["s"], 3)} for n, c in sorted(costs.items())
-        },
-        "sessions": sessions,
-        "per_test": tests,
-    }
-
-
-def run_task(task: str, levers: Sequence[Lever], env: dict[str, str], out: Path) -> dict[str, Any]:
+def run_task(task: str, levers: Sequence[Lever], env: dict[str, str], out: Path) -> TaskResult:
     """Run one task under the levers, and answer what it cost."""
-    slug = re.sub(r"[^A-Za-z0-9_.-]", "_", task)
-    task_dir = out / slug
-    task_dir.mkdir(parents=True, exist_ok=True)
     if task == "bench:octoprint-lookup":
-        started = time.perf_counter()
-        bench = run([sys.executable, str(HERE / "lookup_bench.py"), str(task_dir / "lookup.json")])
-        (out / f"{slug}.log").write_text(bench.stdout + bench.stderr, encoding="utf-8")
-        result = (
-            json.loads((task_dir / "lookup.json").read_text())
-            if (task_dir / "lookup.json").exists()
-            else None
-        )
-        return {
-            "task": task,
-            "s": round(time.perf_counter() - started, 3),
-            "exit": bench.returncode,
-            "lookup": result,
-        }
+        return _bench(task, out)
     if task == "host:defender":
-        return {"task": task, "s": 0.0, "exit": 0, "defender": defender_state()}
-    command, cwd = _command_of(task)
+        return TaskResult(task, 0.0, 0, defender=defender_state())
+    project, target = task.split(":", 1)
+    declared = _declared(project, target, _projects()[project])
+    command = declared.command
     for lever in levers:
         if lever.rewrite is not None:
-            command = lever.rewrite(command, task)
+            command = lever.rewrite(command)
     command = _with_spike_plugin(command)
+    task_dir = out / _slug(task)
+    task_dir.mkdir(parents=True, exist_ok=True)
     timings = task_dir / "journey-timings.jsonl"
+    log = out / f"{_slug(task)}.log"
+    log.write_text(f"$ {command}\n", encoding="utf-8")
     task_env = {
         **os.environ,
         **env,
-        "SPIKE_PYTEST_OUT": str(task_dir),
-        "PRINTOBSERVER_SPIKE_TIMINGS": str(timings),
+        PYTEST_OUT: str(task_dir),
+        JOURNEY_TIMINGS: str(timings),
         "PYTHONPATH": os.pathsep.join(filter(None, [str(HERE), os.environ.get("PYTHONPATH", "")])),
+        # Shown live in the job's log as well as kept: `tee` under `pipefail`,
+        # so the exit status is the command's own.
+        "SPIKE_COMMAND": command,
+        "SPIKE_LOG": log.as_posix(),
     }
     if "llvm-cov" in command:
         # The clean `just test` makes before a covered run.
         run(["cargo", "llvm-cov", "clean", "--workspace"], cwd=ROOT, capture=False)
-    log = out / f"{slug}.log"
-    log.write_text(f"$ {command}\n", encoding="utf-8")
-    # Shown live in the job's log as well as kept: `tee` under `pipefail`, so the
-    # exit status is the command's own.
-    task_env["SPIKE_COMMAND"] = command
-    task_env["SPIKE_LOG"] = log.as_posix()
     started = time.perf_counter()
     ran = run(
         ["bash", "-o", "pipefail", "-c", 'eval "$SPIKE_COMMAND" 2>&1 | tee -a "$SPIKE_LOG"'],
-        cwd=cwd,
+        cwd=declared.cwd,
         env=task_env,
         capture=False,
     )
-    seconds = time.perf_counter() - started
+    seconds = round(time.perf_counter() - started, 3)
     text = log.read_text(encoding="utf-8", errors="replace")
-    journey = _jsonl(timings)
-    result: dict[str, Any] = {
-        "task": task,
-        "command": command,
-        "cwd": str(cwd),
-        "s": round(seconds, 3),
-    }
-    result["exit"] = ran.returncode
-    rust = _rust_figures(text)
-    if rust is not None:
-        result["rust"] = rust
-    pytest = _pytest_figures(task_dir)
-    if pytest is not None:
-        result["pytest"] = pytest
-    if journey:
-        result["journey"] = {
-            "by_kind": _by_kind(journey, "kind", "ms", 0.001),
-            "operations": len(journey),
-        }
-    return result
+    return TaskResult(
+        task=task,
+        s=seconds,
+        exit=ran.returncode,
+        command=command,
+        cwd=str(declared.cwd),
+        rust=figures.rust_figures(text),
+        pytest=figures.pytest_figures(task_dir),
+        journey=figures.journey_figures(timings),
+    )
+
+
+@dataclass(frozen=True)
+class Host:
+    """The machine a report was measured on."""
+
+    platform: str
+    machine: str
+    processors: int | None
+    runner: str | None
+
+
+@dataclass
+class Report:
+    """One experiment over one target set."""
+
+    experiment: list[str]
+    levers: dict[str, str]
+    env: dict[str, str]
+    host: Host
+    defender_before: DefenderState
+    prepared: list[Preparation] = field(default_factory=list)
+    linker: LinkerSetup = field(default_factory=lambda: LinkerSetup(used=False))
+    tasks: list[TaskResult] = field(default_factory=list)
+    links: figures.LinkFigures | None = None
+    wall_s: float = 0.0
+
+
+def experiment(names: Sequence[str], tasks: Sequence[str], out: Path) -> Report:
+    """Pull the levers, run every task, put the host back, and answer the report."""
+    levers = [LEVERS[name] for name in names]
+    env: dict[str, str] = {}
+    report = Report(
+        experiment=list(names),
+        levers={name: LEVERS[name].description for name in names},
+        env=env,
+        host=Host(
+            platform=os.environ.get("PRINTOBSERVER_PLATFORM", sys.platform),
+            machine=platform.machine(),
+            processors=os.cpu_count(),
+            runner=os.environ.get("RUNNER_NAME"),
+        ),
+        defender_before=defender_state(),
+    )
+    started = time.perf_counter()
+    try:
+        for name, lever in zip(names, levers, strict=True):
+            env.update(lever.env)
+            if lever.prepare is not None:
+                report.prepared.append(lever.prepare(name))
+        if "rust-lld" in names:
+            env[REAL_LINKER] = "rust-lld"
+        report.linker = _timed_linker(out, env)
+        if "rust-lld" in names and not report.linker.used:
+            env[_linker_variable()] = "rust-lld"
+        for task in tasks:
+            temporaries = pytest_temporaries()
+            before = disk()
+            result = run_task(task, levers, env, out)
+            after = disk()
+            result.disk = TaskDisk(before, after, clear_pytest_temporaries(temporaries, out))
+            report.tasks.append(result)
+            if result.exit != 0:
+                log = out / f"{_slug(task)}.log"
+                print(f"measure: {task} exited {result.exit}; see {log}", file=sys.stderr)
+    finally:
+        for lever in levers:
+            if lever.restore is not None:
+                lever.restore()
+    report.links = figures.link_figures(out / "links.jsonl")
+    report.wall_s = round(time.perf_counter() - started, 3)
+    return report
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -498,13 +365,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--experiment", default="baseline", help="levers joined by `+`")
-    parser.add_argument(
-        "--targets", default="", help="`project:target` or pseudo-targets, comma-separated"
-    )
+    parser.add_argument("--targets", default="", help="tasks or pseudo-targets joined by `,`")
     parser.add_argument("--out", type=Path, default=Path("spike-out"))
-    parser.add_argument(
-        "--list", action="store_true", help="name every lever and pseudo-target, and exit"
-    )
+    parser.add_argument("--list", action="store_true", help="name every lever and pseudo-target")
     arguments = parser.parse_args(argv)
     if arguments.list:
         for name, lever in LEVERS.items():
@@ -513,72 +376,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"target {name:30} {description}")
         return 0
     names = [name for name in arguments.experiment.split("+") if name]
-    unknown = [name for name in names if name not in LEVERS]
-    targets = [target.strip() for target in arguments.targets.split(",") if target.strip()]
-    if unknown or not targets:
-        print(
-            f"measure: unknown levers {unknown} or no targets; `--list` names them", file=sys.stderr
-        )
-        return 2
     try:
-        for target in targets:
-            if target not in PSEUDO_TARGETS:
-                _command_of(target)
-    except LookupError as error:
-        print(f"measure: {error}; `--list` names the pseudo-targets", file=sys.stderr)
+        unknown = [name for name in names if name not in LEVERS]
+        if unknown or not names:
+            msg = f"no lever is named {unknown or names}"
+            raise UsageError(msg)
+        named = [target.strip() for target in arguments.targets.split(",") if target.strip()]
+        tasks = resolve(named)
+        if not tasks:
+            msg = "no target was named"
+            raise UsageError(msg)
+    except UsageError as error:
+        print(f"measure: {error}; `--list` names every lever and pseudo-target", file=sys.stderr)
         return 2
     out = arguments.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    levers = [LEVERS[name] for name in names]
-    env: dict[str, str] = {}
-    prepared: dict[str, Any] = {"defender_before": defender_state()}
-    for name, lever in zip(names, levers, strict=True):
-        env.update(lever.env)
-        if lever.prepare is not None:
-            prepared[name] = lever.prepare(out)
-    if "rust-lld" in names:
-        env["SPIKE_REAL_LINKER"] = "rust-lld"
-    prepared["timed_linker"] = _timed_linker(out, env)
-    if "rust-lld" in names and not prepared["timed_linker"]["used"]:
-        env[_linker_variable()] = "rust-lld"
-    document: dict[str, Any] = {
-        "experiment": names,
-        "levers": {name: LEVERS[name].description for name in names},
-        "env": env,
-        "host": {
-            "platform": os.environ.get("PRINTOBSERVER_PLATFORM", sys.platform),
-            "machine": platform.machine(),
-            "processors": os.cpu_count(),
-            "runner": os.environ.get("RUNNER_NAME"),
-        },
-        "prepared": prepared,
-        "tasks": [],
-    }
-    started = time.perf_counter()
     try:
-        for target in targets:
-            print(f"measure: {target} …", flush=True)
-            freed = _clear_pytest_temp()
-            before = disk()
-            result = run_task(target, levers, env, out)
-            result["disk"] = {"freed_before_gb": freed, "before": before, "after": disk()}
-            document["tasks"].append(result)
-            print(f"measure: {target} took {result['s']:.1f}s, exit {result['exit']}", flush=True)
-    finally:
-        for lever in levers:
-            if lever.restore is not None:
-                lever.restore()
-    links = _jsonl(out / "links.jsonl")
-    if links:
-        document["links"] = {
-            "count": len(links),
-            "s": round(sum(line["ms"] for line in links) / 1000, 3),
-            "per_output": links,
-        }
-    document["wall_s"] = round(time.perf_counter() - started, 3)
-    (out / "measure.json").write_text(json.dumps(document, indent=1), encoding="utf-8")
-    print(f"measure: wrote {out / 'measure.json'}")
-    return 0 if all(task["exit"] == 0 for task in document["tasks"]) else 1
+        report = experiment(names, tasks, out)
+    except HostError as error:
+        print(f"measure: the host could not be prepared: {error}", file=sys.stderr)
+        return 1
+    (out / "measure.json").write_text(json.dumps(asdict(report), indent=1), encoding="utf-8")
+    failed = sum(1 for task in report.tasks if task.exit != 0)
+    print(
+        f"measure: {len(report.tasks)} tasks in {report.wall_s:.0f}s, {failed} failed: "
+        f"{out / 'measure.json'}"
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

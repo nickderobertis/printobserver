@@ -1,105 +1,167 @@
 """Time each way of reading which program a process id is, on this host.
 
 `tools/octoprint-env`'s `command_of` answers a process's command line on
-Windows by starting PowerShell for one `Get-CimInstance Win32_Process` query.
-This starts one process with a distinctive command line, reads it back
-`ROUNDS` times by each method, and writes `{method: {seconds per call, what it
-answered, whether that is the command line the current read answers}}` as
-JSON to the path given as the only argument. Off Windows it times `ps`, the
-read `command_of` makes there.
+Windows by starting Windows PowerShell for one `Get-CimInstance Win32_Process`
+query. This starts one process with a distinctive command line, reads it back
+`ROUNDS` times by each method, and writes one `LookupReport` as JSON to the
+path given as its only argument: each method's seconds per call, what it
+answered, and whether that is the command line the current read answers. Off
+Windows it times `ps`, the read `command_of` makes there.
+
+Exit status: 0 when every method present on this host answered, 1 when one
+failed (the report is written either way, naming the failure), 2 when it was
+not given exactly one output path.
 """
 
 from __future__ import annotations
 
 import ctypes
+import dataclasses
 import json
 import shutil
+import statistics
 import sys
 import time
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from repo_checks.shell import run, start
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-ROUNDS = 10
+ROUNDS = 5
 MARKER = "spike-lookup-bench-marker"
+#: `PROCESS_QUERY_LIMITED_INFORMATION`, all either Win32 read needs.
+QUERY_LIMITED = 0x1000
+#: `ProcessCommandLineInformation`, the class `NtQueryInformationProcess` answers
+#: a process's command line under.
+COMMAND_LINE_CLASS = 60
 
 
-def _run(argv: list[str]) -> str:
-    return run(argv, timeout=120).stdout
+class MethodError(RuntimeError):
+    """One method could not answer."""
+
+
+@dataclass(frozen=True)
+class Method:
+    """How one way of reading a process's program did."""
+
+    name: str
+    present: bool
+    median_s: float | None = None
+    min_s: float | None = None
+    max_s: float | None = None
+    answered: str = ""
+    failure: str = ""
+    is_the_command_line: bool = False
+    same_as_current: bool = False
+
+
+@dataclass(frozen=True)
+class LookupReport:
+    """Every method this host has, over one process."""
+
+    rounds: int
+    pid: int
+    methods: list[Method]
+
+    @classmethod
+    def read(cls, path: Path) -> LookupReport:
+        """Read a report this program wrote, refusing one of any other shape."""
+        document = json.loads(path.read_text(encoding="utf-8"))
+        fields = {field.name for field in dataclasses.fields(Method)}
+        methods = document.get("methods") if isinstance(document, dict) else None
+        if not isinstance(methods, list) or not all(
+            isinstance(method, dict) and set(method) == fields for method in methods
+        ):
+            msg = f"{path} is not a report this benchmark writes"
+            raise MethodError(msg)
+        return cls(
+            rounds=int(document["rounds"]),
+            pid=int(document["pid"]),
+            methods=[Method(**method) for method in methods],
+        )
+
+    @property
+    def failed(self) -> list[str]:
+        """The methods present on this host that did not answer."""
+        return [method.name for method in self.methods if method.present and method.failure]
+
+
+def _read(argv: list[str]) -> str:
+    ran = run(argv, timeout=120)
+    if ran.returncode != 0:
+        msg = f"exited {ran.returncode}: {ran.stderr.strip()[:300]}"
+        raise MethodError(msg)
+    return ran.stdout
 
 
 def _commands(pid: int) -> dict[str, list[str] | None]:
     powershell = shutil.which("powershell")
     pwsh = shutil.which("pwsh")
     cim = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').CommandLine"
+
+    def shell(program: str | None, script: str) -> list[str] | None:
+        return [program, "-NoProfile", "-Command", script] if program else None
+
     return {
-        "current: powershell Get-CimInstance": [powershell, "-NoProfile", "-Command", cim]
-        if powershell
-        else None,
-        "powershell startup alone": [powershell, "-NoProfile", "-Command", "exit"]
-        if powershell
-        else None,
-        "powershell Get-Process .Path": [
-            powershell,
-            "-NoProfile",
-            "-Command",
-            f"(Get-Process -Id {pid}).Path",
-        ]
-        if powershell
-        else None,
-        "pwsh Get-CimInstance": [pwsh, "-NoProfile", "-Command", cim] if pwsh else None,
-        "pwsh Get-Process .CommandLine": [
-            pwsh,
-            "-NoProfile",
-            "-Command",
-            f"(Get-Process -Id {pid}).CommandLine",
-        ]
-        if pwsh
-        else None,
+        "current: powershell Get-CimInstance": shell(powershell, cim),
+        "powershell startup alone": shell(powershell, "exit"),
+        "powershell Get-Process .Path": shell(powershell, f"(Get-Process -Id {pid}).Path"),
+        "pwsh Get-CimInstance": shell(pwsh, cim),
+        "pwsh Get-Process .CommandLine": shell(pwsh, f"(Get-Process -Id {pid}).CommandLine"),
         "tasklist /FI": ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-        "wmic process get CommandLine": [
-            "wmic",
-            "process",
-            "where",
-            f"ProcessId={pid}",
-            "get",
-            "CommandLine",
-            "/value",
-        ]
-        if shutil.which("wmic")
-        else None,
+        "wmic process get CommandLine": (
+            ["wmic", "process", "where", f"ProcessId={pid}", "get", "CommandLine", "/value"]
+            if shutil.which("wmic")
+            else None
+        ),
     }
+
+
+def _last_error() -> int:
+    """The calling thread's last Win32 error, which only Windows keeps."""
+    return ctypes.get_last_error() if sys.platform == "win32" else 0
+
+
+def _opened(pid: int) -> tuple[ctypes.CDLL, int]:
+    kernel32 = ctypes.CDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(QUERY_LIMITED, 0, pid)
+    if not handle:
+        msg = f"OpenProcess refused {pid}: error {_last_error()}"
+        raise MethodError(msg)
+    return kernel32, handle
 
 
 def _win32_command_line(pid: int) -> str:
     """The command line through `NtQueryInformationProcess(ProcessCommandLineInformation)`."""
-    kernel32 = ctypes.CDLL("kernel32", use_last_error=True)
-    ntdll = ctypes.CDLL("ntdll")
-    query_limited = 0x1000
-    handle = kernel32.OpenProcess(query_limited, False, pid)
-    if not handle:
-        return ""
-    try:
-        size = ctypes.c_ulong(0)
-        buffer = ctypes.create_string_buffer(65536)
-        status = ntdll.NtQueryInformationProcess(
-            handle, 60, buffer, len(buffer), ctypes.byref(size)
+
+    class UnicodeString(ctypes.Structure):
+        _fields_ = (
+            ("Length", ctypes.c_ushort),
+            ("MaximumLength", ctypes.c_ushort),
+            ("Buffer", ctypes.c_void_p),
         )
-        if status != 0:
-            return ""
 
-        class UnicodeString(ctypes.Structure):
-            _fields_ = (
-                ("Length", ctypes.c_ushort),
-                ("MaximumLength", ctypes.c_ushort),
-                ("Buffer", ctypes.c_void_p),
-            )
-
+    kernel32, handle = _opened(pid)
+    try:
+        written = ctypes.c_ulong(0)
+        buffer = ctypes.create_string_buffer(65536)
+        status = ctypes.CDLL("ntdll").NtQueryInformationProcess(
+            handle, COMMAND_LINE_CLASS, buffer, len(buffer), ctypes.byref(written)
+        )
+        if status != 0 or written.value < ctypes.sizeof(UnicodeString):
+            msg = f"NtQueryInformationProcess answered status {status:#x}"
+            raise MethodError(msg)
         header = UnicodeString.from_buffer(buffer)
+        start_of = ctypes.addressof(buffer)
+        if header.Buffer is None or not (
+            start_of <= header.Buffer and header.Buffer + header.Length <= start_of + written.value
+        ):
+            msg = "NtQueryInformationProcess answered a string outside its own buffer"
+            raise MethodError(msg)
         return ctypes.wstring_at(header.Buffer, header.Length // 2)
     finally:
         kernel32.CloseHandle(handle)
@@ -107,71 +169,79 @@ def _win32_command_line(pid: int) -> str:
 
 def _win32_image(pid: int) -> str:
     """The image path through `QueryFullProcessImageNameW`."""
-    kernel32 = ctypes.CDLL("kernel32", use_last_error=True)
-    handle = kernel32.OpenProcess(0x1000, False, pid)
-    if not handle:
-        return ""
+    kernel32, handle = _opened(pid)
     try:
         length = ctypes.c_ulong(32768)
         buffer = ctypes.create_unicode_buffer(length.value)
-        kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(length))
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(length)):
+            msg = f"QueryFullProcessImageNameW failed: error {_last_error()}"
+            raise MethodError(msg)
         return buffer.value
     finally:
         kernel32.CloseHandle(handle)
 
 
-def _time(read: Callable[[], str]) -> dict[str, Any]:
+def _time(name: str, read: Callable[[], str]) -> Method:
     seconds = []
     answer = ""
-    for _ in range(ROUNDS):
-        started = time.perf_counter()
-        answer = read()
-        seconds.append(time.perf_counter() - started)
-    seconds.sort()
-    return {
-        "median_s": round(seconds[len(seconds) // 2], 4),
-        "min_s": round(seconds[0], 4),
-        "max_s": round(seconds[-1], 4),
-        "answered": answer.strip()[:300],
-    }
+    try:
+        for _ in range(ROUNDS):
+            started = time.perf_counter()
+            answer = read()
+            seconds.append(time.perf_counter() - started)
+    except MethodError as error:
+        return Method(name, present=True, failure=str(error))
+    return Method(
+        name,
+        present=True,
+        median_s=round(statistics.median(seconds), 4),
+        min_s=round(min(seconds), 4),
+        max_s=round(max(seconds), 4),
+        answered=answer.strip()[:300],
+        is_the_command_line=MARKER in answer,
+    )
 
 
-def main() -> int:
-    """Measure every method this host has, and write the result."""
-    out = Path(sys.argv[1])
+def measure(pid: int) -> list[Method]:
+    """Every method this host has, over the process `pid`."""
+    if sys.platform != "win32":
+        return [_time("ps -o command=", lambda: _read(["ps", "-o", "command=", "-p", str(pid)]))]
+    methods = [
+        _time(name, lambda argv=argv: _read(argv)) if argv else Method(name, present=False)
+        for name, argv in _commands(pid).items()
+    ]
+    methods.append(_time("win32 NtQueryInformationProcess", lambda: _win32_command_line(pid)))
+    methods.append(_time("win32 QueryFullProcessImageNameW", lambda: _win32_image(pid)))
+    return methods
+
+
+def main(argv: list[str]) -> int:
+    """Measure every method this host has, and write the report."""
+    if len(argv) != 1:
+        print("usage: lookup_bench.py <report.json>", file=sys.stderr)
+        return 2
+    out = Path(argv[0])
     child = start([sys.executable, "-c", "import time; time.sleep(900)", MARKER])
     try:
         time.sleep(1)
-        results: dict[str, Any] = {"rounds": ROUNDS, "pid": child.pid, "methods": {}}
-        if sys.platform == "win32":
-            for name, argv in _commands(child.pid).items():
-                if argv is None:
-                    results["methods"][name] = {"absent": True}
-                    continue
-                results["methods"][name] = _time(lambda argv=argv: _run(argv))
-            results["methods"]["win32 NtQueryInformationProcess"] = _time(
-                lambda: _win32_command_line(child.pid)
-            )
-            results["methods"]["win32 QueryFullProcessImageNameW"] = _time(
-                lambda: _win32_image(child.pid)
-            )
-        else:
-            results["methods"]["ps -o command="] = _time(
-                lambda: _run(["ps", "-o", "command=", "-p", str(child.pid)])
-            )
-        current = next(iter(results["methods"].values())).get("answered", "").replace('"', "")
-        for method in results["methods"].values():
-            answered = method.get("answered")
-            if answered is not None:
-                method["is_the_command_line"] = MARKER in answered
-                method["same_as_current"] = answered.replace('"', "") == current
-        out.write_text(json.dumps(results, indent=1), encoding="utf-8")
-        print(json.dumps(results, indent=1))
+        methods = measure(child.pid)
     finally:
         child.kill()
         child.wait()
-    return 0
+    current = methods[0].answered.replace('"', "")
+    methods = [
+        replace(
+            method,
+            same_as_current=bool(method.answered) and method.answered.replace('"', "") == current,
+        )
+        for method in methods
+    ]
+    report = LookupReport(rounds=ROUNDS, pid=child.pid, methods=methods)
+    out.write_text(json.dumps(asdict(report), indent=1), encoding="utf-8")
+    for name in report.failed:
+        print(f"lookup_bench: `{name}` did not answer; {out} says why", file=sys.stderr)
+    return 1 if report.failed else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
