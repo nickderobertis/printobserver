@@ -22,9 +22,9 @@ tasks or pseudo-targets joined by `,`, where `*:<target>` is every project that
 declares `<target>`; `--list` names every lever and pseudo-target. The report
 is `<out>/measure.json`, `<out>` being outside the repository, and each task's
 own output is beside it as `<out>/<task>.log`. Success prints one line naming
-the report; a task that failed is named on standard error. Exit status: 0 when every task succeeded, 1
-when any failed (the report is written either way), 2 for an invocation naming
-a lever or target that does not exist.
+the report; a task that failed is named on standard error. Exit status: 0 when
+every task succeeded, 1 when any failed (the report is written either way), 2
+for an invocation naming a lever, target or output directory it cannot use.
 """
 
 from __future__ import annotations
