@@ -2,11 +2,12 @@
 
 `tools/octoprint-env`'s `command_of` answers a process's command line on
 Windows by starting Windows PowerShell for one `Get-CimInstance Win32_Process`
-query. This starts one process with a distinctive command line, reads it back
-`ROUNDS` times by each method, and writes one `LookupReport` as JSON to the
-path given as its only argument: each method's seconds per call, what it
-answered, and whether that is the command line the current read answers. Off
-Windows it times `ps`, the read `command_of` makes there.
+query, and with `ps` elsewhere; this calls that function itself as the current
+read, so it measures whatever that read is. This starts one process with a
+distinctive command line, reads it back `ROUNDS` times by each method, and
+writes one `LookupReport` as JSON to the path given as its only argument:
+each method's seconds per call, what it answered, and whether that is the
+command line the current read answers.
 
 Exit status: 0 when every method present on this host answered, 1 when one
 failed (the report is written either way, naming the failure), 2 when it was
@@ -20,18 +21,22 @@ import json
 import math
 import shutil
 import statistics
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard
 
+from octoprint_env import command_of
 from repo_checks.shell import run, start
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 ROUNDS = 5
+#: The method `measure` names the current read, `octoprint_env.command_of`.
+CURRENT = "current: octoprint_env.command_of"
 MARKER = "spike-lookup-bench-marker"
 #: `PROCESS_QUERY_LIMITED_INFORMATION`, all either Win32 read needs.
 QUERY_LIMITED = 0x1000
@@ -136,7 +141,6 @@ def _commands(pid: int) -> dict[str, list[str] | None]:
         return [program, "-NoProfile", "-Command", script] if program else None
 
     return {
-        "current: powershell Get-CimInstance": shell(powershell, cim),
         "powershell startup alone": shell(powershell, "exit"),
         "powershell Get-Process .Path": shell(powershell, f"(Get-Process -Id {pid}).Path"),
         "pwsh Get-CimInstance": shell(pwsh, cim),
@@ -231,11 +235,20 @@ def _time(name: str, read: Callable[[], str]) -> Method:
     )
 
 
+def _current(pid: int) -> str:
+    """The read `tools/octoprint-env` makes today: its own `command_of`, called as it is."""
+    try:
+        return command_of(pid)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise MethodError(str(error)) from error
+
+
 def measure(pid: int) -> list[Method]:
-    """Every method this host has, over the process `pid`."""
+    """Every method this host has, over the process `pid`, the current read first."""
+    methods = [_time(CURRENT, lambda: _current(pid))]
     if sys.platform != "win32":
-        return [_time("ps -o command=", lambda: _read(["ps", "-o", "command=", "-p", str(pid)]))]
-    methods = [
+        return methods
+    methods += [
         _time(name, lambda argv=argv: _read(argv)) if argv else Method(name, present=False)
         for name, argv in _commands(pid).items()
     ]

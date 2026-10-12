@@ -29,7 +29,7 @@ import time
 import urllib.request
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -111,7 +111,7 @@ def _program(args: object) -> str:
             first = os.fsdecode(head)
         case _:
             first = ""
-    name = Path(first.strip('"')).name.lower()
+    name = PureWindowsPath(first.strip('"')).name.lower()
     for suffix in (".exe", ".cmd", ".bat"):
         name = name.removesuffix(suffix)
     return name or "<unnamed>"

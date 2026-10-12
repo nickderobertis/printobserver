@@ -77,6 +77,7 @@ def test_an_invocation_naming_nothing_real_is_refused_before_anything_runs(
         (["--targets", "octoprint-env:no-such-target"], "no-such-target"),
         (["--targets", ""], "no target"),
         (["--targets", "octoprint-env:test", "--out", str(ROOT / "spike-out")], "inside the"),
+        (["--experiment", "base-tree+base-tree", "--targets", "octoprint-env:test"], "more than"),
     ):
         refused = measure(*arguments, out=tmp_path / "refused")
         equal(refused.code, 2, describing=f"the exit for {arguments}")
@@ -456,3 +457,54 @@ def test_a_crates_figures_are_its_own_tests_totals(tmp_path: Path) -> None:
     equal(rust["fastest_test_s"], durations[0], describing="the fastest test")
     equal(rust["median_test_s"], statistics.median(durations), describing="the median test")
     equal({test["status"] for test in rust["per_test"]}, {"PASS"}, describing="every status")
+
+
+def test_a_rerun_into_the_same_output_reports_only_its_own_records(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """Measuring the same task into the same directory twice reports the second run alone."""
+    for _ in range(2):
+        measured = measure("--targets", f"{fixture_project}:suite", out=tmp_path)
+    (suite,) = tasks(measured)
+    equal(suite["pytest"]["tests"], CASES_TESTS, describing="the second run's tests")
+    links = mapping(measured.report, describing="the report")["links"]
+    equal(links, None, describing="links a run that built nothing reports")
+
+
+def test_a_host_that_fails_mid_preparation_still_gets_its_files_back(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """A preparation that raises after `base-tree` replaced the files still puts them back."""
+    before = {path: (ROOT / path).read_bytes() for path in SPIKE_CHANGED}
+    answering = tmp_path / "bin"
+    answering.mkdir()
+    rustc = answering / ("rustc.bat" if sys.platform == "win32" else "rustc")
+    rustc.write_text(
+        "@exit /b 0\n" if sys.platform == "win32" else "#!/bin/sh\nexit 0\n", encoding="utf-8"
+    )
+    rustc.chmod(0o755)
+    measured = measure(
+        "--experiment",
+        "base-tree",
+        "--targets",
+        f"{fixture_project}:here",
+        out=tmp_path / "out",
+        environment={"PATH": os.pathsep.join([str(answering), os.environ["PATH"]])},
+    )
+    equal(measured.code, 1, describing="the exit when the host could not be prepared")
+    contains(measured.err, "could not be prepared", describing="what it said")
+    for path in SPIKE_CHANGED:
+        equal((ROOT / path).read_bytes(), before[path], describing=f"{path} after the failure")
+
+
+def test_a_failing_crate_is_read_with_its_failure_out_of_the_passing_figures(
+    tmp_path: Path, fixture_crate: str
+) -> None:
+    """A nextest run with a failing test records it as failed and keeps it out of the medians."""
+    measured = measure("--targets", fixture_crate, out=tmp_path)
+    truth(measured.code != 0, describing="the exit of a run with a failing test")
+    rust = mapping(tasks(measured)[0]["rust"], describing="the crate's figures")
+    statuses = {test["test"].split("::")[-1]: test["status"] for test in rust["per_test"]}
+    equal(statuses, {"passes": "PASS", "fails": "FAIL"}, describing="each test's status")
+    passing = next(test["s"] for test in rust["per_test"] if test["status"] == "PASS")
+    equal((rust["fastest_test_s"], rust["median_test_s"]), (passing, passing), describing="it")

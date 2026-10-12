@@ -544,11 +544,11 @@ test-obico:
 # SPIKE (spike-windows-gate-breakdown): one experiment over one target set, as JSON in OUT/measure.json.
 spike-measure EXPERIMENT TARGETS OUT:
     just node-modules
-    uv run -q python tools/gate-spike/measure.py --experiment {{quote(EXPERIMENT)}} --targets {{quote(TARGETS)}} --out {{quote(OUT)}}
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --experiment {{quote(EXPERIMENT)}} --targets {{quote(TARGETS)}} --out {{quote(OUT)}}
 
 # SPIKE: every lever and pseudo-target `spike-measure` takes.
 spike-measure-list:
-    uv run -q python tools/gate-spike/measure.py --list
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --list
 
 # RUNS is `experiment|targets` pairs joined by `;`, each measured in turn into
 # OUT/<n>-<experiment>, which is outside the repository. Every run is made whatever an earlier one

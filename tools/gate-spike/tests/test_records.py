@@ -15,11 +15,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+import spike_pytest
 from conftest import HERE, PYTHONPATH, ROOT
 from figures import journey_figures, link_figures, pytest_figures
-from lookup_bench import LookupReport, MethodError
+from levers import read_defender_state
+from lookup_bench import CURRENT, LookupReport, MethodError
 from repo_checks.expect import contains, equal, truth
-from repo_checks.shell import run
+from repo_checks.shell import run, start
 from spike_names import (
     JOURNEY_TIMINGS,
     LINK_TIMINGS,
@@ -324,3 +326,111 @@ def test_the_timed_linker_names_rust_llds_flavor(tmp_path: Path, timed_linker: P
     equal(
         seen.read_text(encoding="utf-8").split(), ["-flavor", "gnu", "-o", "out"], describing="it"
     )
+
+
+#: What `DEFENDER_QUERY` answered on windows-11-arm in run 38200888322.
+RECORDED_DEFENDER = (
+    '{"mode":"Normal","excluded":["C:\\\\","D:\\\\"],"antivirus":true,"realtime":true}'
+)
+
+
+@pytest.mark.parametrize(
+    ("answer", "readable"),
+    [
+        (RECORDED_DEFENDER, True),
+        ("not json", False),
+        ("[1, 2]", False),
+        ('{"realtime": "yes", "excluded": [3, "C:\\\\"]}', True),
+    ],
+)
+def test_defenders_answer_is_read_or_kept_as_unreadable(answer: str, readable: bool) -> None:
+    """A recorded answer is read; any other shape is kept as unreadable, fields typed or absent."""
+    state = read_defender_state(answer)
+    equal(state.unreadable is None, readable, describing=f"the answer {answer!r}")
+    if answer == RECORDED_DEFENDER:
+        equal((state.realtime, state.excluded), (True, ("C:\\", "D:\\")), describing="it")
+    if readable and answer != RECORDED_DEFENDER:
+        equal((state.realtime, state.excluded), (None, ("C:\\",)), describing="its typed fields")
+
+
+@pytest.mark.parametrize(
+    ("args", "program"),
+    [
+        (["git", "--version"], "git"),
+        ('"C:\\Program Files\\Git\\bin\\git.exe" --version', "git"),
+        (b"/usr/bin/git --version", "git"),
+        (Path("/usr/bin/uv"), "uv"),
+        ([], "<unnamed>"),
+        (object(), "<unnamed>"),
+    ],
+)
+def test_a_child_is_charged_to_the_program_it_runs(args: object, program: str) -> None:
+    """Every shape `Popen` accepts names its program, a quoted path with spaces included."""
+    equal(spike_pytest._program(args), program, describing=f"the program of {args!r}")
+
+
+def test_concurrent_test_processes_write_whole_records_to_one_sink(tmp_path: Path) -> None:
+    """Eight test processes timing into one sink at once leave eight readable records."""
+    built = run(
+        [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "printobserver",
+            "--features",
+            "test-fixtures",
+            "--test",
+            "journeys",
+            "--no-run",
+            "--message-format=json",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    executable = next(
+        line["executable"]
+        for line in map(json.loads, built.stdout.splitlines())
+        if line.get("target", {}).get("name") == "journeys" and line.get("executable")
+    )
+    sink = tmp_path / "timings.jsonl"
+    started = [
+        start(
+            [executable, "the_spike_timing_sink_records_a_timed_operation", "--exact"],
+            env={**os.environ, JOURNEY_TIMINGS: str(sink)},
+        )
+        for _ in range(8)
+    ]
+    equal([process.wait() for process in started], [0] * 8, describing="each process's exit")
+    read = journey_figures(sink)
+    truth(read is not None, describing="records in the sink")
+    if read is not None:
+        equal((read.operations, read.unreadable), (8, 0), describing="whole records")
+
+
+@pytest.mark.skipif(not Path("/dev/full").exists(), reason="needs a device every write to fails")
+def test_a_link_record_that_cannot_be_written_is_said_and_the_exit_kept(
+    timed_linker: Path,
+) -> None:
+    """A sink that opens but refuses the write is named on stderr; the exit stays the linker's."""
+    ran = run(
+        [str(timed_linker)], env={**os.environ, REAL_LINKER: "false", LINK_TIMINGS: "/dev/full"}
+    )
+    equal(ran.returncode, 1, describing="the real linker's own exit")
+    contains(ran.stderr, "could not record this link", describing="what the wrapper said")
+
+
+def test_the_lookup_benchmarks_current_read_is_octoprint_envs_own(tmp_path: Path) -> None:
+    """The first method is `command_of` itself, and every method's line is compared with it."""
+    report = tmp_path / "lookup.json"
+    run(
+        [sys.executable, str(HERE / "lookup_bench.py"), str(report)],
+        env={**os.environ, "PYTHONPATH": PYTHONPATH},
+        check=True,
+    )
+    read = LookupReport.read(report)
+    equal(read.methods[0].name, CURRENT, describing="the first method")
+    equal(read.methods[0].same_as_current, True, describing="the current read against itself")
+    if sys.platform == "win32":
+        native = next(m for m in read.methods if m.name == "win32 NtQueryInformationProcess")
+        equal((native.is_the_command_line, native.same_as_current), (True, True), describing="it")

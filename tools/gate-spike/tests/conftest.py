@@ -24,7 +24,12 @@ from repo_checks.shell import run
 HERE = Path(__file__).resolve().parents[1]
 ROOT = HERE.parents[1]
 PYTHONPATH = os.pathsep.join(
-    [str(HERE), str(ROOT / "tools/repo-checks/src"), os.environ.get("PYTHONPATH", "")]
+    [
+        str(HERE),
+        str(ROOT / "tools/repo-checks/src"),
+        str(ROOT / "tools/octoprint-env"),
+        os.environ.get("PYTHONPATH", ""),
+    ]
 )
 
 #: A suite whose tests each spend their time on one thing the plugin attributes,
@@ -161,6 +166,32 @@ def fixture_project() -> Iterator[str]:
     (root / "project.json").write_text(json.dumps(manifest), encoding="utf-8")
     try:
         yield name
+    finally:
+        shutil.rmtree(root)
+
+
+@pytest.fixture
+def fixture_crate(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """A project whose one task runs nextest over a crate with one passing and one failing test.
+
+    The crate is outside the repository, so it joins no workspace; the project
+    declaring the task is in the tree for the test's length.
+    """
+    crate = tmp_path_factory.mktemp("crate") / "fixture"
+    run(["cargo", "new", "--quiet", "--lib", "--vcs", "none", str(crate)], check=True)
+    (crate / "src" / "lib.rs").write_text(
+        '#[test]\nfn passes() {}\n\n#[test]\nfn fails() {\n    panic!("on purpose");\n}\n',
+        encoding="utf-8",
+    )
+    name = f"spike-crate-{os.getpid()}"
+    root = ROOT / "tools" / name
+    root.mkdir()
+    manifest = crate.joinpath("Cargo.toml").as_posix()
+    command = f'cargo nextest run --manifest-path "{manifest}" --no-fail-fast'
+    target = {"name": name, "root": f"tools/{name}", "targets": {"test": {"command": command}}}
+    (root / "project.json").write_text(json.dumps(target), encoding="utf-8")
+    try:
+        yield f"{name}:test"
     finally:
         shutil.rmtree(root)
 

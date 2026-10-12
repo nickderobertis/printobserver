@@ -31,10 +31,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-NEXTEST_RESULT = re.compile(
-    r"^\s*(?:\S+:\s+)?(PASS|FAIL|FLAKY|TIMEOUT|SIGSEGV|SIGABRT|SIGKILL|ABORT|LEAK)\s+\[\s*([\d.]+)s\]\s+"
-    r"(?:\(\s*\d+/\d+\)\s+)?(\S+)\s+(.+?)\s*$"
-)
 CARGO_FINISHED = re.compile(r"Finished `[^`]+` profile .* target\(s\) in (?:(\d+)m )?([\d.]+)s")
 NEXTEST_STARTING = re.compile(r"Starting (\d+) tests? across (\d+) binar")
 NEXTEST_SUMMARY = re.compile(r"Summary \[\s*([\d.]+)s\]")
@@ -80,6 +76,13 @@ class TestStatus(StrEnum):
     SIGKILL = "SIGKILL"
     ABORT = "ABORT"
     LEAK = "LEAK"
+
+
+#: One test nextest finished: its status, seconds, binary and name.
+NEXTEST_RESULT = re.compile(
+    r"^\s*(?:\S+:\s+)?(" + "|".join(TestStatus) + r")\s+\[\s*([\d.]+)s\]\s+"
+    r"(?:\(\s*\d+/\d+\)\s+)?(\S+)\s+(.+?)\s*$"
+)
 
 
 @dataclass(frozen=True)

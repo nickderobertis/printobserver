@@ -34,6 +34,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -238,7 +239,12 @@ def _bench(task: TaskId, out: Path) -> TaskResult:
     report = out / _slug(task) / "lookup.json"
     report.parent.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    bench = run([sys.executable, str(HERE / "lookup_bench.py"), str(report)])
+    # The benchmark's current read is `tools/octoprint-env`'s own, imported from there.
+    path = os.pathsep.join([str(ROOT / "tools/octoprint-env"), os.environ.get("PYTHONPATH", "")])
+    bench = run(
+        [sys.executable, str(HERE / "lookup_bench.py"), str(report)],
+        env={**os.environ, "PYTHONPATH": path},
+    )
     (out / f"{_slug(task)}.log").write_text(bench.stdout + bench.stderr, encoding="utf-8")
     result = TaskResult(task, round(time.perf_counter() - started, 3), bench.returncode)
     if report.is_file():
@@ -260,7 +266,9 @@ def run_task(task: TaskId, levers: Sequence[Lever], env: dict[str, str], out: Pa
             command = lever.rewrite(command)
     command = _with_spike_plugin(command)
     task_dir = out / _slug(task)
-    task_dir.mkdir(parents=True, exist_ok=True)
+    # A directory an earlier run of this task left would add its records to these.
+    shutil.rmtree(task_dir, ignore_errors=True)
+    task_dir.mkdir(parents=True)
     timings = task_dir / "journey-timings.jsonl"
     log = out / f"{_slug(task)}.log"
     log.write_text(f"$ {command}\n", encoding="utf-8")
@@ -347,6 +355,7 @@ def experiment(names: Sequence[str], tasks: Sequence[TaskId], out: Path) -> Repo
         defender_before=defender_state(),
     )
     started = time.perf_counter()
+    (out / "links.jsonl").unlink(missing_ok=True)
     try:
         for name, lever in zip(names, levers, strict=True):
             env.update(lever.env)
@@ -396,6 +405,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         unknown = [name for name in names if name not in LEVERS]
         if unknown or not names:
             msg = f"no lever is named {unknown or names}"
+            raise UsageError(msg)
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            msg = f"the levers {repeated} are named more than once"
             raise UsageError(msg)
         named = [target.strip() for target in arguments.targets.split(",") if target.strip()]
         tasks = resolve(named)

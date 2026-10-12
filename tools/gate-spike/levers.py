@@ -87,21 +87,22 @@ def _flag(document: dict[str, object], key: str) -> bool | None:
     return value if isinstance(value, bool) else None
 
 
-def defender_state() -> DefenderState:
-    """What Defender's real-time scanning is doing on this host, and what it excludes."""
-    if not WINDOWS:
-        return DefenderState(applies=False)
+#: What `defender_state` asks PowerShell, one JSON object back.
+DEFENDER_QUERY = (
+    "$s = Get-MpComputerStatus; $p = Get-MpPreference; "
+    "@{realtime=$s.RealTimeProtectionEnabled; antivirus=$s.AntivirusEnabled; "
+    "mode=$s.AMRunningMode; excluded=@($p.ExclusionPath)} | ConvertTo-Json -Compress"
+)
+
+
+def read_defender_state(answer: str) -> DefenderState:
+    """Read what `DEFENDER_QUERY` answered, keeping an answer of any other shape as unreadable."""
     try:
-        status = _powershell(
-            "$s = Get-MpComputerStatus; $p = Get-MpPreference; "
-            "@{realtime=$s.RealTimeProtectionEnabled; antivirus=$s.AntivirusEnabled; "
-            "mode=$s.AMRunningMode; excluded=@($p.ExclusionPath)} | ConvertTo-Json -Compress"
-        )
-        document = json.loads(status.stdout)
-    except (HostError, json.JSONDecodeError) as error:
-        return DefenderState(applies=True, unreadable=str(error))
+        document = json.loads(answer)
+    except json.JSONDecodeError:
+        return DefenderState(applies=True, unreadable=answer)
     if not isinstance(document, dict):
-        return DefenderState(applies=True, unreadable=f"not an object: {status.stdout!r}")
+        return DefenderState(applies=True, unreadable=answer)
     excluded = document.get("excluded")
     mode = document.get("mode")
     return DefenderState(
@@ -113,6 +114,16 @@ def defender_state() -> DefenderState:
         if isinstance(excluded, list)
         else (),
     )
+
+
+def defender_state() -> DefenderState:
+    """What Defender's real-time scanning is doing on this host, and what it excludes."""
+    if not WINDOWS:
+        return DefenderState(applies=False)
+    try:
+        return read_defender_state(_powershell(DEFENDER_QUERY).stdout)
+    except HostError as error:
+        return DefenderState(applies=True, unreadable=str(error))
 
 
 def _excluded_paths() -> list[str]:
