@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import os
+import re
+import statistics
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from conftest import CASES_OUTCOMES, CASES_TESTS, PYTHONPATH, ROOT, mapping, measure, tasks
-from levers import LEVERS, SPIKE_CHANGED, pytest_temporaries
+from levers import LEVERS, SPIKE_CHANGED, defender_state, pytest_temporaries
 from measure import PSEUDO_TARGETS
 from repo_checks.expect import contains, equal, truth
 from repo_checks.shell import run
@@ -17,50 +19,42 @@ from spike_names import PYTEST_OUT, REAL_LINKER
 
 VISION = "printobserver-vision-api:test"
 
-#: Every step `tier::run` times at its `WHOLE` depth.
-TIER_STEPS = [
-    f"tier:{step}"
-    for step in (
-        "confirming::the_cross_product_walk",
-        "formats::both_renderings_carry_the_same_fields",
-        "carrying::every_output_carries_only_what_the_answer_carried",
-        "materializing::an_image_is_a_path_that_opens",
-        "materializing::a_path_that_names_no_file_here_is_its_own_failure",
-        "failures::every_command_owes_its_failures",
-        "failures::no_mutating_command_runs_without_a_reason",
-        "failures::an_action_the_machine_refuses_is_answered_as_that",
-        "tainting::every_assertion_here_refuses_the_defect_it_is_about",
-        "durations::every_adjustment_is_a_bounded_intervention",
-        "redaction::no_run_of_the_walk_prints_the_credential",
+#: The Rust sources that time the client-command tier's operations.
+INSTRUMENTED = [
+    ROOT / "crates/printobserver/tests" / path
+    for path in (
+        "journeys/tier.rs",
+        "journeys/confirming.rs",
+        "journeys/durations.rs",
+        "support/world.rs",
+        "support/traced.rs",
     )
 ]
-#: Every operation the world and the journeys' waits time.
-WORLD_OPERATIONS = [
-    "world:supervisor-start-to-announcement",
-    "world:settling-pause",
-    "world:cli-prints",
-    "world:cli-status",
-    "world:cli-settle",
-    "confirming:holding-pause",
-    "durations:proxy-poll",
-    "durations:wait-until-expiry",
-]
-#: What each platform's observation of one invocation times.
-OBSERVATION = {
-    "linux": ["traced:strace-run"],
-    "darwin": ["traced:interposed-run"],
-    "win32": [
-        f"traced:{phase}"
-        for phase in (
-            "etw-lock-wait",
-            "etw-logman-start",
-            "invocation-run",
-            "etw-logman-stop",
-            "etw-tracerpt",
-            "etw-decode",
-        )
-    ],
+#: Which platform's observation each `traced:` kind belongs to, by what it names.
+OBSERVED_BY = {
+    "etw-": "win32",
+    "invocation-run": "win32",
+    "strace": "linux",
+    "interposed": "darwin",
 }
+
+
+def instrumented_kinds() -> set[str]:
+    """Every kind the instrumented sources time that this platform's run reaches."""
+    named = {
+        found
+        for source in INSTRUMENTED
+        for found in re.findall(
+            r'"((?:tier|world|confirming|durations|traced):[^"]+)"',
+            source.read_text(encoding="utf-8"),
+        )
+    }
+    return {
+        kind
+        for kind in named
+        if not kind.startswith("traced:")
+        or any(part in kind and host == sys.platform for part, host in OBSERVED_BY.items())
+    }
 
 
 def test_every_lever_and_pseudo_target_is_listed(tmp_path: Path) -> None:
@@ -250,14 +244,14 @@ def test_the_journeys_report_the_operations_of_the_client_command_tier(tmp_path:
     measured = measure("--targets", "printobserver:test", out=tmp_path)
     (crate,) = tasks(measured)
     kinds = mapping(crate["journey"], describing="the journeys' figures")["by_kind"]
-    for kind in (
-        "tier:confirming::the_cross_product_walk",
-        "world:supervisor-start-to-announcement",
-    ):
-        truth(kind in kinds, describing=f"`{kind}` among {sorted(kinds)}")
-    observed = "traced:etw-tracerpt" if sys.platform == "win32" else "traced:strace-run"
-    if sys.platform != "darwin":
-        truth(kinds[observed]["count"] > 0, describing=f"`{observed}` in {sorted(kinds)}")
+    expected = instrumented_kinds()
+    truth(
+        {kind.split(":")[0] for kind in expected}
+        == {"tier", "world", "confirming", "durations", "traced"},
+        describing=f"every family of kind read out of the sources: {sorted(expected)}",
+    )
+    for kind in sorted(expected):
+        truth(kinds.get(kind, {}).get("count", 0) > 0, describing=f"`{kind}` among {sorted(kinds)}")
 
 
 def test_a_cell_runs_every_run_and_fails_if_any_did(tmp_path: Path, fixture_project: str) -> None:
@@ -362,18 +356,41 @@ HOSTED_WINDOWS = sys.platform == "win32" and os.environ.get("RUNNER_ENVIRONMENT"
     not HOSTED_WINDOWS, reason="changes Defender and TEMP; only on a disposable runner"
 )
 def test_the_windows_host_levers_change_the_host(tmp_path: Path, fixture_project: str) -> None:
-    """On a hosted Windows runner the Defender and D: levers take effect, as the report says."""
+    """On a hosted Windows runner the Defender and D: levers take effect on the host."""
     measured = measure(
         "--experiment",
         "defender-excluded+defender-off+temp-on-d",
         "--targets",
-        f"{fixture_project}:here",
+        f"{fixture_project}:suite",
         out=tmp_path,
     )
     report = mapping(measured.report, describing="the report")
     equal(
         [step["applied"] for step in report["prepared"]], [True, True, True], describing=str(report)
     )
+    state = defender_state()
+    equal(state.realtime, False, describing="real-time scanning after `defender-off`")
+    contains(state.excluded, str(ROOT), describing="the workspace among Defender's exclusions")
+    truth(
+        any(Path("D:/spike-temp").glob("pytest-of-*")),
+        describing="the suite's pytest temporaries made on D:",
+    )
+
+
+@pytest.mark.skipif(
+    not HOSTED_WINDOWS, reason="rust-lld is this lever's linker on windows-msvc alone"
+)
+def test_rust_lld_links_the_build_on_windows(tmp_path: Path) -> None:
+    """On Windows the build links through rust-lld, timed where the wrapper could front it."""
+    measured = measure("--experiment", "compile-only+rust-lld", "--targets", VISION, out=tmp_path)
+    equal(measured.code, 0, describing="a build linked by rust-lld")
+    report = mapping(measured.report, describing="the report")
+    linker = report["linker"]
+    if linker["used"]:
+        equal(linker["real"], "rust-lld", describing="the linker the wrapper stood in front of")
+        truth(report["links"]["count"] > 0, describing="the links it timed")
+    else:
+        contains(list(report["env"].values()), "rust-lld", describing="the untimed fallback")
 
 
 def test_the_plugin_unloaded_or_unconfigured_leaves_pytest_as_it_was(tmp_path: Path) -> None:
@@ -404,3 +421,38 @@ def test_the_plugin_unloaded_or_unconfigured_leaves_pytest_as_it_was(tmp_path: P
         equal(
             out.is_dir() and any(out.iterdir()), written, describing=f"records under {environment}"
         )
+
+
+def test_compile_only_keeps_a_tasks_own_filter_and_runs_nothing(tmp_path: Path) -> None:
+    """A command with its own `-E` filter builds under `none() & (...)` and runs no test."""
+    measured = measure(
+        "--experiment", "compile-only", "--targets", "printobserver-octoprint:test", out=tmp_path
+    )
+    equal(measured.code, 0, describing="a build-only run of a filtered crate")
+    (crate,) = tasks(measured)
+    contains(str(crate["command"]), '-E "none() & (not binary(integration))"', describing="it")
+    equal(crate["rust"]["tests"], 0, describing="the tests it ran")
+
+
+def test_xdist_without_coverage_runs_every_test_and_measures_none(
+    tmp_path: Path, fixture_project: str, coverage_data: Callable[[], set[Path]]
+) -> None:
+    """`xdist-2-nocov` spreads the suite over two workers and writes no coverage data."""
+    measured = measure(
+        "--experiment", "xdist-2-nocov", "--targets", f"{fixture_project}:covered", out=tmp_path
+    )
+    (suite,) = tasks(measured)
+    pytest_run = mapping(suite["pytest"], describing="the suite's figures")
+    equal(pytest_run["tests"], CASES_TESTS, describing="every test, once")
+    equal(coverage_data(), set(), describing="the coverage data an uncovered xdist run wrote")
+
+
+def test_a_crates_figures_are_its_own_tests_totals(tmp_path: Path) -> None:
+    """Compile time, the fastest and median test and every status are read off the run itself."""
+    measured = measure("--targets", VISION, out=tmp_path)
+    rust = mapping(tasks(measured)[0]["rust"], describing="the crate's figures")
+    durations = sorted(test["s"] for test in rust["per_test"])
+    truth(rust["compile_s"] > 0, describing=f"cargo's compile time in {rust['compile_s']}")
+    equal(rust["fastest_test_s"], durations[0], describing="the fastest test")
+    equal(rust["median_test_s"], statistics.median(durations), describing="the median test")
+    equal({test["status"] for test in rust["per_test"]}, {"PASS"}, describing="every status")

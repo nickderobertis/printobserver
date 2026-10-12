@@ -158,9 +158,17 @@ class LinkerSetup:
 
 
 def _linker_variable() -> str:
-    host = run(["rustc", "-vV"], check=True).stdout
-    target = next(line.split(": ", 1)[1] for line in host.splitlines() if line.startswith("host: "))
-    return "CARGO_TARGET_" + re.sub(r"[-.]", "_", target).upper() + "_LINKER"
+    """The variable naming cargo's linker for this host's own target."""
+    described = run(["rustc", "-vV"])
+    hosts = [
+        line.removeprefix("host: ")
+        for line in described.stdout.splitlines()
+        if line.startswith("host: ")
+    ]
+    if described.returncode != 0 or len(hosts) != 1 or not re.fullmatch(r"[\w.-]+", hosts[0]):
+        msg = f"`rustc -vV` named no one host target: {described.stdout}{described.stderr}"
+        raise HostError(msg)
+    return "CARGO_TARGET_" + re.sub(r"[-.]", "_", hosts[0]).upper() + "_LINKER"
 
 
 def _timed_linker(out: Path, env: dict[str, str]) -> LinkerSetup:

@@ -111,11 +111,9 @@ def _method(path: Path, method: object) -> Method:
         raise MethodError(msg)
     for name, types in _FIELD_TYPES.items():
         value = method[name]
-        numeric = float in types and value is not None
-        unusable = numeric and (
-            isinstance(value, bool) or not math.isfinite(float(value)) or float(value) < 0
-        )
-        if unusable or not isinstance(value, types):
+        typed = isinstance(value, types) and not (float in types and isinstance(value, bool))
+        timing = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not typed or (timing and (not math.isfinite(value) or value < 0)):
             msg = f"{path} carries a method whose `{name}` is {value!r}"
             raise MethodError(msg)
     return Method(**method)

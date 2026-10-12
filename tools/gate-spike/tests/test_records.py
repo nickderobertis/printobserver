@@ -309,3 +309,18 @@ def test_a_report_the_benchmark_did_not_write_is_refused(tmp_path: Path, documen
     report.write_text(document, encoding="utf-8")
     with pytest.raises(MethodError):
         LookupReport.read(report)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in is a shell script")
+def test_the_timed_linker_names_rust_llds_flavor(tmp_path: Path, timed_linker: Path) -> None:
+    """In front of `rust-lld`, the wrapper first tells that driver which linker to be."""
+    seen = tmp_path / "arguments"
+    rust_lld = tmp_path / "rust-lld"
+    rust_lld.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {seen}\n', encoding="utf-8")
+    rust_lld.chmod(0o755)
+    run(
+        [str(timed_linker), "-o", "out"], env={**os.environ, REAL_LINKER: str(rust_lld)}, check=True
+    )
+    equal(
+        seen.read_text(encoding="utf-8").split(), ["-flavor", "gnu", "-o", "out"], describing="it"
+    )
