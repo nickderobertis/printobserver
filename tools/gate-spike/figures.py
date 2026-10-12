@@ -134,11 +134,12 @@ def _pytest_record(document: dict[str, object]) -> PytestTest | PytestSession:
 
 
 def pytest_figures(directory: Path) -> PytestFigures | None:
-    """Read every record the plugin wrote into a task's directory, or nothing."""
-    read = [read_lines(path, _pytest_record) for path in sorted(directory.glob("pytest-*.jsonl"))]
-    records = [record for lines in read for record in lines.records]
-    if not records:
+    """Read every record the plugin wrote into a task's directory, or nothing when it wrote none."""
+    files = sorted(directory.glob("pytest-*.jsonl"))
+    if not files:
         return None
+    read = [read_lines(path, _pytest_record) for path in files]
+    records = [record for lines in read for record in lines.records]
     tests = [record for record in records if isinstance(record, PytestTest)]
     costs: dict[str, Cost] = defaultdict(Cost)
     for test in tests:

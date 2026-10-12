@@ -23,19 +23,61 @@ fn code_of(status: ExitStatus) -> i32 {
     status.code().unwrap_or(1)
 }
 
-/// What the link wrote: `/OUT:` on Windows, `-o` elsewhere, or the response file.
-fn output_of(arguments: &[String]) -> String {
-    arguments
-        .iter()
-        .find_map(|argument| argument.strip_prefix("/OUT:").map(str::to_owned))
-        .or_else(|| {
-            arguments
+/// What a link's arguments said it wrote, as `spike_names.LinkOutput` names it.
+enum Output {
+    /// `/OUT:` on Windows or `-o` elsewhere named the file.
+    Path(String),
+    /// Only a response file was passed, whose contents name the file.
+    ResponseFile(String),
+    /// Nothing in the arguments named it.
+    Unknown,
+}
+
+impl Output {
+    /// Read off the arguments the real linker is handed.
+    fn of(arguments: &[String]) -> Self {
+        let named = arguments
+            .iter()
+            .find_map(|argument| argument.strip_prefix("/OUT:").map(str::to_owned))
+            .or_else(|| {
+                arguments
+                    .iter()
+                    .position(|argument| argument == "-o")
+                    .and_then(|at| arguments.get(at + 1).cloned())
+            });
+        match named {
+            Some(path) => Self::Path(path),
+            None => arguments
                 .iter()
-                .position(|argument| argument == "-o")
-                .and_then(|at| arguments.get(at + 1).cloned())
-        })
-        .or_else(|| arguments.iter().find(|a| a.starts_with('@')).cloned())
-        .unwrap_or_default()
+                .find(|argument| argument.starts_with('@'))
+                .map_or(Self::Unknown, |file| Self::ResponseFile(file.clone())),
+        }
+    }
+
+    /// The record's `output_kind` and `output` fields.
+    fn fields(&self) -> (&'static str, &str) {
+        match self {
+            Self::Path(path) => ("path", path),
+            Self::ResponseFile(file) => ("response-file", file),
+            Self::Unknown => ("unknown", ""),
+        }
+    }
+}
+
+/// A string as the inside of a JSON string literal.
+fn escaped(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            control if control.is_control() => {
+                out.push_str(&format!("\\u{:04x}", u32::from(control)))
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn main() {
@@ -51,11 +93,13 @@ fn main() {
             .append(true)
             .open(&sink)
         {
-            let output = output_of(&arguments).replace('\\', "/").replace('"', "'");
+            let output = Output::of(&arguments);
+            let (kind, named) = output.fields();
             let written = writeln!(
                 file,
-                "{{\"linker\":\"{}\",\"output\":\"{output}\",\"ms\":{:.3}}}",
-                real.replace('\\', "/").replace('"', "'"),
+                "{{\"linker\":\"{}\",\"output_kind\":\"{kind}\",\"output\":\"{}\",\"ms\":{:.3}}}",
+                escaped(&real),
+                escaped(named),
                 elapsed.as_secs_f64() * 1000.0
             );
             if let Err(error) = written {

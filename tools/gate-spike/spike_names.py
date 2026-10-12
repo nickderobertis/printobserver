@@ -10,7 +10,9 @@ runs each one and reads what it wrote with the parsers below.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from enum import StrEnum
 
 #: Names the directory each pytest process writes its records into.
 PYTEST_OUT = "SPIKE_PYTEST_OUT"
@@ -32,10 +34,26 @@ class RecordError(ValueError):
 
 def _number(record: dict[str, object], key: str) -> float:
     value = record.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        msg = f"`{key}` is not a number in {record!r}"
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        msg = f"`{key}` is not a finite number in {record!r}"
         raise RecordError(msg)
     return float(value)
+
+
+def _count(record: dict[str, object], key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        msg = f"`{key}` is not a whole number of at least zero in {record!r}"
+        raise RecordError(msg)
+    return value
+
+
+def _code(record: dict[str, object], key: str) -> int:
+    value = record.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        msg = f"`{key}` is not a whole number in {record!r}"
+        raise RecordError(msg)
+    return value
 
 
 def _text(record: dict[str, object], key: str) -> str:
@@ -61,9 +79,20 @@ class JourneyTiming:
         return cls(
             kind=_text(record, "kind"),
             ms=_number(record, "ms"),
-            pid=int(_number(record, "pid")),
+            pid=_count(record, "pid"),
             thread=_text(record, "thread"),
         )
+
+
+class LinkOutput(StrEnum):
+    """What a link's arguments said it wrote."""
+
+    #: `/OUT:` or `-o` named the file.
+    PATH = "path"
+    #: Only a response file was passed, whose contents name the file.
+    RESPONSE_FILE = "response-file"
+    #: Nothing in the arguments named it.
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -71,14 +100,20 @@ class LinkTiming:
     """One link the timed linker made."""
 
     linker: str
+    output_kind: LinkOutput
     output: str
     ms: float
 
     @classmethod
     def parse(cls, record: dict[str, object]) -> LinkTiming:
         """Read one line `timed_linker.rs` wrote."""
+        kind = _text(record, "output_kind")
+        if kind not in {member.value for member in LinkOutput}:
+            msg = f"`output_kind` is not one the timed linker writes in {record!r}"
+            raise RecordError(msg)
         return cls(
             linker=_text(record, "linker"),
+            output_kind=LinkOutput(kind),
             output=_text(record, "output"),
             ms=_number(record, "ms"),
         )
@@ -102,7 +137,7 @@ class Cost:
         if not isinstance(record, dict):
             msg = f"a cost is not an object: {record!r}"
             raise RecordError(msg)
-        return cls(count=int(_number(record, "count")), s=_number(record, "s"))
+        return cls(count=_count(record, "count"), s=_number(record, "s"))
 
 
 def _costs(record: dict[str, object], key: str) -> dict[str, Cost]:
@@ -159,7 +194,7 @@ class PytestSession:
             worker=_text(record, "worker"),
             wall_s=_number(record, "wall_s"),
             collect_s=_number(record, "collect_s"),
-            exitstatus=int(_number(record, "exitstatus")),
-            tests=int(_number(record, "tests")),
+            exitstatus=_code(record, "exitstatus"),
+            tests=_count(record, "tests"),
             outside_tests=_costs(record, "outside_tests"),
         )

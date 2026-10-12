@@ -314,7 +314,12 @@ class Report:
 
 
 def experiment(names: Sequence[str], tasks: Sequence[str], out: Path) -> Report:
-    """Pull the levers, run every task, put the host back, and answer the report."""
+    """Pull the levers, run every task, and answer the report.
+
+    A lever with a `restore` (`base-tree`) is put back however the run ended;
+    the host levers (`defender-*`, `temp-on-d`) change a CI cell's own runner,
+    which the job discards, and are left as they are.
+    """
     levers = [LEVERS[name] for name in names]
     env: dict[str, str] = {}
     report = Report(

@@ -16,7 +16,6 @@ not given exactly one output path.
 from __future__ import annotations
 
 import ctypes
-import dataclasses
 import json
 import shutil
 import statistics
@@ -24,7 +23,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from repo_checks.shell import run, start
 
@@ -71,23 +70,51 @@ class LookupReport:
     def read(cls, path: Path) -> LookupReport:
         """Read a report this program wrote, refusing one of any other shape."""
         document = json.loads(path.read_text(encoding="utf-8"))
-        fields = {field.name for field in dataclasses.fields(Method)}
-        methods = document.get("methods") if isinstance(document, dict) else None
-        if not isinstance(methods, list) or not all(
-            isinstance(method, dict) and set(method) == fields for method in methods
-        ):
+        if not isinstance(document, dict):
             msg = f"{path} is not a report this benchmark writes"
             raise MethodError(msg)
-        return cls(
-            rounds=int(document["rounds"]),
-            pid=int(document["pid"]),
-            methods=[Method(**method) for method in methods],
-        )
+        rounds, pid, methods = document.get("rounds"), document.get("pid"), document.get("methods")
+        if not (_whole(rounds) and _whole(pid) and isinstance(methods, list)):
+            msg = f"{path} carries no rounds, pid and methods of the shapes this benchmark writes"
+            raise MethodError(msg)
+        return cls(rounds=rounds, pid=pid, methods=[_method(path, method) for method in methods])
 
     @property
     def failed(self) -> list[str]:
         """The methods present on this host that did not answer."""
         return [method.name for method in self.methods if method.present and method.failure]
+
+
+def _whole(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+#: The JSON type each `Method` field is written as.
+_FIELD_TYPES: dict[str, tuple[type, ...]] = {
+    "name": (str,),
+    "present": (bool,),
+    "median_s": (float, int, type(None)),
+    "min_s": (float, int, type(None)),
+    "max_s": (float, int, type(None)),
+    "answered": (str,),
+    "failure": (str,),
+    "is_the_command_line": (bool,),
+    "same_as_current": (bool,),
+}
+
+
+def _method(path: Path, method: object) -> Method:
+    """One method a report carries, refusing one of any other shape."""
+    if not isinstance(method, dict) or set(method) != set(_FIELD_TYPES):
+        msg = f"{path} carries a method of another shape: {method!r}"
+        raise MethodError(msg)
+    for name, types in _FIELD_TYPES.items():
+        value = method[name]
+        numeric = float in types and isinstance(value, bool)
+        if numeric or not isinstance(value, types):
+            msg = f"{path} carries a method whose `{name}` is {value!r}"
+            raise MethodError(msg)
+    return Method(**method)
 
 
 def _read(argv: list[str]) -> str:

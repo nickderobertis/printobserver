@@ -5,8 +5,9 @@ directory. Each pytest process (an xdist worker included) appends one JSON line
 per test to a file of its own there — the test's phases and outcome, and the
 seconds it spent in child processes (by program), in `shutil.copy2`,
 `shutil.copytree` and `shutil.rmtree`, in `time.sleep`, and in
-`urllib.request.urlopen` — and one line for the process itself. `copytree`
-calls `copy2`, so a copy it makes is counted under both.
+`urllib.request.urlopen` — and one line for the process itself. A copy
+`copytree` makes is counted under `copytree` alone: it binds `copy2` as a
+default argument when the module is imported, before this wraps it.
 
 It changes no test, assertion or timeout: every wrapper calls the real function
 and only records how long it took. With `SPIKE_STABLE_IDS` set, each

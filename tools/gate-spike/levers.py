@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from repo_checks.shell import run
+from spike_names import STABLE_IDS, WORKER_COVERAGE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -108,7 +109,7 @@ def defender_state() -> DefenderState:
         realtime=_flag(document, "realtime"),
         antivirus=_flag(document, "antivirus"),
         mode=mode if isinstance(mode, str) else None,
-        excluded=tuple(str(path) for path in excluded if path)
+        excluded=tuple(path for path in excluded if isinstance(path, str) and path)
         if isinstance(excluded, list)
         else (),
     )
@@ -242,12 +243,12 @@ LEVERS: dict[str, Lever] = {
 for _workers in (2, 3, 4):
     LEVERS[f"xdist-{_workers}"] = Lever(
         f"pytest-xdist at {_workers} workers, each worker under Python coverage",
-        env={"SPIKE_WORKER_COVERAGE": "1", "SPIKE_STABLE_IDS": "1"},
+        env={WORKER_COVERAGE: "1", STABLE_IDS: "1"},
         rewrite=_xdist(_workers),
     )
     LEVERS[f"xdist-{_workers}-nocov"] = Lever(
         f"pytest-xdist at {_workers} workers, no Python coverage",
-        env={"SPIKE_STABLE_IDS": "1"},
+        env={STABLE_IDS: "1"},
         rewrite=_xdist(_workers),
     )
 
@@ -280,8 +281,10 @@ def pytest_temporaries() -> set[Path]:
 def clear_pytest_temporaries(before: set[Path], keep: Path) -> float:
     """Remove the base temporaries pytest made since `before`, answering the GB freed.
 
-    Only those a task of this run made: one that already existed, or that holds
-    `keep` (where this run writes its own report), is left alone.
+    Called as one task ends, so what it removes is what appeared while that task
+    ran: the task's own, and any an unrelated pytest on this host started in the
+    meantime, which a CI cell running one task at a time does not have. One that
+    already existed, or that holds `keep` (this run's own output), is left.
     """
     temp = Path(tempfile.gettempdir())
     free = shutil.disk_usage(temp).free

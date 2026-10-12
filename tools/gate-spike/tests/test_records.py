@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 from conftest import HERE, PYTHONPATH, ROOT
-from figures import journey_figures, link_figures
+from figures import journey_figures, link_figures, pytest_figures
 from lookup_bench import LookupReport
-from repo_checks.expect import equal, truth
+from repo_checks.expect import contains, equal, truth
 from repo_checks.shell import run
-from spike_names import JOURNEY_TIMINGS, LINK_TIMINGS, REAL_LINKER
+from spike_names import JOURNEY_TIMINGS, LINK_TIMINGS, REAL_LINKER, LinkOutput
 
 
 def _sink_test(sink: Path) -> int:
@@ -120,3 +120,90 @@ def test_the_lookup_benchmark_refuses_an_invocation_without_one_report_path() ->
         env={**os.environ, "PYTHONPATH": PYTHONPATH},
     )
     equal(ran.returncode, 2, describing="the exit with no report path")
+
+
+def test_a_line_that_is_not_its_producers_record_is_counted_not_read(tmp_path: Path) -> None:
+    """A malformed line, a non-finite number or a fractional count is counted as unreadable."""
+    timings = tmp_path / "timings.jsonl"
+    timings.write_text(
+        "\n".join(
+            [
+                '{"kind":"k","ms":1.0,"pid":1,"thread":"t"}',
+                '{"kind":"k","ms":NaN,"pid":1,"thread":"t"}',
+                '{"kind":"k","ms":1.0,"pid":1.5,"thread":"t"}',
+                "[1, 2]",
+                "not json",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    read = journey_figures(timings)
+    truth(read is not None, describing="the one readable record")
+    if read is not None:
+        equal((read.operations, read.unreadable), (1, 4), describing="read and unreadable lines")
+    (tmp_path / "plugin").mkdir()
+    (tmp_path / "plugin" / "pytest-main-1.jsonl").write_text("garbage\n", encoding="utf-8")
+    plugin = pytest_figures(tmp_path / "plugin")
+    truth(plugin is not None, describing="figures for a file of only unreadable lines")
+    if plugin is not None:
+        equal((plugin.tests, plugin.unreadable), (0, 1), describing="what such a file holds")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a signal ends a process only on Unix")
+def test_the_timed_linker_reports_a_signal_as_a_shell_does(
+    tmp_path: Path, timed_linker: Path
+) -> None:
+    """A real linker ended by a signal is reported as 128 plus that signal."""
+    killed = tmp_path / "killed-linker"
+    killed.write_text("#!/bin/sh\nkill -TERM $$\n", encoding="utf-8")
+    killed.chmod(0o755)
+    ran = run([str(timed_linker)], env={**os.environ, REAL_LINKER: str(killed)})
+    equal(ran.returncode, 128 + 15, describing="the wrapper's exit over a terminated linker")
+
+
+def test_the_timed_linker_names_what_each_link_wrote(tmp_path: Path, timed_linker: Path) -> None:
+    """Each record says whether a path, a response file or nothing named the output."""
+    links = tmp_path / "links.jsonl"
+    real = "true" if sys.platform != "win32" else "whoami"
+    for arguments in (["-o", 'out"put'], ["@response"], []):
+        run(
+            [str(timed_linker), *arguments],
+            env={**os.environ, REAL_LINKER: real, LINK_TIMINGS: str(links)},
+            check=True,
+        )
+    read = link_figures(links)
+    truth(read is not None and read.unreadable == 0, describing=f"every record read in {read}")
+    if read is not None:
+        equal(
+            [(link.output_kind, link.output) for link in read.per_output],
+            [
+                (LinkOutput.PATH, 'out"put'),
+                (LinkOutput.RESPONSE_FILE, "@response"),
+                (LinkOutput.UNKNOWN, ""),
+            ],
+            describing="what each link named",
+        )
+
+
+def test_a_link_sink_nothing_can_be_written_to_still_exits_as_the_linker_did(
+    tmp_path: Path, timed_linker: Path
+) -> None:
+    """With the sink naming a directory, the wrapper still exits as the real linker did."""
+    real = "true" if sys.platform != "win32" else "whoami"
+    ran = run(
+        [str(timed_linker)], env={**os.environ, REAL_LINKER: real, LINK_TIMINGS: str(tmp_path)}
+    )
+    equal(ran.returncode, 0, describing="the wrapper's exit with an unwritable sink")
+
+
+def test_a_lookup_method_that_cannot_answer_fails_the_benchmark_naming_it(tmp_path: Path) -> None:
+    """With nothing on the path to answer, the benchmark exits 1 and its report says why."""
+    report = tmp_path / "lookup.json"
+    ran = run(
+        [sys.executable, str(HERE / "lookup_bench.py"), str(report)],
+        env={**os.environ, "PYTHONPATH": PYTHONPATH, "PATH": str(tmp_path)},
+    )
+    equal(ran.returncode, 1, describing="the exit when a method could not answer")
+    read = LookupReport.read(report)
+    truth(read.failed, describing="the method that failed, named in the report")
+    contains(ran.stderr, read.failed[0], describing="the failure named on standard error")

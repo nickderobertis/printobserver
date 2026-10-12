@@ -1,8 +1,9 @@
 """Fixtures that run the spike's harness the way a cell of its workflow does.
 
 Every test drives `measure.py` as a program over real tasks: tasks of a project
-this fixture declares for the length of one test, so a task that fails and a
-task whose pytest spawns, sleeps and fails are real ones rather than stand-ins.
+this fixture declares for the length of one test, so a task that fails, and a
+task whose pytest spawns, sleeps, copies, asks a server and fails, are real ones
+rather than stand-ins.
 """
 
 from __future__ import annotations
@@ -26,13 +27,19 @@ PYTHONPATH = os.pathsep.join(
     [str(HERE), str(ROOT / "tools/repo-checks/src"), os.environ.get("PYTHONPATH", "")]
 )
 
-#: A suite whose three tests spend their time on the three things the plugin
-#: attributes: a child process, a sleep, and a failure.
+#: A suite whose tests each spend their time on one thing the plugin attributes,
+#: one child process spawned at import, outside any test, and one failure.
 CASES = """
+import http.server
+import shutil
 import subprocess
+import threading
 import time
+import urllib.request
 
 import pytest
+
+subprocess.run(["git", "--version"], check=True, capture_output=True)
 
 
 def test_spawns_git():
@@ -41,6 +48,23 @@ def test_spawns_git():
 
 def test_sleeps():
     time.sleep(0.05)
+
+
+def test_copies_and_removes_a_tree(tmp_path):
+    (tmp_path / "from").mkdir()
+    (tmp_path / "from" / "file").write_text("x")
+    shutil.copytree(tmp_path / "from", tmp_path / "to")
+    shutil.rmtree(tmp_path / "to")
+
+
+def test_asks_a_local_server():
+    handler = http.server.SimpleHTTPRequestHandler
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/").read()
+    finally:
+        server.shutdown()
 
 
 @pytest.mark.parametrize("value", [time.time_ns(), time.time_ns() + 1])
@@ -52,6 +76,10 @@ def test_fails():
     raise AssertionError("this case fails on purpose")
 """
 
+#: How many tests `CASES` holds, and how many of them fail.
+CASES_TESTS = 7
+CASES_FAILING = 1
+
 
 @dataclass(frozen=True)
 class Measured:
@@ -60,7 +88,7 @@ class Measured:
     code: int
     out: str
     err: str
-    report: dict[str, object] | None
+    report: dict[str, Any] | None
 
 
 def measure(*arguments: str, out: Path) -> Measured:
@@ -82,12 +110,18 @@ def fixture_project() -> Iterator[str]:
     root = ROOT / "tools" / name
     (root / "cases").mkdir(parents=True)
     (root / "cases" / "test_cases.py").write_text(CASES, encoding="utf-8")
+    cases = f"tools/{name}/cases -p no:cacheprovider"
     manifest = {
         "name": name,
         "root": f"tools/{name}",
         "targets": {
             "fails": {"command": "exit 3"},
-            "suite": {"command": f"uv run -q pytest tools/{name}/cases -p no:cacheprovider"},
+            "suite": {"command": f"uv run -q pytest {cases}"},
+            "covered": {"command": f"uv run -q coverage run -m pytest {cases}"},
+            "here": {
+                "command": "python -c \"import pathlib; pathlib.Path('ran-here').touch()\"",
+                "options": {"cwd": f"tools/{name}/cases"},
+            },
         },
     }
     (root / "project.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -98,18 +132,25 @@ def fixture_project() -> Iterator[str]:
 
 
 @pytest.fixture
-def tasks_of() -> Callable[[Measured], list[dict[str, object]]]:
-    """The task results a report carries."""
+def coverage_data() -> Iterator[Callable[[], set[Path]]]:
+    """The coverage data files a test wrote into the repository root, removed after it."""
+    before = set(ROOT.glob(".coverage*"))
 
-    def read(measured: Measured) -> list[dict[str, object]]:
-        report = measured.report or {}
-        tasks = report.get("tasks")
-        return tasks if isinstance(tasks, list) else []
+    def written() -> set[Path]:
+        return set(ROOT.glob(".coverage*")) - before
 
-    return read
+    yield written
+    for path in written():
+        path.unlink()
 
 
 def mapping(value: object, *, describing: str) -> dict[str, Any]:
     """`value` as the JSON object a report holds there, refusing anything else."""
     truth(isinstance(value, dict), describing=f"{describing} as an object, not {value!r}")
     return cast("dict[str, Any]", value)
+
+
+def tasks(measured: Measured) -> list[dict[str, Any]]:
+    """The task results a report carries."""
+    report = mapping(measured.report, describing="the report")
+    return [mapping(task, describing="a task") for task in report["tasks"]]
