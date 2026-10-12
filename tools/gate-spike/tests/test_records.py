@@ -202,7 +202,13 @@ def test_the_timed_linker_names_what_each_link_wrote(
     """Each record says whether a path, a response file or nothing named the output."""
     links = tmp_path / "links.jsonl"
     real = noop_linker
-    for arguments in (["-o", 'out"put'], ["/OUT:C:\\out.exe"], ["@response"], []):
+    for arguments in (
+        ["-o", 'out"put'],
+        ["-o", "out\x01put"],
+        ["/OUT:C:\\out.exe"],
+        ["@response"],
+        [],
+    ):
         run(
             [str(timed_linker), *arguments],
             env={**os.environ, REAL_LINKER: real, LINK_TIMINGS: str(links)},
@@ -215,6 +221,7 @@ def test_the_timed_linker_names_what_each_link_wrote(
             [(link.output_kind, link.output) for link in read.per_output],
             [
                 (LinkOutput.PATH, 'out"put'),
+                (LinkOutput.PATH, "out\x01put"),
                 (LinkOutput.PATH, "C:\\out.exe"),
                 (LinkOutput.RESPONSE_FILE, "@response"),
                 (LinkOutput.UNKNOWN, ""),

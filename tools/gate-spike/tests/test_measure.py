@@ -303,6 +303,10 @@ def test_a_cell_runs_every_run_and_fails_if_any_did(tmp_path: Path, fixture_proj
         truth((tmp_path / run_dir / "measure.json").is_file(), describing=f"{run_dir}'s report")
     own = [line for line in ran.stderr.splitlines() if line.startswith("spike-cell:")]
     equal(own, [f"spike-cell: 2 runs, 1 failed, reports under {tmp_path}"], describing="its say")
+    truth(
+        not re.search(r"(?m)^measure: [0-9]+ tasks", ran.stdout + ran.stderr),
+        describing="quiet runs omit measurement summaries",
+    )
 
 
 def test_a_linker_the_smoke_link_refuses_leaves_the_build_on_its_own_linker(
@@ -684,3 +688,41 @@ def test_a_failed_benchmark_rerun_never_reads_the_previous_report(tmp_path: Path
 
     report = json.loads((tmp_path / "out" / "measure.json").read_text(encoding="utf-8"))
     equal(report["tasks"][0]["lookup"], None, describing="no stale lookup figures")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX directory write permissions")
+def test_a_temporary_that_refuses_cleanup_is_named_and_the_run_continues(
+    tmp_path: Path, fixture_project: str
+) -> None:
+    """A real permission refusal leaves the task's result intact and reports the retained path."""
+    import json
+
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    root = ROOT / "tools" / fixture_project
+    blocked = temp / "pytest-of-spike-cleanup" / "pytest-blocked"
+    script = root / "blocked.py"
+    script.write_text(
+        f"from pathlib import Path\np = Path({str(blocked)!r})\n"
+        "p.mkdir(parents=True)\n(p / 'file').write_text('keep')\np.chmod(0)\n",
+        encoding="utf-8",
+    )
+    manifest = root / "project.json"
+    project = json.loads(manifest.read_text(encoding="utf-8"))
+    project["targets"]["blocked"] = {"command": f"python tools/{fixture_project}/blocked.py"}
+    manifest.write_text(json.dumps(project), encoding="utf-8")
+    try:
+        measured = measure(
+            "--targets",
+            f"{fixture_project}:blocked,{fixture_project}:here",
+            out=tmp_path / "out",
+            environment={"TMPDIR": str(temp), "TEMP": str(temp), "TMP": str(temp)},
+        )
+        equal(measured.code, 0, describing="both tasks pass despite cleanup refusal")
+        equal(len(tasks(measured)), 2, describing="the second task still runs")
+        contains(measured.err, str(blocked), describing="the retained temporary is named")
+        truth(blocked.exists(), describing="the refused temporary is retained")
+    finally:
+        if blocked.exists():
+            blocked.chmod(0o700)
+            shutil.rmtree(blocked.parent)

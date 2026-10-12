@@ -256,10 +256,11 @@ def _bench(task: TaskId, out: Path) -> TaskResult:
 
 def run_task(task: TaskId, levers: Sequence[Lever], env: dict[str, str], out: Path) -> TaskResult:
     """Run one task under the levers, and answer what it cost."""
-    if task == "bench:octoprint-lookup":
-        return _bench(task, out)
-    if task == "host:defender":
-        return TaskResult(task, 0.0, 0, defender=defender_state())
+    match task:
+        case "bench:octoprint-lookup":
+            return _bench(task, out)
+        case "host:defender":
+            return TaskResult(task, 0.0, 0, defender=defender_state())
     project, target = task.split(":", 1)
     declared = _declared(project, target, _projects()[project])
     command = declared.command

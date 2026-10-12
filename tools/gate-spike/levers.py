@@ -338,5 +338,8 @@ def clear_pytest_temporaries(before: set[Path]) -> float:
     temp = Path(tempfile.gettempdir())
     free = shutil.disk_usage(temp).free
     for made in pytest_temporaries() - before:
-        shutil.rmtree(made, ignore_errors=True)
+        try:
+            shutil.rmtree(made)
+        except OSError as error:
+            print(f"measure: retained temporary {made}: {error}", file=sys.stderr)
     return round((shutil.disk_usage(temp).free - free) / 2**30, 2)
