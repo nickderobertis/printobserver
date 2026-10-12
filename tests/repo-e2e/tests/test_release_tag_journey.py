@@ -816,7 +816,7 @@ class Stage:
         names the registry's port, and that port exists only once it is bound.
         The registry tables are appended to the committed file rather than
         replacing it, so the copy still builds under the tree's own build
-        contract — into its own `target`, with line-table debuginfo — and the
+        contract — into its own `target`, with no debuginfo — and the
         wiring adds a registry to that file rather than a second one.
         The copy is pytest's to remove; the listeners are this stage's.
         """
