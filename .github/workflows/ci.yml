@@ -125,12 +125,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
       - run: just install-tools release-plz
-      - run: just spike-cell "${{ matrix.cell.runs }}"
+      - run: just spike-cell "${{ matrix.cell.runs }}" "${{ runner.temp }}/spike-out"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: spike-${{ strategy.job-index }}-${{ matrix.cell.platform }}
-          path: spike-out
+          path: ${{ runner.temp }}/spike-out
           if-no-files-found: warn
 
   spike-integration:
@@ -175,12 +175,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
       - run: just octoprint-up
-      - run: just spike-cell "${{ matrix.platform.runs }}"
+      - run: just spike-cell "${{ matrix.platform.runs }}" "${{ runner.temp }}/spike-out"
       - if: always()
         run: just octoprint-down
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: spike-integration-${{ matrix.platform.id }}
-          path: spike-out
+          path: ${{ runner.temp }}/spike-out
           if-no-files-found: warn

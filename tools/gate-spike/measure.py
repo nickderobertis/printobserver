@@ -15,13 +15,13 @@ writes one `Report` as JSON of what each task cost (`figures.py`):
 
 Usage (from the repository root, after `just bootstrap`):
 
-    just spike-measure baseline printobserver:test,repo-checks:test spike-out
+    just spike-measure baseline printobserver:test,repo-checks:test /tmp/spike-out
 
 `EXPERIMENT` is one or more levers joined by `+`; `TARGETS` is `project:target`
 tasks or pseudo-targets joined by `,`, where `*:<target>` is every project that
-declares `<target>`; `--list` names every lever and pseudo-target. The report is
-`<out>/measure.json`, and each task's own output is beside it as
-`<out>/<task>.log`. Success prints one line naming the report; a task that
+declares `<target>`; `--list` names every lever and pseudo-target. The report
+is `<out>/measure.json`, `<out>` being outside the repository, and each task's
+own output is beside it as `<out>/<task>.log`. Success prints one line naming the report; a task that
 failed is named on standard error. Exit status: 0 when every task succeeded, 1
 when any failed (the report is written either way), 2 for an invocation naming
 a lever or target that does not exist.
@@ -366,7 +366,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--experiment", default="baseline", help="levers joined by `+`")
     parser.add_argument("--targets", default="", help="tasks or pseudo-targets joined by `,`")
-    parser.add_argument("--out", type=Path, default=Path("spike-out"))
+    parser.add_argument("--out", type=Path, default=Path(tempfile.gettempdir()) / "spike-out")
     parser.add_argument("--list", action="store_true", help="name every lever and pseudo-target")
     arguments = parser.parse_args(argv)
     if arguments.list:
@@ -390,6 +390,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"measure: {error}; `--list` names every lever and pseudo-target", file=sys.stderr)
         return 2
     out = arguments.out.resolve()
+    if out.is_relative_to(ROOT.resolve()):
+        print(
+            f"measure: {out} is inside the repository, whose tree the suites measured copy "
+            "and read; name a directory outside it",
+            file=sys.stderr,
+        )
+        return 2
     out.mkdir(parents=True, exist_ok=True)
     try:
         report = experiment(names, tasks, out)

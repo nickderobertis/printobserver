@@ -29,7 +29,7 @@ WINDOWS = sys.platform == "win32"
 
 #: The files this spike's own branch changes that the suites read as the
 #: committed tree: its cut-down workflow and its justfile recipes.
-SPIKE_CHANGED = (".github/workflows/ci.yml", "justfile", ".gitignore")
+SPIKE_CHANGED = (".github/workflows/ci.yml", "justfile")
 
 
 class HostError(RuntimeError):
@@ -137,17 +137,27 @@ def _defender_off(name: str) -> Preparation:
     return Preparation(name, applied=True, detail=f"now {defender_state()}")
 
 
+#: What the spike's changed files held before `base-tree` replaced them, put
+#: back byte for byte afterwards: uncommitted work in them included.
+_HELD: dict[str, bytes] = {}
+
+
 def _base_tree(name: str) -> Preparation:
     """Put the base branch's copies of the spike's changed files in their place."""
     base = _checked(["git", "merge-base", "HEAD", "origin/main"], cwd=ROOT).stdout.strip()
-    for path in SPIKE_CHANGED:
-        shown = _checked(["git", "show", f"{base}:{path}"], cwd=ROOT).stdout
-        (ROOT / path).write_text(shown, encoding="utf-8", newline="")
+    shown = {
+        path: _checked(["git", "show", f"{base}:{path}"], cwd=ROOT).stdout for path in SPIKE_CHANGED
+    }
+    for path, text in shown.items():
+        _HELD[path] = (ROOT / path).read_bytes()
+        (ROOT / path).write_text(text, encoding="utf-8", newline="")
     return Preparation(name, applied=True, detail=f"{list(SPIKE_CHANGED)} from {base}")
 
 
 def _spike_tree() -> None:
-    _checked(["git", "checkout", "HEAD", "--", *SPIKE_CHANGED], cwd=ROOT)
+    for path, held in _HELD.items():
+        (ROOT / path).write_bytes(held)
+    _HELD.clear()
 
 
 def _temp_on_d(name: str) -> Preparation:
@@ -223,7 +233,7 @@ LEVERS: dict[str, Lever] = {
     ),
     "rust-lld": Lever("link with the toolchain's own rust-lld"),
     "base-tree": Lever(
-        "the base branch's ci.yml, justfile and .gitignore in place of the spike's, for the run",
+        "the base branch's ci.yml and justfile in place of the spike's, for the run",
         prepare=_base_tree,
         restore=_spike_tree,
     ),

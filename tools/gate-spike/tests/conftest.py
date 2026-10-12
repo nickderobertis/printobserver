@@ -66,7 +66,7 @@ class Measured:
 def measure(*arguments: str, out: Path) -> Measured:
     """Run `measure.py` as the `spike-measure` recipe does, into `out`."""
     ran = run(
-        [sys.executable, str(HERE / "measure.py"), *arguments, "--out", str(out)],
+        [sys.executable, str(HERE / "measure.py"), "--out", str(out), *arguments],
         cwd=ROOT,
         env={**os.environ, "PYTHONPATH": PYTHONPATH},
     )

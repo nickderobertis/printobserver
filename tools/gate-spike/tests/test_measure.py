@@ -7,7 +7,6 @@ from pathlib import Path
 
 from conftest import ROOT, Measured, mapping, measure
 from repo_checks.expect import contains, equal, truth
-from repo_checks.shell import run
 
 Tasks = Callable[[Measured], list[dict[str, object]]]
 
@@ -31,6 +30,7 @@ def test_an_invocation_naming_nothing_real_is_refused_before_anything_runs(
         (["--targets", "*:no-such-target"], "no-such-target"),
         (["--targets", "octoprint-env:no-such-target"], "no-such-target"),
         (["--targets", ""], "no target"),
+        (["--targets", "octoprint-env:test", "--out", str(ROOT / "spike-out")], "inside the"),
     ):
         refused = measure(*arguments, out=tmp_path / "refused")
         equal(refused.code, 2, describing=f"the exit for {arguments}")
@@ -84,8 +84,8 @@ def test_xdist_workers_collect_one_list_under_stable_ids(
 
 
 def test_the_base_tree_is_put_back_after_the_run(tmp_path: Path, fixture_project: str) -> None:
-    """`base-tree` leaves the spike's own files exactly as committed once the run ends."""
-    changed = (".github/workflows/ci.yml", "justfile", ".gitignore")
+    """`base-tree` puts the spike's own files back byte for byte, uncommitted work included."""
+    changed = (".github/workflows/ci.yml", "justfile")
     before = {path: (ROOT / path).read_bytes() for path in changed}
     measured = measure(
         "--experiment", "base-tree", "--targets", f"{fixture_project}:fails", out=tmp_path
@@ -93,8 +93,6 @@ def test_the_base_tree_is_put_back_after_the_run(tmp_path: Path, fixture_project
     equal(measured.code, 1, describing="the exit of a run whose one task fails")
     for path in changed:
         equal((ROOT / path).read_bytes(), before[path], describing=f"{path} after the run")
-    status = run(["git", "status", "--porcelain", "--", *changed], cwd=ROOT, check=True)
-    equal(status.stdout, "", describing="the spike's own files, as committed")
 
 
 def test_a_nextest_task_is_read_into_compile_run_and_per_test_figures(

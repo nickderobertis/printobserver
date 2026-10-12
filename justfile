@@ -538,10 +538,11 @@ test-obico:
     bunx nx run-many -t test-obico --output-style=stream
 
 # EXPERIMENT is levers joined by `+` and TARGETS `project:target` tasks joined
-# by `,`; `just spike-measure-list` names every lever and pseudo-target.
+# by `,`; `just spike-measure-list` names every lever and pseudo-target. OUT is
+# outside the repository, because the suites measured copy its tree.
 #
 # SPIKE (spike-windows-gate-breakdown): one experiment over one target set, as JSON in OUT/measure.json.
-spike-measure EXPERIMENT TARGETS OUT="spike-out":
+spike-measure EXPERIMENT TARGETS OUT:
     just node-modules
     uv run -q python tools/gate-spike/measure.py --experiment {{quote(EXPERIMENT)}} --targets {{quote(TARGETS)}} --out {{quote(OUT)}}
 
@@ -550,12 +551,12 @@ spike-measure-list:
     uv run -q python tools/gate-spike/measure.py --list
 
 # RUNS is `experiment|targets` pairs joined by `;`, each measured in turn into
-# spike-out/<n>-<experiment>. Every run is made whatever an earlier one
+# OUT/<n>-<experiment>, which is outside the repository. Every run is made whatever an earlier one
 # answered, and the cell fails if any did.
 #
 # SPIKE: one experiment cell of the spike's workflow, run by run.
-spike-cell RUNS:
+spike-cell RUNS OUT:
     status=0; n=0; IFS=';' read -ra runs <<< {{quote(RUNS)}}; \
     for run in "${runs[@]}"; do n=$((n+1)); \
-    just spike-measure "${run%%|*}" "${run#*|}" "spike-out/$n-${run%%|*}" || status=1; \
+    just spike-measure "${run%%|*}" "${run#*|}" {{quote(OUT)}}"/$n-${run%%|*}" || status=1; \
     done; exit "$status"
