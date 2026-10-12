@@ -121,6 +121,10 @@ jobs:
             runs: "baseline|octoprint-env:test,printobserver-sdk-node:test,contract-codegen:test,printobserver-sdk-python:test,release-artifacts:test,repo-checks:test,printobserver:build,printer-smoke:test,skilltest-wiring:test;no-py-coverage|repo-checks:test;sysmon|repo-checks:test;xdist-2|repo-checks:test;xdist-3|repo-checks:test;xdist-4|repo-checks:test,release-artifacts:test"
     runs-on: ${{ matrix.cell.runner }}
     timeout-minutes: 300
+    permissions:
+      contents: read
+      # `nx-set-shas` reads this workflow's own runs to derive the base.
+      actions: read
     defaults:
       run:
         shell: bash
