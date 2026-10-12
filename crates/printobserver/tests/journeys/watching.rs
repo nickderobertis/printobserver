@@ -1137,7 +1137,8 @@ fn a_spool_command_waits_for_the_print_a_turn_held_to_close() {
     );
 }
 
-/// The identifiers of every print the supervisor holds open.
+/// The prints still open after a listing, which closes every print it finds
+/// over that no turn holds: one answered here is one the supervisor kept open.
 fn open_prints(world: &World) -> Vec<String> {
     running::read(world, &["prints"])["prints"]
         .as_array()
