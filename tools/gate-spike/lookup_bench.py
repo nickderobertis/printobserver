@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, TypeGuard
 
 from octoprint_env import command_of
 from repo_checks.shell import run, start
+from spike_names import ProcessId
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -69,7 +70,7 @@ class LookupReport:
     """Every method this host has, over one process."""
 
     rounds: int
-    pid: int
+    pid: ProcessId
     methods: list[Method]
 
     @classmethod
@@ -132,7 +133,7 @@ def _read(argv: list[str]) -> str:
     return ran.stdout
 
 
-def _commands(pid: int) -> dict[str, list[str] | None]:
+def _commands(pid: ProcessId) -> dict[str, list[str] | None]:
     powershell = shutil.which("powershell")
     pwsh = shutil.which("pwsh")
     cim = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').CommandLine"
@@ -159,7 +160,7 @@ def _last_error() -> int:
     return ctypes.get_last_error() if sys.platform == "win32" else 0
 
 
-def _opened(pid: int) -> tuple[ctypes.CDLL, int]:
+def _opened(pid: ProcessId) -> tuple[ctypes.CDLL, int]:
     kernel32 = ctypes.CDLL("kernel32", use_last_error=True)
     handle = kernel32.OpenProcess(QUERY_LIMITED, 0, pid)
     if not handle:
@@ -168,7 +169,7 @@ def _opened(pid: int) -> tuple[ctypes.CDLL, int]:
     return kernel32, handle
 
 
-def _win32_command_line(pid: int) -> str:
+def _win32_command_line(pid: ProcessId) -> str:
     """The command line through `NtQueryInformationProcess(ProcessCommandLineInformation)`."""
 
     class UnicodeString(ctypes.Structure):
@@ -206,7 +207,7 @@ def _win32_command_line(pid: int) -> str:
         kernel32.CloseHandle(handle)
 
 
-def _win32_image(pid: int) -> str:
+def _win32_image(pid: ProcessId) -> str:
     """The image path through `QueryFullProcessImageNameW`."""
     kernel32, handle = _opened(pid)
     try:
@@ -241,7 +242,7 @@ def _time(name: str, read: Callable[[], str]) -> Method:
     )
 
 
-def _current(pid: int) -> str:
+def _current(pid: ProcessId) -> str:
     """The read `tools/octoprint-env` makes today: its own `command_of`, called as it is."""
     try:
         return command_of(pid)
@@ -249,7 +250,7 @@ def _current(pid: int) -> str:
         raise MethodError(str(error)) from error
 
 
-def measure(pid: int) -> list[Method]:
+def measure(pid: ProcessId) -> list[Method]:
     """Every method this host has, over the process `pid`, the current read first."""
     methods = [_time(CURRENT, lambda: _current(pid))]
     if sys.platform != "win32":

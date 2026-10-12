@@ -28,6 +28,11 @@ REAL_LINKER = "SPIKE_REAL_LINKER"
 LINK_TIMINGS = "SPIKE_LINK_TIMINGS"
 
 
+type ProcessId = int
+type TestNodeId = str
+type WorkerId = str
+
+
 class RecordError(ValueError):
     """A record line that is not the shape its producer writes."""
 
@@ -75,7 +80,7 @@ class JourneyTiming:
 
     kind: str
     ms: float
-    pid: int
+    pid: ProcessId
     thread: str
 
     @classmethod
@@ -170,8 +175,8 @@ def _costs(record: dict[str, object], key: str) -> dict[str, Cost]:
 class PytestTest:
     """One test, as `spike_pytest.py` recorded it."""
 
-    nodeid: str
-    worker: str
+    nodeid: TestNodeId
+    worker: WorkerId
     outcome: Outcome
     s: float
     phases: dict[str, float]
@@ -202,7 +207,7 @@ class PytestTest:
 class PytestSession:
     """One pytest process, as `spike_pytest.py` recorded it."""
 
-    worker: str
+    worker: WorkerId
     wall_s: float
     collect_s: float
     exitstatus: int

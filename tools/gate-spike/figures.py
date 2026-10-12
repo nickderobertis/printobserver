@@ -31,9 +31,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-CARGO_FINISHED = re.compile(r"Finished `[^`]+` profile .* target\(s\) in (?:(\d+)m )?([\d.]+)s")
+CARGO_FINISHED = re.compile(
+    r"Finished `[^`]+` profile .* target\(s\) in (?:(\d+)m )?(\d+(?:\.\d+)?)s"
+)
 NEXTEST_STARTING = re.compile(r"Starting (\d+) tests? across (\d+) binar")
-NEXTEST_SUMMARY = re.compile(r"Summary \[\s*([\d.]+)s\]")
+NEXTEST_SUMMARY = re.compile(r"Summary \[\s*(\d+(?:\.\d+)?)s\]")
 #: A terminal colour sequence, which cargo and nextest write when the job asks
 #: for colour (`CARGO_TERM_COLOR=always` on GitHub's runners).
 COLOUR = re.compile(r"\x1b\[[0-9;]*m")
@@ -84,7 +86,7 @@ class NextestStatus(StrEnum):
 #: finished test carries — rather than by a list of statuses, so a status nextest
 #: adds is read as `OTHER` rather than dropped.
 NEXTEST_RESULT = re.compile(
-    r"^\s*(?:\S+:\s+)?([A-Z][A-Z0-9-]*(?: [A-Z0-9-]+)*)\s+\[\s*([\d.]+)s\]\s+"
+    r"^\s*(?:\S+:\s+)?([A-Z][A-Z0-9-]*(?: [A-Z0-9-]+)*)\s+\[\s*(\d+(?:\.\d+)?)s\]\s+"
     r"\(\s*\d+/\d+\)\s+(\S+)\s+(.+?)\s*$"
 )
 

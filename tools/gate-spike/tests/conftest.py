@@ -38,6 +38,7 @@ CASES = """
 import http.server
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -60,6 +61,7 @@ def breaks_in_teardown():
 
 def test_spawns_git():
     subprocess.run(["git", "--version"], check=True, capture_output=True)
+    subprocess.run([sys.executable, "-c", "import time; time.sleep(0.1)"], check=True)
 
 
 def test_waits_on_a_child_by_polling_alone():
@@ -88,7 +90,8 @@ def test_a_sleep_that_raises_is_still_timed():
 
 def test_copies_and_removes_a_tree(tmp_path):
     (tmp_path / "from").mkdir()
-    (tmp_path / "from" / "file").write_text("x")
+    (tmp_path / "from" / "nested").mkdir()
+    (tmp_path / "from" / "nested" / "file").write_text("x")
     shutil.copytree(tmp_path / "from", tmp_path / "to")
     shutil.rmtree(tmp_path / "to")
 

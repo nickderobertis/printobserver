@@ -548,3 +548,67 @@ def test_concurrent_links_write_whole_records_to_one_sink(
             [f"out-{i}" for i in range(8)],
             describing="it",
         )
+
+
+def test_malformed_duration_tokens_are_not_measurements() -> None:
+    """Malformed external log tokens cannot crash or become partial durations."""
+    read = rust_figures(
+        "nextest\nFinished `test` profile target(s) in 1.2.3s\n"
+        "Summary [ 1.2.3s]\nPASS [ 1.2.3s] crate test"
+    )
+    truth(read is not None, describing="a nextest log")
+    if read is not None:
+        equal(read.compile_s, 0, describing="no valid compile duration")
+        equal(read.run_s, None, describing="no valid summary duration")
+        equal(read.per_test, [], describing="no valid test duration")
+
+
+def test_a_pathlike_executable_with_spaces_is_attributed_to_its_program(tmp_path: Path) -> None:
+    """A real child started by a PathLike remains one executable path."""
+    import shutil
+
+    program = tmp_path / "python with spaces.exe"
+    shutil.copy2(sys.executable, program)
+    suite = tmp_path / "test_path.py"
+    suite.write_text(
+        "import subprocess\nfrom pathlib import Path\n"
+        f"def test_child():\n    subprocess.run(Path({str(program)!r}), check=True, input=b'')\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "records"
+    ran = run(
+        [sys.executable, "-m", "pytest", "-q", str(suite), "-p", "spike_pytest"],
+        env={
+            **os.environ,
+            "PYTHONPATH": PYTHONPATH,
+            "SPIKE_PYTEST_OUT": str(out),
+            "PYTHONHOME": sys.base_prefix,
+            "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
+        },
+    )
+    equal(ran.returncode, 0, describing=ran.stdout + ran.stderr)
+    read = pytest_figures(out)
+    truth(read is not None, describing="a recorded child")
+    if read is not None:
+        equal(read.by_cost["spawn:python with spaces"].count, 1, describing="one program path")
+
+
+def test_the_timed_linker_measures_a_delayed_link(tmp_path: Path, timed_linker: Path) -> None:
+    """The wrapper measures time in its real child rather than reporting zero."""
+    source = tmp_path / "delayed.rs"
+    source.write_text(
+        "fn main() { std::thread::sleep(std::time::Duration::from_millis(100)); }",
+        encoding="utf-8",
+    )
+    linker = tmp_path / ("delayed.exe" if sys.platform == "win32" else "delayed")
+    run(["rustc", str(source), "-o", str(linker)], check=True)
+    links = tmp_path / "links.jsonl"
+    run(
+        [str(timed_linker)],
+        env={**os.environ, REAL_LINKER: str(linker), LINK_TIMINGS: str(links)},
+        check=True,
+    )
+    read = link_figures(links)
+    truth(read is not None, describing="a recorded delayed link")
+    if read is not None:
+        truth(0.1 <= read.s < 30, describing=f"a 100 ms linker recorded as {read.s}s")

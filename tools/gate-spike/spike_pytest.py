@@ -104,7 +104,9 @@ STATE = State()
 def _program(args: object) -> str:
     """The bare program name a `Popen` was asked to run, without its suffix."""
     match args:
-        case str() | bytes() | os.PathLike():
+        case os.PathLike():
+            first = os.fsdecode(args)
+        case str() | bytes():
             words = shlex.split(os.fsdecode(args), posix=os.name != "nt")
             first = words[0] if words else ""
         case [str() | bytes() | os.PathLike() as head, *_]:
@@ -162,14 +164,19 @@ def _wrap_popen() -> None:
 
 def _timed(category: str, function: Callable[..., object]) -> Callable[..., object]:
     """`function`, charging how long each call took to `category`."""
+    depth = threading.local()
 
     @functools.wraps(function)
     def timed(*args: object, **kwargs: object) -> object:
+        nested = getattr(depth, "active", False)
+        depth.active = True
         started = time.perf_counter()
         try:
             return function(*args, **kwargs)
         finally:
-            STATE.charge(category, time.perf_counter() - started)
+            depth.active = nested
+            if not nested:
+                STATE.charge(category, time.perf_counter() - started)
 
     return timed
 

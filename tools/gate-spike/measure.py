@@ -239,6 +239,7 @@ def _slug(task: str) -> str:
 def _bench(task: TaskId, out: Path) -> TaskResult:
     report = out / _slug(task) / "lookup.json"
     report.parent.mkdir(parents=True, exist_ok=True)
+    report.unlink(missing_ok=True)
     started = time.perf_counter()
     # The benchmark's current read is `tools/octoprint-env`'s own, imported from there.
     path = os.pathsep.join([str(ROOT / "tools/octoprint-env"), os.environ.get("PYTHONPATH", "")])
@@ -298,7 +299,7 @@ def run_task(task: TaskId, levers: Sequence[Lever], env: dict[str, str], out: Pa
         run(["cargo", "llvm-cov", "clean", "--workspace"], cwd=ROOT, capture=False)
     started = time.perf_counter()
     ran = run(
-        ["bash", "-o", "pipefail", "-c", 'eval "$SPIKE_COMMAND" 2>&1 | tee -a "$SPIKE_LOG"'],
+        ["bash", "-o", "pipefail", "-c", 'eval "$SPIKE_COMMAND" 2>&1 | tee -a "$SPIKE_LOG" >&2'],
         cwd=declared.cwd,
         env=task_env,
         capture=False,
@@ -404,7 +405,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--targets", default="", help="tasks or pseudo-targets joined by `,`")
     parser.add_argument("--out", type=Path, default=Path(tempfile.gettempdir()) / "spike-out")
     parser.add_argument("--list", action="store_true", help="name every lever and pseudo-target")
-    parser.add_argument("--quiet", action="store_true", help="print nothing on success")
+    parser.add_argument(
+        "--quiet", action="store_true", help="omit the final summary; task output remains live"
+    )
     arguments = parser.parse_args(argv)
     if arguments.list:
         for name, lever in LEVERS.items():
@@ -454,7 +457,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not arguments.quiet:
         print(
             f"measure: {len(report.tasks)} tasks in {report.wall_s:.0f}s, {failed} failed: "
-            f"{out / 'measure.json'}"
+            f"{out / 'measure.json'}",
+            file=sys.stderr if failed else sys.stdout,
         )
     return 1 if failed else 0
 

@@ -118,6 +118,7 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
         equal(by_cost[cost]["count"], count, describing=f"`{cost}` in {by_cost}")
     truth(by_cost["sleep"]["s"] >= 0.05, describing=f"the sleep's seconds in {by_cost}")
     absent(by_cost, "spawn:spike-no-such-program-anywhere", describing="a child that never ran")
+    truth(0.1 <= by_cost["spawn:python"]["s"] < 30, describing="a child sleeping 100 ms")
     sleeping = next(
         test for test in pytest_run["per_test"] if test["nodeid"].endswith("test_sleeps")
     )
@@ -139,8 +140,12 @@ def test_a_pytest_task_is_measured_test_by_test_and_its_failure_named(
     )
     equal(by_cost["sleep"]["count"], 2, describing="both sleeps, the one that raised included")
     equal(session["outside_tests"]["spawn:git"]["count"], 1, describing="the spawn at import")
-    own = [line for line in measured.out.splitlines() if line.startswith("measure: ")]
-    equal(len(own), 1, describing="the lines the harness itself prints on standard output")
+    own = [line for line in measured.err.splitlines() if line.startswith("measure: 2 tasks ")]
+    equal(len(own), 1, describing="the failed summary on standard error")
+    truth(
+        not any(line.startswith("measure:") for line in measured.out.splitlines()),
+        describing="no failure verdict on standard output",
+    )
     left = {path for path in pytest_temporaries() - before if not tmp_path.is_relative_to(path)}
     equal(left, set(), describing="the pytest temporaries the suite's own run left")
 
@@ -296,7 +301,7 @@ def test_a_cell_runs_every_run_and_fails_if_any_did(tmp_path: Path, fixture_proj
     truth(ran.returncode != 0, describing="the cell's exit after a failed run")
     for run_dir in ("1-baseline", "2-baseline"):
         truth((tmp_path / run_dir / "measure.json").is_file(), describing=f"{run_dir}'s report")
-    own = [line for line in ran.stdout.splitlines() if line.startswith(("spike-cell:", "measure:"))]
+    own = [line for line in ran.stderr.splitlines() if line.startswith("spike-cell:")]
     equal(own, [f"spike-cell: 2 runs, 1 failed, reports under {tmp_path}"], describing="its say")
 
 
@@ -640,3 +645,30 @@ def test_records_an_earlier_run_left_that_cannot_be_cleared_stop_the_run(
         stuck.chmod(0o700)
     equal(measured.code, 1, describing="the exit when the records could not be cleared")
     contains(measured.err, "could not be cleared", describing="what it said")
+
+
+def test_a_failed_benchmark_rerun_never_reads_the_previous_report(tmp_path: Path) -> None:
+    """A benchmark that dies during interpreter startup cannot retain old figures."""
+    first = measure("--targets", "bench:octoprint-lookup", out=tmp_path / "out")
+    equal(first.code, 0, describing="the initial benchmark")
+    truth(tasks(first)[0]["lookup"] is not None, describing="initial lookup figures")
+    (tmp_path / "sitecustomize.py").write_text(
+        "import os, sys\nif sys.argv[0].endswith('lookup_bench.py'): os._exit(3)\n",
+        encoding="utf-8",
+    )
+    failed = run(
+        [
+            sys.executable,
+            str(ROOT / "tools/gate-spike/measure.py"),
+            "--targets",
+            "bench:octoprint-lookup",
+            "--out",
+            str(tmp_path / "out"),
+        ],
+        env={**os.environ, "PYTHONPATH": PYTHONPATH + os.pathsep + str(tmp_path)},
+    )
+    equal(failed.returncode, 1, describing="a failed benchmark")
+    import json
+
+    report = json.loads((tmp_path / "out" / "measure.json").read_text(encoding="utf-8"))
+    equal(report["tasks"][0]["lookup"], None, describing="no stale lookup figures")

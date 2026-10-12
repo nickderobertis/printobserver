@@ -562,7 +562,7 @@ spike-cell RUNS OUT:
     failed=0; n=0; IFS=';' read -ra runs <<< {{quote(RUNS)}}; \
     for run in "${runs[@]}"; do n=$((n+1)); \
     PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --quiet --experiment "${run%%|*}" --targets "${run#*|}" --out {{quote(OUT)}}"/$n-${run%%|*}" || failed=$((failed+1)); \
-    done; echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}"; [ "$failed" = 0 ]
+    done; if [ "$failed" = 0 ]; then echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}"; else echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}" >&2; fi; [ "$failed" = 0 ]
 
 # SPIKE: the harness's own tests; the gate-spike project's test target runs this.
 spike-harness-test:
