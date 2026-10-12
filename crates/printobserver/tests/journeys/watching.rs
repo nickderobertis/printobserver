@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use printobserver::failure::Exit;
-use printobserver_server::{HarnessSignIn, SIGN_INS};
+use printobserver_server::{Answer, HarnessSignIn, SIGN_INS};
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -25,10 +25,13 @@ use crate::host::Host;
 use crate::machine::{RUNNING_FILE, Reports};
 use crate::world::{STOOD_IN, World, committed_skill};
 
+use super::answers::answered;
+use super::formats::the_two_renderings_agree;
 use super::looking::{
     OBICO_TOKEN, PATIENCE, actions_asked, alert, detector_configuration, events_of, obico, post,
     reports, wait_for,
 };
+use super::running;
 
 /// The harness the world's configuration names.
 const IDENTITY: &str = "claude-code";
@@ -1069,6 +1072,80 @@ fn the_first_turn_acted_as_itself(world: &World, print: &str, captured: &std::pa
         "a refused request was recorded: {asked:?}"
     );
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
+}
+
+/// A spool command is prepared only once the print a turn held has closed.
+///
+/// The machine goes idle while a turn holds its print, and the supervisor
+/// closes no print a turn holds; preparing a spool command then waits for
+/// the turn to end and the print to close, so neither rendering of the
+/// command that follows is taken during it.
+#[test]
+fn a_spool_command_waits_for_the_print_a_turn_held_to_close() {
+    let watching = Watching::start(WAITING, |_| {});
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    let spool = world.spool_id();
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    watching.written(&format!("started-{print}-1"));
+    world.wants(Reports::Operational);
+    assert_eq!(
+        open_prints(world),
+        std::slice::from_ref(&print),
+        "the print closed while its turn still held it"
+    );
+
+    std::thread::scope(|scope| {
+        let preparing = scope.spawn(|| world.prepare_ledger_for("adjust-spool"));
+        std::thread::sleep(Duration::from_secs(5));
+        assert!(
+            !preparing.is_finished(),
+            "a spool command was prepared while a turn held {print} open"
+        );
+        watching.go();
+        preparing.join().expect("the preparation finishes");
+    });
+    assert_eq!(
+        open_prints(world),
+        Vec::<String>::new(),
+        "a spool command was prepared with a print still open"
+    );
+
+    let operation = printobserver::surface::command("adjust-spool")
+        .and_then(|command| command.operation)
+        .expect("`adjust-spool` calls an operation");
+    let asked = [
+        "adjust-spool",
+        "--spool-id",
+        &spool,
+        "--actor",
+        "operator",
+        "--remaining-g",
+        "640",
+        "--reason",
+        "a correction asked once the print has closed",
+    ];
+    let machine = running::command(world, &[&asked[..], &["--json"]].concat());
+    // Each rendering is of the same correction, from the same figure.
+    world.prepare_ledger_for("adjust-spool");
+    let plain = running::command(world, &asked);
+    the_two_renderings_agree(&machine, &plain, &operation, Answer::Success);
+    assert!(
+        !answered(&machine, true).contains_key("events.0.print_id"),
+        "a correction asked once the print closed was taken during it: {}",
+        machine.out
+    );
+}
+
+/// The identifiers of every print the supervisor holds open.
+fn open_prints(world: &World) -> Vec<String> {
+    running::read(world, &["prints"])["prints"]
+        .as_array()
+        .expect("the listing carries its prints")
+        .iter()
+        .filter(|print| print["ended_at"].is_null())
+        .map(|print| print["id"].as_str().expect("a print has an id").to_owned())
+        .collect()
 }
 
 /// Every file under a directory.
