@@ -28,12 +28,9 @@ OCTOPRINT_LOG = f"{STATE}/instance/logs/octoprint.log"
 #: How much of that log a failing tier prints.
 LOG_TAIL_LINES = 200
 
-#: How long the tier is given before it is taken to have hung. The slowest host
-#: is Windows, where every command the cross-product walk drives pays for a
-#: trace session of its own: the tier ran about 39 minutes there on its own
-#: runner once the spool ledger's nine commands joined the walk, and longer
-#: inside the gate, which runs it beside everything else. An hour is a guard
-#: against a tier that will never finish, not a measure of one that is slow.
+#: How long the tier is given before it is taken to have hung. Windows is the
+#: slowest host, because every command the walk drives there pays for a trace
+#: session of its own, and the gate runs the tier beside everything else.
 TIER_TIMEOUT_SECONDS = 3600
 
 #: The access a Windows process handle is opened with: enough to read its exit
@@ -94,6 +91,7 @@ def _windows_exit_code(pid: int) -> int | None:
         kernel32.CloseHandle(handle)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
