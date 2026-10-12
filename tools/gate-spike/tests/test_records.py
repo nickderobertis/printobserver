@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -612,3 +613,16 @@ def test_the_timed_linker_measures_a_delayed_link(tmp_path: Path, timed_linker: 
     truth(read is not None, describing="a recorded delayed link")
     if read is not None:
         truth(0.1 <= read.s < 30, describing=f"a 100 ms linker recorded as {read.s}s")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows process APIs")
+def test_native_lookup_rejections_are_recorded_as_method_failures() -> None:
+    """Invalid process identities and undersized buffers fail through the real APIs."""
+    from lookup_bench import _time, _win32_command_line, _win32_image
+
+    for read in (_win32_command_line, _win32_image):
+        refused = _time("invalid process", partial(read, 0))
+        contains(refused.failure, "OpenProcess refused", describing="the real process refusal")
+        small = _time("undersized buffer", partial(read, os.getpid(), 1))
+        truth(bool(small.failure), describing="the native read's failed outcome")
+        equal(small.median_s, None, describing="no passing duration for the failed read")

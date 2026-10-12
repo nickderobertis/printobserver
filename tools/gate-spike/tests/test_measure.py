@@ -336,6 +336,18 @@ def test_a_wrapper_that_does_not_build_is_reported_and_the_run_goes_on(
     equal(measured.code, 0, describing="the run's exit")
     linker = mapping(measured.report, describing="the report")["linker"]
     contains(linker["why"], "did not build", describing=str(linker))
+    required = measure(
+        "--targets",
+        f"{fixture_project}:here",
+        out=tmp_path / "required",
+        environment={
+            REAL_LINKER: "rust-lld",
+            "PATH": os.pathsep.join([str(refusing), os.environ["PATH"]]),
+        },
+    )
+    equal(required.code, 1, describing="required rust-lld refuses fallback")
+    contains(required.err, "rust-lld could not link", describing="the required linker refusal")
+    truth(required.report is None, describing="no fallback measurement written")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="on Windows the lever names rust-lld for real")

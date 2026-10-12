@@ -169,7 +169,7 @@ def _opened(pid: ProcessId) -> tuple[ctypes.CDLL, int]:
     return kernel32, handle
 
 
-def _win32_command_line(pid: ProcessId) -> str:
+def _win32_command_line(pid: ProcessId, capacity: int = 65536) -> str:
     """The command line through `NtQueryInformationProcess(ProcessCommandLineInformation)`."""
 
     class UnicodeString(ctypes.Structure):
@@ -182,15 +182,17 @@ def _win32_command_line(pid: ProcessId) -> str:
     kernel32, handle = _opened(pid)
     try:
         written = ctypes.c_ulong(0)
-        buffer = ctypes.create_string_buffer(65536)
+        buffer = ctypes.create_string_buffer(capacity)
         status = ctypes.CDLL("ntdll").NtQueryInformationProcess(
             handle, COMMAND_LINE_CLASS, buffer, len(buffer), ctypes.byref(written)
         )
+        # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         if status != 0 or not ctypes.sizeof(UnicodeString) <= written.value <= len(buffer):
             msg = f"NtQueryInformationProcess answered status {status:#x}, {written.value} bytes"
             raise MethodError(msg)
         header = UnicodeString.from_buffer(buffer)
         start_of = ctypes.addressof(buffer)
+        # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         if (
             header.Buffer is None
             or header.Length % 2
@@ -207,11 +209,11 @@ def _win32_command_line(pid: ProcessId) -> str:
         kernel32.CloseHandle(handle)
 
 
-def _win32_image(pid: ProcessId) -> str:
+def _win32_image(pid: ProcessId, capacity: int = 32768) -> str:
     """The image path through `QueryFullProcessImageNameW`."""
     kernel32, handle = _opened(pid)
     try:
-        length = ctypes.c_ulong(32768)
+        length = ctypes.c_ulong(capacity)
         buffer = ctypes.create_unicode_buffer(length.value)
         if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(length)):
             msg = f"QueryFullProcessImageNameW failed: error {_last_error()}"

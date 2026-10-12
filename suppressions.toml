@@ -2472,3 +2472,15 @@ rule = "tool_output_is_signal"
 file = "justfile"
 site = "spike-measure-list:"
 reason = "A listing recipe: the names of every lever and pseudo-target, one per line, are the output a caller runs it for, as `just --list` prints recipes; there is no single-line verdict for a listing to shrink to."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tools/gate-spike/lookup_bench.py"
+site = "if status != 0 or not ctypes.sizeof"
+reason = "The real native rejection is exercised with an undersized buffer. A successful NtQueryInformationProcess returning a length outside the supplied buffer is kernel corruption, not a response a consumer can produce through this API. The defensive length check precedes from_buffer; inducing that malformed successful response would require mocking the kernel API this task explicitly requires testing for real."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tools/gate-spike/lookup_bench.py"
+site = "header.Buffer is None"
+reason = "The header and pointer are written by the real Windows kernel, and the live-process benchmark proves successful decoding. A malformed kernel-owned pointer, odd UTF-16 length or length beyond the allocated response cannot be induced through the real process lookup API without substituting that API. The check defensively bounds the pointer and byte length before wstring_at; it is not an omitted caller-controlled failure journey."
