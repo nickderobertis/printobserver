@@ -547,16 +547,24 @@ spike-measure EXPERIMENT TARGETS OUT:
     PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --experiment {{quote(EXPERIMENT)}} --targets {{quote(TARGETS)}} --out {{quote(OUT)}}
 
 # SPIKE: every lever and pseudo-target `spike-measure` takes.
+# llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
 spike-measure-list:
     PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --list
 
 # RUNS is `experiment|targets` pairs joined by `;`, each measured in turn into
-# OUT/<n>-<experiment>, which is outside the repository. Every run is made whatever an earlier one
-# answered, and the cell fails if any did.
+# OUT/<n>-<experiment>, which is outside the repository. Every run is made
+# whatever an earlier one answered, the cell says once how many failed, and it
+# fails if any did.
 #
 # SPIKE: one experiment cell of the spike's workflow, run by run.
 spike-cell RUNS OUT:
-    status=0; n=0; IFS=';' read -ra runs <<< {{quote(RUNS)}}; \
+    just node-modules
+    failed=0; n=0; IFS=';' read -ra runs <<< {{quote(RUNS)}}; \
     for run in "${runs[@]}"; do n=$((n+1)); \
-    just spike-measure "${run%%|*}" "${run#*|}" {{quote(OUT)}}"/$n-${run%%|*}" || status=1; \
-    done; exit "$status"
+    PYTHONPATH="tools/octoprint-env$PATH_SEPARATOR$PYTHONPATH" uv run -q python tools/gate-spike/measure.py --quiet --experiment "${run%%|*}" --targets "${run#*|}" --out {{quote(OUT)}}"/$n-${run%%|*}" || failed=$((failed+1)); \
+    done; echo "spike-cell: $n runs, $failed failed, reports under {{OUT}}"; [ "$failed" = 0 ]
+
+# SPIKE: the harness's own tests, as the gate-spike project's test target runs them.
+spike-harness-test:
+    just node-modules
+    uv run -q pytest tools/gate-spike/tests -p no:cacheprovider -o pythonpath="tools/gate-spike tools/gate-spike/tests tools/octoprint-env tools/repo-checks/src"

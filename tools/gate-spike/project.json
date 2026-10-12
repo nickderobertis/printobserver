@@ -12,6 +12,6 @@
     "typecheck": {
       "command": "uv run -q ty check --extra-search-path tools/gate-spike --extra-search-path tools/gate-spike/tests --extra-search-path tools/octoprint-env tools/gate-spike && uv run -q ty check --python-platform win32 --extra-search-path tools/gate-spike --extra-search-path tools/gate-spike/tests --extra-search-path tools/octoprint-env tools/gate-spike"
     },
-    "test": { "command": "uv run -q pytest tools/gate-spike/tests -p no:cacheprovider" }
+    "test": { "command": "uv run -q pytest tools/gate-spike/tests -p no:cacheprovider -o pythonpath=\"tools/gate-spike tools/gate-spike/tests tools/octoprint-env tools/repo-checks/src\"" }
   }
 }

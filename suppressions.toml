@@ -2467,3 +2467,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/gate-spike/tests/conftest.py"
 site = "urllib.request.urlopen"
 reason = "The fixture suite calls `urllib.request.urlopen` because that function is what the spike's pytest plugin wraps and times: the request is the thing under test, made to a server the same test starts, and an async client would bypass exactly the call whose attribution this proves."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "justfile"
+site = "spike-measure-list:"
+reason = "A listing recipe: the names of every lever and pseudo-target, one per line, are the output a caller runs it for, as `just --list` prints recipes; there is no single-line verdict for a listing to shrink to."

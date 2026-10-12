@@ -281,7 +281,7 @@ def test_the_journeys_report_the_operations_of_the_client_command_tier(tmp_path:
 
 
 def test_a_cell_runs_every_run_and_fails_if_any_did(tmp_path: Path, fixture_project: str) -> None:
-    """`just spike-cell` measures each run whatever an earlier one answered."""
+    """`just spike-cell` measures each run whatever an earlier one answered, and says so once."""
     ran = run(
         [
             "just",
@@ -295,36 +295,8 @@ def test_a_cell_runs_every_run_and_fails_if_any_did(tmp_path: Path, fixture_proj
     truth(ran.returncode != 0, describing="the cell's exit after a failed run")
     for run_dir in ("1-baseline", "2-baseline"):
         truth((tmp_path / run_dir / "measure.json").is_file(), describing=f"{run_dir}'s report")
-
-
-@pytest.mark.parametrize(
-    ("lever", "variable", "value"),
-    [
-        ("line-tables-only", "CARGO_PROFILE_DEV_DEBUG", "line-tables-only"),
-        ("debug-0", "CARGO_PROFILE_DEV_DEBUG", "0"),
-        ("incremental-on", "CARGO_INCREMENTAL", "1"),
-        ("split-unpacked", "CARGO_PROFILE_DEV_SPLIT_DEBUGINFO", "unpacked"),
-    ],
-)
-def test_a_build_lever_reaches_the_build_it_measures(
-    tmp_path: Path, lever: str, variable: str, value: str
-) -> None:
-    """Each build-profile lever is in the environment the crate's build ran under."""
-    # No compiler cache in front of rustc, as on the runners the levers are measured on:
-    # sccache refuses an incremental build outright.
-    measured = measure(
-        "--experiment",
-        f"compile-only+{lever}",
-        "--targets",
-        VISION,
-        out=tmp_path,
-        environment={"RUSTC_WRAPPER": ""},
-    )
-    equal(measured.code, 0, describing=f"a build under `{lever}`")
-    env = mapping(measured.report, describing="the report")["env"]
-    equal(env[variable], value, describing=f"`{variable}` in {env}")
-    log = (tmp_path / "printobserver-vision-api_test.log").read_text(encoding="utf-8")
-    contains(log, "Compiling printobserver-vision-api", describing="the crate rebuilt under it")
+    own = [line for line in ran.stdout.splitlines() if line.startswith(("spike-cell:", "measure:"))]
+    equal(own, [f"spike-cell: 2 runs, 1 failed, reports under {tmp_path}"], describing="its say")
 
 
 def test_a_linker_the_smoke_link_refuses_leaves_the_build_on_its_own_linker(
@@ -609,3 +581,33 @@ def test_a_defender_query_that_fails_is_kept_as_unreadable(
     report = mapping(measured.report, describing="the report")
     truth(report["defender_before"]["unreadable"], describing=str(report["defender_before"]))
     equal(tasks(measured)[1]["exit"], 0, describing="the task after it")
+
+
+@pytest.mark.parametrize(
+    ("lever", "variable", "value"),
+    [
+        ("line-tables-only", "CARGO_PROFILE_DEV_DEBUG", "line-tables-only"),
+        ("debug-0", "CARGO_PROFILE_DEV_DEBUG", "0"),
+        ("incremental-on", "CARGO_INCREMENTAL", "1"),
+        ("split-unpacked", "CARGO_PROFILE_DEV_SPLIT_DEBUGINFO", "unpacked"),
+    ],
+)
+def test_a_build_lever_reaches_the_build_it_measures(
+    tmp_path: Path, lever: str, variable: str, value: str
+) -> None:
+    """Each build-profile lever is in the environment the crate's build ran under."""
+    # No compiler cache in front of rustc, as on the runners the levers are measured on:
+    # sccache refuses an incremental build outright.
+    measured = measure(
+        "--experiment",
+        f"compile-only+{lever}",
+        "--targets",
+        VISION,
+        out=tmp_path,
+        environment={"RUSTC_WRAPPER": ""},
+    )
+    equal(measured.code, 0, describing=f"a build under `{lever}`")
+    env = mapping(measured.report, describing="the report")["env"]
+    equal(env[variable], value, describing=f"`{variable}` in {env}")
+    log = (tmp_path / "printobserver-vision-api_test.log").read_text(encoding="utf-8")
+    contains(log, "Compiling printobserver-vision-api", describing="the crate rebuilt under it")

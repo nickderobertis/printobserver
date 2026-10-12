@@ -398,6 +398,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--targets", default="", help="tasks or pseudo-targets joined by `,`")
     parser.add_argument("--out", type=Path, default=Path(tempfile.gettempdir()) / "spike-out")
     parser.add_argument("--list", action="store_true", help="name every lever and pseudo-target")
+    parser.add_argument("--quiet", action="store_true", help="print nothing on success")
     arguments = parser.parse_args(argv)
     if arguments.list:
         for name, lever in LEVERS.items():
@@ -444,10 +445,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     (out / "measure.json").write_text(json.dumps(asdict(report), indent=1), encoding="utf-8")
     failed = sum(1 for task in report.tasks if task.exit != 0)
-    print(
-        f"measure: {len(report.tasks)} tasks in {report.wall_s:.0f}s, {failed} failed: "
-        f"{out / 'measure.json'}"
-    )
+    if not arguments.quiet:
+        print(
+            f"measure: {len(report.tasks)} tasks in {report.wall_s:.0f}s, {failed} failed: "
+            f"{out / 'measure.json'}"
+        )
     return 1 if failed else 0
 
 
