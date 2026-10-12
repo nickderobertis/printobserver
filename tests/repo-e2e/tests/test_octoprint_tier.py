@@ -28,6 +28,14 @@ OCTOPRINT_LOG = f"{STATE}/instance/logs/octoprint.log"
 #: How much of that log a failing tier prints.
 LOG_TAIL_LINES = 200
 
+#: How long the tier is given before it is taken to have hung. The slowest host
+#: is Windows, where every command the cross-product walk drives pays for a
+#: trace session of its own: the tier ran about 39 minutes there on its own
+#: runner once the spool ledger's nine commands joined the walk, and longer
+#: inside the gate, which runs it beside everything else. An hour is a guard
+#: against a tier that will never finish, not a measure of one that is slow.
+TIER_TIMEOUT_SECONDS = 3600
+
 #: The access a Windows process handle is opened with: enough to read its exit
 #: code, and nothing that could change it.
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -99,7 +107,7 @@ def test_the_tier_runs_between_the_bring_up_and_bring_down_recipes(
     pid = int(record["pid"])
     truth(running(pid), describing=f"the process {pid} the bring-up recipe started")
 
-    tier = copy.just("test-integration", timeout=2400)
+    tier = copy.just("test-integration", timeout=TIER_TIMEOUT_SECONDS)
     if tier.returncode != 0 and (copy.root / OCTOPRINT_LOG).is_file():
         # Read before the bring-down, and printed rather than asserted: what the
         # printer last said is the diagnosis the tier's own failure cannot give.
