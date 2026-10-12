@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/nickderobertis/printobserver/compare/v0.3.0...v0.4.0) - 2026-10-12
+
+### Added
+
+- *(store)* [**breaking**] persist spools, charges and the printer timeline ([#180](https://github.com/nickderobertis/printobserver/pull/180))
+
+### Fixed
+
+- *(release)* release every crate together in one version group ([#189](https://github.com/nickderobertis/printobserver/pull/189))
+- *(prints)* close ended jobs outside turns and open a new record for a later job ([#163](https://github.com/nickderobertis/printobserver/pull/163))
+
 ## [0.3.0](https://github.com/nickderobertis/printobserver/compare/v0.2.0...v0.3.0) - 2026-09-27
 
 ### Added

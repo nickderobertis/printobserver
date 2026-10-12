@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/nickderobertis/printobserver/compare/v0.3.0...v0.4.0) - 2026-10-12
+
+### Added
+
+- *(octoprint)* read job filament, file tallies and G-code extrusion ([#181](https://github.com/nickderobertis/printobserver/pull/181))
+- *(spools)* [**breaking**] declare spool records, events and printer-port reads ([#178](https://github.com/nickderobertis/printobserver/pull/178))
+
+### Fixed
+
+- *(release)* release every crate together in one version group ([#189](https://github.com/nickderobertis/printobserver/pull/189))
+
 ## [0.3.0](https://github.com/nickderobertis/printobserver/compare/v0.2.0...v0.3.0) - 2026-09-27
 
 ### Added
