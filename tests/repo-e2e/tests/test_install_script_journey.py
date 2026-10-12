@@ -24,13 +24,15 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from journey import NO_ROUTE_HERE, REPO_ROOT, clean_environment, run
+from journey import NO_ROUTE_HERE, RELEASE_BUILD, REPO_ROOT, clean_environment, run
 from repo_checks import install_path
 from repo_checks.checks_platforms import SCRIPT_PLATFORM
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.model import Repo
 from repo_checks.platforms import HOSTS, host, install_platforms
 from repo_checks.shell import run as shell_run
+
+pytestmark = RELEASE_BUILD
 
 #: The committed script the third route fetches and runs.
 SCRIPT = "scripts/install.sh"

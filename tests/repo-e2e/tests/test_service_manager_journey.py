@@ -75,6 +75,7 @@ import launchctl_standin
 import pytest
 import yaml
 from journey import (
+    DEBUG_BUILD,
     HERE,
     REPO_ROOT,
     SKILL_DIRECTORY,
@@ -91,6 +92,8 @@ from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
 from repo_checks.shell import start
+
+pytestmark = DEBUG_BUILD
 
 #: The gate job in `ci.yml` sets this, so that on the merge path a case whose
 #: prerequisite is missing fails instead of skipping out of sight.

@@ -23,8 +23,10 @@ from __future__ import annotations
 import tomllib
 
 import pytest
-from journey import REPO_ROOT, ROUTE_JOURNEY, clean_environment, pythonpath, run
+from journey import RELEASE_BUILD, REPO_ROOT, ROUTE_JOURNEY, clean_environment, pythonpath, run
 from repo_checks.expect import contains, failing, passing
+
+pytestmark = RELEASE_BUILD
 
 #: How long one recipe is given: the first pays for a release build of the
 #: workspace, and every one after it reuses what that left.

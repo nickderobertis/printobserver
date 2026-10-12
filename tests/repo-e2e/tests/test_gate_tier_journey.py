@@ -103,6 +103,77 @@ def test_the_default_tier_runs_the_changed_project_and_its_dependents_alone(
         truth(unrelated not in selected, describing=f"{unrelated} left out of {sorted(selected)}")
 
 
+#: A file in every project the end-to-end tier's journeys drive or import, and
+#: one the program is built from: a change to any of them can break a journey,
+#: so each has to select the tier. Written out rather than read off the tier's
+#: own edges, so an edge dropped there is a failure here.
+EXERCISED_BY_THE_E2E_TIER = {
+    "printobserver": "crates/printobserver/src/main.rs",
+    "printobserver-server": "crates/printobserver-server/src/lib.rs",
+    "printobserver-sdk-node": "npm/printobserver-sdk/src/index.ts",
+    "printobserver-sdk-python": "python/printobserver-sdk/src/printobserver_sdk/__init__.py",
+    "release-artifacts": "tools/release-artifacts/src/release_artifacts/__init__.py",
+    "repo-checks": "tools/repo-checks/src/repo_checks/__init__.py",
+    "octoprint-env": "tools/octoprint-env/octoprint_env.py",
+    "printer-smoke": "tools/printer-smoke/printer_smoke.py",
+}
+
+#: The line Nx prints as it runs the tier's target, which is what selection
+#: means: read off Nx itself, as `RAN` reads `format-check`, rather than off what
+#: the target printed, which Nx does not always pass on for a command that
+#: finishes at once.
+SELECTED = "> nx run repo-e2e:test-e2e"
+
+
+@pytest.mark.parametrize("changed", sorted(EXERCISED_BY_THE_E2E_TIER.values()))
+def test_a_change_to_what_the_end_to_end_tier_exercises_selects_it(
+    gate_copy: Callable[..., GateCopy], changed: str
+) -> None:
+    """`just test-e2e` at the affected tier runs the tier for a change it can be broken by."""
+    copy = as_a_clone(gate_copy())
+    standing_in_for_the_suite(copy)
+    branch_with_a_change(copy, changed)
+
+    result = copy.just("test-e2e", environment=QUIET)
+
+    passing(result, describing=f"`just test-e2e` over a change to {changed}")
+    contains(plain(result.stderr), "gate-tier: affected: the projects the change since")
+    contains(plain(result.stdout), SELECTED, describing=f"what a change to {changed} runs")
+
+
+def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """The scheduled Obico tier's environment is no journey's, so a change there runs none."""
+    copy = as_a_clone(gate_copy())
+    standing_in_for_the_suite(copy)
+    branch_with_a_change(copy, "tools/obico-env/obico_env.py")
+
+    result = copy.just("test-e2e", environment=QUIET)
+
+    passing(result, describing="`just test-e2e` over a change to the Obico environment")
+    contains(plain(result.stderr), "gate-tier: affected: the projects the change since")
+    truth(
+        SELECTED not in plain(result.stdout), describing=f"the tier left out of:\n{result.stdout}"
+    )
+
+
+def standing_in_for_the_suite(copy: GateCopy) -> None:
+    """Commit, on the copy's `main`, a `test-e2e` target that does nothing.
+
+    The project graph's edges, and so which projects a change selects, are the
+    copy's own and unchanged. Only what selection would then run is replaced:
+    the suite, and the build it waits on, which is a task-graph edge and
+    selects nothing.
+    """
+    project = copy.root / "tests" / "repo-e2e" / "project.json"
+    declared = json.loads(project.read_text(encoding="utf-8"))
+    declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
+    declared["targets"]["test-e2e"].pop("dependsOn")
+    project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
+    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suite")
+
+
 def test_the_sweep_runs_every_gate_eligible_project(gate_copy: Callable[..., GateCopy]) -> None:
     """`all` is the whole graph whatever the change, and whatever base the environment names."""
     copy = as_a_clone(gate_copy())

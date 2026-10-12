@@ -22,8 +22,19 @@ import shlex
 from collections.abc import Callable
 
 import pytest
-from journey import REPO_ROOT, GateCopy, capture, clean_environment, output, plain, pythonpath
+from journey import (
+    DEBUG_BUILD,
+    REPO_ROOT,
+    GateCopy,
+    capture,
+    clean_environment,
+    output,
+    plain,
+    pythonpath,
+)
 from repo_checks.expect import contains, failing, passing
+
+pytestmark = DEBUG_BUILD
 
 TARGET = "x86_64-pc-windows-gnu"
 PLANTED_IN = "crates/printobserver-oneharness/src/sign_in.rs"

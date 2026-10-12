@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, clean_environment, install_the_skill, run
+from journey import DEBUG_BUILD, REPO_ROOT, clean_environment, install_the_skill, run
 from repo_checks import install_path as ip
 from repo_checks.checks_service import installer_for
 from repo_checks.expect import contains, equal, failing, passing, truth
@@ -41,6 +41,8 @@ from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager, descriptor, host
 from repo_checks.shell import run as shell_run
 from repo_checks.shell import start
+
+pytestmark = DEBUG_BUILD
 
 #: The manager whose pair the installer under test belongs to.
 MANAGER = ServiceManager.WINDOWS_SERVICE

@@ -59,7 +59,8 @@ def test_a_check_recipe_omitting_a_declared_tier_is_refused(
 ) -> None:
     """A gate that skips the end-to-end tier is a gate that proves less than it says."""
     broken = tree()
-    broken.edit("justfile", "    just test-e2e {{quote(tier)}}\n", "")
+    broken.edit("justfile", "    just test-e2e {{quote(tier)}} & e2e=$!; \\\n", "")
+    broken.edit("justfile", "    just test-e2e {{quote(tier)}} || status=$?; \\\n", "")
 
     findings = recipe_set(broken.repo)
 
