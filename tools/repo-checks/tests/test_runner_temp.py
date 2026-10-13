@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -39,6 +40,24 @@ def test_exact_powershell_permissions_match_the_real_recipe(action: str) -> None
 def physical_tmp_path(tmp_path: Path) -> Path:
     """Supply a real physical directory even on hosts whose system temp has aliases."""
     return tmp_path.resolve()
+
+
+def test_missing_powershell_names_how_to_restore_the_recipe(tmp_path: Path) -> None:
+    """The real recipe refuses a PATH with no PowerShell before changing temp."""
+    just = shutil.which("just")
+    bash = shutil.which("bash")
+    if just is None or bash is None:
+        raise AssertionError("Install just and bash to drive the real recipe")
+    empty_path = tmp_path / "no programs"
+    empty_path.mkdir()
+    environment = dict(os.environ, PATH=str(empty_path), PRINTOBSERVER_PLATFORM="windows-x86_64")
+    environment_file = tmp_path / "job-env"
+    environment["GITHUB_ENV"] = str(environment_file)
+    result = run([just, "--shell", bash, "runner-temp"], cwd=ROOT, env=environment, timeout=30)
+    failing(result, naming="install PowerShell Core or restore pwsh to PATH")
+    truth(
+        not environment_file.exists(), describing="no temp exports before the missing tool refusal"
+    )
 
 
 def _setup(tmp_path: Path, *, drive_present: bool) -> dict[str, str]:
@@ -400,9 +419,7 @@ def test_cleanup_keeps_scratch_when_post_job_temp_cannot_be_restored(
 def test_cleanup_permission_failures_name_the_recovery(tmp_path: Path, failure: str) -> None:
     """Real Unix refusal over a long path retains the contiguous recovery message."""
     if sys.platform == "win32":
-        pytest.skip(
-            "Unix permission induction; the native Windows ACL refusal is tested separately"
-        )
+        pytest.skip("Unix read/delete permission induction; Windows uses different ACL semantics")
     if os.geteuid() == 0:
         pytest.skip("root bypasses the permission refusal this journey induces")
     case_root = tmp_path / "permission failure in a long scratch directory"

@@ -94,8 +94,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just runner-temp
       - run: just bootstrap
-      - if: runner.os == 'Windows'
-        run: just host-lookup-measure
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just check "$(just gate-tier)"
       - if: always()

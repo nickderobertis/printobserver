@@ -37,11 +37,10 @@ bootstrap:
 runner-temp action="setup" drive="D:\\" fallback="":
     @: {{assert(drive == replace(replace(drive, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}{{assert(fallback == replace(replace(fallback, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}; \
     if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ]; then exit 0; fi; \
+    if ! command -v pwsh >/dev/null 2>&1; then \
+    echo 'pwsh is not on PATH; install PowerShell Core or restore pwsh to PATH, then retry just runner-temp.' >&2; exit 1; \
+    fi; \
     pwsh -NoProfile -File scripts/runner-temp.ps1 -Action {{quote(action)}} -DriveRoot {{quote(drive)}} {{if fallback == "" { "" } else { "-Fallback " + quote(fallback) }}}
-
-# Measure native lookup cost on an identical live-child workload.
-host-lookup-measure:
-    @bash -c 'export PYTHONPATH="tools/octoprint-env${PATH_SEPARATOR}$PYTHONPATH"; exec uv run -q python tools/octoprint-env/measure_host_lookup.py'
 
 # Install the tools `repo-policy.toml` declares, skipping any already on PATH
 # at the release it holds them at, and replacing any at another. A tool it
@@ -99,8 +98,7 @@ check tier="affected":
 
 # Whether `just check` starts the end-to-end tier beside the test tier: `true`
 # everywhere but Windows, for the reason the recipe above gives.
-# Measurement only: collect e2e even when a sibling test fails, on both sides.
-E2E_BESIDE_TESTS := "true"
+E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any
