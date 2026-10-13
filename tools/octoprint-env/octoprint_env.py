@@ -993,13 +993,15 @@ def command_of(pid: int) -> str:
     """The command line a running process was started with, as the host reports it.
 
     `ps` everywhere it exists; on Windows, the process table read through
-    PowerShell, whose answer quotes an argument carrying a space where `ps`
+    PowerShell Core, whose answer quotes an argument carrying a space where `ps`
     would not, so the quotes are dropped to leave the words alone.
     """
     if sys.platform == "win32":
-        powershell = shutil.which("powershell")
+        powershell = shutil.which("pwsh")
         if powershell is None:
-            message = "powershell is not on PATH; it identifies the recorded process"
+            message = (
+                "pwsh is not on PATH; install PowerShell Core to identify the recorded process"
+            )
             raise FileNotFoundError(message)
         query = f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}').CommandLine"
         reported = _run([powershell, "-NoProfile", "-Command", query], timeout=30).stdout
