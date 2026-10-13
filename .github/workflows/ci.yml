@@ -92,6 +92,7 @@ jobs:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
       - run: just bootstrap
       - if: runner.os == 'Windows'
         run: just host-lookup-measure
@@ -141,6 +142,7 @@ jobs:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
       - run: just bootstrap
       - run: just octoprint-up
       - run: just test-integration
