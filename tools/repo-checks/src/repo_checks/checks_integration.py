@@ -345,13 +345,15 @@ def _activity_type_findings(triggers: dict[str, Any], file_name: str, where: str
 
 
 def _step_condition_findings(repo: Repo, job: dict[str, Any], where: str) -> list[str]:
-    """No step is conditional, save the bring-down, which runs whatever happened."""
+    """Only printer teardown and always-running owned scratch cleanup may be conditional."""
     bring_down = f"just {repo.policy['integration']['bring_down']}"
     findings: list[str] = []
     for step in steps_of(job):
         condition = step.get("if")
         run_line = str(step.get("run", "")).strip()
         if condition is None or run_line == bring_down:
+            continue
+        if run_line == "just runner-temp cleanup" and condition == "always()":
             continue
         findings.append(
             f"{where} runs `{run_line or step.get('uses')}` under the condition "
