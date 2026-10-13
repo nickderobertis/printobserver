@@ -133,11 +133,9 @@ fn a_real_observation_writes_only_to_an_enabled_writable_sink() {
                     .collect();
                 #[cfg(windows)]
                 let expected = [
-                    "traced:etw-lock-wait",
-                    "traced:etw-logman-start",
-                    "traced:etw-logman-stop",
-                    "traced:etw-tracerpt",
-                    "traced:etw-decode",
+                    "traced:etw-native-observation",
+                    "traced:etw-native-start",
+                    "traced:etw-native-flush-rotate-decode",
                     "traced:invocation-run",
                 ];
                 #[cfg(target_os = "macos")]
