@@ -11,7 +11,7 @@
 //! renderings agree when it succeeds and diverge when the policy refuses it
 //! satisfies a one-path reading and misses the point.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use printobserver_server::{Answer, OPERATIONS};
 use printobserver_types::serde_json::{self, Value};
@@ -78,9 +78,46 @@ pub fn both_ways(
     answer: Answer,
     from: Option<crate::machine::Reports>,
 ) {
-    let machine = run(world, arguments, true, from);
-    let plain = run(world, arguments, false, from);
-    the_two_renderings_agree(&machine, &plain, operation, answer);
+    let mut differed: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    loop {
+        let machine = run(world, arguments, true, from);
+        let plain = run(world, arguments, false, from);
+        // History can grow between reads: `world.wants` may restart the print between them.
+        if operation.name == "history" {
+            let named = (
+                event_ids(&answered(&machine, true)),
+                event_ids(&labelled(&plain.out)),
+            );
+            if named.0 != named.1 {
+                differed.push(named);
+                assert!(
+                    differed.len() < HISTORY_ATTEMPTS,
+                    "{arguments:?} named different events in its two renderings on all \
+                     {HISTORY_ATTEMPTS} attempts, as (machine-readable, labelled) ids: \
+                     {differed:#?}"
+                );
+                continue;
+            }
+        }
+        the_two_renderings_agree(&machine, &plain, operation, answer);
+        return;
+    }
+}
+
+/// How many pairs of `history` reads may be taken to find two of one window.
+const HISTORY_ATTEMPTS: usize = 5;
+
+/// The ids of the events an answer carries, in the order it carries them.
+fn event_ids(fields: &BTreeMap<String, String>) -> Vec<String> {
+    let mut ids: Vec<(usize, String)> = fields
+        .iter()
+        .filter_map(|(at, value)| {
+            let index = at.strip_prefix("events.")?.strip_suffix(".id")?;
+            Some((index.parse().ok()?, value.clone()))
+        })
+        .collect();
+    ids.sort();
+    ids.into_iter().map(|(_, id)| id).collect()
 }
 
 /// Two runs of one invocation, held to everything both renderings are held to.
