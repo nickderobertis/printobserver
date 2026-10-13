@@ -54,9 +54,7 @@ pub fn run(
         // controller before rethrowing while the lock is still held. No caller
         // can resume observing through its partially mutated native state.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let session = session.get_or_insert_with(|| {
-                super::spike::timed("traced:etw-native-start", Session::start)
-            });
+            let session = session.get_or_insert_with(Session::start);
             let (pending, connected) = session.observe(program, arguments, environment);
             (pending, connected, session.identity.clone())
         }));
@@ -104,7 +102,7 @@ struct Session {
     /// One complete JSON response per synchronous controller operation.
     responses: BufReader<ChildStdout>,
     /// Keeps all worker sources and rotating files alive until shutdown.
-    scratch: TempDir,
+    _scratch: TempDir,
 }
 
 impl Session {
@@ -143,7 +141,7 @@ impl Session {
             failed: false,
             requests: Some(requests),
             responses,
-            scratch,
+            _scratch: scratch,
         };
         let ready = session.response("ready");
         // llmlint: ignore-block[changed_behavior_has_e2e] The real worker serializes its controller Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native controller identities.
@@ -243,9 +241,7 @@ impl Session {
         arguments: &[String],
         environment: &[(String, String)],
     ) -> (PendingOutput, BTreeSet<SocketAddr>) {
-        super::spike::timed("traced:etw-native-prepare", || {
-            self.request(&json!({ "kind": "prepare" }), "prepared");
-        });
+        self.request(&json!({ "kind": "prepare" }), "prepared");
         let mut process = Command::new(program);
         process
             .args(arguments)
@@ -257,7 +253,6 @@ impl Session {
         for (name, value) in environment {
             process.env(name, value);
         }
-        let started = std::time::Instant::now();
         let mut child = process
             .spawn()
             .unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
@@ -269,25 +264,7 @@ impl Session {
         let err = drain(child.stderr.take().expect("invocation stderr"));
         let status = child.wait().expect("traced invocation exit");
         drop(child);
-        super::spike::note("traced:invocation-run", started);
-        let evidence = super::spike::timed("traced:etw-native-flush-rotate-decode", || {
-            self.request(&json!({ "kind": "finish", "root": root }), "completed")
-        });
-        let rebuild_seconds: f64 =
-            std::fs::read_to_string(self.scratch.path().join("rebuild-seconds"))
-                .expect("native rebuild timing")
-                .parse()
-                .expect("native rebuild seconds");
-        super::spike::note(
-            "traced:etw-native-rebuild",
-            std::time::Instant::now()
-                .checked_sub(
-                    std::time::Duration::try_from_secs_f64(rebuild_seconds).expect(
-                        "native rebuild time must be finite, nonnegative and representable",
-                    ),
-                )
-                .expect("native rebuild time fits the observation clock"),
-        );
+        let evidence = self.request(&json!({ "kind": "finish", "root": root }), "completed");
         // llmlint: ignore-block[changed_behavior_has_e2e] The real worker validates this array against the golden and emits only native IPEndPoint strings. Invalid element types or socket syntax require substituting the tracer serializer, forbidden here. Real IPv4/IPv6 accepted and refused sockets exercise this boundary.
         let connected: BTreeSet<SocketAddr> = evidence["endpoints"]
             .as_array()

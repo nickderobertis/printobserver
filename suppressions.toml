@@ -1325,8 +1325,8 @@ reason = "The interface that fires this workflow is GitHub's `workflow_dispatch`
 [[suppression]]
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/ci.yml"
-site = 'run: just check all'
-reason = "Temporary measurement configuration explicitly authorized by client-journey-windows-cost's Additional info: this draft's baseline and implementation runs must select identical projects and targets, rather than let the affected selection vary with their diffs. This full sweep retains every required job and assertion. Restore the original gate-tier command and its original suppression entry after the last paired measurement, before settlement."
+site = 'run: just check "$(just gate-tier)"'
+reason = "A push to `main` runs the affected tier, never the sweep by name: `just gate-tier` answers `all` only for the release pull request. What can make a push sweep everything is the affected tier failing closed over a file no project owns, which AGENTS.md records as the rule, because the graph cannot trace such a file to the suites that read it. The merge of the release pull request is such a push, since it rewrites root manifests. Skipping the gate there would mean taking a verdict another run reached on another commit: a pull-request head that can move after it passed, and which the push event does not name. Proving that two trees match would need the forge's record of that pull request, which no gate step reads. The cost is at most one sweep per release, and only when `main` did not move under the release pull request; when it did, the merged tree is new and this is its first sweep."
 
 [[suppression]]
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
@@ -2465,12 +2465,6 @@ rule = "tests_assert_real_behavior"
 file = "crates/printobserver/tests/support/traced.rs"
 site = "fn connector()"
 reason = "The libtest registration is the actual subprocess socket fixture selected with --exact, not an independent behavioral claim. The owning regression asserts its exit status and the OS tracer's complete endpoint attribution for it and its descendants."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = ".github/workflows/ci.yml"
-site = "uses: actions/upload-artifact@v4"
-reason = "Temporary artifact collection is measurement-only workflow configuration explicitly authorized by this task; the draft run is the real forge boundary proof and both steps are removed before settlement."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"

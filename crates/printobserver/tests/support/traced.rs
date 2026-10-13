@@ -34,10 +34,11 @@
 //! it opens a connection is its own transport. A run whose own process did not
 //! record the load is refused rather than read as one that did nothing.
 //!
-//! **Windows** shares one native kernel ETW controller across each test process.
-//! Before returning, it flushes and switches the log file, then synchronously
-//! decodes the closed chunk with `ProcessTrace`. Process start/end lifetimes
-//! determine ancestry; TCP request events include unsuccessful attempts. Lost
+//! **Windows** keeps one native ETW helper per test process, leasing the host
+//! kernel logger per invocation. Before returning, it flushes, rotates and
+//! stops the log, synchronously decoding closed chunks with `ProcessTrace`.
+//! Combined timestamp order reconstructs process lifetimes and ancestry; TCP
+//! request events include unsuccessful attempts. Lost
 //! buffers, missing lifetimes and incomplete decoding are refused. A host-wide
 //! named mutex is independent of TEMP routing, and the controller recovers its
 //! reserved logger after a crashed worker. The test-only C# bridge is compiled
@@ -53,9 +54,6 @@
 #[path = "interposer.rs"]
 pub mod interposer;
 
-#[path = "spike.rs"]
-mod spike;
-
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -63,12 +61,6 @@ use std::path::Path;
 use std::process::{Command, Output};
 #[cfg(not(any(target_os = "macos", windows)))]
 use std::sync::atomic::{AtomicU64, Ordering};
-
-/// What the spike's timing sink calls one observed invocation here.
-#[cfg(not(any(target_os = "macos", windows)))]
-const OBSERVED_KIND: &str = "traced:strace-run";
-#[cfg(target_os = "macos")]
-const OBSERVED_KIND: &str = "traced:interposed-run";
 
 /// The tracer this tier reads a process tree's connections out of.
 #[cfg(not(any(target_os = "macos", windows)))]
@@ -148,9 +140,7 @@ pub fn traced(
     scratch: &Path,
 ) -> Ran {
     let environment = &with_its_own_config_home(environment, scratch);
-    let (output, recorded) = spike::timed(OBSERVED_KIND, || {
-        observed(program, arguments, environment, scratch)
-    });
+    let (output, recorded) = observed(program, arguments, environment, scratch);
     Ran {
         code: output.status.code(),
         out: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -300,9 +290,7 @@ pub fn traced(
         .unwrap_or_else(|error| panic!("{} could not be written: {error}", scratch.display()));
     probe.close().expect("trace scratch probe removal");
     let environment = with_its_own_config_home(environment, scratch);
-    let (output, connected) = spike::timed("traced:etw-native-observation", || {
-        windows_trace::run(program, arguments, &environment)
-    });
+    let (output, connected) = windows_trace::run(program, arguments, &environment);
     Ran {
         code: output.status.code(),
         out: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -574,19 +562,6 @@ mod regression {
     // llmlint: ignore[tests_assert_real_behavior] This libtest entry is the real subprocess socket fixture, selected by its parent through --exact. The owning regression asserts its exit status and every endpoint the actual OS tracer attributes to it and its descendants; an unselected fixture makes no test claim.
     #[test]
     fn connector() {
-        if std::env::var("PRINTOBSERVER_SPIKE_WRITER").as_deref() == Ok("yes") {
-            use std::io::Read as _;
-            println!("writer ready");
-            let mut release = [0];
-            std::io::stdin()
-                .read_exact(&mut release)
-                .expect("writer barrier");
-            assert_eq!(release, [b'Y']);
-            for _ in 0..1024 {
-                super::spike::note("traced:shared-sink", std::time::Instant::now());
-            }
-            return;
-        }
         let Ok(address) = std::env::var("PRINTOBSERVER_TRACE_CONNECT") else {
             return;
         };
@@ -663,20 +638,11 @@ mod regression {
         }
     }
 
-    /// Contains every character the timing sink must escape; it is also the
-    /// actual thread on which the socket walk and native observation run.
-    pub const OBSERVING_THREAD: &str = "trace \"\\\n\t\u{1}";
-
     /// Accepted and refused attempts belong to this invocation's lifetime and
     /// ancestry; adjacent invocations and simultaneous host traffic do not.
     #[test]
     fn each_invocation_observes_its_descendants_and_refused_attempts_only() {
-        std::thread::Builder::new()
-            .name(OBSERVING_THREAD.to_owned())
-            .spawn(exercise)
-            .expect("observing thread")
-            .join()
-            .unwrap_or_else(|error| std::panic::resume_unwind(error));
+        exercise();
     }
 
     /// The real observer process holds its session while a scoped worker traces.
@@ -740,7 +706,6 @@ mod regression {
                 format!("{accepted},{refused}"),
             )
             .env("PRINTOBSERVER_TRACE_RECOVER", "yes")
-            .env_remove("PRINTOBSERVER_SPIKE_TIMINGS")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -800,7 +765,6 @@ mod regression {
                 "PRINTOBSERVER_TRACE_CONNECT",
                 format!("{accepted},{refused}"),
             )
-            .env_remove("PRINTOBSERVER_SPIKE_TIMINGS")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -848,7 +812,6 @@ mod regression {
                 format!("{accepted},{refused}"),
             )
             .env("PRINTOBSERVER_TRACE_RECOVER", "yes")
-            .env_remove("PRINTOBSERVER_SPIKE_TIMINGS")
             .output()
             .expect("real process-exit recovery");
         assert!(
