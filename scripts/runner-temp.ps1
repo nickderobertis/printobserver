@@ -11,6 +11,17 @@ function Assert-LinePath([string]$Path) {
     if ($Path -match '[\r\n]') { throw 'Paths must contain no line breaks. Supply a single-line path.' }
 }
 
+function Assert-UnlinkedDirectory([string]$Path) {
+    $directory = [System.IO.DirectoryInfo]::new($Path)
+    while ($null -ne $directory) {
+        if ($directory.Exists -and
+            ($directory.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw "Choose a physical temp directory without symlinks or junctions: $($directory.FullName)"
+        }
+        $directory = $directory.Parent
+    }
+}
+
 function Assert-WritableTemp([string]$Directory) {
     $probe = Join-Path $Directory ([guid]::NewGuid().ToString('N') + '.probe')
     $probeCreated = $false
@@ -53,6 +64,8 @@ try {
         $restored = $env:PRINTOBSERVER_JOB_TEMP_FALLBACK
         Assert-LinePath $restored
         $restored = [System.IO.Path]::GetFullPath($restored)
+        Assert-UnlinkedDirectory $scratch
+        Assert-UnlinkedDirectory $restored
         $relative = [System.IO.Path]::GetRelativePath($scratch, $restored)
         $separator = [System.IO.Path]::DirectorySeparatorChar
         if ($relative -eq '.' -or
@@ -71,6 +84,8 @@ try {
     foreach ($path in @($DriveRoot, $Fallback, $env:GITHUB_ENV)) { Assert-LinePath $path }
     $DriveRoot = [System.IO.Path]::GetFullPath($DriveRoot)
     $Fallback = [System.IO.Path]::GetFullPath($Fallback)
+    Assert-UnlinkedDirectory $DriveRoot
+    Assert-UnlinkedDirectory $Fallback
     $scratch = ''
     $owner = ''
     $routing = 'existing temp; scratch drive is absent'

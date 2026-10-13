@@ -20,6 +20,12 @@ with tempfile.NamedTemporaryFile() as opened:
 """
 
 
+@pytest.fixture(name="tmp_path")
+def physical_tmp_path(tmp_path: Path) -> Path:
+    """Supply a real physical directory even on hosts whose system temp has aliases."""
+    return tmp_path.resolve()
+
+
 def _setup(tmp_path: Path, *, drive_present: bool) -> dict[str, str]:
     """Run the recipe before importing tempfile in a fresh child."""
     drive = tmp_path / "scratch drive"
@@ -97,16 +103,20 @@ def test_cleanup_refuses_a_foreign_jobs_directory(
     truth(retained.is_file(), describing="the foreign directory contents to survive")
 
 
-def test_windows_arm_keeps_its_existing_temp(tmp_path: Path) -> None:
+@pytest.mark.parametrize("platform", ["windows-aarch64", ""])
+def test_windows_arm_and_manual_dispatch_keep_existing_temp(tmp_path: Path, platform: str) -> None:
     """Only x86 opts in, even if another host has a writable scratch drive."""
     environment_file = tmp_path / "job-env"
     environment = dict(
         os.environ,
-        PRINTOBSERVER_PLATFORM="windows-aarch64",
+        PRINTOBSERVER_PLATFORM=platform,
         GITHUB_ENV=str(environment_file),
     )
     passing(run(["just", "runner-temp", "setup", str(tmp_path)], cwd=ROOT, env=environment))
-    truth(not environment_file.exists(), describing="ARM's environment to remain usable unchanged")
+    truth(
+        not environment_file.exists(),
+        describing="the existing environment to remain usable unchanged",
+    )
     equal(list(tmp_path.iterdir()), [])
 
 
@@ -479,3 +489,41 @@ def test_cleanup_refuses_to_restore_temp_inside_the_scratch_it_will_delete(
         if scratch.exists():
             environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(tmp_path / "existing temp")
             passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment))
+
+
+@pytest.mark.parametrize("through_parent", [False, True])
+def test_cleanup_refuses_an_outside_link_that_resolves_into_scratch(
+    tmp_path: Path, through_parent: bool
+) -> None:
+    """A real symlink/junction's spelling cannot hide its deleted fallback target."""
+    environment = _setup(tmp_path, drive_present=True)
+    scratch = Path(environment["PRINTOBSERVER_JOB_SCRATCH"])
+    target = scratch / "child"
+    target.mkdir()
+    alias = tmp_path / "outside alias"
+    if sys.platform == "win32":
+        link_script = tmp_path / "link.ps1"
+        link_script.write_text(
+            "param($Link, $Target)\n"
+            "$ErrorActionPreference = 'Stop'\n"
+            "New-Item -ItemType Junction -Path $Link -Target $Target | Out-Null\n",
+            encoding="utf-8",
+        )
+        passing(run(["pwsh", "-NoProfile", "-File", str(link_script), str(alias), str(scratch)]))
+    else:
+        alias.symlink_to(scratch, target_is_directory=True)
+    environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(
+        alias / "child" if through_parent else alias
+    )
+    try:
+        result = run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment)
+        failing(result, naming="Choose a physical temp directory without symlinks or junctions")
+        truth(scratch.is_dir(), describing="the live scratch to remain usable after refusal")
+    finally:
+        environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(tmp_path / "existing temp")
+        if scratch.exists():
+            passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment))
+        if sys.platform == "win32":
+            alias.rmdir()
+        else:
+            alias.unlink()
