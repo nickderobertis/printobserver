@@ -491,6 +491,21 @@ def test_cleanup_refuses_to_restore_temp_inside_the_scratch_it_will_delete(
             passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment))
 
 
+def _directory_link(tmp_path: Path, alias: Path, target: Path) -> None:
+    """Create a real host directory link, using a junction on Windows."""
+    if sys.platform == "win32":
+        link_script = tmp_path / "link.ps1"
+        link_script.write_text(
+            "param($Link, $Target)\n"
+            "$ErrorActionPreference = 'Stop'\n"
+            "New-Item -ItemType Junction -Path $Link -Target $Target | Out-Null\n",
+            encoding="utf-8",
+        )
+        passing(run(["pwsh", "-NoProfile", "-File", str(link_script), str(alias), str(target)]))
+    else:
+        alias.symlink_to(target, target_is_directory=True)
+
+
 @pytest.mark.parametrize("through_parent", [False, True])
 def test_cleanup_refuses_an_outside_link_that_resolves_into_scratch(
     tmp_path: Path, through_parent: bool
@@ -501,17 +516,7 @@ def test_cleanup_refuses_an_outside_link_that_resolves_into_scratch(
     target = scratch / "child"
     target.mkdir()
     alias = tmp_path / "outside alias"
-    if sys.platform == "win32":
-        link_script = tmp_path / "link.ps1"
-        link_script.write_text(
-            "param($Link, $Target)\n"
-            "$ErrorActionPreference = 'Stop'\n"
-            "New-Item -ItemType Junction -Path $Link -Target $Target | Out-Null\n",
-            encoding="utf-8",
-        )
-        passing(run(["pwsh", "-NoProfile", "-File", str(link_script), str(alias), str(scratch)]))
-    else:
-        alias.symlink_to(scratch, target_is_directory=True)
+    _directory_link(tmp_path, alias, scratch)
     environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(
         alias / "child" if through_parent else alias
     )
@@ -527,3 +532,58 @@ def test_cleanup_refuses_an_outside_link_that_resolves_into_scratch(
             alias.rmdir()
         else:
             alias.unlink()
+
+
+@pytest.mark.parametrize("selected", ["drive", "fallback"])
+@pytest.mark.parametrize("through_parent", [False, True])
+def test_setup_refuses_linked_temp_paths(
+    tmp_path: Path, selected: str, through_parent: bool
+) -> None:
+    """A linked drive or fallback cannot receive a new job directory or export."""
+    target = tmp_path / "physical"
+    target.mkdir()
+    (target / "child").mkdir()
+    alias = tmp_path / "alias"
+    _directory_link(tmp_path, alias, target)
+    linked = alias / "child" if through_parent else alias
+    environment = dict(os.environ, PRINTOBSERVER_PLATFORM="windows-x86_64")
+    export = tmp_path / "exports"
+    environment["GITHUB_ENV"] = str(export)
+    try:
+        result = run(
+            [
+                "just",
+                "runner-temp",
+                "setup",
+                str(linked if selected == "drive" else target),
+                str(linked if selected == "fallback" else target),
+            ],
+            cwd=ROOT,
+            env=environment,
+        )
+        failing(result, naming="Choose a physical temp directory without symlinks or junctions")
+        truth(not export.exists(), describing="no unusable temp exported")
+        equal(sorted(p.name for p in target.iterdir()), ["child"], describing="no scratch created")
+    finally:
+        alias.rmdir() if sys.platform == "win32" else alias.unlink()
+
+
+@pytest.mark.parametrize("through_parent", [False, True])
+def test_cleanup_refuses_linked_scratch(tmp_path: Path, through_parent: bool) -> None:
+    """A matching ownership marker cannot authorize deleting through a link."""
+    environment = _setup(tmp_path, drive_present=True)
+    scratch = Path(environment["PRINTOBSERVER_JOB_SCRATCH"])
+    alias = tmp_path / ("alias" if through_parent else scratch.name)
+    _directory_link(tmp_path, alias, scratch.parent if through_parent else scratch)
+    environment["PRINTOBSERVER_JOB_SCRATCH"] = str(
+        alias / scratch.name if through_parent else alias
+    )
+    try:
+        result = run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment)
+        failing(result, naming="Choose a physical temp directory without symlinks or junctions")
+        truth(scratch.is_dir(), describing="the physical job directory to survive refusal")
+    finally:
+        environment["PRINTOBSERVER_JOB_SCRATCH"] = str(scratch)
+        if scratch.exists():
+            passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment))
+        alias.rmdir() if sys.platform == "win32" else alias.unlink()

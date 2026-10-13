@@ -1,4 +1,4 @@
-"""Temporary adapter for 00c5e84's five-call current-method lookup measurement."""
+"""Measure native process lookup latency while checking complete command identity."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import statistics
+import subprocess
 import sys
 import time
 
@@ -21,6 +22,7 @@ def main() -> None:
     argv = [sys.executable, "-c", "import sys; sys.stdin.read()", MARKER]
     child = start(argv)
     seconds: list[float] = []
+    print(f"HOST_LOOKUP_CHILD {child.pid}", flush=True)
     try:
         for _ in range(ROUNDS):
             started = time.perf_counter()
@@ -48,4 +50,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+        print(
+            f"Lookup measurement failed: {error}. "
+            "Verify the native process query tool is on PATH and accessible, "
+            "then retry just host-lookup-measure.",
+            file=sys.stderr,
+        )
+        sys.exit(1)

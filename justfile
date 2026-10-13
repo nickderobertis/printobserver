@@ -36,9 +36,9 @@ bootstrap:
 runner-temp action="setup" drive="D:\\" fallback="":
     @pwsh -NoProfile -File scripts/runner-temp.ps1 -Action {{quote(action)}} -DriveRoot {{quote(drive)}} {{if fallback == "" { "" } else { "-Fallback " + quote(fallback) }}}
 
-# Temporary five-call lookup measurement, using the spike's current-method loop.
+# Measure native lookup cost on an identical live-child workload.
 host-lookup-measure:
-    @bash -c 'export PYTHONPATH="tools/octoprint-env${PATH_SEPARATOR}$PYTHONPATH"; exec uv run -q python scripts/measure-host-lookup.py'
+    @bash -c 'export PYTHONPATH="tools/octoprint-env${PATH_SEPARATOR}$PYTHONPATH"; exec uv run -q python tools/octoprint-env/measure_host_lookup.py'
 
 # Install the tools `repo-policy.toml` declares, skipping any already on PATH
 # at the release it holds them at, and replacing any at another. A tool it
