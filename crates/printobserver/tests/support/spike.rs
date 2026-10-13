@@ -135,6 +135,8 @@ fn a_real_observation_writes_only_to_an_enabled_writable_sink() {
                 let expected = [
                     "traced:etw-native-observation",
                     "traced:etw-native-start",
+                    "traced:etw-native-prepare",
+                    "traced:etw-native-rebuild",
                     "traced:etw-native-flush-rotate-decode",
                     "traced:invocation-run",
                 ];

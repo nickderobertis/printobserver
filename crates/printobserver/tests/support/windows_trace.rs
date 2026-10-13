@@ -104,7 +104,7 @@ struct Session {
     /// One complete JSON response per synchronous controller operation.
     responses: BufReader<ChildStdout>,
     /// Keeps all worker sources and rotating files alive until shutdown.
-    _scratch: TempDir,
+    scratch: TempDir,
 }
 
 impl Session {
@@ -143,7 +143,7 @@ impl Session {
             failed: false,
             requests: Some(requests),
             responses,
-            _scratch: scratch,
+            scratch,
         };
         let ready = session.response("ready");
         // llmlint: ignore-block[changed_behavior_has_e2e] The real worker serializes its controller Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native controller identities.
@@ -273,6 +273,21 @@ impl Session {
         let evidence = super::spike::timed("traced:etw-native-flush-rotate-decode", || {
             self.request(&json!({ "kind": "finish", "root": root }), "completed")
         });
+        let rebuild_seconds: f64 =
+            std::fs::read_to_string(self.scratch.path().join("rebuild-seconds"))
+                .expect("native rebuild timing")
+                .parse()
+                .expect("native rebuild seconds");
+        super::spike::note(
+            "traced:etw-native-rebuild",
+            std::time::Instant::now()
+                .checked_sub(
+                    std::time::Duration::try_from_secs_f64(rebuild_seconds).expect(
+                        "native rebuild time must be finite, nonnegative and representable",
+                    ),
+                )
+                .expect("native rebuild time fits the observation clock"),
+        );
         // llmlint: ignore-block[changed_behavior_has_e2e] The real worker validates this array against the golden and emits only native IPEndPoint strings. Invalid element types or socket syntax require substituting the tracer serializer, forbidden here. Real IPv4/IPv6 accepted and refused sockets exercise this boundary.
         let connected: BTreeSet<SocketAddr> = evidence["endpoints"]
             .as_array()

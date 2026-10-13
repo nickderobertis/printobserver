@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -20,6 +21,8 @@ public sealed class PrintobserverTrace : IDisposable
     readonly string directory;
     readonly Dictionary<uint, Lifetime> alive = new Dictionary<uint, Lifetime>();
     readonly HashSet<string> endpoints = new HashSet<string>();
+    readonly List<Observation> observed = new List<Observation>();
+    double rebuildSeconds;
     ulong controller;
     int chunk;
     bool held, disposed, rootSeen, rootEnded;
@@ -230,6 +233,7 @@ public sealed class PrintobserverTrace : IDisposable
     }
     public long Prepare() {
         StartInvocation();
+        observed.Clear(); rebuildSeconds = 0;
         alive.Clear();
         endpoints.Clear(); rootSeen = false; rootEnded = false; root = 0;
         invocation = 0;
@@ -312,6 +316,16 @@ public sealed class PrintobserverTrace : IDisposable
             if (alive.TryGetValue(eventData.Pid, out lifetime) && invocation != 0 && lifetime.Root == invocation) endpoints.Add(eventData.Address);
         }
     }
+    // ETW's per-CPU buffers can arrive out of timestamp order across files.
+    // Reconstruct from the entire invocation, so an ended/reused PID cannot
+    // hide a delayed endpoint or sever a descendant's ancestry.
+    void Rebuild() {
+        var started = Stopwatch.StartNew();
+        alive.Clear(); endpoints.Clear(); rootSeen = false; rootEnded = false;
+        sequence = 0; invocation = 0;
+        foreach (var item in observed.OrderBy(item => item.Time)) Consume(item);
+        rebuildSeconds += started.Elapsed.TotalSeconds;
+    }
     void DecodeAndDeleteChunk(string path) {
         var records = new List<Observation>();
         decodingError = null;
@@ -336,7 +350,8 @@ public sealed class PrintobserverTrace : IDisposable
             if (file.Header.EndTime == 0) throw new IOException("ETL chunk was not closed by rotation");
             Require(ProcessTrace(new ulong[] { reader }, 1, IntPtr.Zero, IntPtr.Zero), "ProcessTrace closed chunk");
             if (decodingError != null) throw new IOException("ETW decode incomplete", decodingError);
-            foreach (var item in records.OrderBy(item => item.Time)) Consume(item);
+            observed.AddRange(records);
+            Rebuild();
         } finally {
             if (reader != ulong.MaxValue) Require(CloseTrace(reader), "CloseTrace");
             Marshal.FreeHGlobal(name);
@@ -375,6 +390,9 @@ public sealed class PrintobserverTrace : IDisposable
         } while (!rootSeen || !rootEnded || alive.Values.Any(item => item.Root == invocation));
         StopInvocation();
         DecodeAndDeleteChunk(PathFor(chunk++));
+        if (!rootSeen || !rootEnded || alive.Values.Any(item => item.Root == invocation))
+            throw new IOException("incomplete process tree after stopped tail");
+        File.WriteAllText(Path.Combine(directory, "rebuild-seconds"), rebuildSeconds.ToString("R", CultureInfo.InvariantCulture));
         return endpoints.OrderBy(item => item).ToArray();
     }
     void StopInvocation() {
