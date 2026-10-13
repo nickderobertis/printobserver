@@ -54,6 +54,9 @@
 #[path = "interposer.rs"]
 pub mod interposer;
 
+#[path = "spike.rs"]
+mod spike;
+
 use std::collections::BTreeSet;
 #[cfg(windows)]
 use std::fs::{File, OpenOptions};
@@ -176,7 +179,7 @@ pub fn traced(
     scratch: &Path,
 ) -> Ran {
     let environment = &with_its_own_config_home(environment, scratch);
-    let (output, recorded) = crate::spike::timed(OBSERVED_KIND, || {
+    let (output, recorded) = spike::timed(OBSERVED_KIND, || {
         observed(program, arguments, environment, scratch)
     });
     Ran {
@@ -330,7 +333,7 @@ pub fn traced(
     // Nextest runs each journey in its own process. The static mutex orders
     // callers inside one process; this operating-system lock orders those
     // processes around Windows' one kernel logger.
-    let _host_trace = crate::spike::timed("traced:etw-lock-wait", kernel_trace_lock);
+    let _host_trace = spike::timed("traced:etw-lock-wait", kernel_trace_lock);
 
     let invocation = format!(
         "{}-{}",
@@ -368,7 +371,7 @@ pub fn traced(
             "256".as_ref(),
         ],
     );
-    crate::spike::note("traced:etw-logman-start", starting);
+    spike::note("traced:etw-logman-start", starting);
     let mut process = Command::new(program);
     process
         .args(arguments)
@@ -386,10 +389,10 @@ pub fn traced(
         let root = child.id();
         child.wait_with_output().map(|output| (root, output))
     });
-    crate::spike::note("traced:invocation-run", running);
+    spike::note("traced:invocation-run", running);
     // Stopped whatever the invocation did, so a program that could not be
     // started leaves no session behind to fill the host's limit of them.
-    crate::spike::timed("traced:etw-logman-stop", || {
+    spike::timed("traced:etw-logman-stop", || {
         etw::tool(
             "logman",
             &[
@@ -401,7 +404,7 @@ pub fn traced(
     });
     let (root, output) =
         output.unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
-    crate::spike::timed("traced:etw-tracerpt", || {
+    spike::timed("traced:etw-tracerpt", || {
         etw::tool(
             "tracerpt",
             &[
@@ -420,7 +423,7 @@ pub fn traced(
             panic!("`tracerpt` wrote nothing to {}: {error}", dump.display())
         }));
     let connected = etw::connections_of(&decoded, root);
-    crate::spike::note("traced:etw-decode", parsing);
+    spike::note("traced:etw-decode", parsing);
     for written in [&etl, &dump] {
         let _ = std::fs::remove_file(written);
     }
@@ -1078,10 +1081,24 @@ mod regression {
         }
     }
 
+    /// Contains every character the timing sink must escape; it is also the
+    /// actual thread on which the socket walk and native observation run.
+    pub const OBSERVING_THREAD: &str = "trace \"\\\n\t\u{1}";
+
     /// Accepted and refused attempts belong to this invocation's lifetime and
     /// ancestry; adjacent invocations and simultaneous host traffic do not.
     #[test]
     fn each_invocation_observes_its_descendants_and_refused_attempts_only() {
+        std::thread::Builder::new()
+            .name(OBSERVING_THREAD.to_owned())
+            .spawn(exercise)
+            .expect("observing thread")
+            .join()
+            .unwrap_or_else(|error| std::panic::resume_unwind(error));
+    }
+
+    /// The real subprocess/socket workload, on the caller's named thread.
+    fn exercise() {
         let scratch = tempfile::TempDir::new().expect("trace scratch");
         let listener = TcpListener::bind("127.0.0.1:0").expect("accepted endpoint");
         let accepted = listener.local_addr().expect("listener endpoint");

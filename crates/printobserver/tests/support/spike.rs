@@ -4,10 +4,10 @@
 //! appends one JSON line to it: what kind of operation it was, how long it took,
 //! and which test process and thread took it. Unset, nothing is written and
 //! nothing about the tier changes: no assertion, deadline or order reads it.
-//! `tools/gate-spike/measure.py` sets the variable and folds the lines into its
-//! report; the line is the shape `tools/gate-spike/spike_names.py`'s
-//! `JourneyTiming` reads, and `tools/gate-spike/tests/test_records.py` holds the
-//! two together by running `the_spike_timing_sink_records_a_timed_operation`.
+//! The temporary workflow binds the sink and collects its records. The tests
+//! below drive the real traced socket walk, including JSON escaping through
+//! its actual thread name. All measurement instrumentation is removed after
+//! the draft's paired before/after runs.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -76,7 +76,19 @@ fn escaped(text: &str) -> String {
 #[test]
 fn the_measurement_jobs_bind_the_producers_sink() {
     let workflow = include_str!("../../../../.github/workflows/ci.yml");
-    assert_eq!(workflow.matches(&format!("{SINK}: ")).count(), 2);
+    let bound: Vec<&str> = workflow
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix(&format!("{SINK}: ")))
+        .collect();
+    assert_eq!(bound.len(), 2);
+    let uploaded: Vec<&str> = workflow
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("path: "))
+        .collect();
+    assert_eq!(
+        uploaded, bound,
+        "each artifact must collect its producer's sink"
+    );
 }
 
 /// The temporary measurement wiring observes a real socket/process walk,
@@ -115,7 +127,24 @@ fn a_real_observation_writes_only_to_an_enabled_writable_sink() {
                         printobserver_types::serde_json::from_str(line).expect("JSON timing record")
                     })
                     .collect();
-                assert!(records.len() >= 2, "{records:?}");
+                let phases: std::collections::BTreeSet<&str> = records
+                    .iter()
+                    .map(|record| record["kind"].as_str().expect("phase"))
+                    .collect();
+                #[cfg(windows)]
+                let expected = [
+                    "traced:etw-lock-wait",
+                    "traced:etw-logman-start",
+                    "traced:etw-logman-stop",
+                    "traced:etw-tracerpt",
+                    "traced:etw-decode",
+                    "traced:invocation-run",
+                ];
+                #[cfg(target_os = "macos")]
+                let expected = ["traced:interposed-run"];
+                #[cfg(not(any(windows, target_os = "macos")))]
+                let expected = ["traced:strace-run"];
+                assert_eq!(phases, expected.into_iter().collect());
                 for record in records {
                     assert!(
                         record["kind"]
@@ -125,6 +154,7 @@ fn a_real_observation_writes_only_to_an_enabled_writable_sink() {
                     );
                     assert!(record["ms"].as_f64().expect("duration") >= 0.0);
                     assert!(record["pid"].as_u64().expect("process") > 0);
+                    assert_eq!(record["thread"], super::regression::OBSERVING_THREAD);
                 }
             }
             Some(_) => {
