@@ -73,7 +73,7 @@ def test_children_use_scratch_or_usable_fallback_and_cleanup_keeps_unrelated_fil
 
 
 @pytest.mark.parametrize("has_another_jobs_marker", [False, True])
-def test_cleanup_refuses_a_directory_without_its_ownership_marker(
+def test_cleanup_refuses_a_foreign_jobs_directory(
     tmp_path: Path, has_another_jobs_marker: bool
 ) -> None:
     """A foreign path in the job environment is refused without removing it."""
@@ -102,3 +102,209 @@ def test_windows_arm_keeps_its_existing_temp(tmp_path: Path) -> None:
     passing(run(["just", "runner-temp", "setup", str(tmp_path)], cwd=ROOT, env=environment))
     truth(not environment_file.exists(), describing="ARM's environment to remain usable unchanged")
     equal(list(tmp_path.iterdir()), [])
+
+
+@pytest.mark.parametrize("defect", ["invalid-leaf", "missing-marker", "marker-content"])
+def test_cleanup_checks_the_recorded_owners_directory_marker(tmp_path: Path, defect: str) -> None:
+    """Matching the job token alone never authorizes a directory with invalid identity."""
+    environment = _setup(tmp_path, drive_present=False)
+    leaf = "wrong-leaf" if defect == "invalid-leaf" else "printobserver-" + "b" * 32
+    scratch = tmp_path / leaf
+    scratch.mkdir()
+    retained = scratch / "unrelated"
+    retained.write_text("keep", encoding="utf-8")
+    if defect != "missing-marker":
+        content = "another-owner" if defect == "marker-content" else leaf
+        (scratch / ".printobserver-owned").write_text(content, encoding="utf-8")
+    environment["PRINTOBSERVER_JOB_SCRATCH"] = str(scratch)
+    environment["PRINTOBSERVER_JOB_SCRATCH_OWNER"] = leaf
+    result = run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30)
+    failing(result, naming="Refusing cleanup of unowned scratch")
+    contains(result.stderr, "Clear the foreign PRINTOBSERVER_JOB_SCRATCH")
+    truth(retained.is_file(), describing="the invalid scratch contents to survive")
+
+
+def test_setup_requires_the_environment_file_for_later_children(tmp_path: Path) -> None:
+    """Refuse a setup that could not export its selection to subsequent steps."""
+    environment = dict(os.environ, PRINTOBSERVER_PLATFORM="windows-x86_64")
+    environment.pop("GITHUB_ENV", None)
+    result = run(["just", "runner-temp", "setup", str(tmp_path)], cwd=ROOT, env=environment)
+    failing(result, naming="Set GITHUB_ENV to a writable environment file")
+    equal(list(tmp_path.iterdir()), [])
+
+
+@pytest.mark.parametrize("field", ["drive", "fallback", "environment"])
+@pytest.mark.parametrize("line_break", ["\r", "\n"])
+def test_environment_paths_cannot_inject_a_second_export(
+    tmp_path: Path, field: str, line_break: str
+) -> None:
+    """Reject line delimiters before a path reaches the runner's environment file."""
+    paths = {
+        "drive": str(tmp_path / "drive"),
+        "fallback": str(tmp_path),
+        "environment": str(tmp_path / "job-env"),
+    }
+    paths[field] += line_break + "INJECTED=unsafe"
+    environment = dict(
+        os.environ,
+        PRINTOBSERVER_PLATFORM="windows-x86_64",
+        GITHUB_ENV=paths["environment"],
+    )
+    result = run(
+        ["just", "runner-temp", "setup", paths["drive"], paths["fallback"]],
+        cwd=ROOT,
+        env=environment,
+        timeout=30,
+    )
+    failing(result, naming="Paths must contain no line breaks")
+    equal(list(tmp_path.iterdir()), [])
+
+
+def test_an_unusable_fallback_is_refused_before_exports(tmp_path: Path) -> None:
+    """No usable drive or existing fallback means no children inherit a broken temp."""
+    environment_file = tmp_path / "job-env"
+    environment = dict(
+        os.environ,
+        PRINTOBSERVER_PLATFORM="windows-x86_64",
+        GITHUB_ENV=str(environment_file),
+    )
+    result = run(
+        ["just", "runner-temp", "setup", str(tmp_path / "absent-drive"), str(tmp_path / "absent")],
+        cwd=ROOT,
+        env=environment,
+        timeout=30,
+    )
+    failing(result, naming="Supply an existing writable fallback directory")
+    truth(not environment_file.exists(), describing="no unusable temp to be exported")
+    equal(list(tmp_path.iterdir()), [])
+
+
+def test_an_unwritable_environment_file_cleans_only_its_new_scratch(tmp_path: Path) -> None:
+    """A failed export does not leave the successfully created scratch behind."""
+    environment = dict(
+        os.environ,
+        PRINTOBSERVER_PLATFORM="windows-x86_64",
+        GITHUB_ENV=str(tmp_path),
+    )
+    retained = tmp_path / "unrelated"
+    retained.write_text("keep", encoding="utf-8")
+    result = run(["just", "runner-temp", "setup", str(tmp_path)], cwd=ROOT, env=environment)
+    failing(result, naming="Set GITHUB_ENV to a writable environment file")
+    equal(list(tmp_path.iterdir()), [retained])
+
+
+ACL = """
+param([string]$Action, [string]$Directory, [string]$Backup)
+$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath $Directory
+if ($Action -eq 'deny') {
+    [IO.File]::WriteAllText($Backup, $acl.Sddl)
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+        $identity, 'CreateDirectories', 'Deny'
+    )
+    $acl.AddAccessRule($rule)
+} else {
+    $acl.SetSecurityDescriptorSddlForm([IO.File]::ReadAllText($Backup))
+}
+Set-Acl -LiteralPath $Directory -AclObject $acl
+"""
+
+
+def test_an_existing_unwritable_drive_recovers_to_the_usable_fallback(tmp_path: Path) -> None:
+    """Real filesystem permissions refuse scratch creation; the job still has temp."""
+    if sys.platform != "win32" and os.geteuid() == 0:
+        pytest.skip("root bypasses the filesystem permission refusal this journey induces")
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    fallback = tmp_path / "fallback"
+    fallback.mkdir()
+    acl_script = tmp_path / "permissions.ps1"
+    backup = tmp_path / "permissions.sddl"
+    original_mode = drive.stat().st_mode & 0o777
+    if sys.platform == "win32":
+        acl_script.write_text(ACL, encoding="utf-8")
+        passing(
+            run(["pwsh", "-NoProfile", "-File", str(acl_script), "deny", str(drive), str(backup)])
+        )
+    else:
+        drive.chmod(0o500)
+    try:
+        environment_file = tmp_path / "job-env"
+        environment = dict(
+            os.environ,
+            PRINTOBSERVER_PLATFORM="windows-x86_64",
+            GITHUB_ENV=str(environment_file),
+        )
+        result = run(
+            ["just", "runner-temp", "setup", str(drive), str(fallback)],
+            cwd=ROOT,
+            env=environment,
+            timeout=30,
+        )
+        passing(result)
+        contains(result.stdout, "scratch creation failed:")
+        contains(result.stdout, str(fallback))
+        contains(
+            environment_file.read_text(encoding="utf-8-sig"), f"TEMP={fallback}\nTMP={fallback}"
+        )
+        equal(list(drive.iterdir()), [])
+    finally:
+        if sys.platform == "win32":
+            passing(
+                run(
+                    [
+                        "pwsh",
+                        "-NoProfile",
+                        "-File",
+                        str(acl_script),
+                        "restore",
+                        str(drive),
+                        str(backup),
+                    ]
+                )
+            )
+        else:
+            drive.chmod(original_mode)
+
+
+@pytest.mark.parametrize("stage", ["marker", "probe"])
+def test_file_creation_failure_removes_the_partially_created_scratch(
+    tmp_path: Path, stage: str
+) -> None:
+    """A real native path limit permits the directory but refuses a longer file."""
+    if sys.platform == "win32":
+        pytest.skip("this journey induces the Unix PATH_MAX boundary, not a Windows path limit")
+    limit = os.pathconf(tmp_path, "PC_PATH_MAX")
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    parent_length = limit - (60 if stage == "marker" else 80)
+    while parent_length - len(str(drive)) >= 2:
+        remaining = parent_length - len(str(drive)) - 1
+        drive /= "d" * min(180, remaining)
+        drive.mkdir()
+    fallback = tmp_path / "fallback"
+    fallback.mkdir()
+    environment_file = tmp_path / "job-env"
+    environment = dict(
+        os.environ,
+        PRINTOBSERVER_PLATFORM="windows-x86_64",
+        GITHUB_ENV=str(environment_file),
+    )
+    result = run(
+        ["just", "runner-temp", "setup", str(drive), str(fallback)],
+        cwd=ROOT,
+        env=environment,
+        timeout=30,
+    )
+    if stage == "marker":
+        passing(result)
+        contains(result.stdout, "scratch creation failed:")
+        contains(result.stdout, ".printobserver-owned")
+        contains(
+            environment_file.read_text(encoding="utf-8-sig"), f"TEMP={fallback}\nTMP={fallback}"
+        )
+    else:
+        failing(result, naming="Supply an existing writable fallback directory")
+        truth(not environment_file.exists(), describing="no unusable scratch to be exported")
+    equal(list(drive.iterdir()), [], describing="the partially created scratch to be removed")
