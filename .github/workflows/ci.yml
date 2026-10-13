@@ -92,11 +92,16 @@ jobs:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just check "$(just gate-tier)"
+      - if: always()
+        run: just runner-temp cleanup
 
   integration:
+    env:
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
     # Named by platform id, not runner, so a new runner image renames no
     # required check; each cell reports the context AGENTS.md's required-checks
     # record names, and that record says how the live protection follows a rename.
@@ -135,13 +140,16 @@ jobs:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
       - run: just bootstrap
       - run: just octoprint-up
       - run: just test-integration
-      # The one condition in this job, and it is on the teardown: an
-      # environment that outlived a failing tier is a runner nobody stopped.
+      # Both teardowns run after failure: stop the printer environment, then
+      # restore usable temp for post-job actions before removing owned scratch.
       - if: always()
         run: just octoprint-down
+      - if: always()
+        run: just runner-temp cleanup
 
   llmlint:
     name: llmlint

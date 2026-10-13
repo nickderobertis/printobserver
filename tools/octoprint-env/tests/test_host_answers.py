@@ -25,6 +25,7 @@ import yaml
 from environment import running
 from repo_checks.expect import contains, equal, truth
 from repo_checks.shell import run as shell_run
+from repo_checks.shell import start
 
 
 def _provisioned_over(state: Path, program: Path) -> None:
@@ -142,3 +143,29 @@ def test_stopping_a_recorded_instance_leaves_no_process_behind(tmp_path: Path) -
         not (state / "instance.json").exists(),
         describing="the record of a stopped instance to be gone",
     )
+
+
+def test_command_lookup_reads_a_real_childs_entire_command_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Read arguments, including spaces and single quotes, through this host's API."""
+    argv = [sys.executable, "-c", "import sys; sys.stdin.read()", "lookup marker 'quoted' tail"]
+    # A macOS framework interpreter re-executes as Python.app, so the image the
+    # host reports is its own; every argument after it must survive exactly.
+    arguments = " " + " ".join(argv[1:])
+    child = start(argv)
+    try:
+        reported = octoprint_env.command_of(child.pid)
+        equal(
+            reported[-len(arguments) :],
+            arguments,
+            describing="the child's entire argument list rather than just its image",
+        )
+        truth(len(reported) > len(arguments), describing="an image before those arguments")
+        equal(child.poll(), None, describing="the child to remain alive after observation")
+    finally:
+        child.communicate(timeout=10)
+
+    monkeypatch.setenv("PATH", "")
+    with pytest.raises(FileNotFoundError, match="is not on PATH"):
+        octoprint_env.command_of(child.pid)
