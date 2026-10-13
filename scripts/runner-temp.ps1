@@ -7,65 +7,89 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($env:PRINTOBSERVER_PLATFORM -ne 'windows-x86_64') { return }
 
-if ($Action -eq 'cleanup') {
-    $scratch = $env:PRINTOBSERVER_JOB_SCRATCH
-    if (-not $scratch) { return }
-    $leaf = Split-Path -Leaf $scratch
-    $marker = Join-Path $scratch '.printobserver-owned'
-    if ($leaf -ne $env:PRINTOBSERVER_JOB_SCRATCH_OWNER -or
-        $leaf -notmatch '^printobserver-[0-9a-f]{32}$' -or
-        -not (Test-Path -LiteralPath $marker -PathType Leaf) -or
-        (Get-Content -LiteralPath $marker -Raw).Trim() -ne $leaf) {
-        throw "Refusing cleanup of unowned scratch: $scratch. Clear the foreign PRINTOBSERVER_JOB_SCRATCH and PRINTOBSERVER_JOB_SCRATCH_OWNER values."
-    }
-    Remove-Item -LiteralPath $scratch -Recurse -Force
-    return
+function Assert-LinePath([string]$Path) {
+    if ($Path -match '[\r\n]') { throw 'Paths must contain no line breaks. Supply a single-line path.' }
 }
 
-if (-not $env:GITHUB_ENV) { throw 'Set GITHUB_ENV to a writable environment file for later steps.' }
-foreach ($path in @($DriveRoot, $Fallback, $env:GITHUB_ENV)) {
-    if ($path -match '[\r\n]') { throw 'Paths must contain no line breaks. Supply a single-line path.' }
-}
-$scratch = ''
-$owner = ''
-$routing = 'existing temp; scratch drive is absent'
-if (Test-Path -LiteralPath $DriveRoot -PathType Container) {
-    $candidate = Join-Path $DriveRoot ('printobserver-' + [guid]::NewGuid().ToString('N'))
-    $created = $false
+function Assert-WritableTemp([string]$Directory) {
+    $probe = Join-Path $Directory ([guid]::NewGuid().ToString('N') + '.probe')
+    $probeCreated = $false
     try {
-        New-Item -ItemType Directory -Path $candidate | Out-Null
-        $created = $true
-        $leaf = Split-Path -Leaf $candidate
-        [System.IO.File]::WriteAllText((Join-Path $candidate '.printobserver-owned'), $leaf)
-        $scratch = $candidate
-        $owner = $leaf
-        $routing = 'job-owned scratch'
+        $handle = [System.IO.File]::Open($probe, 'CreateNew', 'Write')
+        $probeCreated = $true
+        $handle.Dispose()
     } catch {
-        $cause = $_.Exception.Message
-        # Only a directory created by this invocation can be removed here.
-        if ($created) { Remove-Item -LiteralPath $candidate -Recurse -Force }
-        $routing = "existing temp; scratch creation failed: $cause"
+        throw "Temp directory $Directory is unusable: $($_.Exception.Message). Supply an existing writable fallback directory."
+    } finally {
+        if ($probeCreated) { Remove-Item -LiteralPath $probe }
     }
 }
-$chosen = if ($scratch) { $scratch } else { $Fallback }
-$probe = Join-Path $chosen ([guid]::NewGuid().ToString('N') + '.probe')
-$probeCreated = $false
-try {
-    $handle = [System.IO.File]::Open($probe, 'CreateNew', 'Write')
-    $probeCreated = $true
-    $handle.Dispose()
-} catch {
-    if ($scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
-    throw "Temp directory $chosen is unusable: $($_.Exception.Message). Supply an existing writable fallback directory."
-} finally {
-    if ($probeCreated) { Remove-Item -LiteralPath $probe }
+
+function Publish-Temp([string]$Chosen, [string]$Scratch, [string]$Owner, [string]$Restored) {
+    if (-not $env:GITHUB_ENV) { throw 'Set GITHUB_ENV to a writable environment file for later steps.' }
+    foreach ($path in @($Chosen, $Scratch, $Restored, $env:GITHUB_ENV)) { Assert-LinePath $path }
+    try {
+        @("TEMP=$Chosen", "TMP=$Chosen", "PRINTOBSERVER_JOB_SCRATCH=$Scratch",
+          "PRINTOBSERVER_JOB_SCRATCH_OWNER=$Owner", "PRINTOBSERVER_JOB_TEMP_FALLBACK=$Restored") |
+            Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+    } catch {
+        throw "Could not write GITHUB_ENV: $($_.Exception.Message). Set GITHUB_ENV to a writable environment file."
+    }
 }
+
 try {
-    @("TEMP=$chosen", "TMP=$chosen", "PRINTOBSERVER_JOB_SCRATCH=$scratch",
-      "PRINTOBSERVER_JOB_SCRATCH_OWNER=$owner") |
-        Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+    if ($Action -eq 'cleanup') {
+        $scratch = $env:PRINTOBSERVER_JOB_SCRATCH
+        if (-not $scratch) { return }
+        $leaf = Split-Path -Leaf $scratch
+        $marker = Join-Path $scratch '.printobserver-owned'
+        if ($leaf -ne $env:PRINTOBSERVER_JOB_SCRATCH_OWNER -or
+            $leaf -notmatch '^printobserver-[0-9a-f]{32}$' -or
+            -not (Test-Path -LiteralPath $marker -PathType Leaf) -or
+            (Get-Content -LiteralPath $marker -Raw).Trim() -ne $leaf) {
+            throw "Refusing cleanup of unowned scratch: $scratch. Clear the foreign PRINTOBSERVER_JOB_SCRATCH and PRINTOBSERVER_JOB_SCRATCH_OWNER values."
+        }
+        $restored = $env:PRINTOBSERVER_JOB_TEMP_FALLBACK
+        Assert-LinePath $restored
+        Assert-WritableTemp $restored
+        # Post-job cache actions still spawn children after the workflow steps.
+        Publish-Temp $restored '' '' $restored
+        Remove-Item -LiteralPath $scratch -Recurse -Force
+        return
+    }
+
+    if (-not $env:GITHUB_ENV) { throw 'Set GITHUB_ENV to a writable environment file for later steps.' }
+    foreach ($path in @($DriveRoot, $Fallback, $env:GITHUB_ENV)) { Assert-LinePath $path }
+    $scratch = ''
+    $owner = ''
+    $routing = 'existing temp; scratch drive is absent'
+    if (Test-Path -LiteralPath $DriveRoot -PathType Container) {
+        $candidate = Join-Path $DriveRoot ('printobserver-' + [guid]::NewGuid().ToString('N'))
+        $created = $false
+        try {
+            New-Item -ItemType Directory -Path $candidate | Out-Null
+            $created = $true
+            $leaf = Split-Path -Leaf $candidate
+            [System.IO.File]::WriteAllText((Join-Path $candidate '.printobserver-owned'), $leaf)
+            $scratch = $candidate
+            $owner = $leaf
+            $routing = 'job-owned scratch'
+        } catch {
+            $cause = $_.Exception.Message
+            # Only a directory created by this invocation can be removed here.
+            if ($created) { Remove-Item -LiteralPath $candidate -Recurse -Force }
+            $routing = "existing temp; scratch creation failed: $cause"
+        }
+    }
+    $chosen = if ($scratch) { $scratch } else { $Fallback }
+    try {
+        Assert-WritableTemp $chosen
+        Publish-Temp $chosen $scratch $owner $Fallback
+    } catch {
+        if ($scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
+        throw
+    }
+    Write-Output "Children will use temp directory $chosen ($routing)"
 } catch {
-    if ($scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
-    throw "Could not write GITHUB_ENV: $($_.Exception.Message). Set GITHUB_ENV to a writable environment file."
+    throw "$($_.Exception.Message) Restore access to the named job files and retry just runner-temp $Action."
 }
-Write-Output "Children will use temp directory $chosen ($routing)"

@@ -25,6 +25,7 @@
       "Bash(just release-dry-run)",
       "Bash(cargo:*)",
       "Bash(bash:*)",
+      "Bash(pwsh:*)",
       "Bash(rustup:*)",
       "Bash(uv:*)",
       "Bash(bun:*)",

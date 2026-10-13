@@ -34,7 +34,7 @@ bootstrap:
 
 # Set the Windows x86 job's temp before bootstrap, and clean only its scratch.
 runner-temp action="setup" drive="D:\\" fallback="":
-    pwsh -NoProfile -File scripts/runner-temp.ps1 -Action {{quote(action)}} -DriveRoot {{quote(drive)}} {{if fallback == "" { "" } else { "-Fallback " + quote(fallback) }}}
+    @pwsh -NoProfile -File scripts/runner-temp.ps1 -Action {{quote(action)}} -DriveRoot {{quote(drive)}} {{if fallback == "" { "" } else { "-Fallback " + quote(fallback) }}}
 
 # Install the tools `repo-policy.toml` declares, skipping any already on PATH
 # at the release it holds them at, and replacing any at another. A tool it

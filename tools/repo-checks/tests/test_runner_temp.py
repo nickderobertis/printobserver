@@ -61,6 +61,12 @@ def test_children_use_scratch_or_usable_fallback_and_cleanup_keeps_unrelated_fil
     equal(Path(answer["file"]).parent, chosen)
     equal(answer["TEMP"], answer["TMP"])
     passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30))
+    for line in Path(environment["GITHUB_ENV"]).read_text(encoding="utf-8-sig").splitlines():
+        name, value = line.split("=", 1)
+        environment[name] = value
+    post_job = run(["just", "--command", sys.executable, "-c", PROBE], cwd=ROOT, env=environment)
+    passing(post_job)
+    equal(Path(json.loads(post_job.stdout)["temp"]), tmp_path / "existing temp")
     truth((expected_parent / "unrelated").is_file(), describing="unrelated files to survive")
     truth(
         (tmp_path / "existing temp" / "unrelated").is_file(),
@@ -308,3 +314,87 @@ def test_file_creation_failure_removes_the_partially_created_scratch(
         failing(result, naming="Supply an existing writable fallback directory")
         truth(not environment_file.exists(), describing="no unusable scratch to be exported")
     equal(list(drive.iterdir()), [], describing="the partially created scratch to be removed")
+
+
+def test_the_host_selects_a_usable_fallback_when_the_recipe_omits_it(tmp_path: Path) -> None:
+    """The production default comes from this real child's host temp environment."""
+    fallback = tmp_path / "host temp"
+    fallback.mkdir()
+    environment_file = tmp_path / "job-env"
+    environment = dict(
+        os.environ,
+        PRINTOBSERVER_PLATFORM="windows-x86_64",
+        GITHUB_ENV=str(environment_file),
+        TEMP=str(fallback),
+        TMP=str(fallback),
+        TMPDIR=str(fallback),
+    )
+    result = run(
+        ["just", "runner-temp", "setup", str(tmp_path / "absent-drive")],
+        cwd=ROOT,
+        env=environment,
+        timeout=30,
+    )
+    passing(result)
+    equal(
+        len((result.stdout + result.stderr).splitlines()), 1, describing="one useful success line"
+    )
+    for line in environment_file.read_text(encoding="utf-8-sig").splitlines():
+        name, value = line.split("=", 1)
+        environment[name] = value
+    observed = run(["just", "--command", sys.executable, "-c", PROBE], cwd=ROOT, env=environment)
+    passing(observed)
+    answer = json.loads(observed.stdout)
+    equal(Path(answer["temp"]), fallback)
+    equal(Path(answer["file"]).parent, fallback)
+    equal(answer["TEMP"], answer["TMP"])
+
+
+@pytest.mark.parametrize("failure", ["unusable-fallback", "environment-file"])
+def test_cleanup_keeps_scratch_when_post_job_temp_cannot_be_restored(
+    tmp_path: Path, failure: str
+) -> None:
+    """Never remove the current temp before exporting usable temp for post-job children."""
+    environment = _setup(tmp_path, drive_present=True)
+    scratch = Path(environment["PRINTOBSERVER_JOB_SCRATCH"])
+    if failure == "unusable-fallback":
+        environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(tmp_path / "absent")
+        expected = "Supply an existing writable fallback directory"
+    else:
+        environment["GITHUB_ENV"] = str(tmp_path)
+        expected = "Set GITHUB_ENV to a writable environment file"
+    result = run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30)
+    failing(result, naming=expected)
+    truth(scratch.is_dir(), describing="the current job temp to remain usable after failed restore")
+    environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(tmp_path / "existing temp")
+    environment["GITHUB_ENV"] = str(tmp_path / "job-env")
+    passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30))
+
+
+@pytest.mark.parametrize("failure", ["marker-read", "scratch-delete"])
+def test_cleanup_permission_failures_name_the_recovery(tmp_path: Path, failure: str) -> None:
+    """Real Unix access checks fail at the read/delete operations inside cleanup."""
+    if sys.platform == "win32":
+        pytest.skip(
+            "Unix permission induction; the native Windows ACL refusal is tested separately"
+        )
+    if os.geteuid() == 0:
+        pytest.skip("root bypasses the permission refusal this journey induces")
+    environment = _setup(tmp_path, drive_present=True)
+    scratch = Path(environment["PRINTOBSERVER_JOB_SCRATCH"])
+    marker = scratch / ".printobserver-owned"
+    restricted = marker if failure == "marker-read" else scratch.parent
+    original_mode = restricted.stat().st_mode & 0o777
+    restricted.chmod(0 if failure == "marker-read" else 0o500)
+    try:
+        result = run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30)
+        failing(
+            result,
+            naming="Restore access to the named job files and retry just runner-temp cleanup",
+        )
+        truth(scratch.exists(), describing="the directory the OS refused to clean to remain")
+    finally:
+        restricted.chmod(original_mode)
+        # A failed recursive delete may have removed the marker before rmdir failed.
+        marker.write_text(scratch.name, encoding="utf-8")
+        passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30))
