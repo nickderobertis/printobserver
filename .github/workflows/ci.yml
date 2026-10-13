@@ -136,6 +136,18 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
+      # The release program every client's world carries, in a cache of its
+      # own: keyed on the source, toolchain and profile it is built from, and
+      # saved only when that key missed, so it holds one program and nothing of
+      # the Rust toolchain's cache. A restored program whose key no longer
+      # holds is built over rather than used.
+      - id: release-program
+        run: just release-program-key >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: .release-program
+          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
+      - run: just release-program
       - run: just octoprint-up
       - run: just test-integration
       # The one condition in this job, and it is on the teardown: an
