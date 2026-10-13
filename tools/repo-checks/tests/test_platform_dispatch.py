@@ -671,7 +671,7 @@ def _run(
 
 
 def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_path: Path) -> None:
-    """A dispatch of the gate runs the gate's two commands and nothing else."""
+    """A dispatch runs the gate and its owned scratch cleanup in the declared order."""
     copy = tree()
     recording = Recording(tmp_path)
     recording.program(JUST)
@@ -684,7 +684,7 @@ def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_pa
     # journey, in `test_gate_tier.py`, and the real `check` refuses an empty one.
     equal(
         recording.recorded(),
-        ["just bootstrap", "just gate-tier", "just check "],
+        ["just bootstrap", "just gate-tier", "just check ", "just runner-temp cleanup"],
         describing="what ran",
     )
 
@@ -702,7 +702,13 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
     equal(code, 9, describing="the exit of a tier that failed")
     equal(
         recording.recorded(),
-        ["just bootstrap", "just octoprint-up", "just test-integration", "just octoprint-down"],
+        [
+            "just bootstrap",
+            "just octoprint-up",
+            "just test-integration",
+            "just octoprint-down",
+            "just runner-temp cleanup",
+        ],
         describing="what ran",
     )
     contains(said, "`just test-integration` failed with 9", describing=said)
@@ -721,7 +727,12 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
     equal(code, 7, describing="the exit of a tier whose bring-up failed")
     equal(
         recording.recorded(),
-        ["just bootstrap", "just octoprint-up", "just octoprint-down"],
+        [
+            "just bootstrap",
+            "just octoprint-up",
+            "just octoprint-down",
+            "just runner-temp cleanup",
+        ],
         describing="what ran",
     )
 
