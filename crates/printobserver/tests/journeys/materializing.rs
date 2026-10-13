@@ -157,13 +157,8 @@ pub fn both_renderings_of_a_path_that_names_no_file(world: &World) {
         // carries the print's own recent events, and two runs either side of a
         // new one would be being compared across two different histories.
         world.freshen_the_image();
-        let (machine, plain) = formats::over_one_history(|machine_readable| {
-            losing(
-                world,
-                &command,
-                if machine_readable { &["--json"] } else { &[] },
-            )
-        });
+        let machine = losing(world, &command, &["--json"]);
+        let plain = losing(world, &command, &[]);
         formats::the_two_renderings_agree(&machine, &plain, operation, Answer::Success);
     }
 }

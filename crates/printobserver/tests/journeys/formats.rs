@@ -11,7 +11,7 @@
 //! renderings agree when it succeeds and diverge when the policy refuses it
 //! satisfies a one-path reading and misses the point.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use printobserver_server::{Answer, OPERATIONS};
 use printobserver_types::serde_json::{self, Value};
@@ -78,54 +78,9 @@ pub fn both_ways(
     answer: Answer,
     from: Option<crate::machine::Reports>,
 ) {
-    let (machine, plain) =
-        over_one_history(|machine_readable| run(world, arguments, machine_readable, from));
+    let machine = run(world, arguments, true, from);
+    let plain = run(world, arguments, false, from);
     the_two_renderings_agree(&machine, &plain, operation, answer);
-}
-
-/// How many pairs a moved history is given before the last one is ruled on.
-const ATTEMPTS: usize = 3;
-
-/// Both renderings of one invocation, of one history.
-///
-/// The supervisor observes a printing print on a schedule of its own, and every
-/// observation lands in that print's history, so a run of an answer carrying
-/// that history can be of a different history than the run beside it — which
-/// two renderings of one answer then disagree over without either being wrong.
-/// So when the pair disagrees, the document is asked for once more straight
-/// after the labelled lines: one that then carries exactly what those lines
-/// carry is of the history they were of, and is the document they are held to.
-/// Otherwise the pair is taken again, and the last pair taken is what is ruled
-/// on, so a disagreement that is the rendering's own still fails naming it.
-pub fn over_one_history(take: impl Fn(bool) -> Ran) -> (Ran, Ran) {
-    let mut machine = take(true);
-    let mut plain = take(false);
-    for _ in 1..ATTEMPTS {
-        if comparable(&answered(&machine, true)) == comparable(&labelled(&plain.out)) {
-            break;
-        }
-        let after = take(true);
-        if comparable(&answered(&after, true)) == comparable(&labelled(&plain.out)) {
-            return (after, plain);
-        }
-        machine = take(true);
-        plain = take(false);
-    }
-    (machine, plain)
-}
-
-/// One answer's fields, with the values two runs differ in by design left out.
-fn comparable(answer: &BTreeMap<String, String>) -> BTreeMap<&String, Option<&String>> {
-    answer
-        .iter()
-        .map(|(at, value)| (at, (!differs_between_runs(at)).then_some(value)))
-        .collect()
-}
-
-/// Whether a field carries an instant or an identifier, which differ between
-/// two runs by design.
-fn differs_between_runs(at: &str) -> bool {
-    at.ends_with("_at") || at.ends_with("id")
 }
 
 /// Two runs of one invocation, held to everything both renderings are held to.
@@ -233,7 +188,7 @@ fn the_two_carry_the_same_fields(machine: &Ran, plain: &Ran) {
         // runs by design, so what is compared here is the field set and the
         // values that do not: a value that moved is one of those, and one that
         // did not is a field carrying something different in the two renderings.
-        if differs_between_runs(at) {
+        if at.ends_with("_at") || at.ends_with("id") {
             continue;
         }
         assert_eq!(
