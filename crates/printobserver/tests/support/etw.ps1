@@ -14,7 +14,7 @@ function Write-Response([string]$Kind, [hashtable]$Fields = @{}) {
 try {
     Add-Type -Path (Join-Path $Scratch 'etw.cs')
     $trace = [PrintobserverTrace]::new($Scratch)
-    Write-Response 'ready' @{ session_guid=$trace.SessionId }
+    Write-Response 'ready' @{ controller_guid=$trace.ControllerId }
     while ($null -ne ($line = [Console]::In.ReadLine())) {
         $request = ConvertFrom-Json -InputObject $line -NoEnumerate
         if ($null -eq $request -or $request.GetType() -ne [System.Management.Automation.PSCustomObject]) { throw 'ETW request envelope must be a JSON object' }

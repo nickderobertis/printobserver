@@ -205,6 +205,10 @@ public sealed class PrintobserverTrace : IDisposable
     public PrintobserverTrace(string scratch) {
         CheckLayout();
         directory = scratch;
+    }
+    public string ControllerId { get; } = Guid.NewGuid().ToString("D");
+    void StartInvocation() {
+        if (held || controller != 0) throw new IOException("invocation already active");
         try {
             try { mutex.WaitOne(); } catch (AbandonedMutexException) { }
             held = true;
@@ -215,7 +219,7 @@ public sealed class PrintobserverTrace : IDisposable
                 uint stopped = ControlTraceW(0, Name, stale, 1);
                 if (stopped != 4201) Require(stopped, "recover owned kernel logger");
             } finally { Marshal.FreeHGlobal(stale); }
-            IntPtr p = Allocate(PathFor(0), true);
+            IntPtr p = Allocate(PathFor(chunk), true);
             try { Require(StartTraceW(out controller, Name, p), "StartTrace (administrator required)"); }
             finally { Marshal.FreeHGlobal(p); }
             Guid provider = ProcessProvider;
@@ -224,8 +228,9 @@ public sealed class PrintobserverTrace : IDisposable
             Require(EnableTraceEx2(controller, ref provider, 1, 5, ulong.MaxValue, 0, 5000, IntPtr.Zero), "enable TCP connect requests");
         } catch { Dispose(); throw; }
     }
-    public string SessionId { get { return Control(0).Wnode.Guid.ToString("D"); } }
     public long Prepare() {
+        StartInvocation();
+        alive.Clear();
         endpoints.Clear(); rootSeen = false; rootEnded = false; root = 0;
         invocation = 0;
         boundary = Stopwatch.GetTimestamp();
@@ -368,20 +373,24 @@ public sealed class PrintobserverTrace : IDisposable
             Control(0); // Refuse loss while the completed chunk was decoded.
             if (deadline.Elapsed > TimeSpan.FromSeconds(30)) throw new IOException("incomplete process tree: descendants did not exit");
         } while (!rootSeen || !rootEnded || alive.Values.Any(item => item.Root == invocation));
+        StopInvocation();
+        DecodeAndDeleteChunk(PathFor(chunk++));
         return endpoints.OrderBy(item => item).ToArray();
+    }
+    void StopInvocation() {
+        try {
+            if (controller != 0) {
+                try { Control(1); }
+                finally { controller = 0; }
+            }
+        } finally {
+            if (held) { mutex.ReleaseMutex(); held = false; }
+        }
     }
     public void Dispose() {
         if (disposed) return;
         disposed = true;
-        try {
-            if (controller != 0) {
-                IntPtr p = Allocate(null, false);
-                try { Require(ControlTraceW(controller, Name, p, 1), "stop owned kernel logger"); }
-                finally { Marshal.FreeHGlobal(p); controller = 0; }
-            }
-        } finally {
-            if (held) { mutex.ReleaseMutex(); held = false; }
-            mutex.Dispose();
-        }
+        try { StopInvocation(); }
+        finally { mutex.Dispose(); }
     }
 }

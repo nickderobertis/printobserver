@@ -2535,8 +2535,8 @@ reason = "The explicitly enabled process provider owns this DWORD property schem
 [[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/tests/support/windows_trace.rs"
-site = "let identity = ready[\"session_guid\"]"
-reason = "The real worker serializes its native Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native session identities."
+site = "let identity = ready[\"controller_guid\"]"
+reason = "The real worker serializes its controller Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native controller identities."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"

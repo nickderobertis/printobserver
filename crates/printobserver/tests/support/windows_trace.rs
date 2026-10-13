@@ -50,6 +50,9 @@ pub fn run(
     environment: &[(String, String)],
 ) -> (std::process::Output, BTreeSet<SocketAddr>) {
     let (pending, connected, identity) = with_session(|session| {
+        // The mutable slot cannot survive a caught unwind: Err discards the
+        // controller before rethrowing while the lock is still held. No caller
+        // can resume observing through its partially mutated native state.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let session = session.get_or_insert_with(|| {
                 super::spike::timed("traced:etw-native-start", Session::start)
@@ -67,6 +70,9 @@ pub fn run(
     });
     // Join output drains after releasing the invocation lock, so no caller
     // holds it while waiting for another Rust thread.
+    // PendingOutput moves into the closure, so its consumed handles and buffers
+    // cannot be reused after an unwind. Err discards the matching controller
+    // before rethrowing, without discarding a newer concurrent controller.
     let output = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| pending.finish()));
     match output {
         Ok(output) => (output, connected),
@@ -89,7 +95,7 @@ pub fn run(
 struct Session {
     /// The helper is always one we started and may stop ourselves.
     worker: Child,
-    /// The actual kernel session GUID, so reuse is proven by lifetime identity.
+    /// The persistent native helper identity, independent of invocation logger leases.
     identity: String,
     /// An already-refused observation must not cause a second shutdown panic.
     failed: bool,
@@ -102,7 +108,7 @@ struct Session {
 }
 
 impl Session {
-    /// Compile the test-only ABI bridge once, then acquire the host logger.
+    /// Compile the test-only ABI bridge once; prepare acquires the host logger.
     fn start() -> Self {
         Self::start_with_protocol(include_str!("etw-protocol.json"))
     }
@@ -140,8 +146,10 @@ impl Session {
             _scratch: scratch,
         };
         let ready = session.response("ready");
-        // llmlint: ignore-block[changed_behavior_has_e2e] The real worker serializes its native Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native session identities.
-        let identity = ready["session_guid"].as_str().expect("native session GUID");
+        // llmlint: ignore-block[changed_behavior_has_e2e] The real worker serializes its controller Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native controller identities.
+        let identity = ready["controller_guid"]
+            .as_str()
+            .expect("native controller GUID");
         assert!(
             identity.len() == 36
                 && identity.bytes().enumerate().all(|(index, byte)| {
@@ -151,7 +159,7 @@ impl Session {
                         byte.is_ascii_hexdigit()
                     }
                 }),
-            "invalid native session GUID"
+            "invalid native controller GUID"
         );
         // llmlint: ignore-end[changed_behavior_has_e2e]
         identity.clone_into(&mut session.identity);
@@ -235,7 +243,9 @@ impl Session {
         arguments: &[String],
         environment: &[(String, String)],
     ) -> (PendingOutput, BTreeSet<SocketAddr>) {
-        self.request(&json!({ "kind": "prepare" }), "prepared");
+        super::spike::timed("traced:etw-native-prepare", || {
+            self.request(&json!({ "kind": "prepare" }), "prepared");
+        });
         let mut process = Command::new(program);
         process
             .args(arguments)
@@ -348,9 +358,9 @@ pub fn release() {
 }
 
 /// The regression inspects the identity of the real worker it owns, so two
-/// adjacent observations prove session setup was shared rather than restarted.
+/// adjacent observations prove helper setup was shared rather than restarted.
 #[cfg(test)]
-pub fn session_id() -> String {
+pub fn controller_id() -> String {
     with_session(|slot| {
         slot.as_ref()
             .expect("a session is running")
@@ -367,9 +377,10 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
     let (scratch, program, arguments, environment) = probe();
     let first = super::traced(&program, &arguments, &environment, scratch.path());
     assert_probe(&first, &environment);
-    let identity = session_id();
+    let identity = controller_id();
     with_session(|slot| {
         let session = slot.as_mut().expect("a controller we own");
+        session.request(&json!({ "kind": "prepare" }), "prepared");
         session.worker.kill().expect("kill our controller");
         session.worker.wait().expect("reap our crashed controller");
     });
@@ -393,7 +404,7 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
         "recovery retained the poisoned lock"
     );
     assert_ne!(
-        session_id(),
+        controller_id(),
         identity,
         "a crashed session was silently reused"
     );
@@ -401,6 +412,7 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
     // acquire the same host mutex under its different TEMP routing.
     with_session(|slot| {
         let session = slot.as_mut().expect("the recovered controller");
+        session.request(&json!({ "kind": "prepare" }), "prepared");
         drop(session.requests.take());
         assert!(
             session
@@ -432,6 +444,10 @@ fn incomplete_native_evidence_is_refused_then_the_logger_recovers() {
     })
     .expect_err("a truncated ETL chunk cannot supply evidence");
     assert_refusal(incomplete.as_ref(), "incomplete ETW observation");
+    a_raw_request_is_refused(
+        &json!({ "kind": "prepare", "schema_version": protocol()["schema_version"] }),
+        "invocation already active",
+    );
     for envelope in [
         json!([{ "kind": "prepare", "schema_version": protocol()["schema_version"] }]),
         json!([{ "kind": "prepare", "schema_version": protocol()["schema_version"] }, { "kind": "quit", "schema_version": protocol()["schema_version"] }]),
@@ -562,6 +578,7 @@ fn a_raw_line_is_refused(request: &str, expected: &str) {
     let failure = std::panic::catch_unwind(|| {
         with_session(|slot| {
             let session = slot.get_or_insert_with(Session::start);
+            session.request(&json!({ "kind": "prepare" }), "prepared");
             writeln!(
                 session.requests.as_mut().expect("controller stdin"),
                 "{request}"
@@ -625,6 +642,7 @@ fn a_runaway_is_refused(
         ),
         ("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()),
         ("PRINTOBSERVER_TRACE_DELAY".to_owned(), "60000".to_owned()),
+        ("PRINTOBSERVER_TRACE_INHERIT".to_owned(), "yes".to_owned()),
         (
             "PRINTOBSERVER_TRACE_CHILD_PID".to_owned(),
             pid_file.display().to_string(),

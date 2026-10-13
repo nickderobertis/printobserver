@@ -594,7 +594,6 @@ mod regression {
             scoped_observer(&address);
             return;
         }
-        #[cfg(windows)]
         if std::env::var("PRINTOBSERVER_TRACE_RECOVER").as_deref() == Ok("yes") {
             let scratch = tempfile::TempDir::new().expect("recovery scratch");
             let ran = traced(
@@ -625,6 +624,7 @@ mod regression {
             eprint!("{}", "observed stderr\n".repeat(8192));
         }
         if std::env::var_os("PRINTOBSERVER_TRACE_CHILD").is_some() {
+            let inherited = std::env::var("PRINTOBSERVER_TRACE_INHERIT").as_deref() == Ok("yes");
             let child = Command::new(std::env::current_exe().expect("test executable"))
                 .args(["--exact", "traced::regression::connector", "--nocapture"])
                 .env_remove("PRINTOBSERVER_TRACE_CHILD")
@@ -632,15 +632,23 @@ mod regression {
                     "PRINTOBSERVER_TRACE_DELAY",
                     std::env::var("PRINTOBSERVER_TRACE_DELAY").unwrap_or_else(|_| "100".to_owned()),
                 )
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stdout(if inherited {
+                    std::process::Stdio::inherit()
+                } else {
+                    std::process::Stdio::null()
+                })
+                .stderr(if inherited {
+                    std::process::Stdio::inherit()
+                } else {
+                    std::process::Stdio::null()
+                })
                 .spawn()
                 .expect("connecting descendant");
             if let Some(path) = std::env::var_os("PRINTOBSERVER_TRACE_CHILD_PID") {
                 std::fs::write(path, child.id().to_string()).expect("our child's captured PID");
             }
-            // No inherited pipe keeps the parent alive. The child connects
-            // after its parent exits, and observation must follow its lifetime.
+            // The root exits without waiting; the descendant's sockets and
+            // optionally inherited pipes remain part of this invocation.
             drop(child);
             return;
         }
@@ -693,7 +701,7 @@ mod regression {
         assert_eq!(first.code, Some(0), "{}", first.said());
         assert_eq!(first.connected, expected);
         #[cfg(windows)]
-        let identity = super::windows_trace::session_id();
+        let identity = super::windows_trace::controller_id();
         println!("process-session held");
         std::io::stdout().flush().expect("session readiness");
         let mut release = [0];
@@ -705,13 +713,73 @@ mod regression {
             let worker = scope.spawn(|| {
                 let ran = traced(&program, &arguments, &environment, scratch.path());
                 #[cfg(windows)]
-                assert_eq!(super::windows_trace::session_id(), identity);
+                assert_eq!(super::windows_trace::controller_id(), identity);
                 ran
             });
             let second = worker.join().expect("scoped observer thread");
             assert_eq!(second.code, Some(0), "{}", second.said());
             assert_eq!(second.connected, expected);
         });
+    }
+
+    /// Observe real accepted/refused sockets while another observer stays alive.
+    fn another_live_process_can_trace(
+        child: &mut std::process::Child,
+        accepted: SocketAddr,
+        refused: SocketAddr,
+    ) {
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+        // The first process remains alive at its explicit barrier while a second
+        // real process traces accepted and refused sockets. Its complete Ran
+        // assertions must finish without waiting for the first process to exit.
+        let mut competitor = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env(
+                "PRINTOBSERVER_TRACE_CONNECT",
+                format!("{accepted},{refused}"),
+            )
+            .env("PRINTOBSERVER_TRACE_RECOVER", "yes")
+            .env_remove("PRINTOBSERVER_SPIKE_TIMINGS")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("real concurrent observer process");
+        let fairness_deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            if competitor
+                .try_wait()
+                .expect("concurrent observer status")
+                .is_some()
+            {
+                break;
+            }
+            if Instant::now() >= fairness_deadline {
+                competitor
+                    .kill()
+                    .expect("stop our captured competing observer");
+                competitor
+                    .wait()
+                    .expect("reap our captured competing observer");
+                child.kill().expect("stop our captured barrier observer");
+                child.wait().expect("reap our captured barrier observer");
+                panic!("a live idle observer blocked another real process for 20 seconds");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let competing = competitor
+            .wait_with_output()
+            .expect("concurrent observer output");
+        if !competing.status.success() {
+            child.kill().expect("stop our captured barrier observer");
+            child.wait().expect("reap our captured barrier observer");
+        }
+        assert!(
+            competing.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&competing.stdout),
+            String::from_utf8_lossy(&competing.stderr)
+        );
     }
 
     /// A child reproduces the parent-held-session/scoped-worker shape. The
@@ -749,6 +817,7 @@ mod regression {
                 break;
             }
         }
+        another_live_process_can_trace(&mut child, accepted, refused);
         child
             .stdin
             .take()
@@ -844,7 +913,7 @@ mod regression {
                 assert_eq!(ran.connected, expected, "{}", ran.said());
                 #[cfg(windows)]
                 {
-                    let current = super::windows_trace::session_id();
+                    let current = super::windows_trace::controller_id();
                     if let Some(previous) = controller {
                         assert_eq!(
                             current, previous,
@@ -877,6 +946,11 @@ mod native_boundaries {
 
     /// A real invocation of the socket fixture, on this platform's tracer.
     fn sockets(endpoints: &[SocketAddr], descendant: bool) -> Ran {
+        sockets_with_output(endpoints, descendant, false)
+    }
+
+    /// The descendant can retain its root's actual output handles until exit.
+    fn sockets_with_output(endpoints: &[SocketAddr], descendant: bool, inherited: bool) -> Ran {
         let scratch = tempfile::TempDir::new().expect("trace scratch");
         let mut environment = vec![(
             "PRINTOBSERVER_TRACE_CONNECT".to_owned(),
@@ -889,6 +963,9 @@ mod native_boundaries {
         environment.push(("PRINTOBSERVER_TRACE_LOUD".to_owned(), "yes".to_owned()));
         if descendant {
             environment.push(("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()));
+        }
+        if inherited {
+            environment.push(("PRINTOBSERVER_TRACE_INHERIT".to_owned(), "yes".to_owned()));
         }
         let ran = traced(
             &std::env::current_exe().expect("test executable"),
@@ -905,7 +982,15 @@ mod native_boundaries {
             ran.out.contains(&"observed stdout\n".repeat(8192)),
             "stdout truncated"
         );
-        assert_eq!(ran.err, "observed stderr\n".repeat(8192));
+        let copies = if descendant && inherited { 2 } else { 1 };
+        assert_eq!(
+            ran.out
+                .lines()
+                .filter(|line| *line == "observed stdout")
+                .count(),
+            8192 * copies
+        );
+        assert_eq!(ran.err, "observed stderr\n".repeat(8192 * copies));
         ran
     }
 
@@ -981,21 +1066,23 @@ mod native_boundaries {
         assert!(ran.connected.is_empty(), "{ran:?}");
     }
 
-    /// The child closes inherited output handles and connects after its parent
-    /// exits: parent output completion cannot stand in for the tree's end.
+    /// Descendants connect after their root exits, with either closed or
+    /// inherited output handles. Both outputs and endpoint evidence are complete.
     #[test]
     fn a_descendant_connecting_after_its_parent_exits_is_observed() {
         let reservation = TcpListener::bind("127.0.0.1:0").expect("refused port");
         let endpoint = reservation.local_addr().expect("refused endpoint");
         drop(reservation);
-        assert_eq!(
-            sockets(&[endpoint], true).connected,
-            BTreeSet::from([endpoint])
-        );
+        for inherited in [false, true] {
+            assert_eq!(
+                sockets_with_output(&[endpoint], true, inherited).connected,
+                BTreeSet::from([endpoint])
+            );
+        }
     }
 
-    /// Adjacent invocations have distinct endpoint sets even when one shared
-    /// controller retains process-lifetime data from the preceding chunk.
+    /// Adjacent invocations have distinct endpoint sets while reusing the
+    /// native controller across independently observed process trees.
     #[test]
     fn adjacent_invocations_do_not_inherit_each_others_endpoints() {
         let first = TcpListener::bind("127.0.0.1:0").expect("first listener");
