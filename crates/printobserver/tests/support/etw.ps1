@@ -16,7 +16,8 @@ try {
     $trace = [PrintobserverTrace]::new($Scratch)
     Write-Response 'ready' @{ session_guid=$trace.SessionId }
     while ($null -ne ($line = [Console]::In.ReadLine())) {
-        $request = $line | ConvertFrom-Json
+        $request = ConvertFrom-Json -InputObject $line -NoEnumerate
+        if ($null -eq $request -or $request.GetType() -ne [System.Management.Automation.PSCustomObject]) { throw 'ETW request envelope must be a JSON object' }
         if ($request.schema_version -isnot [long] -or $request.schema_version -ne $protocol.schema_version) { throw 'Unsupported ETW request schema version' }
         if ($request.kind -isnot [string] -or $protocol.requests.PSObject.Properties.Name -notcontains $request.kind) {
             throw 'Unknown ETW request kind: expected a supported scalar string'

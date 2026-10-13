@@ -6,8 +6,7 @@
 //! nothing about the tier changes: no assertion, deadline or order reads it.
 //! The temporary workflow binds the sink and collects its records. The tests
 //! below drive the real traced socket walk, including JSON escaping through
-//! its actual thread name. All measurement instrumentation is removed after
-//! the draft's paired before/after runs.
+//! its actual thread name.
 
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -98,6 +97,7 @@ fn a_real_observation_writes_only_to_an_enabled_writable_sink() {
     use std::process::Command;
 
     let scratch = tempfile::TempDir::new().expect("measurement scratch");
+    concurrent_writers(scratch.path());
     let sink = scratch.path().join("timings.jsonl");
     for destination in [None, Some(sink.as_path()), Some(scratch.path())] {
         let mut process = Command::new(std::env::current_exe().expect("test binary"));
@@ -160,4 +160,66 @@ fn a_real_observation_writes_only_to_an_enabled_writable_sink() {
             }
         }
     }
+}
+
+/// Two real writers start behind a pipe barrier and append to the same file.
+fn concurrent_writers(scratch: &std::path::Path) {
+    use std::io::{BufRead, BufReader, Write as _};
+    use std::process::{Command, Stdio};
+
+    let sink = scratch.join("concurrent.jsonl");
+    let mut writers = Vec::new();
+    for _ in 0..2 {
+        let mut child = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env("PRINTOBSERVER_SPIKE_WRITER", "yes")
+            .env(SINK, &sink)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("actual timing writer");
+        let mut output = BufReader::new(child.stdout.take().expect("writer stdout"));
+        loop {
+            let mut line = String::new();
+            assert!(output.read_line(&mut line).expect("writer readiness") > 0);
+            if line.contains("writer ready") {
+                break;
+            }
+        }
+        writers.push((child, output));
+    }
+    let identities: std::collections::BTreeSet<u32> =
+        writers.iter().map(|(child, _)| child.id()).collect();
+    assert_eq!(identities.len(), 2);
+    for (child, _) in &mut writers {
+        child
+            .stdin
+            .take()
+            .expect("writer barrier")
+            .write_all(b"Y")
+            .expect("release writer");
+    }
+    for (mut child, _) in writers {
+        assert!(child.wait().expect("writer exit").success());
+    }
+    let mut counts = std::collections::BTreeMap::new();
+    for line in std::fs::read_to_string(sink)
+        .expect("shared records")
+        .lines()
+    {
+        let record: printobserver_types::serde_json::Value =
+            printobserver_types::serde_json::from_str(line).expect("complete shared JSON line");
+        let pid =
+            u32::try_from(record["pid"].as_u64().expect("writer identity")).expect("writer PID");
+        assert!(identities.contains(&pid));
+        assert_eq!(record["kind"], "traced:shared-sink");
+        assert_eq!(record["thread"], "traced::regression::connector");
+        assert!(record["ms"].as_f64().expect("duration") >= 0.0);
+        *counts.entry(pid).or_insert(0) += 1;
+    }
+    assert_eq!(
+        counts,
+        identities.into_iter().map(|pid| (pid, 1024)).collect()
+    );
 }

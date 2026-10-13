@@ -574,6 +574,19 @@ mod regression {
     // llmlint: ignore[tests_assert_real_behavior] This libtest entry is the real subprocess socket fixture, selected by its parent through --exact. The owning regression asserts its exit status and every endpoint the actual OS tracer attributes to it and its descendants; an unselected fixture makes no test claim.
     #[test]
     fn connector() {
+        if std::env::var("PRINTOBSERVER_SPIKE_WRITER").as_deref() == Ok("yes") {
+            use std::io::Read as _;
+            println!("writer ready");
+            let mut release = [0];
+            std::io::stdin()
+                .read_exact(&mut release)
+                .expect("writer barrier");
+            assert_eq!(release, [b'Y']);
+            for _ in 0..1024 {
+                super::spike::note("traced:shared-sink", std::time::Instant::now());
+            }
+            return;
+        }
         let Ok(address) = std::env::var("PRINTOBSERVER_TRACE_CONNECT") else {
             return;
         };
@@ -602,6 +615,10 @@ mod regression {
                     .collect()
             );
             return;
+        }
+        if std::env::var("PRINTOBSERVER_TRACE_LOUD").as_deref() == Ok("yes") {
+            print!("{}", "observed stdout\n".repeat(8192));
+            eprint!("{}", "observed stderr\n".repeat(8192));
         }
         if std::env::var_os("PRINTOBSERVER_TRACE_CHILD").is_some() {
             let child = Command::new(std::env::current_exe().expect("test executable"))
@@ -743,6 +760,7 @@ mod native_boundaries {
                 .collect::<Vec<_>>()
                 .join(","),
         )];
+        environment.push(("PRINTOBSERVER_TRACE_LOUD".to_owned(), "yes".to_owned()));
         if descendant {
             environment.push(("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()));
         }
@@ -757,6 +775,11 @@ mod native_boundaries {
             scratch.path(),
         );
         assert_eq!(ran.code, Some(0), "{}", ran.said());
+        assert!(
+            ran.out.contains(&"observed stdout\n".repeat(8192)),
+            "stdout truncated"
+        );
+        assert_eq!(ran.err, "observed stderr\n".repeat(8192));
         ran
     }
 

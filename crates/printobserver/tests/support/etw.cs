@@ -307,7 +307,7 @@ public sealed class PrintobserverTrace : IDisposable
             if (alive.TryGetValue(eventData.Pid, out lifetime) && invocation != 0 && lifetime.Root == invocation) endpoints.Add(eventData.Address);
         }
     }
-    void Read(string path) {
+    void DecodeAndDeleteChunk(string path) {
         var records = new List<Observation>();
         decodingError = null;
         EventCallback callback = pointer => {
@@ -348,7 +348,7 @@ public sealed class PrintobserverTrace : IDisposable
         Control(3);
         string snapshot = Path.Combine(directory, "unclosed.etl");
         File.Copy(PathFor(chunk), snapshot);
-        Read(snapshot);
+        DecodeAndDeleteChunk(snapshot);
     }
     public string[] Finish(uint process) {
         root = process;
@@ -364,7 +364,7 @@ public sealed class PrintobserverTrace : IDisposable
                 invalidateNext = false;
                 File.WriteAllBytes(closed, new byte[] { 0 });
             }
-            Read(closed); // ProcessTrace returns at the end of the closed file.
+            DecodeAndDeleteChunk(closed); // ProcessTrace returns at the end of the closed file.
             Control(0); // Refuse loss while the completed chunk was decoded.
             if (deadline.Elapsed > TimeSpan.FromSeconds(30)) throw new IOException("incomplete process tree: descendants did not exit");
         } while (!rootSeen || !rootEnded || alive.Values.Any(item => item.Root == invocation));

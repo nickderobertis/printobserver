@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -218,11 +218,17 @@ impl Session {
             process.env(name, value);
         }
         let started = std::time::Instant::now();
-        let child = process
+        let mut child = process
             .spawn()
             .unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
         let root = child.id();
-        let output = child.wait_with_output().expect("traced invocation output");
+        // Drain concurrently so a full output pipe cannot stop the root.
+        // Inherited Windows handles can keep a pipe open after the root exits;
+        // native completion must run before joining those drains.
+        let out = drain(child.stdout.take().expect("invocation stdout"));
+        let err = drain(child.stderr.take().expect("invocation stderr"));
+        let status = child.wait().expect("traced invocation exit");
+        drop(child);
         super::spike::note("traced:invocation-run", started);
         let evidence = super::spike::timed("traced:etw-native-flush-rotate-decode", || {
             self.request(&json!({ "kind": "finish", "root": root }), "completed")
@@ -241,8 +247,31 @@ impl Session {
             })
             .collect();
         // llmlint: ignore-end[changed_behavior_has_e2e]
+        let output = std::process::Output {
+            status,
+            stdout: out
+                .join()
+                .expect("stdout drain thread")
+                .expect("invocation stdout read"),
+            stderr: err
+                .join()
+                .expect("stderr drain thread")
+                .expect("invocation stderr read"),
+        };
         (output, connected)
     }
+}
+
+/// Readers own their pipes. On tracing refusal their detached threads release
+/// them when the remaining descendant closes its inherited handles.
+fn drain(
+    mut stream: impl Read + Send + 'static,
+) -> std::thread::JoinHandle<std::io::Result<Vec<u8>>> {
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stream.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    })
 }
 
 impl Drop for Session {
@@ -344,6 +373,17 @@ fn incomplete_native_evidence_is_refused_then_the_logger_recovers() {
     })
     .expect_err("a truncated ETL chunk cannot supply evidence");
     assert_refusal(incomplete.as_ref(), "incomplete ETW observation");
+    for envelope in [
+        json!([{ "kind": "prepare", "schema_version": protocol()["schema_version"] }]),
+        json!([{ "kind": "prepare", "schema_version": protocol()["schema_version"] }, { "kind": "quit", "schema_version": protocol()["schema_version"] }]),
+        json!([]),
+        json!(null),
+        json!(true),
+        json!(1),
+        json!("prepare"),
+    ] {
+        a_raw_request_is_refused(&envelope, "envelope must be a JSON object");
+    }
     for root in [
         json!(true),
         json!("1"),
