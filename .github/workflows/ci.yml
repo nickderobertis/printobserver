@@ -145,7 +145,7 @@ jobs:
         run: just release-program-key >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
-          path: .release-program
+          path: ${{ steps.release-program.outputs.path }}
           key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
       - run: just release-program
       - run: just octoprint-up

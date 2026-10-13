@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -90,14 +91,22 @@ def test_the_scripted_environment_installs_starts_holds_a_print_and_stops(
     provisioned = _installs_unattended_over_an_empty_directory(first)
     _installs_again_over_the_instance_it_made(first, provisioned)
 
-    one, one_answered_at = _starts_answering_and_connected(first)
-    two, _ = _starts_answering_and_connected(second)
-    _two_instances_do_not_collide(one, two)
-    _stops_leaving_no_process(two)
+    one = _starts_answering_and_connected(first)
+    two = _starts_answering_and_connected(second)
+    _two_instances_do_not_collide(one.record, two.record)
+    _stops_leaving_no_process(two.record)
 
-    _holds_a_print_for_the_minimum_it_states(one, one_answered_at)
+    _holds_a_print_for_the_minimum_it_states(one)
 
-    _stops_leaving_no_process(one)
+    _stops_leaving_no_process(one.record)
+
+
+@dataclass(frozen=True, slots=True)
+class Started:
+    """An instance `up` started: what it answered, and when it answered it."""
+
+    record: dict[str, object]
+    answered_at: float
 
 
 def _installs_unattended_over_an_empty_directory(state: str) -> dict[str, object]:
@@ -142,7 +151,7 @@ def _installs_again_over_the_instance_it_made(state: str, provisioned: dict[str,
     equal(instances, ["instance", "venv"], describing="what the state directory holds")
 
 
-def _starts_answering_and_connected(state: str) -> tuple[dict[str, object], float]:
+def _starts_answering_and_connected(state: str) -> Started:
     """A start that has not answered until the instance has, and when it answered."""
     result = script("up", "--state-dir", state, "--port", "auto")
     answered_at = time.monotonic()
@@ -159,7 +168,7 @@ def _starts_answering_and_connected(state: str) -> tuple[dict[str, object], floa
     equal(status, 200, describing=f"the API of {url} at the moment the start returned")
     truth(isinstance(version, dict), describing="a decoded /api/version answer")
     contains(CONNECTED, printer_state(url, key), describing="printer states that are connected")
-    return started, answered_at
+    return Started(started, answered_at)
 
 
 def _two_instances_do_not_collide(one: dict[str, object], two: dict[str, object]) -> None:
@@ -179,15 +188,14 @@ def _two_instances_do_not_collide(one: dict[str, object], two: dict[str, object]
         )
 
 
-def _holds_a_print_for_the_minimum_it_states(
-    started: dict[str, object], answered_at: float
-) -> None:
+def _holds_a_print_for_the_minimum_it_states(instance: Started) -> None:
     """A print that is running when the start returns and after the stated minimum.
 
     The minimum is measured from the moment `up` answered, which is what the
     script states it from, so the journey's own steps since then count towards
     it rather than being waited out a second time.
     """
+    started = instance.record
     url = str(started["url"])
     key = key_from(str(started["api_key_file"]))
     stated = int(str(started["hold_seconds"]))
@@ -206,7 +214,7 @@ def _holds_a_print_for_the_minimum_it_states(
         describing=f"a running print when the start returned, not `{job_state(url, key)}`",
     )
 
-    time.sleep(max(0.0, answered_at + stated - time.monotonic()))
+    time.sleep(max(0.0, instance.answered_at + stated - time.monotonic()))
 
     equal(job_file(url, key), HOLD_PRINT, describing="the file still selected")
     after = job_state(url, key)

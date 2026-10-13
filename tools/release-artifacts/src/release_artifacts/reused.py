@@ -172,6 +172,17 @@ def _toolchain(root: Path) -> str:
     if answered.returncode != 0:
         msg = f"`rustc -vV` failed, so the toolchain cannot be named:\n{answered.stderr}"
         raise BuildError(msg)
+    lines = answered.stdout.splitlines()
+    if (
+        not lines
+        or not lines[0].startswith("rustc ")
+        or not any(line.startswith("release: ") for line in lines)
+    ):
+        msg = (
+            "`rustc -vV` answered no compiler version, so the toolchain cannot be named:\n"
+            f"{answered.stdout}"
+        )
+        raise BuildError(msg)
     digest = hashlib.sha256()
     digest.update(declared.read_bytes() if declared.is_file() else b"")
     digest.update(b"\0")
