@@ -34,7 +34,7 @@
 //! it opens a connection is its own transport. A run whose own process did not
 //! record the load is refused rather than read as one that did nothing.
 //!
-//! **Windows** shares a native kernel ETW controller across each test thread.
+//! **Windows** shares one native kernel ETW controller across each test process.
 //! Before returning, it flushes and switches the log file, then synchronously
 //! decodes the closed chunk with `ProcessTrace`. Process start/end lifetimes
 //! determine ancestry; TCP request events include unsuccessful attempts. Lost
@@ -590,6 +590,10 @@ mod regression {
         let Ok(address) = std::env::var("PRINTOBSERVER_TRACE_CONNECT") else {
             return;
         };
+        if std::env::var("PRINTOBSERVER_TRACE_SCOPE").as_deref() == Ok("yes") {
+            scoped_observer(&address);
+            return;
+        }
         #[cfg(windows)]
         if std::env::var("PRINTOBSERVER_TRACE_RECOVER").as_deref() == Ok("yes") {
             let scratch = tempfile::TempDir::new().expect("recovery scratch");
@@ -667,6 +671,125 @@ mod regression {
             .unwrap_or_else(|error| std::panic::resume_unwind(error));
     }
 
+    /// The real observer process holds its session while a scoped worker traces.
+    fn scoped_observer(address: &str) {
+        use std::io::{Read as _, Write as _};
+        let scratch = tempfile::TempDir::new().expect("scoped observer scratch");
+        let program = std::env::current_exe().expect("test executable");
+        let arguments = [
+            "--exact".to_owned(),
+            "traced::regression::connector".to_owned(),
+            "--nocapture".to_owned(),
+        ];
+        let environment = [
+            ("PRINTOBSERVER_TRACE_CONNECT".to_owned(), address.to_owned()),
+            ("PRINTOBSERVER_TRACE_SCOPE".to_owned(), "no".to_owned()),
+        ];
+        let expected: BTreeSet<SocketAddr> = address
+            .split(',')
+            .map(|address| address.parse().expect("scoped endpoint"))
+            .collect();
+        let first = traced(&program, &arguments, &environment, scratch.path());
+        assert_eq!(first.code, Some(0), "{}", first.said());
+        assert_eq!(first.connected, expected);
+        #[cfg(windows)]
+        let identity = super::windows_trace::session_id();
+        println!("process-session held");
+        std::io::stdout().flush().expect("session readiness");
+        let mut release = [0];
+        std::io::stdin()
+            .read_exact(&mut release)
+            .expect("scoped invocation barrier");
+        assert_eq!(release, [b'Y']);
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                let ran = traced(&program, &arguments, &environment, scratch.path());
+                #[cfg(windows)]
+                assert_eq!(super::windows_trace::session_id(), identity);
+                ran
+            });
+            let second = worker.join().expect("scoped observer thread");
+            assert_eq!(second.code, Some(0), "{}", second.said());
+            assert_eq!(second.connected, expected);
+        });
+    }
+
+    /// A child reproduces the parent-held-session/scoped-worker shape. The
+    /// watchdog begins only after its first real trace acquired the host logger.
+    /// Killing our captured child on failure makes the old deadlock a bounded failure.
+    fn a_process_shares_its_session_with_a_scoped_worker(
+        accepted: SocketAddr,
+        refused: SocketAddr,
+    ) {
+        use std::io::{BufRead as _, BufReader, Write as _};
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
+        let mut child = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env("PRINTOBSERVER_TRACE_SCOPE", "yes")
+            .env(
+                "PRINTOBSERVER_TRACE_CONNECT",
+                format!("{accepted},{refused}"),
+            )
+            .env_remove("PRINTOBSERVER_SPIKE_TIMINGS")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("real scoped observer process");
+        let mut lines = BufReader::new(child.stdout.take().expect("observer stdout"));
+        loop {
+            let mut line = String::new();
+            assert!(
+                lines.read_line(&mut line).expect("observer readiness") > 0,
+                "observer exited before holding its session"
+            );
+            if line.contains("process-session held") {
+                break;
+            }
+        }
+        child
+            .stdin
+            .take()
+            .expect("observer barrier")
+            .write_all(b"Y")
+            .expect("start scoped trace");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("observer status") {
+                break Some(status);
+            }
+            if Instant::now() >= deadline {
+                child.kill().expect("stop our captured stalled observer");
+                child.wait().expect("reap our captured stalled observer");
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let status = status
+            .expect("a parent-held observer session blocked its scoped worker for 20 seconds");
+        assert!(status.success(), "scoped observer failed: {status}");
+        drop(lines);
+        // A different real process must acquire the logger after normal process exit.
+        let recovered = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env(
+                "PRINTOBSERVER_TRACE_CONNECT",
+                format!("{accepted},{refused}"),
+            )
+            .env("PRINTOBSERVER_TRACE_RECOVER", "yes")
+            .env_remove("PRINTOBSERVER_SPIKE_TIMINGS")
+            .output()
+            .expect("real process-exit recovery");
+        assert!(
+            recovered.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&recovered.stdout),
+            String::from_utf8_lossy(&recovered.stderr)
+        );
+    }
+
     /// The real subprocess/socket workload, on the caller's named thread.
     fn exercise() {
         let scratch = tempfile::TempDir::new().expect("trace scratch");
@@ -731,6 +854,9 @@ mod regression {
                     controller = Some(current);
                 }
             }
+            #[cfg(windows)]
+            super::windows_trace::release();
+            a_process_shares_its_session_with_a_scoped_worker(accepted, refused);
         });
         done.store(true, Ordering::Release);
         traffic.join().expect("unrelated traffic completed");

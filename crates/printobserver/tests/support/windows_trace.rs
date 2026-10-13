@@ -1,15 +1,15 @@
-//! One native controller per test thread, shared by both command walks.
+//! One native controller per test process, shared by both command walks.
 //!
 //! Rust remains safe: the test-only worker contains the Windows ABI boundary.
 //! Its named host mutex is independent of TEMP, and a closed, flushed ETL chunk
 //! is decoded synchronously before an invocation can return its evidence.
 
-use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::SocketAddr;
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
+use std::sync::Mutex;
 
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
@@ -20,38 +20,68 @@ fn protocol() -> Value {
         .expect("the committed ETW protocol golden")
 }
 
-thread_local! {
-    /// Dropped when the test thread exits, stopping its controller and releasing
-    /// the host mutex. It owns its scratch independently of any caller's.
-    static SESSION: RefCell<Option<Session>> = const { RefCell::new(None) };
+/// The helper releases its logger in its stdin-EOF finally block when this
+/// process exits. Requests are serialized; ownership spans callers' threads.
+static SESSION: Mutex<Option<Session>> = Mutex::new(None);
+
+/// Recover poison only after discarding the refused controller, never its evidence.
+fn with_session<R>(operation: impl FnOnce(&mut Option<Session>) -> R) -> R {
+    let mut slot = SESSION.lock().unwrap_or_else(|poisoned| {
+        let mut slot = poisoned.into_inner();
+        discard(&mut slot);
+        SESSION.clear_poison();
+        slot
+    });
+    operation(&mut slot)
 }
 
-/// Run under this thread's shared session, releasing it on any failure.
+/// Refused observations cannot be retained, including through a poisoned lock.
+fn discard(slot: &mut Option<Session>) {
+    if let Some(session) = slot.as_mut() {
+        session.failed = true;
+    }
+    drop(slot.take());
+}
+
+/// Run under this process's shared session, releasing it on any failure.
 pub fn run(
     program: &Path,
     arguments: &[String],
     environment: &[(String, String)],
 ) -> (std::process::Output, BTreeSet<SocketAddr>) {
-    SESSION.with(|slot| {
-        let mut session = slot.borrow_mut();
+    let (pending, connected, identity) = with_session(|session| {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let session = session.get_or_insert_with(|| {
                 super::spike::timed("traced:etw-native-start", Session::start)
             });
-            session.observe(program, arguments, environment)
+            let (pending, connected) = session.observe(program, arguments, environment);
+            (pending, connected, session.identity.clone())
         }));
         match result {
             Ok(ran) => ran,
             Err(error) => {
-                // A partial observation cannot be reused by another call.
-                if let Some(session) = session.as_mut() {
-                    session.failed = true;
-                }
-                drop(session.take());
+                discard(session);
                 std::panic::resume_unwind(error);
             }
         }
-    })
+    });
+    // Join output drains after releasing the invocation lock, so no caller
+    // holds it while waiting for another Rust thread.
+    let output = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| pending.finish()));
+    match output {
+        Ok(output) => (output, connected),
+        Err(error) => {
+            with_session(|slot| {
+                if slot
+                    .as_ref()
+                    .is_some_and(|session| session.identity == identity)
+                {
+                    discard(slot);
+                }
+            });
+            std::panic::resume_unwind(error);
+        }
+    }
 }
 
 /// The persistent controller and its private ETL chunks.
@@ -204,7 +234,7 @@ impl Session {
         program: &Path,
         arguments: &[String],
         environment: &[(String, String)],
-    ) -> (std::process::Output, BTreeSet<SocketAddr>) {
+    ) -> (PendingOutput, BTreeSet<SocketAddr>) {
         self.request(&json!({ "kind": "prepare" }), "prepared");
         let mut process = Command::new(program);
         process
@@ -247,18 +277,33 @@ impl Session {
             })
             .collect();
         // llmlint: ignore-end[changed_behavior_has_e2e]
-        let output = std::process::Output {
-            status,
-            stdout: out
+        (PendingOutput { status, out, err }, connected)
+    }
+}
+
+/// Each invocation owns independent readers and its original exit status.
+struct PendingOutput {
+    status: ExitStatus,
+    out: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    err: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+}
+
+impl PendingOutput {
+    /// Complete the authoritative output after native process-tree evidence.
+    fn finish(self) -> std::process::Output {
+        std::process::Output {
+            status: self.status,
+            stdout: self
+                .out
                 .join()
                 .expect("stdout drain thread")
                 .expect("invocation stdout read"),
-            stderr: err
+            stderr: self
+                .err
                 .join()
                 .expect("stderr drain thread")
                 .expect("invocation stderr read"),
-        };
-        (output, connected)
+        }
     }
 }
 
@@ -296,13 +341,18 @@ impl Drop for Session {
     }
 }
 
+/// Release the real controller before a regression starts another observer process.
+#[cfg(test)]
+pub fn release() {
+    with_session(|slot| drop(slot.take()));
+}
+
 /// The regression inspects the identity of the real worker it owns, so two
 /// adjacent observations prove session setup was shared rather than restarted.
 #[cfg(test)]
 pub fn session_id() -> String {
-    SESSION.with(|slot| {
-        slot.borrow()
-            .as_ref()
+    with_session(|slot| {
+        slot.as_ref()
             .expect("a session is running")
             .identity
             .clone()
@@ -318,8 +368,7 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
     let first = super::traced(&program, &arguments, &environment, scratch.path());
     assert_probe(&first, &environment);
     let identity = session_id();
-    SESSION.with(|slot| {
-        let mut slot = slot.borrow_mut();
+    with_session(|slot| {
         let session = slot.as_mut().expect("a controller we own");
         session.worker.kill().expect("kill our controller");
         session.worker.wait().expect("reap our crashed controller");
@@ -329,8 +378,20 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
     })
     .expect_err("a dead native controller cannot supply evidence");
     assert_refusal(failure.as_ref(), "incomplete ETW observation");
+    let poisoned = SESSION
+        .lock()
+        .expect_err("a refused invocation poisoned its lock");
+    assert!(
+        poisoned.get_ref().is_none(),
+        "refused controller survived poisoning"
+    );
+    drop(poisoned);
     let recovered = super::traced(&program, &arguments, &environment, scratch.path());
     assert_probe(&recovered, &environment);
+    assert!(
+        !SESSION.is_poisoned(),
+        "recovery retained the poisoned lock"
+    );
     assert_ne!(
         session_id(),
         identity,
@@ -338,8 +399,7 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
     );
     // Release the recovered session before asking a second real process to
     // acquire the same host mutex under its different TEMP routing.
-    SESSION.with(|slot| {
-        let mut slot = slot.borrow_mut();
+    with_session(|slot| {
         let session = slot.as_mut().expect("the recovered controller");
         drop(session.requests.take());
         assert!(
@@ -350,7 +410,7 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
                 .success()
         );
     });
-    SESSION.with(|slot| drop(slot.borrow_mut().take()));
+    with_session(|slot| drop(slot.take()));
     another_process_recovers(&program, &arguments, &environment, scratch.path());
 }
 
@@ -362,9 +422,8 @@ fn incomplete_native_evidence_is_refused_then_the_logger_recovers() {
     let (scratch, program, arguments, environment) = probe();
     let first = super::traced(&program, &arguments, &environment, scratch.path());
     assert_probe(&first, &environment);
-    SESSION.with(|slot| {
-        slot.borrow_mut()
-            .as_mut()
+    with_session(|slot| {
+        slot.as_mut()
             .expect("our controller")
             .request(&json!({ "kind": "invalidate" }), "invalidated");
     });
@@ -501,8 +560,7 @@ fn a_raw_request_is_refused(request: &Value, expected: &str) {
 #[cfg(test)]
 fn a_raw_line_is_refused(request: &str, expected: &str) {
     let failure = std::panic::catch_unwind(|| {
-        SESSION.with(|slot| {
-            let mut slot = slot.borrow_mut();
+        with_session(|slot| {
             let session = slot.get_or_insert_with(Session::start);
             writeln!(
                 session.requests.as_mut().expect("controller stdin"),
@@ -513,8 +571,7 @@ fn a_raw_line_is_refused(request: &str, expected: &str) {
         });
     })
     .expect_err("malformed native input was accepted");
-    SESSION.with(|slot| {
-        let mut slot = slot.borrow_mut();
+    with_session(|slot| {
         if let Some(session) = slot.as_mut() {
             session.failed = true;
         }
