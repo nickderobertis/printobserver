@@ -685,7 +685,6 @@ def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_pa
     equal(
         recording.recorded(),
         [
-            "just runner-temp",
             "just bootstrap",
             "just gate-tier",
             "just check ",
@@ -709,7 +708,6 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
     equal(
         recording.recorded(),
         [
-            "just runner-temp",
             "just bootstrap",
             "just octoprint-up",
             "just test-integration",
@@ -735,7 +733,6 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
     equal(
         recording.recorded(),
         [
-            "just runner-temp",
             "just bootstrap",
             "just octoprint-up",
             "just octoprint-down",
