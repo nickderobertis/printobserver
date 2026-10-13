@@ -117,5 +117,6 @@ try {
     }
     Write-Output "Children will use temp directory $chosen ($routing)"
 } catch {
-    throw "$($_.Exception.Message) Restore access to the named job files and retry just runner-temp $Action."
+    [Console]::Error.WriteLine("$($_.Exception.Message) Restore access to the named job files and retry just runner-temp $Action.")
+    exit 1
 }

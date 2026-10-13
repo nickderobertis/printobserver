@@ -398,14 +398,16 @@ def test_cleanup_keeps_scratch_when_post_job_temp_cannot_be_restored(
 
 @pytest.mark.parametrize("failure", ["marker-read", "scratch-delete"])
 def test_cleanup_permission_failures_name_the_recovery(tmp_path: Path, failure: str) -> None:
-    """Real Unix access checks fail at the read/delete operations inside cleanup."""
+    """Real Unix refusal over a long path retains the contiguous recovery message."""
     if sys.platform == "win32":
         pytest.skip(
             "Unix permission induction; the native Windows ACL refusal is tested separately"
         )
     if os.geteuid() == 0:
         pytest.skip("root bypasses the permission refusal this journey induces")
-    environment = _setup(tmp_path, drive_present=True)
+    case_root = tmp_path / "permission failure in a long scratch directory"
+    case_root.mkdir()
+    environment = _setup(case_root, drive_present=True)
     scratch = Path(environment["PRINTOBSERVER_JOB_SCRATCH"])
     marker = scratch / ".printobserver-owned"
     restricted = marker if failure == "marker-read" else scratch.parent
