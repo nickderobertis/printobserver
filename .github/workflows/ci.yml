@@ -94,7 +94,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check "$(just gate-tier)"
+      - run: just check all
 
   integration:
     # Named by platform id, not runner, so a new runner image renames no
