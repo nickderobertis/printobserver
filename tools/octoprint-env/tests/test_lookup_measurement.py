@@ -11,7 +11,7 @@ from pathlib import Path
 
 import octoprint_env
 import pytest
-from repo_checks.expect import contains, equal, failing, passing
+from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.shell import run
 
 SCRIPT = Path(__file__).resolve().parents[1] / "measure_host_lookup.py"
@@ -32,8 +32,13 @@ def test_measurement_checks_five_native_queries_and_reaps_its_child(query_availa
             result.stdout.splitlines()[1].removeprefix("HOST_LOOKUP_MEASUREMENT ")
         )
         equal(measurement["rounds"], 5)
-        equal(len(measurement["seconds"]), 5)
-        equal(measurement["median_s"], statistics.median(measurement["seconds"]))
+        equal(len(measurement["seconds"]) + len(measurement["censored_samples"]), 5)
+        completed = measurement["seconds"]
+        equal(measurement["median_s"], statistics.median(completed) if completed else None)
+        equal(measurement["median_scope"], "completed_queries")
+        for sample in measurement["censored_samples"]:
+            equal(sample["bound_s"], 30)
+            truth(sample["observed_elapsed_s"] > 0, describing="a timed native query")
         contains(
             measurement["command_line"], "import sys; sys.stdin.read() spike-lookup-bench-marker"
         )

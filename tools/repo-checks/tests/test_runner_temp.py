@@ -232,7 +232,7 @@ if ($Action -eq 'deny') {
     [IO.File]::WriteAllText($Backup, $acl.Sddl)
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     $rule = [Security.AccessControl.FileSystemAccessRule]::new(
-        $identity, 'CreateDirectories', 'Deny'
+        $identity, 'Write', 'ContainerInherit, ObjectInherit', 'None', 'Deny'
     )
     $acl.AddAccessRule($rule)
 } else {

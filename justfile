@@ -33,8 +33,10 @@ bootstrap:
     uv run -q python -m repo_checks install-hooks
 
 # Set the Windows x86 job's temp before bootstrap, and clean only its scratch.
+# Validate before Git's Windows bash can discard carriage returns.
 runner-temp action="setup" drive="D:\\" fallback="":
-    @if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ]; then exit 0; fi; \
+    @: {{assert(drive == replace(replace(drive, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}{{assert(fallback == replace(replace(fallback, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}; \
+    if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ]; then exit 0; fi; \
     pwsh -NoProfile -File scripts/runner-temp.ps1 -Action {{quote(action)}} -DriveRoot {{quote(drive)}} {{if fallback == "" { "" } else { "-Fallback " + quote(fallback) }}}
 
 # Measure native lookup cost on an identical live-child workload.

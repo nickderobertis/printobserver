@@ -22,11 +22,21 @@ def main() -> None:
     argv = [sys.executable, "-c", "import sys; sys.stdin.read()", MARKER]
     child = start(argv)
     seconds: list[float] = []
+    censored: list[dict[str, float]] = []
     print(f"HOST_LOOKUP_CHILD {child.pid}", flush=True)
     try:
         for _ in range(ROUNDS):
             started = time.perf_counter()
-            answer = command_of(child.pid)
+            try:
+                answer = command_of(child.pid)
+            except subprocess.TimeoutExpired as error:
+                censored.append(
+                    {
+                        "bound_s": error.timeout,
+                        "observed_elapsed_s": time.perf_counter() - started,
+                    }
+                )
+                continue
             seconds.append(time.perf_counter() - started)
             if answer != " ".join(argv):
                 raise RuntimeError(f"lookup did not return the full child command line: {answer!r}")
@@ -42,7 +52,9 @@ def main() -> None:
                 "processors": os.cpu_count(),
                 "rounds": ROUNDS,
                 "seconds": seconds,
-                "median_s": statistics.median(seconds),
+                "median_s": statistics.median(seconds) if seconds else None,
+                "median_scope": "completed_queries",
+                "censored_samples": censored,
                 "command_line": " ".join(argv),
             }
         )
