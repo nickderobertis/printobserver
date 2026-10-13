@@ -151,10 +151,13 @@ def _sources(root: Path) -> list[Path]:
         for crate in sorted(crates.iterdir()):
             if not crate.is_dir():
                 continue
-            for path in sorted(crate.rglob("*")):
-                relative = path.relative_to(crate).parts
-                if path.is_file() and relative[0] != CRATE_TESTS and "target" not in relative:
-                    found.append(path)
+            for top in sorted(crate.iterdir()):
+                if top.name in {CRATE_TESTS, "target"}:
+                    continue
+                if top.is_file():
+                    found.append(top)
+                else:
+                    found.extend(path for path in sorted(top.rglob("*")) if path.is_file())
     return found
 
 
