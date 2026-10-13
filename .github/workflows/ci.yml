@@ -16,6 +16,8 @@
 
 name: ci
 
+# Measurement baseline: this unowned workflow diff selects the entire graph.
+
 # The pull-request trigger names GitHub's three default activity types and not
 # `ready_for_review`: a pull request opened as a draft has already run every
 # check on its commit, and lifting it out of draft changes no commit, so a run
@@ -94,7 +96,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check all
+      - run: just check "$(just gate-tier)"
 
   integration:
     # Named by platform id, not runner, so a new runner image renames no

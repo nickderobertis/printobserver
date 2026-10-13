@@ -25,6 +25,7 @@ import yaml
 from environment import running
 from repo_checks.expect import contains, equal, truth
 from repo_checks.shell import run as shell_run
+from repo_checks.shell import start
 
 
 def _provisioned_over(state: Path, program: Path) -> None:
@@ -142,3 +143,18 @@ def test_stopping_a_recorded_instance_leaves_no_process_behind(tmp_path: Path) -
         not (state / "instance.json").exists(),
         describing="the record of a stopped instance to be gone",
     )
+
+
+def test_command_lookup_reads_a_real_childs_entire_command_line() -> None:
+    """Read arguments, including spaces and single quotes, through this host's API."""
+    argv = [sys.executable, "-c", "import sys; sys.stdin.read()", "lookup marker 'quoted' tail"]
+    child = start(argv)
+    try:
+        equal(
+            octoprint_env.command_of(child.pid),
+            " ".join(argv),
+            describing="the child's entire command line rather than just its image",
+        )
+        equal(child.poll(), None, describing="the child to remain alive after observation")
+    finally:
+        child.communicate(timeout=10)

@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(just bootstrap)",
+      "Bash(just runner-temp)",
       "Bash(just check)",
       "Bash(just check-repo)",
       "Bash(just check-pr-title)",
