@@ -398,3 +398,84 @@ def test_cleanup_permission_failures_name_the_recovery(tmp_path: Path, failure: 
         # A failed recursive delete may have removed the marker before rmdir failed.
         marker.write_text(scratch.name, encoding="utf-8")
         passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment, timeout=30))
+
+
+def test_relative_inputs_export_absolute_temp_for_children_in_another_directory(
+    tmp_path: Path,
+) -> None:
+    """The setup cwd cannot become an implicit part of a later child's temp identity."""
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    fallback = tmp_path / "fallback"
+    fallback.mkdir()
+    environment_file = tmp_path / "job-env"
+    environment = dict(
+        os.environ,
+        PRINTOBSERVER_PLATFORM="windows-x86_64",
+        GITHUB_ENV=str(environment_file),
+    )
+    script = str(ROOT / "scripts" / "runner-temp.ps1")
+    passing(
+        run(
+            [
+                "pwsh",
+                "-NoProfile",
+                "-File",
+                script,
+                "-Action",
+                "setup",
+                "-DriveRoot",
+                "drive",
+                "-Fallback",
+                "fallback",
+            ],
+            cwd=tmp_path,
+            env=environment,
+        )
+    )
+    for line in environment_file.read_text(encoding="utf-8-sig").splitlines():
+        name, value = line.split("=", 1)
+        environment[name] = value
+    try:
+        chosen = Path(environment["TEMP"])
+        truth(chosen.is_absolute(), describing="an absolute temp path independent of child cwd")
+        observed = run([sys.executable, "-c", PROBE], cwd=fallback, env=environment)
+        passing(observed)
+        equal(Path(json.loads(observed.stdout)["file"]).parent, chosen)
+    finally:
+        passing(
+            run(
+                [
+                    "pwsh",
+                    "-NoProfile",
+                    "-File",
+                    script,
+                    "-Action",
+                    "cleanup",
+                    "-DriveRoot",
+                    "drive",
+                ],
+                cwd=tmp_path,
+                env=environment,
+            )
+        )
+
+
+@pytest.mark.parametrize("relative", [".", "child"])
+def test_cleanup_refuses_to_restore_temp_inside_the_scratch_it_will_delete(
+    tmp_path: Path, relative: str
+) -> None:
+    """A writable fallback must also survive the cleanup that follows its export."""
+    environment = _setup(tmp_path, drive_present=True)
+    scratch = Path(environment["PRINTOBSERVER_JOB_SCRATCH"])
+    restored = scratch / relative
+    restored.mkdir(exist_ok=True)
+    environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(restored)
+    try:
+        result = run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment)
+        failing(result, naming="Choose a fallback outside this job's scratch")
+        truth(scratch.is_dir(), describing="the currently usable scratch not to be removed")
+    finally:
+        if scratch.exists():
+            environment["PRINTOBSERVER_JOB_TEMP_FALLBACK"] = str(tmp_path / "existing temp")
+            passing(run(["just", "runner-temp", "cleanup"], cwd=ROOT, env=environment))

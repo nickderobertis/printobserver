@@ -145,7 +145,9 @@ def test_stopping_a_recorded_instance_leaves_no_process_behind(tmp_path: Path) -
     )
 
 
-def test_command_lookup_reads_a_real_childs_entire_command_line() -> None:
+def test_command_lookup_reads_a_real_childs_entire_command_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Read arguments, including spaces and single quotes, through this host's API."""
     argv = [sys.executable, "-c", "import sys; sys.stdin.read()", "lookup marker 'quoted' tail"]
     child = start(argv)
@@ -158,3 +160,7 @@ def test_command_lookup_reads_a_real_childs_entire_command_line() -> None:
         equal(child.poll(), None, describing="the child to remain alive after observation")
     finally:
         child.communicate(timeout=10)
+
+    monkeypatch.setenv("PATH", "")
+    with pytest.raises(FileNotFoundError, match="is not on PATH"):
+        octoprint_env.command_of(child.pid)

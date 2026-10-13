@@ -41,6 +41,7 @@ try {
     if ($Action -eq 'cleanup') {
         $scratch = $env:PRINTOBSERVER_JOB_SCRATCH
         if (-not $scratch) { return }
+        $scratch = [System.IO.Path]::GetFullPath($scratch)
         $leaf = Split-Path -Leaf $scratch
         $marker = Join-Path $scratch '.printobserver-owned'
         if ($leaf -ne $env:PRINTOBSERVER_JOB_SCRATCH_OWNER -or
@@ -51,6 +52,14 @@ try {
         }
         $restored = $env:PRINTOBSERVER_JOB_TEMP_FALLBACK
         Assert-LinePath $restored
+        $restored = [System.IO.Path]::GetFullPath($restored)
+        $relative = [System.IO.Path]::GetRelativePath($scratch, $restored)
+        $separator = [System.IO.Path]::DirectorySeparatorChar
+        if ($relative -eq '.' -or
+            (-not [System.IO.Path]::IsPathRooted($relative) -and
+             $relative -ne '..' -and -not $relative.StartsWith("..$separator"))) {
+            throw "Choose a fallback outside this job's scratch before cleanup: $restored"
+        }
         Assert-WritableTemp $restored
         # Post-job cache actions still spawn children after the workflow steps.
         Publish-Temp $restored '' '' $restored
@@ -60,6 +69,8 @@ try {
 
     if (-not $env:GITHUB_ENV) { throw 'Set GITHUB_ENV to a writable environment file for later steps.' }
     foreach ($path in @($DriveRoot, $Fallback, $env:GITHUB_ENV)) { Assert-LinePath $path }
+    $DriveRoot = [System.IO.Path]::GetFullPath($DriveRoot)
+    $Fallback = [System.IO.Path]::GetFullPath($Fallback)
     $scratch = ''
     $owner = ''
     $routing = 'existing temp; scratch drive is absent'

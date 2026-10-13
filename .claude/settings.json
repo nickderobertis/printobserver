@@ -25,7 +25,7 @@
       "Bash(just release-dry-run)",
       "Bash(cargo:*)",
       "Bash(bash:*)",
-      "Bash(pwsh:*)",
+      "Bash(pwsh -NoProfile -File scripts/runner-temp.ps1:*)",
       "Bash(rustup:*)",
       "Bash(uv:*)",
       "Bash(bun:*)",
