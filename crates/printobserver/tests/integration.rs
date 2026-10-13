@@ -30,6 +30,8 @@ mod machine;
 mod proxy;
 #[path = "support/scripted.rs"]
 mod scripted;
+#[path = "support/spike.rs"]
+mod spike;
 #[path = "support/traced.rs"]
 mod traced;
 #[path = "support/walk.rs"]

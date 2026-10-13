@@ -2459,3 +2459,15 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "for changelog in sorted(copy.root.glob(\"crates/*/CHANGELOG.md\")):"
 reason = "The fixture writes a section into every crate's changelog because a merged release pull request touches every crate's changelog, and that touch is what the drafting tool attributes the merge commit to each crate by: it reads a crate's history off the files under the crate's directory, and with every internal requirement inherited from the root manifest the version move alone touches none of them. What the section says is not read by anything under test — the loop guard and its control turn on the merge commit's subject and body. Having the drafting tool write them would need a release-worthy history before the merge and a full semver-checked draft of all twelve crates per journey, each well over a minute, to produce text these journeys then ignore; the version half the same fixture writes is held to what the held release-plz writes by `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes`."
+
+[[suppression]]
+rule = "tests_assert_real_behavior"
+file = "crates/printobserver/tests/support/traced.rs"
+site = "fn connector()"
+reason = "The libtest registration is the actual subprocess socket fixture selected with --exact, not an independent behavioral claim. The owning regression asserts its exit status and the OS tracer's complete endpoint attribution for it and its descendants."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = ".github/workflows/ci.yml"
+site = "uses: actions/upload-artifact@v4"
+reason = "Temporary artifact collection is measurement-only workflow configuration explicitly authorized by this task; the draft run is the real forge boundary proof and both steps are removed before settlement."

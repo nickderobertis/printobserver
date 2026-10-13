@@ -66,6 +66,12 @@ use std::sync::Mutex;
 #[cfg(not(target_os = "macos"))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// What the spike's timing sink calls one observed invocation here.
+#[cfg(not(any(target_os = "macos", windows)))]
+const OBSERVED_KIND: &str = "traced:strace-run";
+#[cfg(target_os = "macos")]
+const OBSERVED_KIND: &str = "traced:interposed-run";
+
 /// The tracer this tier reads a process tree's connections out of.
 #[cfg(not(any(target_os = "macos", windows)))]
 const TRACER: &str = "strace";
@@ -170,7 +176,9 @@ pub fn traced(
     scratch: &Path,
 ) -> Ran {
     let environment = &with_its_own_config_home(environment, scratch);
-    let (output, recorded) = observed(program, arguments, environment, scratch);
+    let (output, recorded) = crate::spike::timed(OBSERVED_KIND, || {
+        observed(program, arguments, environment, scratch)
+    });
     Ran {
         code: output.status.code(),
         out: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -322,7 +330,7 @@ pub fn traced(
     // Nextest runs each journey in its own process. The static mutex orders
     // callers inside one process; this operating-system lock orders those
     // processes around Windows' one kernel logger.
-    let _host_trace = kernel_trace_lock();
+    let _host_trace = crate::spike::timed("traced:etw-lock-wait", kernel_trace_lock);
 
     let invocation = format!(
         "{}-{}",
@@ -339,6 +347,7 @@ pub fn traced(
     // directory is refused as one rather than as a home that could not be made.
     let environment = &with_its_own_config_home(environment, scratch);
 
+    let starting = std::time::Instant::now();
     etw::tool(
         "logman",
         &[
@@ -359,6 +368,7 @@ pub fn traced(
             "256".as_ref(),
         ],
     );
+    crate::spike::note("traced:etw-logman-start", starting);
     let mut process = Command::new(program);
     process
         .args(arguments)
@@ -370,39 +380,47 @@ pub fn traced(
     for (name, value) in environment {
         process.env(name, value);
     }
+    let running = std::time::Instant::now();
     let started = process.spawn();
     let output = started.and_then(|child| {
         let root = child.id();
         child.wait_with_output().map(|output| (root, output))
     });
+    crate::spike::note("traced:invocation-run", running);
     // Stopped whatever the invocation did, so a program that could not be
     // started leaves no session behind to fill the host's limit of them.
-    etw::tool(
-        "logman",
-        &[
-            "stop".as_ref(),
-            "NT Kernel Logger".as_ref(),
-            "-ets".as_ref(),
-        ],
-    );
+    crate::spike::timed("traced:etw-logman-stop", || {
+        etw::tool(
+            "logman",
+            &[
+                "stop".as_ref(),
+                "NT Kernel Logger".as_ref(),
+                "-ets".as_ref(),
+            ],
+        );
+    });
     let (root, output) =
         output.unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
-    etw::tool(
-        "tracerpt",
-        &[
-            etl.as_os_str(),
-            "-of".as_ref(),
-            "XML".as_ref(),
-            "-o".as_ref(),
-            dump.as_os_str(),
-            "-y".as_ref(),
-        ],
-    );
+    crate::spike::timed("traced:etw-tracerpt", || {
+        etw::tool(
+            "tracerpt",
+            &[
+                etl.as_os_str(),
+                "-of".as_ref(),
+                "XML".as_ref(),
+                "-o".as_ref(),
+                dump.as_os_str(),
+                "-y".as_ref(),
+            ],
+        );
+    });
+    let parsing = std::time::Instant::now();
     let decoded =
         etw::text_of(&std::fs::read(&dump).unwrap_or_else(|error| {
             panic!("`tracerpt` wrote nothing to {}: {error}", dump.display())
         }));
     let connected = etw::connections_of(&decoded, root);
+    crate::spike::note("traced:etw-decode", parsing);
     for written in [&etl, &dump] {
         let _ = std::fs::remove_file(written);
     }
@@ -1020,5 +1038,99 @@ mod observing {
             BTreeSet::from([address]),
             "a run reading a path nobody watches did not connect where that path configured"
         );
+    }
+}
+
+/// Real socket traffic, including a child that outlives its parent, observed
+/// through the same interface both command walks use.
+#[cfg(test)]
+mod regression {
+    use std::collections::BTreeSet;
+    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::process::Command;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::traced;
+
+    /// A subprocess fixture that connects itself or starts a connecting child.
+    /// An ordinary test invocation has no fixture environment and does nothing.
+    // llmlint: ignore[tests_assert_real_behavior] This libtest entry is the real subprocess socket fixture, selected by its parent through --exact. The owning regression asserts its exit status and every endpoint the actual OS tracer attributes to it and its descendants; an unselected fixture makes no test claim.
+    #[test]
+    fn connector() {
+        let Ok(address) = std::env::var("PRINTOBSERVER_TRACE_CONNECT") else {
+            return;
+        };
+        if std::env::var_os("PRINTOBSERVER_TRACE_CHILD").is_some() {
+            let child = Command::new(std::env::current_exe().expect("test executable"))
+                .args(["--exact", "traced::regression::connector", "--nocapture"])
+                .env_remove("PRINTOBSERVER_TRACE_CHILD")
+                .spawn()
+                .expect("connecting descendant");
+            // Its inherited output streams keep output collection open until
+            // it exits, but its parent process exits immediately.
+            drop(child);
+            return;
+        }
+        for address in address.split(',') {
+            let address: SocketAddr = address.parse().expect("fixture endpoint");
+            let _ = TcpStream::connect(address);
+        }
+    }
+
+    /// Accepted and refused attempts belong to this invocation's lifetime and
+    /// ancestry; adjacent invocations and simultaneous host traffic do not.
+    #[test]
+    fn each_invocation_observes_its_descendants_and_refused_attempts_only() {
+        let scratch = tempfile::TempDir::new().expect("trace scratch");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("accepted endpoint");
+        let accepted = listener.local_addr().expect("listener endpoint");
+        let reservation = TcpListener::bind("127.0.0.1:0").expect("refused endpoint");
+        let refused = reservation.local_addr().expect("reserved endpoint");
+        drop(reservation);
+        let outside = TcpListener::bind("127.0.0.1:0").expect("unrelated endpoint");
+        let unrelated = outside.local_addr().expect("outside endpoint");
+        let done = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&done);
+        let traffic = std::thread::spawn(move || {
+            while !stop.load(Ordering::Acquire) {
+                let _ = TcpStream::connect(unrelated);
+                let _ = outside.accept();
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+        let result = std::panic::catch_unwind(|| {
+            for (endpoints, child) in [
+                (format!("{accepted},{refused}"), true),
+                (refused.to_string(), false),
+            ] {
+                let mut environment =
+                    vec![("PRINTOBSERVER_TRACE_CONNECT".to_owned(), endpoints.clone())];
+                if child {
+                    environment.push(("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()));
+                }
+                let ran = traced(
+                    &std::env::current_exe().expect("test executable"),
+                    &[
+                        "--exact".to_owned(),
+                        "traced::regression::connector".to_owned(),
+                        "--nocapture".to_owned(),
+                    ],
+                    &environment,
+                    scratch.path(),
+                );
+                assert_eq!(ran.code, Some(0), "{}", ran.said());
+                let expected: BTreeSet<SocketAddr> = endpoints
+                    .split(',')
+                    .map(|address| address.parse().expect("endpoint"))
+                    .collect();
+                assert_eq!(ran.connected, expected, "{}", ran.said());
+            }
+        });
+        done.store(true, Ordering::Release);
+        traffic.join().expect("unrelated traffic completed");
+        if let Err(error) = result {
+            std::panic::resume_unwind(error);
+        }
     }
 }

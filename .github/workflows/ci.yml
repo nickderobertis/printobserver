@@ -98,6 +98,15 @@ jobs:
       # Remove after the paired Windows measurements have completed.
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just check all
+        env:
+          PRINTOBSERVER_SPIKE_TIMINGS: ${{ runner.temp }}/client-trace-phases.jsonl
+
+      # llmlint: ignore[changed_behavior_has_e2e] This temporary artifact declaration is measurement-only configuration explicitly authorized by the task; the draft run itself is its real forge boundary proof, and the step is removed before settlement.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-trace-phases-${{ github.job }}-${{ matrix.platform.id }}
+          path: ${{ runner.temp }}/client-trace-phases.jsonl
 
   integration:
     # Named by platform id, not runner, so a new runner image renames no
@@ -141,10 +150,19 @@ jobs:
       - run: just bootstrap
       - run: just octoprint-up
       - run: just test-integration
+        env:
+          PRINTOBSERVER_SPIKE_TIMINGS: ${{ runner.temp }}/client-trace-phases.jsonl
       # The one condition in this job, and it is on the teardown: an
       # environment that outlived a failing tier is a runner nobody stopped.
       - if: always()
         run: just octoprint-down
+
+      # llmlint: ignore[changed_behavior_has_e2e] This temporary artifact declaration is measurement-only configuration explicitly authorized by the task; the draft run itself is its real forge boundary proof, and the step is removed before settlement.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-trace-phases-${{ github.job }}-${{ matrix.platform.id }}
+          path: ${{ runner.temp }}/client-trace-phases.jsonl
 
   llmlint:
     name: llmlint
