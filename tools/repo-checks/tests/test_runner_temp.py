@@ -72,11 +72,16 @@ def test_children_use_scratch_or_usable_fallback_and_cleanup_keeps_unrelated_fil
         truth(chosen.exists(), describing="the shared fallback to remain")
 
 
-def test_cleanup_refuses_a_directory_without_its_ownership_marker(tmp_path: Path) -> None:
+@pytest.mark.parametrize("has_another_jobs_marker", [False, True])
+def test_cleanup_refuses_a_directory_without_its_ownership_marker(
+    tmp_path: Path, has_another_jobs_marker: bool
+) -> None:
     """A foreign path in the job environment is refused without removing it."""
     environment = _setup(tmp_path, drive_present=False)
     foreign = tmp_path / ("printobserver-" + "a" * 32)
     foreign.mkdir()
+    if has_another_jobs_marker:
+        (foreign / ".printobserver-owned").write_text(foreign.name, encoding="utf-8")
     retained = foreign / "unrelated"
     retained.write_text("keep", encoding="utf-8")
     environment["PRINTOBSERVER_JOB_SCRATCH"] = str(foreign)
