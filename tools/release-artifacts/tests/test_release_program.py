@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from release_artifacts.__main__ import main
-from release_artifacts.reused import DIRECTORY
+from release_artifacts.reused import DIGEST_FILE, DIRECTORY
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
@@ -225,6 +225,33 @@ def test_a_changed_key_builds_again_rather_than_reusing(
         [second.parent.name],
         describing="the kept programs, which are only the newest",
     )
+
+
+@pytest.mark.parametrize("damage", ["truncated", "unrecorded"])
+def test_a_kept_program_that_is_not_what_was_kept_is_built_over(
+    damage: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A restored program whose bytes are not the ones kept is never run.
+
+    The kept directory comes back from a cache rather than from this tool, so
+    a program cut short, or one with no record of what it was kept as, is a
+    file that is merely there: the key still holds and it is built over anyway.
+    """
+    root = _workspace(tmp_path / "workspace", says=FIRST)
+    first, _ = _prepare(root, capsys)
+    _forget_the_build(root)
+    if damage == "truncated":
+        first.write_bytes(first.read_bytes()[:64])
+    else:
+        (first.parent / DIGEST_FILE).unlink()
+
+    second, said = _prepare(root, capsys)
+
+    contains(said, "built the release program", describing=f"the preparation over a {damage} one")
+    truth((root / "target").is_dir(), describing=f"a build made over a {damage} program")
+    equal(second, first, describing="the program kept again under the same key")
+    equal(_answer(second), FIRST, describing="the program built over the damaged one")
+    truth((second.parent / DIGEST_FILE).is_file(), describing="the digest kept beside it again")
 
 
 def test_a_build_whose_inputs_move_under_it_is_used_once_and_kept_under_no_key(

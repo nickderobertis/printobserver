@@ -42,6 +42,9 @@ from release_artifacts.build import PROFILE, BuildError, program
 #: Where the kept build lives, under the workspace root.
 DIRECTORY = ".release-program"
 
+#: The file beside a kept program recording the digest it was kept with.
+DIGEST_FILE = "program.sha256"
+
 #: Where the workspace's crates are, under its root.
 CRATES = "crates"
 
@@ -111,7 +114,7 @@ def prepared(repo: Repo, directory: Path | None = None) -> Prepared:
     kept = repo.root / DIRECTORY if directory is None else directory
     before = key(repo.root)
     entry = kept / before.value / platforms.host(repo).program
-    if entry.is_file():
+    if _intact(entry):
         return Prepared(entry, before, reused=True)
     built = program(repo)
     after = key(repo.root)
@@ -124,13 +127,35 @@ def prepared(repo: Repo, directory: Path | None = None) -> Prepared:
 
 
 def _keep(built: Path, kept: Path, entry: Path) -> None:
-    """Put `built` at `entry`, as the only program `kept` holds."""
+    """Put `built` at `entry`, with its digest beside it, as the only program `kept` holds."""
     if kept.exists():
         shutil.rmtree(kept)
     staging = kept / f"{entry.parent.name}.partial"
     staging.mkdir(parents=True)
     shutil.copy2(built, staging / entry.name)
+    (staging / DIGEST_FILE).write_text(_digest(staging / entry.name), encoding="utf-8")
     staging.rename(entry.parent)
+
+
+def _intact(entry: Path) -> bool:
+    """Whether `entry` is the program that was kept: the same bytes, and runnable.
+
+    A kept directory is restored from a cache rather than written here, so a
+    file that is merely there — truncated, damaged, or no longer executable —
+    is built over rather than run.
+    """
+    recorded = entry.parent / DIGEST_FILE
+    if not entry.is_file() or not recorded.is_file():
+        return False
+    if recorded.read_text(encoding="utf-8").strip() != _digest(entry):
+        return False
+    return os.access(entry, os.X_OK)
+
+
+def _digest(path: Path) -> str:
+    """The SHA-256 of one file's bytes."""
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
 def _source(root: Path) -> str:

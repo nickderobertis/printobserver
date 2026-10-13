@@ -93,20 +93,43 @@ def test_the_scripted_environment_installs_starts_holds_a_print_and_stops(
 
     one = _starts_answering_and_connected(first)
     two = _starts_answering_and_connected(second)
-    _two_instances_do_not_collide(one.record, two.record)
-    _stops_leaving_no_process(two.record)
+    _two_instances_do_not_collide(one, two)
+    _stops_leaving_no_process(two)
 
     _holds_a_print_for_the_minimum_it_states(one)
 
-    _stops_leaving_no_process(one.record)
+    _stops_leaving_no_process(one)
 
 
 @dataclass(frozen=True, slots=True)
 class Started:
-    """An instance `up` started: what it answered, and when it answered it."""
+    """An instance `up` started, as it answered, and the moment it answered."""
 
-    record: dict[str, object]
+    url: str
+    port: int
+    pid: int
+    state_dir: str
+    api_key_file: str
+    hold_seconds: int
     answered_at: float
+
+    @classmethod
+    def read(cls, record: dict[str, object], answered_at: float) -> Started:
+        """The instance `up` described in `record`, every field it names required."""
+        return cls(
+            url=str(record["url"]),
+            port=int(str(record["port"])),
+            pid=int(str(record["pid"])),
+            state_dir=str(record["state_dir"]),
+            api_key_file=str(record["api_key_file"]),
+            hold_seconds=int(str(record["hold_seconds"])),
+            answered_at=answered_at,
+        )
+
+    @property
+    def key(self) -> str:
+        """The API key it was provisioned with."""
+        return key_from(self.api_key_file)
 
 
 def _installs_unattended_over_an_empty_directory(state: str) -> dict[str, object]:
@@ -157,9 +180,9 @@ def _starts_answering_and_connected(state: str) -> Started:
     answered_at = time.monotonic()
 
     passing(result, describing=f"starting the instance under {state}")
-    started = answer(result)
-    key = key_from(str(started["api_key_file"]))
-    url = str(started["url"])
+    started = Started.read(answer(result), answered_at)
+    key = started.key
+    url = started.url
 
     # Asserted at the moment the start returned: this is what "does not answer
     # until the instance answers its own API and reports a connected printer"
@@ -168,22 +191,22 @@ def _starts_answering_and_connected(state: str) -> Started:
     equal(status, 200, describing=f"the API of {url} at the moment the start returned")
     truth(isinstance(version, dict), describing="a decoded /api/version answer")
     contains(CONNECTED, printer_state(url, key), describing="printer states that are connected")
-    return Started(started, answered_at)
+    return started
 
 
-def _two_instances_do_not_collide(one: dict[str, object], two: dict[str, object]) -> None:
+def _two_instances_do_not_collide(one: Started, two: Started) -> None:
     """Two runs on one host, each on a port it asked for as free."""
     truth(
-        one["port"] != two["port"],
-        describing=f"two different ports, not {one['port']} twice",
+        one.port != two.port,
+        describing=f"two different ports, not {one.port} twice",
     )
     for instance, other in ((one, two), (two, one)):
-        url = str(instance["url"])
-        status, _ = api(url, "/api/version", key_from(str(instance["api_key_file"])))
+        url = instance.url
+        status, _ = api(url, "/api/version", instance.key)
         equal(status, 200, describing=f"{url} answering on its own")
         contains(
             REFUSED,
-            api(url, "/api/version", key_from(str(other["api_key_file"])))[0],
+            api(url, "/api/version", other.key)[0],
             describing=f"{url} refusing the other instance's key, so the two are distinct",
         )
 
@@ -195,10 +218,9 @@ def _holds_a_print_for_the_minimum_it_states(instance: Started) -> None:
     script states it from, so the journey's own steps since then count towards
     it rather than being waited out a second time.
     """
-    started = instance.record
-    url = str(started["url"])
-    key = key_from(str(started["api_key_file"]))
-    stated = int(str(started["hold_seconds"]))
+    url = instance.url
+    key = instance.key
+    stated = instance.hold_seconds
 
     truth(
         stated >= REQUIRED_HOLD_SECONDS,
@@ -226,13 +248,13 @@ def _holds_a_print_for_the_minimum_it_states(instance: Started) -> None:
     )
 
 
-def _stops_leaving_no_process(started: dict[str, object]) -> None:
+def _stops_leaving_no_process(started: Started) -> None:
     """A stop after which the process this journey started is gone."""
-    pid = int(str(started["pid"]))
+    pid = started.pid
     truth(running(pid), describing=f"process {pid} to still be running before it is stopped")
 
-    result = script("down", "--state-dir", str(started["state_dir"]))
+    result = script("down", "--state-dir", started.state_dir)
 
-    passing(result, describing=f"stopping the instance under {started['state_dir']}")
+    passing(result, describing=f"stopping the instance under {started.state_dir}")
     equal(answer(result)["stopped"], True, describing="the stop's own account of itself")
     truth(not running(pid), describing=f"process {pid} to be gone: {said(result)}")
