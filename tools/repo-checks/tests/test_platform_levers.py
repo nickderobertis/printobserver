@@ -2,6 +2,10 @@
 
 Growing the supported-platform list fans out instantly to every matrix derived
 from it, which on its own would make adding a platform one impossible change.
+from closures import closure
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("artifact-jobs", "integration-tier", "platforms", "release-automation")
 The `install path` answer and the `platform-exclusions` block are what turn it
 into a set of reviewable ones — and neither is allowed to be pulled quietly, so
 every refusal below is driven by building a copy of this tree carrying exactly

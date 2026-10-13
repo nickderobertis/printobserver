@@ -14,10 +14,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.checks_smoke import max_lines, safe_commands, smoke_payload
 from repo_checks.expect import accepted, equal, refused, refused_naming
 from repo_checks.model import PolicyValueError, Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("smoke-payload")
 
 # The closed set the payload may be drawn from, as this repository's own rules
 # name it. The anchor: the check is held to this rather than to itself.

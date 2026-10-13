@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from closures import closure
 from repo_checks.checks_ci import (
     artifact_jobs,
     cut_from,
@@ -23,6 +24,16 @@ from repo_checks.expect import accepted, equal, refused, refused_naming
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree, copy_tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure(
+    "artifact-jobs",
+    "install-path-not-narrowed",
+    "install-script",
+    "publish-credentials",
+    "release-automation",
+    "release-targets",
+)
 
 AGENTS = "AGENTS.md"
 TARGETS = "release-targets.toml"
@@ -341,7 +352,7 @@ def test_a_fetch_url_naming_no_committed_script_is_refused(
 
 def test_the_committed_tree_has_narrowed_nothing(tmp_path: Path) -> None:
     """The install path still names every platform and route it was cut with."""
-    unchanged = Tree(copy_tree(tmp_path / "unchanged"))
+    unchanged = Tree(copy_tree(tmp_path / "unchanged", closure=CLOSURE))
     _committed(unchanged)
 
     accepted(install_path_not_narrowed(unchanged.repo))
@@ -366,7 +377,7 @@ def _without_the_route(text: str) -> str:
 
 def test_a_platform_deleted_from_the_install_path_is_refused(tmp_path: Path) -> None:
     """Every artifact, matrix and route here is derived from that one list."""
-    narrowed = Tree(copy_tree(tmp_path / "narrowed-platform"))
+    narrowed = Tree(copy_tree(tmp_path / "narrowed-platform", closure=CLOSURE))
     _committed(narrowed)
     narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
 
@@ -388,7 +399,7 @@ def _retire(tree: Tree, record: str = RETIRED_AARCH64) -> None:
 
 def test_a_platform_recorded_as_retired_may_leave_the_install_path(tmp_path: Path) -> None:
     """A cut with its reason on record is a decision rather than a narrowing."""
-    narrowed = Tree(copy_tree(tmp_path / "retired-platform"))
+    narrowed = Tree(copy_tree(tmp_path / "retired-platform", closure=CLOSURE))
     _committed(narrowed)
     narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
     _retire(narrowed)
@@ -475,7 +486,7 @@ def test_a_retired_record_that_is_not_a_table_is_refused(tree: Callable[[], Tree
 
 def test_a_route_deleted_from_the_install_path_is_refused(tmp_path: Path) -> None:
     """A route deleted here is a way to the program nobody has any more."""
-    narrowed = Tree(copy_tree(tmp_path / "narrowed-route"))
+    narrowed = Tree(copy_tree(tmp_path / "narrowed-route", closure=CLOSURE))
     _committed(narrowed)
     narrowed.write(AGENTS, _without_the_route(narrowed.read(AGENTS)))
 
@@ -493,7 +504,7 @@ def test_a_base_branch_that_deleted_a_route_first_does_not_excuse_deleting_it(
     from — which is what the check reads — the route is one this tree no longer
     has a way to the program by.
     """
-    narrowed = Tree(copy_tree(tmp_path / "advanced-route"))
+    narrowed = Tree(copy_tree(tmp_path / "advanced-route", closure=CLOSURE))
     _committed(narrowed)
     _cut_a_change_and_advance_the_base(narrowed, _without_the_route)
     narrowed.write(AGENTS, _without_the_route(narrowed.read(AGENTS)))
@@ -505,7 +516,7 @@ def test_a_base_branch_that_deleted_a_platform_first_does_not_excuse_deleting_it
     tmp_path: Path,
 ) -> None:
     """The same, over the one list every artifact, matrix and route is derived from."""
-    narrowed = Tree(copy_tree(tmp_path / "advanced-platform"))
+    narrowed = Tree(copy_tree(tmp_path / "advanced-platform", closure=CLOSURE))
     _committed(narrowed)
     _cut_a_change_and_advance_the_base(narrowed, _without_the_platform)
     narrowed.write(AGENTS, _without_the_platform(narrowed.read(AGENTS)))
@@ -522,7 +533,7 @@ def test_a_route_the_base_branch_deleted_and_merged_in_is_still_refused(tmp_path
     commit this work was cut from is not on that branch's line, and this asserts
     it is the same commit before and after the merge.
     """
-    narrowed = Tree(copy_tree(tmp_path / "merged-route"))
+    narrowed = Tree(copy_tree(tmp_path / "merged-route", closure=CLOSURE))
     _committed(narrowed)
     cut = _head(narrowed)
     run(["git", "checkout", "-q", "-b", WORK], cwd=narrowed.root, check=True)
@@ -540,7 +551,7 @@ def test_a_platform_the_base_branch_deleted_and_merged_in_is_still_refused(
     tmp_path: Path,
 ) -> None:
     """The same, over the one list every artifact, matrix and route is derived from."""
-    narrowed = Tree(copy_tree(tmp_path / "merged-platform"))
+    narrowed = Tree(copy_tree(tmp_path / "merged-platform", closure=CLOSURE))
     _committed(narrowed)
     cut = _head(narrowed)
     run(["git", "checkout", "-q", "-b", WORK], cwd=narrowed.root, check=True)
@@ -556,7 +567,7 @@ def test_the_reference_survives_a_base_branch_merged_in_more_than_once(
     tmp_path: Path,
 ) -> None:
     """A branch open long enough is published more than once, and merged in each time."""
-    narrowed = Tree(copy_tree(tmp_path / "merged-twice"))
+    narrowed = Tree(copy_tree(tmp_path / "merged-twice", closure=CLOSURE))
     _committed(narrowed)
     cut = _head(narrowed)
     run(["git", "checkout", "-q", "-b", WORK], cwd=narrowed.root, check=True)
@@ -581,7 +592,7 @@ def test_a_route_the_base_branch_gained_after_this_work_is_not_demanded_of_it(
     tree deleted, and a check reading the tip would report every such addition
     as a narrowing — which is a check nobody could keep green by working.
     """
-    unchanged = Tree(copy_tree(tmp_path / "advanced-widened"))
+    unchanged = Tree(copy_tree(tmp_path / "advanced-widened", closure=CLOSURE))
     _committed(unchanged)
     _cut_a_change_and_advance_the_base(
         unchanged, lambda text: text.replace("#### Route 3", GAINED_ROUTE + "\n#### Route 3")

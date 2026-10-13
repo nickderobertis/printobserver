@@ -12,9 +12,20 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from closures import closure
 from repo_checks.__main__ import main
 from repo_checks.expect import equal, truth
 from treecopy import REPO_ROOT, Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure(
+    "real-prints-schema",
+    "real-prints-files",
+    "real-prints-images",
+    "real-prints-scenarios",
+    "real-prints-operations",
+    "real-prints-service-config",
+)
 
 CHECKS = (
     "real-prints-schema",

@@ -8,10 +8,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.checks_repo import recipe_set
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("recipes")
 
 
 def test_the_committed_recipe_set_is_accepted(committed: Repo) -> None:
