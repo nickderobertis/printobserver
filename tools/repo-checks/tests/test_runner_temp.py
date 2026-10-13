@@ -19,6 +19,9 @@ with tempfile.NamedTemporaryFile() as opened:
     print(json.dumps({"temp": tempfile.gettempdir(), "file": opened.name,
                       "TEMP": os.environ["TEMP"], "TMP": os.environ["TMP"]}))
 """
+# Windows runners set no TMPDIR, which Python's tempfile reads before TEMP and
+# a macOS runner points through the /var symlink the script refuses.
+HOST = {name: value for name, value in os.environ.items() if name != "TMPDIR"}
 
 
 @pytest.mark.parametrize("action", ["setup", "cleanup"])
@@ -50,7 +53,7 @@ def test_missing_powershell_names_how_to_restore_the_recipe(tmp_path: Path) -> N
         raise AssertionError("Install just and bash to drive the real recipe")
     empty_path = tmp_path / "no programs"
     empty_path.mkdir()
-    environment = dict(os.environ, PATH=str(empty_path), PRINTOBSERVER_PLATFORM="windows-x86_64")
+    environment = dict(HOST, PATH=str(empty_path), PRINTOBSERVER_PLATFORM="windows-x86_64")
     environment_file = tmp_path / "job-env"
     environment["GITHUB_ENV"] = str(environment_file)
     result = run([just, "--shell", bash, "runner-temp"], cwd=ROOT, env=environment, timeout=30)
@@ -70,7 +73,7 @@ def _setup(tmp_path: Path, *, drive_present: bool) -> dict[str, str]:
         drive.mkdir()
         (drive / "unrelated").write_text("keep", encoding="utf-8")
     environment_file = tmp_path / "job-env"
-    environment = dict(os.environ, PRINTOBSERVER_PLATFORM="windows-x86_64")
+    environment = dict(HOST, PRINTOBSERVER_PLATFORM="windows-x86_64")
     environment["GITHUB_ENV"] = str(environment_file)
     result = run(
         ["just", "runner-temp", "setup", str(drive), str(fallback)],
@@ -142,7 +145,7 @@ def test_windows_arm_and_manual_dispatch_keep_existing_temp(tmp_path: Path, plat
     """Only x86 opts in, even if another host has a writable scratch drive."""
     environment_file = tmp_path / "job-env"
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM=platform,
         GITHUB_ENV=str(environment_file),
     )
@@ -176,7 +179,7 @@ def test_cleanup_checks_the_recorded_owners_directory_marker(tmp_path: Path, def
 
 def test_setup_requires_the_environment_file_for_later_children(tmp_path: Path) -> None:
     """Refuse a setup that could not export its selection to subsequent steps."""
-    environment = dict(os.environ, PRINTOBSERVER_PLATFORM="windows-x86_64")
+    environment = dict(HOST, PRINTOBSERVER_PLATFORM="windows-x86_64")
     environment.pop("GITHUB_ENV", None)
     result = run(["just", "runner-temp", "setup", str(tmp_path)], cwd=ROOT, env=environment)
     failing(result, naming="Set GITHUB_ENV to a writable environment file")
@@ -196,7 +199,7 @@ def test_environment_paths_cannot_inject_a_second_export(
     }
     paths[field] += line_break + "INJECTED=unsafe"
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM="windows-x86_64",
         GITHUB_ENV=paths["environment"],
     )
@@ -214,7 +217,7 @@ def test_an_unusable_fallback_is_refused_before_exports(tmp_path: Path) -> None:
     """No usable drive or existing fallback means no children inherit a broken temp."""
     environment_file = tmp_path / "job-env"
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM="windows-x86_64",
         GITHUB_ENV=str(environment_file),
     )
@@ -232,9 +235,10 @@ def test_an_unusable_fallback_is_refused_before_exports(tmp_path: Path) -> None:
 def test_an_unwritable_environment_file_cleans_only_its_new_scratch(tmp_path: Path) -> None:
     """A failed export does not leave the successfully created scratch behind."""
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM="windows-x86_64",
         GITHUB_ENV=str(tmp_path),
+        TMPDIR=str(tmp_path),
     )
     retained = tmp_path / "unrelated"
     retained.write_text("keep", encoding="utf-8")
@@ -282,7 +286,7 @@ def test_an_existing_unwritable_drive_recovers_to_the_usable_fallback(tmp_path: 
     try:
         environment_file = tmp_path / "job-env"
         environment = dict(
-            os.environ,
+            HOST,
             PRINTOBSERVER_PLATFORM="windows-x86_64",
             GITHUB_ENV=str(environment_file),
         )
@@ -337,7 +341,7 @@ def test_file_creation_failure_removes_the_partially_created_scratch(
     fallback.mkdir()
     environment_file = tmp_path / "job-env"
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM="windows-x86_64",
         GITHUB_ENV=str(environment_file),
     )
@@ -366,7 +370,7 @@ def test_the_host_selects_a_usable_fallback_when_the_recipe_omits_it(tmp_path: P
     fallback.mkdir()
     environment_file = tmp_path / "job-env"
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM="windows-x86_64",
         GITHUB_ENV=str(environment_file),
         TEMP=str(fallback),
@@ -454,7 +458,7 @@ def test_relative_inputs_export_absolute_temp_for_children_in_another_directory(
     fallback.mkdir()
     environment_file = tmp_path / "job-env"
     environment = dict(
-        os.environ,
+        HOST,
         PRINTOBSERVER_PLATFORM="windows-x86_64",
         GITHUB_ENV=str(environment_file),
     )
@@ -580,7 +584,7 @@ def test_setup_refuses_linked_temp_paths(
     alias = tmp_path / "alias"
     _directory_link(tmp_path, alias, target)
     linked = alias / "child" if through_parent else alias
-    environment = dict(os.environ, PRINTOBSERVER_PLATFORM="windows-x86_64")
+    environment = dict(HOST, PRINTOBSERVER_PLATFORM="windows-x86_64")
     export = tmp_path / "exports"
     environment["GITHUB_ENV"] = str(export)
     try:
