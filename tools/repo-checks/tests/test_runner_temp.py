@@ -20,6 +20,20 @@ with tempfile.NamedTemporaryFile() as opened:
 """
 
 
+@pytest.mark.parametrize("action", ["setup", "cleanup"])
+def test_exact_powershell_permissions_match_the_real_recipe(action: str) -> None:
+    """Reconcile the scoped permission with just's actual flags and drive default."""
+    settings = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    result = run(["just", "--dry-run", "runner-temp", action], cwd=ROOT)
+    passing(result)
+    command = result.stderr.partition("then ")[2].removesuffix(" ; fi\n")
+    truth(command.startswith("pwsh "), describing="the actual PowerShell invocation")
+    truth(
+        f"Bash({command})" in settings["permissions"]["allow"],
+        describing="an exact permission reconciled against just's rendered invocation",
+    )
+
+
 @pytest.fixture(name="tmp_path")
 def physical_tmp_path(tmp_path: Path) -> Path:
     """Supply a real physical directory even on hosts whose system temp has aliases."""
