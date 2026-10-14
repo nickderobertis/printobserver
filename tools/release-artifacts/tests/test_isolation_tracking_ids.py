@@ -34,6 +34,7 @@ def _pytest(*arguments: str, basetemp: Path) -> str:
             MODULE,
             "-p",
             "no:cacheprovider",
+            "--color=no",
             "--basetemp",
             str(basetemp),
             *arguments,
