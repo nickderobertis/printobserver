@@ -115,14 +115,28 @@ class Started:
 
     @classmethod
     def read(cls, record: dict[str, object], answered_at: float) -> Started:
-        """The instance `up` described in `record`, every field it names required."""
+        """The instance `up` described in `record`, every field it names required and typed."""
+
+        def text(field: str) -> str:
+            value = record.get(field)
+            truth(isinstance(value, str) and value, describing=f"`{field}` as text in {record}")
+            return str(value)
+
+        def number(field: str) -> int:
+            value = record.get(field)
+            truth(
+                isinstance(value, int) and not isinstance(value, bool),
+                describing=f"`{field}` as a whole number in {record}",
+            )
+            return int(str(value))
+
         return cls(
-            url=str(record["url"]),
-            port=int(str(record["port"])),
-            pid=int(str(record["pid"])),
-            state_dir=str(record["state_dir"]),
-            api_key_file=str(record["api_key_file"]),
-            hold_seconds=int(str(record["hold_seconds"])),
+            url=text("url"),
+            port=number("port"),
+            pid=number("pid"),
+            state_dir=text("state_dir"),
+            api_key_file=text("api_key_file"),
+            hold_seconds=number("hold_seconds"),
             answered_at=answered_at,
         )
 
@@ -202,11 +216,14 @@ def _two_instances_do_not_collide(one: Started, two: Started) -> None:
     )
     for instance, other in ((one, two), (two, one)):
         url = instance.url
+        # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of each instance
         status, _ = api(url, "/api/version", instance.key)
         equal(status, 200, describing=f"{url} answering on its own")
+        # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of each instance
+        refused, _ = api(url, "/api/version", other.key)
         contains(
             REFUSED,
-            api(url, "/api/version", other.key)[0],
+            refused,
             describing=f"{url} refusing the other instance's key, so the two are distinct",
         )
 

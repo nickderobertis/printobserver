@@ -36,7 +36,15 @@ FIRST = "built from the first source"
 OTHER_COMPILER = "printobserver-suite: the same compiler, built again"
 
 #: Every input a preparation is keyed on, each changed alone by one journey.
-CHANGES = ["source", "toolchain", "compiler", "manifest-profile", "config-profile", "flags"]
+CHANGES = [
+    "source",
+    "toolchain",
+    "compiler",
+    "manifest-profile",
+    "config-profile",
+    "flags",
+    "target-flags",
+]
 
 
 def _workspace(root: Path, says: str) -> Path:
@@ -105,17 +113,34 @@ def _other_compiler(root: Path, into: Path) -> Path:
     return into / "target" / "debug" / f"compiler{_suffix()}"
 
 
+def _target_flags(root: Path) -> str:
+    """The variable cargo reads this host's own target's compiler flags from."""
+    answered = run(["rustc", "-vV"], cwd=root, timeout=300)
+    equal(answered.returncode, 0, describing=f"the compiler's answer: {answered.stderr}")
+    host = next(
+        line.removeprefix("host: ")
+        for line in answered.stdout.splitlines()
+        if line.startswith("host: ")
+    )
+    return f"CARGO_TARGET_{host.upper().replace('-', '_')}_RUSTFLAGS"
+
+
 def _suffix() -> str:
     """What this host's programs are called after their name."""
     return ".exe" if sys.platform == "win32" else ""
 
 
 def _prepare(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[Path, str]:
-    """Run `release-program` over `root`: the program it named, and what it said."""
+    """Run `release-program` over `root`: the program it named, and how it got it."""
     capsys.readouterr()
     equal(main(["release-program", "--root", str(root)]), 0, describing="release-program")
     said = capsys.readouterr()
-    return Path(said.out.strip()), said.err
+    equal(said.err, "", describing="what a successful preparation says on standard error")
+    lines = said.out.splitlines()
+    equal(len(lines), 1, describing=f"one line from a successful preparation, not {lines!r}")
+    how, _, path = lines[0].partition(" ")
+    contains({"built", "reused"}, how, describing=f"how the program was got, in {lines[0]!r}")
+    return Path(path), how
 
 
 def _answer(program: Path) -> str:
@@ -154,7 +179,7 @@ def test_an_unchanged_key_reuses_the_kept_program(
     root = _workspace(tmp_path / "workspace", says=FIRST)
 
     first, said_first = _prepare(root, capsys)
-    contains(said_first, "built the release program", describing="the first preparation")
+    equal(said_first, "built", describing="the first preparation")
     _forget_the_build(root)
     # A change to a crate's own tests is no change to what a release build reads.
     (root / CRATE / "tests" / "walk.rs").write_text(
@@ -162,7 +187,7 @@ def test_an_unchanged_key_reuses_the_kept_program(
     )
     again, said_again = _prepare(root, capsys)
 
-    contains(said_again, "reused the release program", describing="the second preparation")
+    equal(said_again, "reused", describing="the second preparation")
     equal(again, first, describing="the program the second preparation named")
     truth(not (root / "target").exists(), describing="no build made by the second preparation")
     equal(_answer(again), FIRST, describing="the reused program")
@@ -214,12 +239,14 @@ def test_a_changed_key_builds_again_rather_than_reusing(
             (root / ".cargo" / "config.toml").write_text(
                 "[profile.release]\nopt-level = 1\n", encoding="utf-8"
             )
-        case _:
+        case "flags":
             flags = os.environ.get("RUSTFLAGS", "")
             monkeypatch.setenv("RUSTFLAGS", f"{flags} -C overflow-checks=on".strip())
+        case _:
+            monkeypatch.setenv(_target_flags(root), "-C overflow-checks=on")
     second, said = _prepare(root, capsys)
 
-    contains(said, "built the release program", describing=f"the preparation after a {change}")
+    equal(said, "built", describing=f"the preparation after a {change}")
     truth((root / "target").is_dir(), describing=f"a build made after a {change} change")
     truth(_key(root, capsys) != key, describing=f"a new key after a {change} change")
     truth(second != first, describing="a program kept under the new key")
@@ -255,7 +282,7 @@ def test_a_kept_program_that_is_not_what_was_kept_is_built_over(
 
     second, said = _prepare(root, capsys)
 
-    contains(said, "built the release program", describing=f"the preparation over a {damage} one")
+    equal(said, "built", describing=f"the preparation over a {damage} one")
     truth((root / "target").is_dir(), describing=f"a build made over a {damage} program")
     equal(second, first, describing="the program kept again under the same key")
     equal(_answer(second), FIRST, describing="the program built over the damaged one")
@@ -288,7 +315,7 @@ def test_a_build_whose_inputs_move_under_it_is_used_once_and_kept_under_no_key(
     second, said_second = _prepare(root, capsys)
 
     for program, said in ((first, said_first), (second, said_second)):
-        contains(said, "built the release program", describing="a preparation over moving inputs")
+        equal(said, "built", describing="a preparation over moving inputs")
         equal(program.parent, root / "target" / "release", describing="where that program is")
         equal(_answer(program), FIRST, describing="the program built over moving inputs")
     truth(not (root / DIRECTORY).exists(), describing="no program kept for moving inputs")
@@ -312,7 +339,7 @@ def test_a_build_that_fails_is_refused_and_the_next_one_recovers(
     _says(root, "built from the mended source")
     mended, said_mended = _prepare(root, capsys)
 
-    contains(said_mended, "built the release program", describing="the mended preparation")
+    equal(said_mended, "built", describing="the mended preparation")
     equal(_answer(mended), "built from the mended source", describing="the mended program")
 
 
@@ -340,6 +367,7 @@ def test_a_toolchain_that_cannot_say_what_it_is_is_refused(
     equal(refused, 1, describing=f"release-program-key with a compiler that is {compiler}")
     contains(said.err, naming, describing="what the refusal says")
     contains(said.err, "toolchain cannot be named", describing="what the refusal says")
+    contains(said.err, "rustup toolchain install", describing="the next action it names")
     equal(said.out, "", describing="the key a refused run printed")
 
 

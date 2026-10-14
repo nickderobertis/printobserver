@@ -559,16 +559,13 @@ def _supervisor(given: Path) -> Path:
 
 
 def _release_program(repo: Repo) -> int:
-    """Prepare the release program the worlds carry, and say where it is and how.
+    """Prepare the release program the worlds carry, and say in one line how and where.
 
-    The path goes to standard output and nothing else does, so a caller can
-    take it; whether it was reused or built, and under which key, goes to
-    standard error for whoever reads the log.
+    `reused <path>` or `built <path>`: the path's own directory is the key it
+    is kept under, so the line names that too.
     """
     made = reused.prepared(repo)
-    how = "reused" if made.reused else "built"
-    print(f"{how} the release program under key {made.key.value}", file=sys.stderr)
-    print(made.path)
+    print(f"{'reused' if made.reused else 'built'} {made.path}")
     return 0
 
 

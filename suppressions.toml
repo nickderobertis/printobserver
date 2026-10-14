@@ -1651,6 +1651,12 @@ reason = "Each is one read of the OctoPrint `just octoprint-up` started, made by
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_environment_journey.py"
+site = "one sequential read of each instance"
+reason = "Two reads of the two loopback instances this journey's own `up` started — each one's API under its own key, then under the other's — each asserted on before the next is made, through the same blocking helper every journey of this suite reads an instance with, which `tests/environment.py` gives the reason for. The journey proves the two do not collide by reading them in turn; an async client would overlap nothing and would be a second client of instances the product never reaches from here."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, answer = call("
 reason = "The one request `upload` makes: a file put on an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before it starts that file. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."

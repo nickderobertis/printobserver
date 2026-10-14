@@ -12,9 +12,10 @@ function of:
 - **toolchain** — `rust-toolchain.toml` as declared and `rustc -vV` as
   installed, so a toolchain the declaration resolved differently is a different
   one;
-- **profile** — the profile's name, every `[profile]` table the workspace and
-  `.cargo/config.toml` declare, and the variables cargo reads a profile or a
-  compiler flag from.
+- **profile** — the profile's name, every `[profile]` table the workspace's
+  manifest declares, the whole of the workspace's own `.cargo/config.toml`, and
+  the variables cargo reads a profile setting or compiler flags from, for every
+  target or for one.
 
 A key that matches is the build that key was taken over; any other key builds,
 and the build replaces whatever the directory held, so it never holds more than
@@ -68,6 +69,16 @@ CARGO_CONFIG = ".cargo/config.toml"
 FLAG_VARIABLES = ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS")
 
 PROFILE_VARIABLE_PREFIX = "CARGO_PROFILE_"
+
+#: A variable naming flags for one target is `CARGO_TARGET_<TRIPLE>_RUSTFLAGS`.
+TARGET_VARIABLE_PREFIX = "CARGO_TARGET_"
+TARGET_VARIABLE_SUFFIX = "_RUSTFLAGS"
+
+#: What a refusal to name the toolchain tells its reader to do next.
+TOOLCHAIN_REMEDY = (
+    "unset RUSTC or point it at a Rust compiler, and install the toolchain "
+    "`rust-toolchain.toml` declares with `rustup toolchain install`"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,7 +157,7 @@ def _intact(entry: Path) -> bool:
     recorded = entry.parent / DIGEST_FILE
     if not entry.is_file() or not recorded.is_file():
         return False
-    return recorded.read_text(encoding="utf-8").strip() == _digest(entry)
+    return recorded.read_bytes().strip() == _digest(entry).encode()
 
 
 def _digest(path: Path) -> str:
@@ -191,7 +202,10 @@ def _toolchain(root: Path) -> str:
     declared = root / TOOLCHAIN_FILE
     answered = run([os.environ.get("RUSTC", "rustc"), "-vV"], cwd=root, timeout=300)
     if answered.returncode != 0:
-        msg = f"`rustc -vV` failed, so the toolchain cannot be named:\n{answered.stderr}"
+        msg = (
+            f"`rustc -vV` failed, so the toolchain cannot be named; {TOOLCHAIN_REMEDY}:\n"
+            f"{answered.stderr}"
+        )
         raise BuildError(msg)
     lines = answered.stdout.splitlines()
     if (
@@ -200,8 +214,8 @@ def _toolchain(root: Path) -> str:
         or not any(line.startswith("release: ") for line in lines)
     ):
         msg = (
-            "`rustc -vV` answered no compiler version, so the toolchain cannot be named:\n"
-            f"{answered.stdout}"
+            "`rustc -vV` answered no compiler version, so the toolchain cannot be named; "
+            f"{TOOLCHAIN_REMEDY}:\n{answered.stdout}"
         )
         raise BuildError(msg)
     digest = hashlib.sha256()
@@ -212,20 +226,30 @@ def _toolchain(root: Path) -> str:
 
 
 def _profile(root: Path) -> str:
-    """The digest of the profile a release build is made under, wherever it is set."""
-    declared = {name: _profiles(root / name) for name in (WORKSPACE_FILES[0], CARGO_CONFIG)}
+    """The digest of the profile and compiler flags the workspace and environment set.
+
+    The manifest's `[profile]` tables, the workspace's own `.cargo/config.toml`
+    whole — its `[build]` and `[target]` flags as much as its profiles — and
+    every variable cargo reads a profile setting or compiler flags from.
+    """
+    declared = {
+        WORKSPACE_FILES[0]: (_toml(root / WORKSPACE_FILES[0]) or {}).get("profile"),
+        CARGO_CONFIG: _toml(root / CARGO_CONFIG),
+    }
     variables = {
         name: value
         for name, value in sorted(os.environ.items())
-        if name in FLAG_VARIABLES or name.startswith(PROFILE_VARIABLE_PREFIX)
+        if name in FLAG_VARIABLES
+        or name.startswith(PROFILE_VARIABLE_PREFIX)
+        or (name.startswith(TARGET_VARIABLE_PREFIX) and name.endswith(TARGET_VARIABLE_SUFFIX))
     }
     document = {"name": PROFILE, "declared": declared, "variables": variables}
     return hashlib.sha256(json.dumps(document, sort_keys=True).encode()).hexdigest()
 
 
-def _profiles(path: Path) -> object:
-    """Every `[profile]` table one file declares, or nothing when it is absent."""
+def _toml(path: Path) -> dict[str, object] | None:
+    """One TOML file's document, or nothing when it is absent."""
     if not path.is_file():
         return None
     with path.open("rb") as handle:
-        return tomllib.load(handle).get("profile")
+        return tomllib.load(handle)
