@@ -12,11 +12,15 @@ import os
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.checks_graph import EDGES, graph_edges
 from repo_checks.expect import accepted, contains, equal, refused, refused_naming, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("graph-edges")
 
 OBICO_PROJECT = "tools/obico-env/project.json"
 

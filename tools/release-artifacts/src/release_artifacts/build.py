@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -348,21 +349,37 @@ def rust_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     #  because a journey builds this from a working tree it has
     # just written into: what is packaged is the tree as it stands, which is
     # what the journey is about. Release automation packages a commit.
-    packaged = run(
-        ["cargo", "package", "--locked", "--no-verify", "--allow-dirty", "-p", target.name],
-        cwd=repo.root,
-        timeout=900,
-    )
-    if packaged.returncode != 0:
-        msg = f"`cargo package -p {target.name}` failed:\n{packaged.stderr}"
-        raise BuildError(msg)
+    #
+    # Packaged into a target directory of its own: `--no-verify` compiles
+    # nothing, so it costs nothing, and the package is then one no other
+    # `cargo package` of the same crate — another build beside this one —
+    # can replace while it is being copied out.
     version = targets.workspace(repo.root)["version"]
-    built = repo.root / "target" / "package" / f"{target.name}-{version}.crate"
-    if not built.is_file():
-        msg = f"`cargo package -p {target.name}` left no package at {built}"
-        raise BuildError(msg)
-    into.mkdir(parents=True, exist_ok=True)
-    return Built(target.id, (Path(shutil.copy2(built, into / built.name)),))
+    with tempfile.TemporaryDirectory(prefix="printobserver-package-") as own:
+        packaged = run(
+            [
+                "cargo",
+                "package",
+                "--locked",
+                "--no-verify",
+                "--allow-dirty",
+                "--target-dir",
+                own,
+                "-p",
+                target.name,
+            ],
+            cwd=repo.root,
+            timeout=900,
+        )
+        if packaged.returncode != 0:
+            msg = f"`cargo package -p {target.name}` failed:\n{packaged.stderr}"
+            raise BuildError(msg)
+        built = Path(own) / "package" / f"{target.name}-{version}.crate"
+        if not built.is_file():
+            msg = f"`cargo package -p {target.name}` left no package at {built}"
+            raise BuildError(msg)
+        into.mkdir(parents=True, exist_ok=True)
+        return Built(target.id, (Path(shutil.copy2(built, into / built.name)),))
 
 
 def python_route(repo: Repo, target: targets.Target, into: Path, binary: Path) -> Built:
