@@ -10,7 +10,6 @@ built again, and the journeys tell the two apart by whether `target` came back.
 
 from __future__ import annotations
 
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -42,9 +41,21 @@ CHANGES = [
     "compiler",
     "manifest-profile",
     "config-profile",
-    "flags",
+    "RUSTFLAGS",
+    "CARGO_ENCODED_RUSTFLAGS",
+    "CARGO_BUILD_RUSTFLAGS",
+    "CARGO_PROFILE_RELEASE_OPT_LEVEL",
     "target-flags",
 ]
+
+#: The variable cases above, and what each is set to: the same flag in each
+#: one's own spelling, and a profile setting.
+VARIABLES = {
+    "RUSTFLAGS": "-C overflow-checks=on",
+    "CARGO_ENCODED_RUSTFLAGS": "-C\x1foverflow-checks=on",
+    "CARGO_BUILD_RUSTFLAGS": "-C overflow-checks=on",
+    "CARGO_PROFILE_RELEASE_OPT_LEVEL": "1",
+}
 
 
 def _workspace(root: Path, says: str) -> Path:
@@ -168,7 +179,7 @@ def _key(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
 @pytest.fixture(autouse=True)
 def _cargo_builds_into_the_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every build lands in the workspace's own `target`, under no inherited profile."""
-    for name in ("CARGO_TARGET_DIR", "CARGO_PROFILE_RELEASE_OPT_LEVEL", "RUSTC"):
+    for name in ("CARGO_TARGET_DIR", "RUSTC", *VARIABLES):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -239,11 +250,10 @@ def test_a_changed_key_builds_again_rather_than_reusing(
             (root / ".cargo" / "config.toml").write_text(
                 "[profile.release]\nopt-level = 1\n", encoding="utf-8"
             )
-        case "flags":
-            flags = os.environ.get("RUSTFLAGS", "")
-            monkeypatch.setenv("RUSTFLAGS", f"{flags} -C overflow-checks=on".strip())
-        case _:
+        case "target-flags":
             monkeypatch.setenv(_target_flags(root), "-C overflow-checks=on")
+        case variable:
+            monkeypatch.setenv(variable, VARIABLES[variable])
     second, said = _prepare(root, capsys)
 
     equal(said, "built", describing=f"the preparation after a {change}")
@@ -334,6 +344,7 @@ def test_a_build_that_fails_is_refused_and_the_next_one_recovers(
 
     equal(refused, 1, describing="release-program over a source that does not compile")
     contains(said.err, "cargo build --release` failed", describing="what the refusal says")
+    contains(said.err, "run `just release-program` again", describing="the next action it names")
     equal(said.out, "", describing="the program a failed preparation named")
 
     _says(root, "built from the mended source")

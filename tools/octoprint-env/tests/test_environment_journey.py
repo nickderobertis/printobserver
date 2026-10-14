@@ -56,7 +56,16 @@ REFUSED = frozenset({401, 403})
 
 
 def test_the_hold_program_outlasts_the_cold_integration_tier() -> None:
-    """The bundled no-motion print cannot expire between client journeys."""
+    """The bundled no-motion print cannot expire between client journeys.
+
+    What the dwell length buys is proven end to end by the integration tier
+    itself: every pause, resume, cancel and target its walk drives is made
+    against this print on a real OctoPrint and waited for inside that walk's
+    own settling window, which fails naming what the machine reported. This
+    holds the file to the two properties the walk relies on rather than timing
+    it, because a wall-clock bound on a shared hosted runner would fail on the
+    runner's pace rather than on the file.
+    """
     gcode = REPO_ROOT / "tools/octoprint-env/gcode" / HOLD_PRINT
     dwells = [
         int(line.removeprefix("G4 S"))

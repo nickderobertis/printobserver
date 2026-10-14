@@ -74,6 +74,12 @@ PROFILE_VARIABLE_PREFIX = "CARGO_PROFILE_"
 TARGET_VARIABLE_PREFIX = "CARGO_TARGET_"
 TARGET_VARIABLE_SUFFIX = "_RUSTFLAGS"
 
+#: What a failed build tells its reader to do next.
+BUILD_REMEDY = (
+    "fix what cargo reported — or unset CARGO_TARGET_DIR, if it moved the program out of "
+    "`target` — and run `just release-program` again"
+)
+
 #: What a refusal to name the toolchain tells its reader to do next.
 TOOLCHAIN_REMEDY = (
     "unset RUSTC or point it at a Rust compiler, and install the toolchain "
@@ -125,7 +131,11 @@ def prepared(repo: Repo) -> Prepared:
     entry = kept / before.value / platforms.host(repo).program
     if _intact(entry):
         return Prepared(entry, before, reused=True)
-    built = program(repo)
+    try:
+        built = program(repo)
+    except BuildError as failed:
+        msg = f"{failed}\nNothing was kept; {BUILD_REMEDY}"
+        raise BuildError(msg) from failed
     after = key(repo.root)
     if after != before:
         # The tree moved under the build, so what it built is of neither key:
