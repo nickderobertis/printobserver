@@ -11,8 +11,21 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from repo_checks import workers
 from repo_checks.model import Repo
 from treecopy import REPO_ROOT, Closure, Tree, copy_tree, strayed
+
+# Each worker measures itself when this suite runs under coverage.
+pytest_configure_node = workers.pytest_configure_node
+pytest_configure = workers.pytest_configure
+pytest_unconfigure = workers.pytest_unconfigure
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    """What `-n auto` means for this suite on this host, said once before it starts."""
+    del config
+    return workers.chosen(workers.Suite("repo-checks", "test"), REPO_ROOT)
 
 
 @pytest.fixture(autouse=True)

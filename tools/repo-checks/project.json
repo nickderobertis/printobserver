@@ -11,6 +11,6 @@
     "typecheck": {
       "command": "uv run -q ty check tools/repo-checks && uv run -q ty check --python-platform win32 tools/repo-checks"
     },
-    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests" }
+    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests -n auto" }
   }
 }
