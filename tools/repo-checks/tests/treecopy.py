@@ -160,6 +160,12 @@ def listed(root: Path) -> tuple[str, ...]:
     return tuple(tracked_files(root))
 
 
+@functools.cache
+def _named(root: Path) -> frozenset[str]:
+    """The same listing, as one set every closure copy of the tree looks names up in."""
+    return frozenset(listed(root))
+
+
 @dataclass(frozen=True, slots=True)
 class Closure:
     """The files of the tree a check reads, as repository-relative patterns.
@@ -233,8 +239,10 @@ def _watch(event: str, arguments: tuple[object, ...]) -> None:
     opened = os.fsdecode(path)
     if not opened.startswith(_ROOTS):
         return
-    for root, watched in _WATCHED.items():
+    # The newest copy first: it is almost always the one the running test reads.
+    for root in reversed(_WATCHED):
         if opened.startswith(root):
+            watched = _WATCHED[root]
             name = opened.removeprefix(root).replace(os.sep, "/")
             if name in watched.source and not watched.closure.carries(name):
                 _STRAYED.append(name)
@@ -280,7 +288,7 @@ def copy_tree(
     names = listed(source)
     destination.mkdir(parents=True, exist_ok=True)
     if closure is not None:
-        watched = _Watched(closure, frozenset(names))
+        watched = _Watched(closure, _named(source))
         _watched_under(destination, watched)
     held = SchemaTreeLock(source)
     held.lock()
