@@ -43,7 +43,7 @@ from release_artifacts.build import PROFILE, BuildError, program
 
 #: Where the kept build lives, under the workspace root. It ignores itself, by
 #: a `.gitignore` of its own; the one other place that names it is the
-#: integration job's cache step, which `test_release_program.py` holds to it.
+#: integration job's cache step, which `test_kept_release_program.py` holds to it.
 DIRECTORY = ".release-program"
 
 #: The field `release-program-key` prints, as the `<field>=<value>` line a
