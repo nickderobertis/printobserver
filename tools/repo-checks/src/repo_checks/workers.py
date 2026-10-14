@@ -19,10 +19,19 @@ worker:
   38508602716), because xdist cannot grow a suite's workers once it has
   started. These suites wait on the subprocesses they start more than they
   compute, so the two tiers together may hold more workers than processors.
-- Where the tiers run in turn, `repo-checks:test` and `release-artifacts:test`
-  divide the budget between them whenever Nx's parallelism lets one invocation
-  run both, and what an even share leaves over goes to the suite with the most
-  serial work, in `SUITES`' order. No suite is given none.
+- On Windows the test tier's suites run on one worker each too, though the
+  tiers run in turn there. The Rust client journeys in the same invocation
+  trace the whole system with the NT Kernel Logger, and with the two suites on
+  two and one workers beside them `logman` refused that session ("No more data
+  is available") in every Windows x86 run of this change and on the re-run of
+  run 38591562924 on Windows aarch64 as well, and in neither before run. Those
+  journeys, not these suites, are the longest part of Windows' test tier, so the
+  extra workers bought it about a minute.
+- Elsewhere, where the tiers run in turn, `repo-checks:test` and
+  `release-artifacts:test` divide the budget between them whenever Nx's
+  parallelism lets one invocation run both, and what an even share leaves over
+  goes to the suite with the most serial work, in `SUITES`' order. No suite is
+  given none.
 
 This is allocation arithmetic: it measures no suite's actual peak.
 
@@ -100,6 +109,9 @@ class Host:
     free_disk_gib: float
     #: The processors left to the host's own services.
     reserved: int = 0
+    #: Whether the test tier traces the whole system beside its suites, as the
+    #: Rust client journeys do with the NT Kernel Logger on Windows.
+    traced: bool = False
 
     @property
     def budget(self) -> int:
@@ -131,10 +143,10 @@ def share(host: Host, suite: Suite, *, parallelism: int, beside: bool) -> int:
     """How many workers `suite` runs on.
 
     `beside` is whether the end-to-end tier runs beside the test tier on this
-    host; there the test tier's suites take one worker each and leave the rest
-    to it.
+    host; there, and on a host whose test tier is traced, the test tier's suites
+    take one worker each.
     """
-    if beside and suite.target != END_TO_END:
+    if suite.target != END_TO_END and (beside or host.traced):
         return 1
     running = together(suite, parallelism=parallelism)
     even, left_over = divmod(host.budget, len(running))
@@ -144,8 +156,10 @@ def share(host: Host, suite: Suite, *, parallelism: int, beside: bool) -> int:
 def said(host: Host, suite: Suite, *, parallelism: int, beside: bool) -> str:
     """The one line a run states its choice in, with the figures it was chosen from."""
     running = together(suite, parallelism=parallelism)
-    if beside and suite.target != END_TO_END:
+    if suite.target != END_TO_END and beside:
         divided = f"one, the end-to-end tier running beside the {suite.target} tier on this host"
+    elif suite.target != END_TO_END and host.traced:
+        divided = f"one, the {suite.target} tier tracing the whole system on this host"
     else:
         divided = (
             f"shared with {len(running) - 1} other xdist suites its Nx invocation can run at "
@@ -229,6 +243,7 @@ def here(temporary: Path) -> Host:
         memory_gib=memory_bytes() / GIB,
         free_disk_gib=shutil.disk_usage(temporary).free / GIB,
         reserved=RESERVED_ON_WINDOWS if sys.platform == "win32" else 0,
+        traced=sys.platform == "win32",
     )
 
 

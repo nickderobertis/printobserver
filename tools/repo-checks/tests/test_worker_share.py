@@ -26,7 +26,11 @@ from treecopy import REPO_ROOT
 HOSTS = {
     "the hosted Linux runners": workers.Host(cpus=4, memory_gib=16.0, free_disk_gib=14.0),
     "the hosted Windows runners": workers.Host(
-        cpus=4, memory_gib=16.0, free_disk_gib=14.0, reserved=workers.RESERVED_ON_WINDOWS
+        cpus=4,
+        memory_gib=16.0,
+        free_disk_gib=14.0,
+        reserved=workers.RESERVED_ON_WINDOWS,
+        traced=True,
     ),
     "the hosted macOS runner": workers.Host(cpus=3, memory_gib=7.0, free_disk_gib=14.0),
     "a host short of memory": workers.Host(cpus=16, memory_gib=6.0, free_disk_gib=14.0),
@@ -86,7 +90,8 @@ def test_the_hosted_runners_shares_are_the_ones_the_gate_was_sized_for() -> None
     equal(parallelism, 3, describing="the parallelism `nx.json` declares")
     equal(shares["the hosted Linux runners", True], (4, 1, 1), describing="Linux")
     equal(shares["the hosted macOS runner", True], (3, 1, 1), describing="macOS")
-    equal(shares["the hosted Windows runners", False], (3, 2, 1), describing="Windows")
+    equal(shares["the hosted Windows runners", False], (3, 1, 1), describing="Windows")
+    equal(shares["a workstation", False], (20, 10, 10), describing="tiers in turn, untraced")
 
 
 @pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
@@ -121,6 +126,23 @@ def test_the_test_tier_beside_the_end_to_end_tier_runs_one_worker_a_suite() -> N
                 workers.said(host, suite, parallelism=3, beside=True),
                 f"{suite.project}: 1 xdist workers: ",
             )
+
+
+def test_a_traced_test_tier_runs_one_worker_a_suite_even_with_the_tiers_in_turn() -> None:
+    """Where the test tier traces the whole system, its suites leave the host to the trace."""
+    traced = HOSTS["the hosted Windows runners"]
+    untraced = workers.Host(cpus=4, memory_gib=16.0, free_disk_gib=14.0, reserved=1)
+    for suite in workers.SUITES[1:]:
+        equal(workers.share(traced, suite, parallelism=3, beside=False), 1, describing=f"{suite}")
+        contains(
+            workers.said(traced, suite, parallelism=3, beside=False),
+            "the test tier tracing the whole system on this host",
+        )
+    equal(
+        [workers.share(untraced, suite, parallelism=3, beside=False) for suite in workers.SUITES],
+        [3, 2, 1],
+        describing="the same host, untraced",
+    )
 
 
 def test_the_overlap_is_the_justfiles_own_answer() -> None:
@@ -187,12 +209,12 @@ def test_the_table_names_exactly_the_targets_that_run_under_xdist() -> None:
 
 def test_a_lone_slot_runs_one_test_suite_at_a_time() -> None:
     """At parallelism one the two test-tier suites never share; each takes the whole host."""
-    host = HOSTS["the hosted Windows runners"]
+    host = HOSTS["the hosted Linux runners"]
     checks = workers.Suite("repo-checks", "test")
     artifacts = workers.Suite("release-artifacts", "test")
 
-    equal(workers.share(host, checks, parallelism=1, beside=False), 3, describing="repo-checks")
-    equal(workers.share(host, artifacts, parallelism=1, beside=False), 3, describing="artifacts")
+    equal(workers.share(host, checks, parallelism=1, beside=False), 4, describing="repo-checks")
+    equal(workers.share(host, artifacts, parallelism=1, beside=False), 4, describing="artifacts")
     equal(workers.together(artifacts, parallelism=1), (artifacts,), describing="one slot")
 
 
@@ -214,6 +236,8 @@ def test_the_choice_is_said_with_what_it_was_chosen_from(
     contains(said, f"release-artifacts: {count} xdist workers: ")
     if workers.beside_tests(REPO_ROOT):
         contains(said, "the end-to-end tier running beside the test tier on this host")
+    elif workers.here(REPO_ROOT).traced:
+        contains(said, "the test tier tracing the whole system on this host")
     else:
         contains(said, f"at Nx parallelism {workers.nx_parallelism(REPO_ROOT)}")
         contains(said, "repo-checks:test", describing="the suite it shares the host with")

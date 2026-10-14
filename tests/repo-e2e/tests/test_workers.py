@@ -63,6 +63,7 @@ def test_this_host_is_read_from_its_own_answers() -> None:
         workers.RESERVED_ON_WINDOWS if sys.platform == "win32" else 0,
         describing="the processors left to this host",
     )
+    equal(host.traced, sys.platform == "win32", describing="whether the test tier is traced")
     truth(host.memory_gib > 0.5, describing=f"{host.memory_gib} GiB of memory read")
     free = shutil.disk_usage(temporary).free / workers.GIB
     truth(abs(host.free_disk_gib - free) < 1.0, describing=f"{host.free_disk_gib} GiB free read")
