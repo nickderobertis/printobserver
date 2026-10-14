@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -14,9 +13,10 @@ import pytest
 from journey import RELEASE_BUILD, REPO_ROOT
 from release_artifacts.build import program
 from release_artifacts.stand_in import stand_in_program
-from release_artifacts.world import STORE, Machine, Printer, World
+from release_artifacts.world import Machine, Printer, World
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
+from repo_checks.shell import run
 
 pytestmark = RELEASE_BUILD
 
@@ -71,13 +71,15 @@ def test_world_waits_for_the_alert_before_a_client_can_change_the_printer(tmp_pa
 
 def test_world_runs_its_supervision_turn_over_no_harness_the_host_has(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+) -> None:  # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
     """The alert's turn finds no harness, even with one on the path the world runs with.
 
     A host with the supervising agent's harness installed would otherwise hold
     every client world's start for one real conversation with a real agent.
     The world puts nothing on its supervisor's path, so the turn is recorded the
     way a missing harness is, against the event, and the world is ready then.
+    What the turn recorded is read the way an operator reads it: the print's
+    history, through the program's own command, as the world's own operator.
     """
     harnesses = tmp_path / "harnesses"
     name = "claude.exe" if sys.platform == "win32" else "claude"
@@ -88,23 +90,28 @@ def test_world_runs_its_supervision_turn_over_no_harness_the_host_has(
     world = World(binary, tmp_path / "world", Printer(printer.url, "test-key", scripted=False))
     try:
         running = world.start()
+        history = run(
+            [str(binary), "history", "--print-id", running.print_id, "--json"],
+            env={
+                **os.environ,
+                "PRINTOBSERVER_SERVER": running.server,
+                "PRINTOBSERVER_CREDENTIAL": running.credential,
+            },
+            timeout=60,
+        )
     finally:
         world.stop()
         printer.stop()
 
-    truth(running.print_id, describing="the ready world's print")
-    store = sqlite3.connect(f"file:{tmp_path / 'world' / 'state' / STORE}?mode=ro", uri=True)
-    try:
-        failures = [
-            json.loads(payload)["payload"]
-            for (payload,) in store.execute(
-                "SELECT payload FROM events WHERE kind = 'port_failure'"
-            ).fetchall()
-        ]
-    finally:
-        store.close()
-    turns = [failure for failure in failures if failure.get("site") == "supervision_turn"]
-    equal(len(turns), 1, describing=f"the alert's supervision turn, recorded once: {failures}")
+    equal(history.returncode, 0, describing=f"the print's history read: {history.stderr}")
+    turns = [
+        event["payload"]
+        for event in json.loads(history.stdout)["events"]
+        if event["kind"] == "port_failure" and event["payload"].get("site") == "supervision_turn"
+    ]
+    equal(
+        len(turns), 1, describing=f"the alert's supervision turn, recorded once: {history.stdout}"
+    )
     contains(
         turns[0]["detail"],
         "`claude` not found on PATH",
