@@ -27,19 +27,20 @@ TIER = workers.Suite("repo-e2e", "test-e2e")
         (1, 16.0, 1, 1),  # nor does a processor left to the host
     ],
 )
+@pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
 def test_the_tier_takes_the_processors_the_memory_holds(
-    cpus: int, memory_gib: float, reserved: int, chosen: int
+    cpus: int, memory_gib: float, reserved: int, chosen: int, beside: bool
 ) -> None:
-    """The count is the smallest bound, and at least one: no suite of its invocation shares it."""
+    """The count is the smallest bound, and at least one: no other suite shares it."""
     host = workers.Host(cpus=cpus, memory_gib=memory_gib, free_disk_gib=50.0, reserved=reserved)
 
     equal(
-        workers.share(host, TIER, parallelism=3),
+        workers.share(host, TIER, parallelism=3, beside=beside),
         chosen,
         describing=f"the tier's workers for {cpus} CPUs and {memory_gib} GiB",
     )
     contains(
-        workers.said(host, TIER, parallelism=3),
+        workers.said(host, TIER, parallelism=3, beside=beside),
         f"repo-e2e: {chosen} xdist workers: {cpus} logical processors "
         f"({reserved} left to the host)",
     )

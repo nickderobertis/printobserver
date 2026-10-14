@@ -4,14 +4,16 @@
 `release-artifacts` take for `-n auto`. Here it is asked for every suite on the
 hosts the gate runs on, at the parallelism this workspace's own `nx.json`
 declares, and every set of suites one Nx invocation can run together is summed
-against the host. The end-to-end tier is an invocation of its own, and keeps
-the whole host even where the justfile starts it beside the test tier.
+against the host. The end-to-end tier is an invocation of its own and keeps the
+whole host; where the justfile starts it beside the test tier, the test tier's
+suites take one worker each.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -42,9 +44,10 @@ def _running_together(parallelism: int) -> list[tuple[workers.Suite, ...]]:
     return sets
 
 
+@pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
 @pytest.mark.parametrize("described", sorted(HOSTS))
 def test_the_suites_running_together_fit_the_host_at_this_workspaces_parallelism(
-    described: str,
+    described: str, beside: bool
 ) -> None:
     """Summed over every set one invocation can run at once, the workers fit the host."""
     host = HOSTS[described]
@@ -53,7 +56,8 @@ def test_the_suites_running_together_fit_the_host_at_this_workspaces_parallelism
 
     for running in _running_together(parallelism):
         counts = {
-            str(suite): workers.share(host, suite, parallelism=parallelism) for suite in running
+            str(suite): workers.share(host, suite, parallelism=parallelism, beside=beside)
+            for suite in running
         }
         total = sum(counts.values())
         truth(
@@ -71,20 +75,24 @@ def test_the_hosted_runners_shares_are_the_ones_the_gate_was_sized_for() -> None
     """Each processor goes somewhere, the left-over ones to the suites with the most to do."""
     parallelism = workers.nx_parallelism(REPO_ROOT)
     shares = {
-        described: tuple(
-            workers.share(HOSTS[described], suite, parallelism=parallelism)
+        (described, beside): tuple(
+            workers.share(HOSTS[described], suite, parallelism=parallelism, beside=beside)
             for suite in workers.SUITES
         )
         for described in HOSTS
+        for beside in (True, False)
     }
 
     equal(parallelism, 3, describing="the parallelism `nx.json` declares")
-    equal(shares["the hosted Linux runners"], (4, 2, 2), describing="Linux")
-    equal(shares["the hosted Windows runners"], (3, 2, 1), describing="Windows")
-    equal(shares["the hosted macOS runner"], (3, 2, 1), describing="macOS")
+    equal(shares["the hosted Linux runners", True], (4, 1, 1), describing="Linux")
+    equal(shares["the hosted macOS runner", True], (3, 1, 1), describing="macOS")
+    equal(shares["the hosted Windows runners", False], (3, 2, 1), describing="Windows")
 
 
-def test_the_end_to_end_tier_keeps_the_host_beside_the_test_tier() -> None:
+@pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
+def test_the_end_to_end_tier_keeps_the_host_whether_or_not_the_test_tier_is_beside_it(
+    beside: bool,
+) -> None:
     """A separate invocation is not divided with: the tier's share is the whole budget."""
     tier = workers.Suite("repo-e2e", "test-e2e")
     for described, host in HOSTS.items():
@@ -93,7 +101,40 @@ def test_the_end_to_end_tier_keeps_the_host_beside_the_test_tier() -> None:
             (tier,),
             describing=f"what the end-to-end tier shares with on {described}",
         )
-        equal(workers.share(host, tier, parallelism=3), host.budget, describing=described)
+        equal(
+            workers.share(host, tier, parallelism=3, beside=beside),
+            host.budget,
+            describing=described,
+        )
+
+
+def test_the_test_tier_beside_the_end_to_end_tier_runs_one_worker_a_suite() -> None:
+    """However large the host, a test-tier suite overlapping the end-to-end tier takes one."""
+    for suite in workers.SUITES[1:]:
+        for described, host in HOSTS.items():
+            equal(
+                workers.share(host, suite, parallelism=3, beside=True),
+                1,
+                describing=f"{suite} on {described}",
+            )
+            contains(
+                workers.said(host, suite, parallelism=3, beside=True),
+                f"{suite.project}: 1 xdist workers: ",
+            )
+
+
+def test_the_overlap_is_the_justfiles_own_answer() -> None:
+    """The end-to-end tier is beside the test tier exactly where the justfile starts it there."""
+    equal(
+        workers.beside_tests(REPO_ROOT),
+        sys.platform != "win32",
+        describing="whether the justfile overlaps the two tiers on this host",
+    )
+
+
+def test_a_tree_whose_justfile_cannot_answer_is_taken_to_overlap(tmp_path: Path) -> None:
+    """Where `just` says nothing, the test tier gets the smaller share rather than the larger."""
+    truth(workers.beside_tests(tmp_path), describing="the overlap with no justfile to ask")
 
 
 @pytest.mark.parametrize(
@@ -150,8 +191,8 @@ def test_a_lone_slot_runs_one_test_suite_at_a_time() -> None:
     checks = workers.Suite("repo-checks", "test")
     artifacts = workers.Suite("release-artifacts", "test")
 
-    equal(workers.share(host, checks, parallelism=1), 3, describing="repo-checks")
-    equal(workers.share(host, artifacts, parallelism=1), 3, describing="artifacts")
+    equal(workers.share(host, checks, parallelism=1, beside=False), 3, describing="repo-checks")
+    equal(workers.share(host, artifacts, parallelism=1, beside=False), 3, describing="artifacts")
     equal(workers.together(artifacts, parallelism=1), (artifacts,), describing="one slot")
 
 
@@ -171,5 +212,8 @@ def test_the_choice_is_said_with_what_it_was_chosen_from(
 
     said = capsys.readouterr().err
     contains(said, f"release-artifacts: {count} xdist workers: ")
-    contains(said, f"at Nx parallelism {workers.nx_parallelism(REPO_ROOT)}")
-    contains(said, "repo-checks:test", describing="the suite it shares the host with")
+    if workers.beside_tests(REPO_ROOT):
+        contains(said, "the end-to-end tier running beside the test tier on this host")
+    else:
+        contains(said, f"at Nx parallelism {workers.nx_parallelism(REPO_ROOT)}")
+        contains(said, "repo-checks:test", describing="the suite it shares the host with")

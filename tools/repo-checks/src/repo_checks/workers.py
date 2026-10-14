@@ -2,30 +2,29 @@
 
 Three suites run under pytest-xdist — the end-to-end tier, `repo-checks` and
 `release-artifacts` — and each asks `pytest_xdist_auto_num_workers` what
-`-n auto` is. This is the one answer all three take. It is the host's logical
-processors, bounded by its memory at `MEMORY_PER_WORKER_GIB` a worker, divided
-among the xdist suites one Nx invocation can run at the same moment: Nx runs
-one target's tasks together, as many at once as its parallelism, so
-`repo-checks:test` and `release-artifacts:test` share the host whenever the
-parallelism is at least two.
+`-n auto` is. This is the one answer all three take. It starts from the
+host's logical processors, bounded by its memory at `MEMORY_PER_WORKER_GIB` a
+worker:
 
-The end-to-end tier is its own Nx invocation, and keeps the whole budget even
-where the root `justfile` starts it beside the test tier — everywhere but
-Windows, by its `E2E_BESIDE_TESTS`. So while the two tiers overlap, the summed
-workers of the two processes may exceed the host's processors. That is
-deliberate: these suites spend their time waiting on the subprocesses they
-start rather than computing, the test tier finishes long before the end-to-end
-tier does, and xdist cannot grow a suite's workers once it has started. Counted
-as overlapping, the end-to-end tier ran on one worker for the whole of its run
-on the 3-processor macOS runner, even after the test tier had left it the
-host, and that runner's gate went from 1834 to 2816 seconds (runs 38480620735
-and 38508602716). Windows runs the tiers in turn, so its sums stay within its
-processors.
+- The end-to-end tier is its own Nx invocation, and keeps that whole budget.
+- Where the root `justfile` starts it beside the test tier — everywhere but
+  Windows, by its `E2E_BESIDE_TESTS` — the test tier's suites run on one worker
+  each, as they ran before they were parallelised. The end-to-end tier is the
+  longest thing those hosts run, so a worker given to the test tier there is
+  taken from it: on the paired runs 38556419344 and 38566907789, giving the two
+  suites two workers each lengthened the end-to-end tier on Linux from 631 to
+  779 and 534 to 655 seconds. Dividing the budget with the end-to-end tier
+  instead left it one worker on the 3-processor macOS runner for the whole of
+  its run, and that gate went from 1834 to 2816 seconds (runs 38480620735 and
+  38508602716), because xdist cannot grow a suite's workers once it has
+  started. These suites wait on the subprocesses they start more than they
+  compute, so the two tiers together may hold more workers than processors.
+- Where the tiers run in turn, `repo-checks:test` and `release-artifacts:test`
+  divide the budget between them whenever Nx's parallelism lets one invocation
+  run both, and what an even share leaves over goes to the suite with the most
+  serial work, in `SUITES`' order. No suite is given none.
 
-What an even share leaves over goes to the suites with the most serial work,
-in `SUITES`' order, and no suite is given none. This is allocation arithmetic:
-it keeps the workers of the suites one invocation runs together within the
-host's processors and memory, and it measures no suite's actual peak.
+This is allocation arithmetic: it measures no suite's actual peak.
 
 On Windows one processor is left to the host. A worker on every processor of a
 4-processor Windows runner keeps the host's own services from answering inside
@@ -56,6 +55,8 @@ from typing import Any, Protocol
 import coverage
 import pytest
 
+from repo_checks.shell import run
+
 #: What one worker's heaviest test — a `cargo` build in a copy of the tree —
 #: needs of the host's memory.
 MEMORY_PER_WORKER_GIB = 2.0
@@ -77,6 +78,9 @@ class Suite:
         """The task as Nx names it."""
         return f"{self.project}:{self.target}"
 
+
+#: The target whose tier `E2E_BESIDE_TESTS` starts beside the test tier.
+END_TO_END = "test-e2e"
 
 #: Every suite run under xdist, the one with the most serial work first: the
 #: order the processors an even share leaves over are handed out in.
@@ -123,23 +127,36 @@ def together(suite: Suite, *, parallelism: int) -> tuple[Suite, ...]:
     return tuple(other for other in SUITES if other in running)
 
 
-def share(host: Host, suite: Suite, *, parallelism: int) -> int:
-    """How many workers `suite` runs on: its share of the host among the suites beside it."""
+def share(host: Host, suite: Suite, *, parallelism: int, beside: bool) -> int:
+    """How many workers `suite` runs on.
+
+    `beside` is whether the end-to-end tier runs beside the test tier on this
+    host; there the test tier's suites take one worker each and leave the rest
+    to it.
+    """
+    if beside and suite.target != END_TO_END:
+        return 1
     running = together(suite, parallelism=parallelism)
     even, left_over = divmod(host.budget, len(running))
     return max(1, even + (1 if running.index(suite) < left_over else 0))
 
 
-def said(host: Host, suite: Suite, *, parallelism: int) -> str:
+def said(host: Host, suite: Suite, *, parallelism: int, beside: bool) -> str:
     """The one line a run states its choice in, with the figures it was chosen from."""
     running = together(suite, parallelism=parallelism)
+    if beside and suite.target != END_TO_END:
+        divided = f"one, the end-to-end tier running beside the {suite.target} tier on this host"
+    else:
+        divided = (
+            f"shared with {len(running) - 1} other xdist suites its Nx invocation can run at "
+            f"once ({', '.join(str(other) for other in running if other != suite) or 'none'}) "
+            f"at Nx parallelism {parallelism}"
+        )
     return (
-        f"{suite.project}: {share(host, suite, parallelism=parallelism)} xdist "
+        f"{suite.project}: {share(host, suite, parallelism=parallelism, beside=beside)} xdist "
         f"workers: {host.cpus} logical processors ({host.reserved} left to the host), "
-        f"{host.memory_gib:.1f} GiB memory ({MEMORY_PER_WORKER_GIB:g} GiB a worker), shared "
-        f"with {len(running) - 1} other xdist suites its Nx invocation can run at once "
-        f"({', '.join(str(other) for other in running if other != suite) or 'none'}) at Nx "
-        f"parallelism {parallelism}; {host.free_disk_gib:.1f} GiB free disk"
+        f"{host.memory_gib:.1f} GiB memory ({MEMORY_PER_WORKER_GIB:g} GiB a worker), "
+        f"{divided}; {host.free_disk_gib:.1f} GiB free disk"
     )
 
 
@@ -163,6 +180,17 @@ def nx_parallelism(root: Path, environ: dict[str, str] | None = None) -> int:
         return declared
     msg = f"{root / 'nx.json'} declares no `parallel` above zero, and NX_PARALLEL names none"
     raise ValueError(msg)
+
+
+def beside_tests(root: Path) -> bool:
+    """Whether the root `justfile` starts the end-to-end tier beside the test tier on this host.
+
+    The justfile's own answer, asked of `just`, so the overlap is stated once.
+    Where it cannot answer, the tiers are taken to overlap, which is the answer
+    that gives the test tier's suites fewer workers rather than more.
+    """
+    answered = run(["just", "--evaluate", "E2E_BESIDE_TESTS"], cwd=root)
+    return answered.returncode != 0 or answered.stdout.strip() != "false"
 
 
 def memory_bytes() -> int:
@@ -208,8 +236,9 @@ def chosen(suite: Suite, root: Path) -> int:
     """What `-n auto` means for `suite` on this host, said on standard error before it starts."""
     host = here(Path(tempfile.gettempdir()))
     parallelism = nx_parallelism(root)
-    print(said(host, suite, parallelism=parallelism), file=sys.stderr)
-    return share(host, suite, parallelism=parallelism)
+    beside = beside_tests(root)
+    print(said(host, suite, parallelism=parallelism, beside=beside), file=sys.stderr)
+    return share(host, suite, parallelism=parallelism, beside=beside)
 
 
 #: Where a worker keeps the coverage it measures itself under.
