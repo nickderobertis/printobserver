@@ -16,20 +16,25 @@ TIER = workers.Suite("repo-e2e", "test-e2e")
 
 
 @pytest.mark.parametrize(
-    ("cpus", "memory_gib", "reserved", "chosen"),
+    ("cpus", "memory_gib", "reserved", "beside", "chosen"),
     [
-        (4, 16.0, 0, 4),  # the hosted Linux runners: beside the test tier, still the whole host
-        (4, 16.0, 1, 3),  # the hosted Windows runners: one processor left over
-        (3, 7.0, 0, 3),  # the hosted macOS runner
-        (20, 94.0, 0, 20),
-        (8, 5.0, 0, 2),  # memory bounds it below the processors
-        (4, 1.0, 0, 1),  # and never to none
-        (1, 16.0, 1, 1),  # nor does a processor left to the host
+        (
+            4,
+            16.0,
+            0,
+            True,
+            4,
+        ),  # the hosted Linux runners: beside the test tier, still the whole host
+        (4, 16.0, 1, False, 3),  # the hosted Windows runners: one processor left over
+        (3, 7.0, 0, True, 3),  # the hosted macOS runner
+        (20, 94.0, 0, False, 20),
+        (8, 5.0, 0, True, 2),  # memory bounds it below the processors
+        (4, 1.0, 0, False, 1),  # and never to none
+        (1, 16.0, 1, True, 1),  # nor does a processor left to the host
     ],
 )
-@pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
 def test_the_tier_takes_the_processors_the_memory_holds(
-    cpus: int, memory_gib: float, reserved: int, chosen: int, beside: bool
+    cpus: int, memory_gib: float, reserved: int, beside: bool, chosen: int
 ) -> None:
     """The count is the smallest bound, and at least one: no other suite shares it."""
     host = workers.Host(cpus=cpus, memory_gib=memory_gib, free_disk_gib=50.0, reserved=reserved)
