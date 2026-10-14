@@ -33,6 +33,7 @@ import shutil
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NewType
 
 from repo_checks import platforms
 from repo_checks.model import Repo
@@ -84,19 +85,23 @@ TOOLCHAIN_REMEDY = (
 )
 
 
+#: A SHA-256 digest, as the lowercase hexadecimal it is written in.
+Digest = NewType("Digest", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Key:
     """What a release build is a function of, one digest per input."""
 
-    source: str
-    toolchain: str
-    profile: str
+    source: Digest
+    toolchain: Digest
+    profile: Digest
 
     @property
-    def value(self) -> str:
+    def value(self) -> Digest:
         """The one name the three digests are kept under."""
         joined = f"source={self.source}\ntoolchain={self.toolchain}\nprofile={self.profile}\n"
-        return hashlib.sha256(joined.encode()).hexdigest()
+        return Digest(hashlib.sha256(joined.encode()).hexdigest())
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,19 +172,19 @@ def _intact(entry: Path) -> bool:
     return recorded.read_bytes().strip() == _digest(entry).encode()
 
 
-def _digest(path: Path) -> str:
+def _digest(path: Path) -> Digest:
     with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
+        return Digest(hashlib.file_digest(handle, "sha256").hexdigest())
 
 
-def _source(root: Path) -> str:
+def _source(root: Path) -> Digest:
     """The digest of every file a release build of this workspace reads."""
     digest = hashlib.sha256()
     for path in _sources(root):
         digest.update(path.relative_to(root).as_posix().encode())
         digest.update(b"\0")
         digest.update(hashlib.sha256(path.read_bytes()).digest())
-    return digest.hexdigest()
+    return Digest(digest.hexdigest())
 
 
 def _sources(root: Path) -> list[Path]:
@@ -200,7 +205,7 @@ def _sources(root: Path) -> list[Path]:
     return found
 
 
-def _toolchain(root: Path) -> str:
+def _toolchain(root: Path) -> Digest:
     """The digest of the toolchain declared and the one installed.
 
     Raises:
@@ -229,10 +234,10 @@ def _toolchain(root: Path) -> str:
     digest.update(declared.read_bytes() if declared.is_file() else b"")
     digest.update(b"\0")
     digest.update(answered.stdout.encode())
-    return digest.hexdigest()
+    return Digest(digest.hexdigest())
 
 
-def _profile(root: Path) -> str:
+def _profile(root: Path) -> Digest:
     """The digest of the profile and compiler flags the workspace and environment set.
 
     The manifest's `[profile]` tables, the workspace's own `.cargo/config.toml`
@@ -251,7 +256,7 @@ def _profile(root: Path) -> str:
         or (name.startswith(TARGET_VARIABLE_PREFIX) and name.endswith(TARGET_VARIABLE_SUFFIX))
     }
     document = {"name": PROFILE, "declared": declared, "variables": variables}
-    return hashlib.sha256(json.dumps(document, sort_keys=True).encode()).hexdigest()
+    return Digest(hashlib.sha256(json.dumps(document, sort_keys=True).encode()).hexdigest())
 
 
 def _toml(path: Path) -> dict[str, object] | None:

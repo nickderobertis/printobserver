@@ -13,6 +13,7 @@ from __future__ import annotations
 import shutil
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from release_artifacts.__main__ import main
@@ -141,8 +142,17 @@ def _suffix() -> str:
     return ".exe" if sys.platform == "win32" else ""
 
 
-def _prepare(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[Path, str]:
-    """Run `release-program` over `root`: the program it named, and how it got it."""
+class Preparation(NamedTuple):
+    """What one `release-program` run answered."""
+
+    #: The program it named.
+    program: Path
+    #: How it got it: `built` or `reused`.
+    how: str
+
+
+def _prepare(root: Path, capsys: pytest.CaptureFixture[str]) -> Preparation:
+    """Run `release-program` over `root`, reading the one line it answers."""
     capsys.readouterr()
     equal(main(["release-program", "--root", str(root)]), 0, describing="release-program")
     said = capsys.readouterr()
@@ -151,7 +161,7 @@ def _prepare(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[Path, str]
     equal(len(lines), 1, describing=f"one line from a successful preparation, not {lines!r}")
     how, _, path = lines[0].partition(" ")
     contains({"built", "reused"}, how, describing=f"how the program was got, in {lines[0]!r}")
-    return Path(path), how
+    return Preparation(Path(path), how)
 
 
 def _answer(program: Path) -> str:

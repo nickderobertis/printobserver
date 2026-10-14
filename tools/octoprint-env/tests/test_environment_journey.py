@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NewType
 
 import yaml
 from environment import (
@@ -110,13 +111,20 @@ def test_the_scripted_environment_installs_starts_holds_a_print_and_stops(
     _stops_leaving_no_process(one)
 
 
+#: The process `up` started an instance as.
+Pid = NewType("Pid", int)
+
+#: The API key an instance was provisioned with.
+ApiKey = NewType("ApiKey", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Started:
     """An instance `up` started, as it answered, and the moment it answered."""
 
     url: str
     port: int
-    pid: int
+    pid: Pid
     state_dir: str
     api_key_file: str
     hold_seconds: int
@@ -142,7 +150,7 @@ class Started:
         return cls(
             url=text("url"),
             port=number("port"),
-            pid=number("pid"),
+            pid=Pid(number("pid")),
             state_dir=text("state_dir"),
             api_key_file=text("api_key_file"),
             hold_seconds=number("hold_seconds"),
@@ -150,9 +158,9 @@ class Started:
         )
 
     @property
-    def key(self) -> str:
+    def key(self) -> ApiKey:
         """The API key it was provisioned with."""
-        return key_from(self.api_key_file)
+        return ApiKey(key_from(self.api_key_file))
 
 
 def _installs_unattended_over_an_empty_directory(state: str) -> dict[str, object]:
