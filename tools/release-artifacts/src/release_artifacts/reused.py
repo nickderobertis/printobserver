@@ -39,31 +39,34 @@ from repo_checks.shell import run
 
 from release_artifacts.build import PROFILE, BuildError, program
 
-#: Where the kept build lives, under the workspace root.
+#: Where the kept build lives, under the workspace root. It ignores itself, by
+#: a `.gitignore` of its own, so this name is written nowhere else in the tree.
 DIRECTORY = ".release-program"
+
+#: The two fields `release-program-key` prints, as `<field>=<value>` lines a
+#: workflow step appends to `GITHUB_OUTPUT`: the key, and the directory it keys.
+KEY_FIELD = "key"
+PATH_FIELD = "path"
 
 #: The file beside a kept program recording the digest it was kept with.
 DIGEST_FILE = "program.sha256"
 
-#: Where the workspace's crates are, under its root.
+#: What makes the kept directory ignored wherever it is created.
+IGNORE_FILE = ".gitignore"
+
 CRATES = "crates"
 
 #: The directory of a crate's own tests, which no release build compiles.
 CRATE_TESTS = "tests"
 
-#: The workspace files a build reads beside the crates.
 WORKSPACE_FILES = ("Cargo.toml", "Cargo.lock")
 
-#: The file a toolchain is declared in.
 TOOLCHAIN_FILE = "rust-toolchain.toml"
 
-#: Where cargo reads a profile from besides the workspace's manifest.
 CARGO_CONFIG = ".cargo/config.toml"
 
-#: The variables cargo reads compiler flags from.
 FLAG_VARIABLES = ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS")
 
-#: The prefix of every variable cargo reads a profile setting from.
 PROFILE_VARIABLE_PREFIX = "CARGO_PROFILE_"
 
 
@@ -100,18 +103,13 @@ def key(root: Path) -> Key:
     return Key(source=_source(root), toolchain=_toolchain(root), profile=_profile(root))
 
 
-def prepared(repo: Repo, directory: Path | None = None) -> Prepared:
+def prepared(repo: Repo) -> Prepared:
     """The release program for this tree: the kept one when its key holds, else built.
-
-    Args:
-        repo: The workspace to build.
-        directory: Where the kept build lives; `DIRECTORY` under the root when
-            omitted.
 
     Raises:
         BuildError: If a build was needed and failed.
     """
-    kept = repo.root / DIRECTORY if directory is None else directory
+    kept = repo.root / DIRECTORY
     before = key(repo.root)
     entry = kept / before.value / platforms.host(repo).program
     if _intact(entry):
@@ -132,28 +130,26 @@ def _keep(built: Path, kept: Path, entry: Path) -> None:
         shutil.rmtree(kept)
     staging = kept / f"{entry.parent.name}.partial"
     staging.mkdir(parents=True)
+    (kept / IGNORE_FILE).write_text("*\n", encoding="utf-8")
     shutil.copy2(built, staging / entry.name)
     (staging / DIGEST_FILE).write_text(_digest(staging / entry.name), encoding="utf-8")
     staging.rename(entry.parent)
 
 
 def _intact(entry: Path) -> bool:
-    """Whether `entry` is the program that was kept: the same bytes, and runnable.
+    """Whether `entry` is the program that was kept, byte for byte.
 
     A kept directory is restored from a cache rather than written here, so a
-    file that is merely there — truncated, damaged, or no longer executable —
-    is built over rather than run.
+    file that is merely there — missing, truncated, or kept with no record of
+    what it was — is built over rather than run.
     """
     recorded = entry.parent / DIGEST_FILE
     if not entry.is_file() or not recorded.is_file():
         return False
-    if recorded.read_text(encoding="utf-8").strip() != _digest(entry):
-        return False
-    return os.access(entry, os.X_OK)
+    return recorded.read_text(encoding="utf-8").strip() == _digest(entry)
 
 
 def _digest(path: Path) -> str:
-    """The SHA-256 of one file's bytes."""
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 

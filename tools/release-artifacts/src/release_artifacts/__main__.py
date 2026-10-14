@@ -193,8 +193,8 @@ def main(argv: list[str] | None = None) -> int:
             case "release-program-key":
                 # The directory the key names, beside it, so a workflow caching
                 # the one under the other names neither a second time.
-                print(f"key={reused.key(repo.root).value}")
-                print(f"path={reused.DIRECTORY}")
+                print(f"{reused.KEY_FIELD}={reused.key(repo.root).value}")
+                print(f"{reused.PATH_FIELD}={reused.DIRECTORY}")
             case "standin":
                 return _standin(repo, arguments)
             case "released":

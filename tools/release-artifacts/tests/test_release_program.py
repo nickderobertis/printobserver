@@ -17,10 +17,11 @@ from pathlib import Path
 
 import pytest
 from release_artifacts.__main__ import main
-from release_artifacts.reused import DIGEST_FILE, DIRECTORY
+from release_artifacts.reused import DIGEST_FILE, DIRECTORY, IGNORE_FILE, KEY_FIELD, PATH_FIELD
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
+from repo_checks.parsing import jobs_of, load_workflow, steps_of
 from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -63,7 +64,6 @@ def _workspace(root: Path, says: str) -> Path:
 
 
 def _says(root: Path, says: str) -> None:
-    """Make the workspace's program print `says`."""
     (root / CRATE / "src" / "main.rs").write_text(
         f'fn main() {{\n    println!("{says}");\n}}\n', encoding="utf-8"
     )
@@ -119,7 +119,6 @@ def _prepare(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[Path, str]
 
 
 def _answer(program: Path) -> str:
-    """What a program prints."""
     ran = run([str(program)], timeout=60)
     equal(ran.returncode, 0, describing=f"{program} running: {ran.stderr}")
     return ran.stdout.strip()
@@ -136,9 +135,9 @@ def _key(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
     equal(main(["release-program-key", "--root", str(root)]), 0, describing="the key")
     lines = capsys.readouterr().out.splitlines()
     equal(len(lines), 2, describing=f"a `key=` line and a `path=` line, not {lines!r}")
-    equal(lines[1], f"path={DIRECTORY}", describing="the directory the key is kept in")
-    truth(lines[0].startswith("key="), describing=f"a `key=` line, not {lines[0]!r}")
-    return lines[0].removeprefix("key=")
+    equal(lines[1], f"{PATH_FIELD}={DIRECTORY}", describing="the directory the key is kept in")
+    truth(lines[0].startswith(f"{KEY_FIELD}="), describing=f"a `key=` line, not {lines[0]!r}")
+    return lines[0].removeprefix(f"{KEY_FIELD}=")
 
 
 @pytest.fixture(autouse=True)
@@ -173,6 +172,11 @@ def test_an_unchanged_key_reuses_the_kept_program(
         describing="the key the program is kept under, as release-program-key prints it",
     )
     equal(again.name, platforms.host(Repo(root)).program, describing="the kept program's name")
+    equal(
+        (root / DIRECTORY / IGNORE_FILE).read_text(encoding="utf-8"),
+        "*\n",
+        describing="the kept directory's own ignore file, which ignores all of it",
+    )
 
 
 @pytest.mark.parametrize("change", CHANGES)
@@ -221,29 +225,33 @@ def test_a_changed_key_builds_again_rather_than_reusing(
     truth(second != first, describing="a program kept under the new key")
     equal(_answer(second), expected, describing=f"the program built after a {change} change")
     equal(
-        [entry.name for entry in (root / DIRECTORY).iterdir()],
-        [second.parent.name],
-        describing="the kept programs, which are only the newest",
+        sorted(entry.name for entry in (root / DIRECTORY).iterdir()),
+        sorted([IGNORE_FILE, second.parent.name]),
+        describing="what the kept directory holds: only the newest program, and its ignore file",
     )
 
 
-@pytest.mark.parametrize("damage", ["truncated", "unrecorded"])
+@pytest.mark.parametrize("damage", ["missing", "truncated", "unrecorded"])
 def test_a_kept_program_that_is_not_what_was_kept_is_built_over(
     damage: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A restored program whose bytes are not the ones kept is never run.
 
     The kept directory comes back from a cache rather than from this tool, so
-    a program cut short, or one with no record of what it was kept as, is a
-    file that is merely there: the key still holds and it is built over anyway.
+    a program gone from beside its record, one cut short, or one with no record
+    of what it was kept as is not the program the key names: the key still
+    holds and it is built over anyway.
     """
     root = _workspace(tmp_path / "workspace", says=FIRST)
     first, _ = _prepare(root, capsys)
     _forget_the_build(root)
-    if damage == "truncated":
-        first.write_bytes(first.read_bytes()[:64])
-    else:
-        (first.parent / DIGEST_FILE).unlink()
+    match damage:
+        case "missing":
+            first.unlink()
+        case "truncated":
+            first.write_bytes(first.read_bytes()[:64])
+        case _:
+            (first.parent / DIGEST_FILE).unlink()
 
     second, said = _prepare(root, capsys)
 
@@ -333,3 +341,40 @@ def test_a_toolchain_that_cannot_say_what_it_is_is_refused(
     contains(said.err, naming, describing="what the refusal says")
     contains(said.err, "toolchain cannot be named", describing="what the refusal says")
     equal(said.out, "", describing="the key a refused run printed")
+
+
+def test_the_integration_job_caches_the_directory_under_the_key_the_command_prints(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The committed workflow reads the two fields `release-program-key` prints.
+
+    The job appends the command's lines to `GITHUB_OUTPUT` and caches the
+    directory one field names under the key the other does, then prepares the
+    program before the tier. A field renamed on either side, or a preparation
+    moved after the tier, would leave the tier building the program again.
+    """
+    workflow = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
+    steps = steps_of(jobs_of(workflow)["integration"])
+    runs = [str(step.get("run", "")).strip() for step in steps]
+    keyed = runs.index('just release-program-key >> "$GITHUB_OUTPUT"')
+    outputs = f"steps.{steps[keyed]['id']}.outputs"
+    cached = next(step for step in steps if str(step.get("uses", "")).startswith("actions/cache@"))
+
+    equal(
+        cached["with"]["path"],
+        f"${{{{ {outputs}.{PATH_FIELD} }}}}",
+        describing="the directory the job caches",
+    )
+    contains(
+        cached["with"]["key"],
+        f"${{{{ {outputs}.{KEY_FIELD} }}}}",
+        describing="the key the job caches it under",
+    )
+    truth(
+        keyed
+        < steps.index(cached)
+        < runs.index("just release-program")
+        < runs.index("just test-integration"),
+        describing=f"the key, the cache, the preparation and the tier in that order: {runs}",
+    )
+    _key(REPO_ROOT, capsys)

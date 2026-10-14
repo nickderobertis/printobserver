@@ -4,8 +4,6 @@
 
 # Rust
 /target/
-# The release program the integration tier's worlds reuse, and its key.
-/.release-program/
 *.profraw
 /lcov.info
 
