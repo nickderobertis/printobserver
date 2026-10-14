@@ -432,9 +432,20 @@ class World:
             ),
             encoding="utf-8",
         )
+        # Nothing on the path the supervisor runs with, as the program's own
+        # tier runs its supervisor. The alert below prompts a supervision turn,
+        # and over whatever harness this host happens to have installed that
+        # turn would be a real conversation with a real agent, which no client
+        # journey is about and which held every world's start for the length of
+        # one. With nothing to find it fails the way a missing harness does,
+        # recorded against the event, which is the readiness `_recorded` waits
+        # for either way.
+        no_harness = self.root / "no-harness-on-this-path"
+        no_harness.mkdir(exist_ok=True)
         self._supervisor = start(
             [str(self.program), "server", "--config", str(configuration)],
             cwd=self.root,
+            env={**os.environ, "PATH": str(no_harness)},
         )
         server = self._await_serving()
         print_id, image_id, event_id = self._open_a_print(server)
