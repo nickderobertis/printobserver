@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import NewType
 
 import yaml
 from environment import (
@@ -93,63 +91,11 @@ def test_the_scripted_environment_installs_starts_holds_a_print_and_stops(
     one = _starts_answering_and_connected(first)
     two = _starts_answering_and_connected(second)
     _two_instances_do_not_collide(one, two)
-    _stops_leaving_no_process(two)
 
     _holds_a_print_for_the_minimum_it_states(one)
 
     _stops_leaving_no_process(one)
-
-
-#: The process `up` started an instance as.
-Pid = NewType("Pid", int)
-
-#: The API key an instance was provisioned with.
-ApiKey = NewType("ApiKey", str)
-
-
-@dataclass(frozen=True, slots=True)
-class Started:
-    """An instance `up` started, as it answered, and the moment it answered."""
-
-    url: str
-    port: int
-    pid: Pid
-    state_dir: str
-    api_key_file: str
-    hold_seconds: int
-    answered_at: float
-
-    @classmethod
-    def read(cls, record: dict[str, object], answered_at: float) -> Started:
-        """The instance `up` described in `record`, every field it names required and typed."""
-
-        def text(field: str) -> str:
-            value = record.get(field)
-            truth(isinstance(value, str) and value, describing=f"`{field}` as text in {record}")
-            return str(value)
-
-        def number(field: str) -> int:
-            value = record.get(field)
-            truth(
-                isinstance(value, int) and not isinstance(value, bool),
-                describing=f"`{field}` as a whole number in {record}",
-            )
-            return int(str(value))
-
-        return cls(
-            url=text("url"),
-            port=number("port"),
-            pid=Pid(number("pid")),
-            state_dir=text("state_dir"),
-            api_key_file=text("api_key_file"),
-            hold_seconds=number("hold_seconds"),
-            answered_at=answered_at,
-        )
-
-    @property
-    def key(self) -> ApiKey:
-        """The API key it was provisioned with."""
-        return ApiKey(key_from(self.api_key_file))
+    _stops_leaving_no_process(two)
 
 
 def _installs_unattended_over_an_empty_directory(state: str) -> dict[str, object]:
@@ -194,15 +140,14 @@ def _installs_again_over_the_instance_it_made(state: str, provisioned: dict[str,
     equal(instances, ["instance", "venv"], describing="what the state directory holds")
 
 
-def _starts_answering_and_connected(state: str) -> Started:
-    """A start that has not answered until the instance has, and when it answered."""
+def _starts_answering_and_connected(state: str) -> dict[str, object]:
+    """A start that has not answered until the instance has."""
     result = script("up", "--state-dir", state, "--port", "auto")
-    answered_at = time.monotonic()
 
     passing(result, describing=f"starting the instance under {state}")
-    started = Started.read(answer(result), answered_at)
-    key = started.key
-    url = started.url
+    started = answer(result)
+    key = key_from(str(started["api_key_file"]))
+    url = str(started["url"])
 
     # Asserted at the moment the start returned: this is what "does not answer
     # until the instance answers its own API and reports a connected printer"
@@ -214,36 +159,28 @@ def _starts_answering_and_connected(state: str) -> Started:
     return started
 
 
-def _two_instances_do_not_collide(one: Started, two: Started) -> None:
+def _two_instances_do_not_collide(one: dict[str, object], two: dict[str, object]) -> None:
     """Two runs on one host, each on a port it asked for as free."""
     truth(
-        one.port != two.port,
-        describing=f"two different ports, not {one.port} twice",
+        one["port"] != two["port"],
+        describing=f"two different ports, not {one['port']} twice",
     )
     for instance, other in ((one, two), (two, one)):
-        url = instance.url
-        # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of each instance
-        status, _ = api(url, "/api/version", instance.key)
+        url = str(instance["url"])
+        status, _ = api(url, "/api/version", key_from(str(instance["api_key_file"])))
         equal(status, 200, describing=f"{url} answering on its own")
-        # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of each instance
-        refused, _ = api(url, "/api/version", other.key)
         contains(
             REFUSED,
-            refused,
+            api(url, "/api/version", key_from(str(other["api_key_file"])))[0],
             describing=f"{url} refusing the other instance's key, so the two are distinct",
         )
 
 
-def _holds_a_print_for_the_minimum_it_states(instance: Started) -> None:
-    """A print that is running when the start returns and after the stated minimum.
-
-    The minimum is measured from the moment `up` answered, which is what the
-    script states it from, so the journey's own steps since then count towards
-    it rather than being waited out a second time.
-    """
-    url = instance.url
-    key = instance.key
-    stated = instance.hold_seconds
+def _holds_a_print_for_the_minimum_it_states(started: dict[str, object]) -> None:
+    """A print that is running when the start returns and after the stated minimum."""
+    url = str(started["url"])
+    key = key_from(str(started["api_key_file"]))
+    stated = int(str(started["hold_seconds"]))
 
     truth(
         stated >= REQUIRED_HOLD_SECONDS,
@@ -259,7 +196,7 @@ def _holds_a_print_for_the_minimum_it_states(instance: Started) -> None:
         describing=f"a running print when the start returned, not `{job_state(url, key)}`",
     )
 
-    time.sleep(max(0.0, instance.answered_at + stated - time.monotonic()))
+    time.sleep(stated)
 
     equal(job_file(url, key), HOLD_PRINT, describing="the file still selected")
     after = job_state(url, key)
@@ -271,13 +208,13 @@ def _holds_a_print_for_the_minimum_it_states(instance: Started) -> None:
     )
 
 
-def _stops_leaving_no_process(started: Started) -> None:
+def _stops_leaving_no_process(started: dict[str, object]) -> None:
     """A stop after which the process this journey started is gone."""
-    pid = started.pid
+    pid = int(str(started["pid"]))
     truth(running(pid), describing=f"process {pid} to still be running before it is stopped")
 
-    result = script("down", "--state-dir", started.state_dir)
+    result = script("down", "--state-dir", str(started["state_dir"]))
 
-    passing(result, describing=f"stopping the instance under {started.state_dir}")
+    passing(result, describing=f"stopping the instance under {started['state_dir']}")
     equal(answer(result)["stopped"], True, describing="the stop's own account of itself")
     truth(not running(pid), describing=f"process {pid} to be gone: {said(result)}")

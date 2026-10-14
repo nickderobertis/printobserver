@@ -1650,12 +1650,6 @@ site = "one sequential read of its instance"
 reason = "Each is one read of the OctoPrint `just octoprint-up` started, made by a journey that acts on the answer before its next step — the job before an upload, the file after it, the job again — through the same blocking helpers every journey of this suite reads that instance with, which `tests/environment.py` gives the reason for. A test of a provisioning script's upload has nothing to overlap, and an async client would be a second client of an instance the product never reaches from here."
 
 [[suppression]]
-rule = "async_typed_clients_at_boundaries"
-file = "tools/octoprint-env/tests/test_environment_journey.py"
-site = "one sequential read of each instance"
-reason = "Two reads of the two loopback instances this journey's own `up` started — each one's API under its own key, then under the other's — each asserted on before the next is made, through the same blocking helper every journey of this suite reads an instance with, which `tests/environment.py` gives the reason for. The journey proves the two do not collide by reading them in turn; an async client would overlap nothing and would be a second client of instances the product never reaches from here."
-
-[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_world_journey.py"
 site = "The alert's turn finds no harness, even with one on the path the world runs with."
