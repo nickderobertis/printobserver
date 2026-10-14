@@ -6,9 +6,11 @@
 //! [`printobserver`]'s own modules, so this crate's tier can drive them and
 //! build a variant of this program with one defect in it.
 
+use std::future::{Future as _, poll_fn};
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::task::Poll;
 
 use printobserver::client::{Outcome, perform, refusal};
 use printobserver::credential;
@@ -41,11 +43,18 @@ async fn serve(config: PathBuf) -> Result<(), String> {
     if let Some(skipped) = running.reconciliation().unobserved.skipped() {
         eprintln!("printobserver: {skipped}");
     }
-    eprintln!("printobserver is serving on {}", running.address());
-    running
-        .serve_until_signalled()
-        .await
-        .map_err(|error| error.to_string())
+    let address = running.address();
+    let mut shutdown = std::pin::pin!(running.serve_until_signalled());
+    // Its first poll installs the platform's stop handlers. Announcing before
+    // that poll lets a service manager's immediate stop kill the process with
+    // the default handler instead of entering the graceful shutdown.
+    if let Poll::Ready(result) =
+        poll_fn(|context| Poll::Ready(shutdown.as_mut().poll(context))).await
+    {
+        return result.map_err(|error| error.to_string());
+    }
+    eprintln!("printobserver is serving on {address}");
+    shutdown.await.map_err(|error| error.to_string())
 }
 
 /// Run the supervisor, on a runtime of this program's own.
