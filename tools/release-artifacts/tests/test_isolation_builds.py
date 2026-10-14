@@ -17,9 +17,15 @@ import sys
 import tarfile
 from pathlib import Path
 
-from release_artifacts.stand_in import published
+from release_artifacts.stand_in import (
+    RUST_STAND_IN,
+    program_name,
+    published,
+    stand_in_program,
+)
 from repo_checks.expect import equal, truth
-from repo_checks.shell import start
+from repo_checks.model import Repo
+from repo_checks.shell import run, start
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -103,6 +109,44 @@ def test_publishing_over_a_program_another_process_published_keeps_that_one(
     published(second, program)
 
     equal(program.read_bytes(), b"the first process's program", describing="the program kept")
+
+
+def test_a_stand_in_is_named_for_its_source_and_its_toolchain() -> None:
+    """Change either and the program has a new name; change neither and it has the old one."""
+    source = RUST_STAND_IN.format(answer="printobserver 1.0.0")
+    toolchain = "rustc 1.97.1 (abc 2026-01-01)\nhost: x86_64-unknown-linux-gnu\n"
+
+    named = program_name(source, toolchain)
+
+    equal(program_name(source, toolchain), named, describing="the name asked for twice")
+    truth(
+        program_name(RUST_STAND_IN.format(answer="printobserver 1.0.1"), toolchain) != named,
+        describing="a changed source to name a new program",
+    )
+    truth(
+        program_name(source, toolchain.replace("1.97.1", "1.98.0")) != named,
+        describing="a changed toolchain to name a new program",
+    )
+
+
+def test_a_program_already_published_for_this_source_and_toolchain_is_reused(
+    tmp_path: Path,
+) -> None:
+    """A process finding the name taken copies what is there rather than compiling again."""
+    answer = f"printobserver 0.0.0-{secrets.token_hex(6)}"
+    toolchain = run(["rustc", "-vV"], cwd=REPO_ROOT, timeout=300).stdout
+    shared = REPO_ROOT / "target" / "stand-in"
+    shared.mkdir(parents=True, exist_ok=True)
+    already = shared / program_name(RUST_STAND_IN.format(answer=answer), toolchain)
+    already.write_bytes(b"what an earlier process published")
+    try:
+        handed = stand_in_program(
+            Repo(REPO_ROOT), tmp_path / "printobserver.exe", answer, compiled=True
+        )
+
+        equal(handed.read_bytes(), b"what an earlier process published", describing="handed")
+    finally:
+        already.unlink()
 
 
 def test_processes_packaging_the_rust_client_at_once_each_get_the_whole_crate(

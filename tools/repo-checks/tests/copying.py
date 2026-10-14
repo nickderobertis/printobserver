@@ -21,6 +21,7 @@ import json
 import math
 import sys
 import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from closures import closure
@@ -42,6 +43,31 @@ CI = ".github/workflows/ci.yml"
 GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
 
 
+@dataclass(frozen=True, slots=True)
+class Rewritten:
+    """What the rewriting process did: how many times it rewrote the schema."""
+
+    rewrites: int
+
+
+@dataclass(frozen=True, slots=True)
+class Copied:
+    """What one copying process carried: its copies, how many tore, and the first few."""
+
+    copies: int
+    torn: int
+    first: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class Broken:
+    """What one breaking process's check said of its broken and its unbroken copy."""
+
+    broken: list[str]
+    unbroken: list[str]
+    workflow: str
+
+
 @functools.cache
 def version(number: int) -> str:
     """One whole version of the rewritten schema, as JSON text."""
@@ -49,7 +75,7 @@ def version(number: int) -> str:
     return json.dumps({"version": number, "properties": fields}, indent=2) + "\n"
 
 
-def rewrite(source: Path, seconds: float) -> dict[str, object]:
+def rewrite(source: Path, seconds: float) -> Rewritten:
     """Rewrite the schema under the exclusive lock until `seconds` have passed."""
     path = source / SCHEMA
     rewrites = 0
@@ -68,10 +94,10 @@ def rewrite(source: Path, seconds: float) -> dict[str, object]:
             held.release()
         rewrites += 1
         time.sleep(0.005)
-    return {"rewrites": rewrites}
+    return Rewritten(rewrites)
 
 
-def copy(source: Path, into: Path, seconds: float) -> dict[str, object]:
+def copy(source: Path, into: Path, seconds: float) -> Copied:
     """Copy the schema closure until `seconds` have passed, and say what each copy carried."""
     copies = 0
     torn: list[str] = []
@@ -83,20 +109,20 @@ def copy(source: Path, into: Path, seconds: float) -> dict[str, object]:
         if text not in (version(1), version(2)):
             torn.append(f"copy{copies}: {len(text)} characters")
     # The first few say what tore; the count says how often.
-    return {"copies": copies, "torn": len(torn), "first": torn[:3]}
+    return Copied(copies, len(torn), torn[:3])
 
 
-def breaking(into: Path, name: str) -> dict[str, object]:
+def breaking(into: Path, name: str) -> Broken:
     """Break this process's own copy, check it and an unbroken copy, and say what each said."""
     ci = closure("ci")
     broken = Tree(copy_tree(into / "broken", closure=ci))
     broken.edit(CI, GATE_STEP, f"{GATE_STEP}      - run: just verify-{name}\n")
     unbroken = Tree(copy_tree(into / "unbroken", closure=ci))
-    return {
-        "broken": continuous_integration(broken.repo),
-        "unbroken": continuous_integration(Repo(unbroken.root)),
-        "workflow": broken.read(CI),
-    }
+    return Broken(
+        continuous_integration(broken.repo),
+        continuous_integration(Repo(unbroken.root)),
+        broken.read(CI),
+    )
 
 
 def _seconds(given: str) -> float:
@@ -125,7 +151,7 @@ def main(argv: list[str]) -> int:
         case _:
             print(f"copying: no such role: {argv!r}", file=sys.stderr)
             return 2
-    print(json.dumps(said))
+    print(json.dumps(asdict(said)))
     return 0
 
 

@@ -159,8 +159,7 @@ def _compile(repo: Repo, answer: str, *, broken: bool) -> Path:
     if toolchain.returncode != 0:
         msg = f"`rustc -vV` could not say which toolchain it is:\n{toolchain.stderr}"
         raise StandInError(msg)
-    digest = hashlib.sha256(f"{text}\0{toolchain.stdout}".encode()).hexdigest()[:16]
-    name = f"stand-in-{digest}{'.exe' if sys.platform == 'win32' else ''}"
+    name = program_name(text, toolchain.stdout)
     shared = repo.root / "target" / "stand-in"
     program = shared / name
     if program.is_file():
@@ -195,6 +194,16 @@ def _compile(repo: Repo, answer: str, *, broken: bool) -> Path:
             raise StandInError(msg)
         published(built, program)
     return program
+
+
+def program_name(source: str, toolchain: str) -> str:
+    """The name a stand-in built from `source` by `toolchain` is published under.
+
+    Both go into it, so a program whose source or compiler changed is a new
+    name rather than a stale one found at the old.
+    """
+    digest = hashlib.sha256(f"{source}\0{toolchain}".encode()).hexdigest()[:16]
+    return f"stand-in-{digest}{'.exe' if sys.platform == 'win32' else ''}"
 
 
 def published(built: Path, program: Path) -> Path:

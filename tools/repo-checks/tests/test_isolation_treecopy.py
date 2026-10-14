@@ -39,22 +39,11 @@ def _launch(*argv: str) -> subprocess.Popen[str]:
     )
 
 
-def _said(process: subprocess.Popen[str]) -> dict[str, object]:
-    """What one process printed, once it has exited zero."""
+def _said[Report](process: subprocess.Popen[str], report: type[Report]) -> Report:
+    """What one process reported, once it has exited zero, as the report its role makes."""
     out, err = process.communicate(timeout=300)
     equal(process.returncode, 0, describing=f"a copying process's exit:\n{err}")
-    said = json.loads(out.strip().splitlines()[-1])
-    truth(isinstance(said, dict), describing=f"a copying process's report: {said!r}")
-    return said
-
-
-def _findings(value: object) -> list[str]:
-    """A check's findings as one process reported them."""
-    truth(
-        isinstance(value, list) and all(isinstance(entry, str) for entry in value),
-        describing=f"findings, not {value!r}",
-    )
-    return [str(entry) for entry in value] if isinstance(value, list) else []
+    return report(**json.loads(out.strip().splitlines()[-1]))
 
 
 def _source(root: Path) -> Path:
@@ -83,14 +72,13 @@ def test_copies_taken_while_another_process_rewrites_a_schema_are_never_torn(
         for n in range(COPIERS)
     ]
 
-    rewrites = _said(rewriting)["rewrites"]
-    copied = [_said(copier) for copier in copiers]
+    rewrites = _said(rewriting, copying.Rewritten).rewrites
+    copied = [_said(copier, copying.Copied) for copier in copiers]
 
-    truth(isinstance(rewrites, int) and rewrites > 10, describing=f"{rewrites} rewrites")
+    truth(rewrites > 10, describing=f"{rewrites} rewrites")
     for n, said in enumerate(copied):
-        copies = said["copies"]
-        truth(isinstance(copies, int) and copies > 1, describing=f"copier {n}'s {copies} copies")
-        equal(said["torn"], 0, describing=f"the torn schemas copier {n} carried: {said['first']}")
+        truth(said.copies > 1, describing=f"copier {n}'s {said.copies} copies")
+        equal(said.torn, 0, describing=f"the torn schemas copier {n} carried: {said.first}")
     final = (source / copying.SCHEMA).read_text(encoding="utf-8")
     truth(
         final in (copying.version(1), copying.version(2)),
@@ -104,17 +92,17 @@ def test_a_defect_one_process_puts_in_its_copy_reaches_no_other(tmp_path: Path) 
     workflow = (REPO_ROOT / copying.CI).read_text(encoding="utf-8")
     processes = {name: _launch("break", str(tmp_path / name), name) for name in names}
 
-    said = {name: _said(process) for name, process in processes.items()}
+    said = {name: _said(process, copying.Broken) for name, process in processes.items()}
 
     for name in names:
-        broken = _findings(said[name]["broken"])
+        broken = said[name].broken
         refused(broken, f"verify-{name}")
-        accepted(_findings(said[name]["unbroken"]), describing=f"{name}'s unbroken copy")
-        contains(str(said[name]["workflow"]), f"just verify-{name}\n")
+        accepted(said[name].unbroken, describing=f"{name}'s unbroken copy")
+        contains(said[name].workflow, f"just verify-{name}\n")
         for other in names:
             if other != name:
                 truth(
-                    f"verify-{other}" not in str(said[name]["workflow"])
+                    f"verify-{other}" not in said[name].workflow
                     and not any(f"verify-{other}" in finding for finding in broken),
                     describing=f"{other}'s defect to be absent from {name}'s copy",
                 )
