@@ -3,25 +3,14 @@
 Every test here drives the committed check functions against a real copy of the
 committed tree, with one defect introduced. Nothing is mocked: the check reads
 files, and the files are the ones this repository ships.
-
-A copy is of the files its check reads — the check's `Closure` — rather than of
-all of them, because copying a thousand files to change one is what this suite
-spent most of its time on: about 750 whole copies a run, which on a Windows
-runner was three quarters of the suite. A closure that leaves out a file its
-check opens is caught rather than trusted: every open under a closure copy is
-watched, and a read of a committed file the copy does not carry fails the test
-that made it, naming the file.
 """
 
 from __future__ import annotations
 
-import functools
-import os
 import shutil
 import sys
 from collections.abc import Iterable
-from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import IO
 
 from repo_checks.model import Repo
@@ -118,9 +107,9 @@ class SchemaTreeLock:
     for it takes here.
     """
 
-    def __init__(self, root: Path = REPO_ROOT) -> None:
-        """Open the one lock file, under the tree's `target`, which is per worktree."""
-        directory = root / "target"
+    def __init__(self) -> None:
+        """Open the one lock file, under `target`, which is per worktree."""
+        directory = REPO_ROOT / "target"
         directory.mkdir(parents=True, exist_ok=True)
         self.file: IO[str] = (directory / SCHEMA_LOCK).open("a", encoding="utf-8")
 
@@ -149,167 +138,28 @@ def tracked_files(root: Path) -> list[str]:
     return [name for name in listing.split("\0") if name]
 
 
-@functools.cache
-def listed(root: Path) -> tuple[str, ...]:
-    """`tracked_files`, asked of git once per process for each tree.
-
-    The listing is the same for every copy a session takes, and asking git for
-    it once a copy was a tenth of this suite's time on a Windows runner. What a
-    file holds is read when it is copied; only which files there are is kept.
-    """
-    return tuple(tracked_files(root))
-
-
-@functools.cache
-def _named(root: Path) -> frozenset[str]:
-    """The same listing, as one set every closure copy of the tree looks names up in."""
-    return frozenset(listed(root))
-
-
-@dataclass(frozen=True, slots=True)
-class Closure:
-    """The files of the tree a check reads, as repository-relative patterns.
-
-    A pattern ending in `/` is a directory and everything under it; one carrying
-    `*`, `?` or `[` is a glob matched against the whole path, where `**` spans
-    any number of directories, the tree's root included; anything else is one
-    file.
-    """
-
-    patterns: tuple[str, ...]
-
-    def carries(self, name: str) -> bool:
-        """Whether a copy of this closure carries the file at `name`."""
-        return any(_matches(name, pattern) for pattern in self.patterns)
-
-    def carries_any(self, names: Iterable[str]) -> bool:
-        """Whether a copy of this closure carries any of `names`."""
-        return any(self.carries(name) for name in names)
-
-    def __or__(self, other: Closure) -> Closure:
-        """Both closures' files, for a test that drives more than one check."""
-        return Closure(tuple(dict.fromkeys((*self.patterns, *other.patterns))))
-
-
-def _matches(name: str, pattern: str) -> bool:
-    """Whether one repository-relative file falls under one closure pattern."""
-    if pattern.endswith("/"):
-        return name.startswith(pattern)
-    if any(wildcard in pattern for wildcard in "*?["):
-        return PurePosixPath(name).full_match(pattern)
-    return name == pattern
-
-
-@dataclass(frozen=True, slots=True)
-class _Watched:
-    """A closure copy: the files it was cut from, and the ones it carries."""
-
-    closure: Closure
-    source: frozenset[str]
-
-
-#: Every closure copy this process has made, by its root as an absolute path
-#: ending in a separator; the read below is on every `open` in the process, so
-#: it matches a path by a prefix of a string rather than by building one.
-_WATCHED: dict[str, _Watched] = {}
-_ROOTS: tuple[str, ...] = ()
-
-#: Each committed file a test read under a closure copy that does not carry it.
-_STRAYED: list[str] = []
-
-
-def _reads(mode: object, flags: object) -> bool:
-    """Whether an `open` event opens its file for reading.
-
-    `open()` reports its mode as a string; `os.open` reports none, and its flags
-    say instead.
-    """
-    if isinstance(mode, str):
-        return "r" in mode or "+" in mode
-    return isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR) != os.O_WRONLY
-
-
-def _watch(event: str, arguments: tuple[object, ...]) -> None:
-    """Record a read under a closure copy of a committed file the copy does not carry."""
-    if event != "open" or not _ROOTS:
-        return
-    path, mode, flags = arguments
-    if not isinstance(path, (str, bytes, os.PathLike)) or not _reads(mode, flags):
-        return
-    opened = os.fsdecode(path)
-    if not opened.startswith(_ROOTS):
-        return
-    # The newest copy first: it is almost always the one the running test reads.
-    for root in reversed(_WATCHED):
-        if opened.startswith(root):
-            watched = _WATCHED[root]
-            name = opened.removeprefix(root).replace(os.sep, "/")
-            if name in watched.source and not watched.closure.carries(name):
-                _STRAYED.append(name)
-            return
-
-
-sys.addaudithook(_watch)
-
-
-def _watched_under(destination: Path, watched: _Watched) -> None:
-    """Watch reads under a closure copy, by both of the names its root goes by.
-
-    The name it was made under and the one `Repo` resolves it to differ where a
-    temporary directory is reached through a link, as on macOS, or through a
-    short name, as on a Windows runner.
-    """
-    global _ROOTS
-    for root in {destination.absolute(), destination.resolve()}:
-        _WATCHED[f"{root}{os.sep}"] = watched
-    _ROOTS = tuple(_WATCHED)
-
-
-def strayed() -> list[str]:
-    """Every read outside its copy's closure since this was last asked, and forget them."""
-    found = list(dict.fromkeys(_STRAYED))
-    _STRAYED.clear()
-    return found
-
-
-def copy_tree(
-    destination: Path,
-    *,
-    omit: Iterable[str] = (),
-    closure: Closure | None = None,
-    source: Path = REPO_ROOT,
-) -> Path:
-    """Copy the committed tree, symlinks and all, into a fresh directory.
-
-    With a `closure`, only the files it carries are copied, and every read under
-    the copy is watched for a committed file it left out.
-    """
+def copy_tree(destination: Path, *, omit: Iterable[str] = ()) -> Path:
+    """Copy the committed tree, symlinks and all, into a fresh directory."""
     omitted = tuple(omit)
-    names = listed(source)
     destination.mkdir(parents=True, exist_ok=True)
-    if closure is not None:
-        watched = _Watched(closure, _named(source))
-        _watched_under(destination, watched)
-    held = SchemaTreeLock(source)
+    held = SchemaTreeLock()
     held.lock()
     try:
-        for name in names:
+        for name in tracked_files(REPO_ROOT):
             if any(name.startswith(prefix) for prefix in omitted):
                 continue
-            if closure is not None and not closure.carries(name):
-                continue
-            original = source / name
-            if not original.exists() and not original.is_symlink():
+            source = REPO_ROOT / name
+            if not source.exists() and not source.is_symlink():
                 # A file the index still lists and the working tree no longer
                 # has: a deletion nobody has staged yet. What a clone would
                 # carry is what this copies, and a clone would not carry it.
                 continue
             target = destination / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            if original.is_symlink():
-                target.symlink_to(original.readlink())
+            if source.is_symlink():
+                target.symlink_to(source.readlink())
             else:
-                shutil.copy2(original, target)
+                shutil.copy2(source, target)
     finally:
         held.release()
     return destination

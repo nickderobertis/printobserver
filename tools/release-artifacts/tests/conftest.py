@@ -16,24 +16,11 @@ import pytest
 from release_artifacts import targets
 from release_artifacts.__main__ import main
 from release_artifacts.stand_in import stand_in_program
-from repo_checks import platforms, workers
+from repo_checks import platforms
 from repo_checks.expect import equal
 from repo_checks.model import Repo
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-
-# Each worker measures itself when this suite runs under coverage.
-pytest_configure_node = workers.pytest_configure_node
-pytest_configure = workers.pytest_configure
-pytest_unconfigure = workers.pytest_unconfigure
-
-
-@pytest.hookimpl(optionalhook=True)
-def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
-    """What `-n auto` means for this suite on this host, said once before it starts."""
-    del config
-    return workers.chosen(workers.Suite("release-artifacts", "test"), REPO_ROOT)
-
 
 #: What the stand-in program every route's artifact carries, in place of the
 #: real one, answers `--version` with. It runs, and it says which version it

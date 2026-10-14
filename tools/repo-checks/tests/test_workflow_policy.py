@@ -7,14 +7,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from closures import closure
 from repo_checks.checks_ci import workflow_policy
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("workflows")
 
 CI = ".github/workflows/ci.yml"
 

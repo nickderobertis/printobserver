@@ -23,11 +23,9 @@ commands, which a shell script does not have.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 from repo_checks.model import Repo
@@ -134,87 +132,46 @@ def _compile(repo: Repo, answer: str, *, broken: bool) -> Path:
     """Compile one stand-in with the tree's own toolchain, and answer where it is.
 
     Compiled from the repository root so that `rustup` resolves the toolchain
-    the tree pins rather than whatever a caller's directory would; the program
-    goes under `target`, which is build products already.
-
-    Every process that wants one — each xdist worker of each suite that runs
-    beside another — finds it under one name, made of the source it is built
-    from and the toolchain building it: a change to either names a new program
-    rather than reusing a stale one. A process that finds none compiles into a
-    directory of its own and then publishes the whole program under that name,
-    so no process ever reads one another is still writing, and none overwrites
-    one another is running.
+    the tree pins rather than whatever a caller's directory would; the sources
+    and the program go under `target`, which is build products already.
 
     Raises:
         StandInError: If `rustc` is not on PATH, or refused the program.
     """
+    into = repo.root / "target" / "stand-in"
+    into.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(answer.encode("utf-8")).hexdigest()[:16]
+    stem = f"stand-in-{'broken' if broken else digest}"
+    source = into / f"{stem}.rs"
+    program = into / (f"{stem}.exe" if sys.platform == "win32" else stem)
+    source.write_text(RUST_BROKEN if broken else RUST_STAND_IN.format(answer=answer), "utf-8")
     if shutil.which("rustc") is None:
         msg = (
             "a stand-in program on this host is a compiled one, and `rustc` is not on PATH: "
             "install the toolchain `rust-toolchain.toml` pins, with `rustup`"
         )
         raise StandInError(msg)
-    text = RUST_BROKEN if broken else RUST_STAND_IN.format(answer=answer)
-    toolchain = run(["rustc", "-vV"], cwd=repo.root, timeout=COMPILE_TIMEOUT_SECONDS)
-    if toolchain.returncode != 0:
-        msg = f"`rustc -vV` could not say which toolchain it is:\n{toolchain.stderr}"
+    # Small: the artifacts carrying it are built, uploaded and unpacked by
+    # every route proof of the suite.
+    compiled = run(
+        [
+            "rustc",
+            "--edition",
+            "2021",
+            "-C",
+            "opt-level=s",
+            "-C",
+            "strip=symbols",
+            "-C",
+            "panic=abort",
+            "-o",
+            str(program),
+            str(source),
+        ],
+        cwd=repo.root,
+        timeout=COMPILE_TIMEOUT_SECONDS,
+    )
+    if compiled.returncode != 0 or not program.is_file():
+        msg = f"`rustc` refused the stand-in program:\n{compiled.stdout}{compiled.stderr}"
         raise StandInError(msg)
-    name = program_name(text, toolchain.stdout)
-    shared = repo.root / "target" / "stand-in"
-    program = shared / name
-    if program.is_file():
-        return program
-    shared.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=shared, prefix="building-") as private:
-        source = Path(private) / "stand_in.rs"
-        built = Path(private) / name
-        source.write_text(text, "utf-8")
-        # Small: the artifacts carrying it are built, uploaded and unpacked by
-        # every route proof of the suite.
-        compiled = run(
-            [
-                "rustc",
-                "--edition",
-                "2021",
-                "-C",
-                "opt-level=s",
-                "-C",
-                "strip=symbols",
-                "-C",
-                "panic=abort",
-                "-o",
-                str(built),
-                str(source),
-            ],
-            cwd=repo.root,
-            timeout=COMPILE_TIMEOUT_SECONDS,
-        )
-        if compiled.returncode != 0 or not built.is_file():
-            msg = f"`rustc` refused the stand-in program:\n{compiled.stdout}{compiled.stderr}"
-            raise StandInError(msg)
-        published(built, program)
-    return program
-
-
-def program_name(source: str, toolchain: str) -> str:
-    """The name a stand-in built from `source` by `toolchain` is published under.
-
-    Both go into it, so a program whose source or compiler changed is a new
-    name rather than a stale one found at the old.
-    """
-    digest = hashlib.sha256(f"{source}\0{toolchain}".encode()).hexdigest()[:16]
-    return f"stand-in-{digest}{'.exe' if sys.platform == 'win32' else ''}"
-
-
-def published(built: Path, program: Path) -> Path:
-    """Put the whole program `built` at `program`, unless another process already has.
-
-    A hard link either makes the name or finds it taken, in one step on every
-    host this repository supports: a process can neither see the name before
-    the program behind it is whole, nor replace one another process holds. The
-    program a process finds there was built from the same source by the same
-    toolchain, so it is the one this process would have published.
-    """
-    with contextlib.suppress(FileExistsError):
-        program.hardlink_to(built)
     return program

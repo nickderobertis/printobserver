@@ -8,14 +8,10 @@ from __future__ import annotations
 import tomllib
 from collections.abc import Callable
 
-from closures import closure
 from repo_checks.checks_repo import workspace
 from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("workspace")
 
 # The crates this repository is required to hold, named here rather than read
 # from the tree, so that a tree that lost one is refused by the list rather than

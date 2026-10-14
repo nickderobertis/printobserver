@@ -12,7 +12,7 @@
       "command": "uv run -q ty check tools/release-artifacts && uv run -q ty check --python-platform win32 tools/release-artifacts"
     },
     "test": {
-      "command": "uv run -q coverage run -m pytest tools/release-artifacts/tests -n auto"
+      "command": "uv run -q coverage run -m pytest tools/release-artifacts/tests"
     }
   }
 }

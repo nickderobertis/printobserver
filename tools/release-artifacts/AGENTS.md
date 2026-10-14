@@ -111,11 +111,3 @@ here may do to prove a point. Every journey drives the publisher against the
 stand-in in `standin.py`, which takes each registry's write as the real one
 takes it, and a route or a media type the forge stopped accepting shows on the
 next release as assets it does not carry and an install-path proof saying so.
-
-## Its tests run beside each other, and beside other suites
-
-Under pytest-xdist and beside the end-to-end tier, a test may write under the
-repository root only to a path of its own, or by publishing a whole file under
-a name its contents decide. A path two processes could both write is shared
-only through a lock that tool holds, never by assuming the test runs alone;
-`test_isolation_builds.py` is where such a path is proven with real processes.

@@ -7,16 +7,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from closures import closure
 from repo_checks import install_path as ip
 from repo_checks.checks_ci import install_path_section
 from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from repo_checks.platforms import supported
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("install-path")
 
 FETCH = (
     "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"

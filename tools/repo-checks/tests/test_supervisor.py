@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from closures import closure
 from repo_checks.checks_supervisor import (
     prompt_template,
     schema_lock,
@@ -28,14 +27,6 @@ from repo_checks.checks_supervisor import (
 from repo_checks.expect import accepted, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure(
-    "supervisor-prompt-template",
-    "supervisor-schema-lock",
-    "supervisor-schema-source",
-    "supervisor-spawn-free",
-)
 
 CRATE = "crates/printobserver-oneharness"
 TEMPLATE = f"{CRATE}/assets/turn-prompt.md"

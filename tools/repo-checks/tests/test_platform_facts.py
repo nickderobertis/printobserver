@@ -14,14 +14,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from closures import closure
 from repo_checks.checks_platforms import platform_facts
 from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("platform-facts")
 
 LAUNCHER = "npm/printobserver-cli/bin/printobserver.mjs"
 SCRIPT = "scripts/install.sh"

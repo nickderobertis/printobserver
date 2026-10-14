@@ -443,10 +443,6 @@ def _zip(entries: dict[str, bytes]) -> bytes:
         ("tool.tar.gz", _tar({"tool/bin/tool": b"the program"})),
         ("tool.zip", _zip({"tool/bin/tool": b"the program"})),
     ],
-    # Named for the archive rather than its bytes, which carry the second they
-    # were made in: two xdist workers collecting in different seconds would
-    # otherwise collect two different tests.
-    ids=["tool.tar.gz", "tool.zip"],
 )
 def test_a_member_is_read_out_of_either_archive_shape(name: str, payload: bytes) -> None:
     """A release publishes `.tar.gz` or `.zip`, and its name says which is read."""

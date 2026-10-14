@@ -19,15 +19,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from closures import closure
 from repo_checks.checks_integration import integration_tier
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("integration-tier")
 
 CI = ".github/workflows/ci.yml"
 #: The pull-request trigger's activity types, as the committed workflow spells them.

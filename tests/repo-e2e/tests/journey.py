@@ -11,7 +11,6 @@ in its docstring.
 
 from __future__ import annotations
 
-import functools
 import os
 import re
 import shutil
@@ -37,8 +36,8 @@ HERE = platforms.host(Repo(REPO_ROOT))
 NO_ROUTE_HERE: str | None = HERE.no_route_proof
 ROUTE_JOURNEY = pytest.mark.skipif(NO_ROUTE_HERE is not None, reason=NO_ROUTE_HERE or "")
 #: The journeys that build, or run, what one checkout keeps at fixed paths of its
-#: own tree: the release program under `target/release`, the client crate's
-#: smoke consumer under `target/release`, and
+#: own tree: the release program under `target/release`, the packaged client
+#: crate and its smoke consumer under `target/package` and `target/release`, and
 #: every proof and the built Node client under `dist/` — and, on Windows, the
 #: user's own `Path`, which the PowerShell install script writes. Two of these at
 #: once would build into, clear or read one another's directories, so xdist runs
@@ -140,27 +139,11 @@ def tracked_files(root: Path) -> list[str]:
     return [name for name in listing.split("\0") if name]
 
 
-@functools.cache
-def listed(root: Path) -> tuple[str, ...]:
-    """`tracked_files`, asked of git once per process for each tree.
-
-    Every copy a worker takes in a session is of the same listing, and asking
-    git for it once a copy was a child process each journey's copy paid for.
-    What a file holds is read when it is copied; only which files there are is
-    kept.
-    """
-    return tuple(tracked_files(root))
-
-
-def copy_tracked(destination: Path, *, root: Path = REPO_ROOT) -> Path:
+def copy_tracked(destination: Path) -> Path:
     """Copy the committed tree, symlinks and all, carrying no build products."""
     destination.mkdir(parents=True, exist_ok=True)
-    for name in listed(root):
-        source = root / name
-        if not source.exists() and not source.is_symlink():
-            # A file the index still lists and the working tree no longer
-            # has: a deletion nobody has staged yet. A clone would not carry it.
-            continue
+    for name in tracked_files(REPO_ROOT):
+        source = REPO_ROOT / name
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_symlink():

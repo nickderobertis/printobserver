@@ -8,14 +8,10 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from closures import closure
 from repo_checks.checks_repo import _derived_programs, command_allowlist
 from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("command-allowlist")
 
 
 def test_the_committed_allowlist_is_accepted(committed: Repo) -> None:

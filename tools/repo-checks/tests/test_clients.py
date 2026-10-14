@@ -12,7 +12,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from closures import closure
 from repo_checks.checks_clients import (
     CLIENTS,
     client_surface,
@@ -21,9 +20,6 @@ from repo_checks.checks_clients import (
 )
 from repo_checks.expect import accepted, refused, refused_naming
 from treecopy import REPO_ROOT, Tree, copy_tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("client-surface", "generated-clients", "response-shapes")
 
 RUST = "crates/printobserver-sdk/src/contract.rs"
 PYTHON = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
@@ -45,7 +41,7 @@ def client_tree(tmp_path: Path) -> Callable[[], Tree]:
 
     def make() -> Tree:
         counter["n"] += 1
-        root = copy_tree(tmp_path / f"clients{counter['n']}", closure=CLOSURE)
+        root = copy_tree(tmp_path / f"clients{counter['n']}")
         (root / "node_modules").symlink_to(REPO_ROOT / "node_modules")
         return Tree(root)
 

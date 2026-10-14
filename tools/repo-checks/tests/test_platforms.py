@@ -8,7 +8,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import yaml
-from closures import closure
 from repo_checks.checks_ci import platform_dependent_kinds, platforms, platforms_of
 from repo_checks.expect import (
     absent,
@@ -21,9 +20,6 @@ from repo_checks.expect import (
 )
 from repo_checks.model import Repo
 from treecopy import Tree
-
-#: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("platforms")
 
 EMPTY_BLOCK = "[//]: # (BEGIN supported-platforms)\n[//]: # (END supported-platforms)"
 AARCH64 = (
