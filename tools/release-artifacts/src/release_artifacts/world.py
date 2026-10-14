@@ -38,14 +38,6 @@ from urllib.parse import urlsplit
 from repo_checks.shell import run, start
 
 
-def _mark(phase: str) -> None:
-    """MEASUREMENT ONLY: append one timestamped phase line where the job asks."""
-    where = os.environ.get("PRINTOBSERVER_WORLD_TIMING")
-    if where:
-        with open(where, "a", encoding="utf-8") as out:
-            out.write(f"{os.getpid()} {time.time():.3f} {phase}\n")
-
-
 class QuietServer(ThreadingHTTPServer):
     """A server whose peers may go away mid-connection without a traceback for it.
 
@@ -455,13 +447,9 @@ class World:
             cwd=self.root,
             env={**os.environ, "PATH": str(no_harness)},
         )
-        _mark("supervisor-spawned")
         server = self._await_serving()
-        _mark("serving")
         print_id, image_id, event_id = self._open_a_print(server)
-        _mark("print-recorded")
         spool_id = unheld_spool_id() if self.refusing else self._register_a_spool(server)
-        _mark("spool")
         return Running(
             server=server,
             credential=self.credential,
@@ -519,7 +507,6 @@ class World:
                 msg = "the supervisor stopped before it answered:\n" + "".join(said)
                 raise WorldError(msg)
             said.append(line)
-            _mark("stderr " + line.strip()[:160])
             if line.startswith(SERVING_ON):
                 server = "http://" + line.removeprefix(SERVING_ON).strip()
                 if not _addressable(server):
@@ -571,7 +558,6 @@ class World:
             raise WorldError(msg)
 
         deadline = time.monotonic() + INGRESS_TIMEOUT_SECONDS
-        _mark("alert-answered")
         while time.monotonic() < deadline:
             found = self._recorded()
             if found is not None:

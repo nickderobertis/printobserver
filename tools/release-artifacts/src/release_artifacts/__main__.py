@@ -575,33 +575,14 @@ def _world(repo: Repo, arguments: argparse.Namespace) -> int:
     A world stood up three times in three languages would be three worlds.
     """
     from release_artifacts.build import program
-    from release_artifacts.world import _mark
 
-    _mark("world-entered")
-    if os.environ.get("PRINTOBSERVER_WORLD_TIMING"):
-        import subprocess
-
-        try:
-            listed = subprocess.run(
-                ["ps", "-o", "pid=,ppid=,etime=,command=", "-p", f"{os.getppid()},{os.getpid()}"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=20,
-            )
-        except (OSError, subprocess.SubprocessError):
-            listed = None
-        for line in listed.stdout.splitlines() if listed else []:
-            _mark("ps " + line.strip()[:200])
     printer = scripted_printer(repo.root) if arguments.octoprint else None
     carried = (
         program(repo, arguments.binary)
         if arguments.binary is not None
         else reused.prepared(repo).path
     )
-    _mark("prepared")
     world = World(carried, arguments.into, printer, refusing=arguments.refusing)
-    _mark("world-made")
     try:
         running = world.start()
         print(
