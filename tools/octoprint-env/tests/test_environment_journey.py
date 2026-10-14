@@ -43,12 +43,10 @@ REQUIRED_HOLD_SECONDS = 120
 #: Enough reserve for every unparallelised client journey on a cold hosted Mac.
 REQUIRED_TIER_HOLD_SECONDS = 90 * 60
 
-# A printer answers nothing until the dwell it is in ends, so every pause,
-# cancel and target the tier asks for waits up to one dwell. Keep each no-motion
-# dwell to a second, so the tier is paced by the transitions it asserts rather
-# than by the print, while making the complete print long enough for the cold
-# tier.
-REQUIRED_MAX_DWELL_SECONDS = 1
+# OctoPrint applies pause at a G-code command boundary. Keep each no-motion
+# dwell within the integration journey's settling window while making the
+# complete print long enough for the cold tier.
+REQUIRED_MAX_DWELL_SECONDS = 10
 
 CONNECTED = frozenset({"Operational", "Printing"})
 # The G-code file this repository owns, which is what the tier is given to act on.
@@ -57,16 +55,7 @@ REFUSED = frozenset({401, 403})
 
 
 def test_the_hold_program_outlasts_the_cold_integration_tier() -> None:
-    """The bundled no-motion print cannot expire between client journeys.
-
-    What the dwell length buys is proven end to end by the integration tier
-    itself: every pause, resume, cancel and target its walk drives is made
-    against this print on a real OctoPrint and waited for inside that walk's
-    own settling window, which fails naming what the machine reported. This
-    holds the file to the two properties the walk relies on rather than timing
-    it, because a wall-clock bound on a shared hosted runner would fail on the
-    runner's pace rather than on the file.
-    """
+    """The bundled no-motion print cannot expire between client journeys."""
     gcode = REPO_ROOT / "tools/octoprint-env/gcode" / HOLD_PRINT
     dwells = [
         int(line.removeprefix("G4 S"))

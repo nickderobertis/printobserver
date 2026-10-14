@@ -627,13 +627,6 @@ fn the_action_was_carried_out(world: &World, one: &Driven, said: &BTreeMap<Strin
 /// the same value, so a value-only match is satisfied by a stale one and says
 /// nothing about the invocation that was driven. `journeys/tainting.rs` drives
 /// exactly that.
-///
-/// Looked for over the same window a temperature is: a status read made while
-/// a supervision turn holds the print answers the context that turn was given,
-/// which is the print as it stood before this invocation. A machine that
-/// answers within a second ends the invocation inside the turn its previous
-/// action prompted, so the first read can be that one; an intervention that
-/// was never opened is absent from every read, and fails here as before.
 fn the_intervention_this_invocation_opened_is_the_one_in_force(
     world: &World,
     one: &Driven,
@@ -641,29 +634,20 @@ fn the_intervention_this_invocation_opened_is_the_one_in_force(
 ) {
     let opened = at(said, "intervention.id");
     let applied = adjusted_value(one).expect("an adjustment applies a value");
-    let in_force = |read: &Value| {
-        read.get("interventions")
-            .and_then(Value::as_array)
-            .and_then(|held| {
-                held.iter()
-                    .find(|found| found.get("id").and_then(Value::as_str) == Some(opened.as_str()))
-            })
-            .cloned()
-    };
-    let mut read = running::read(world, &["status", "--print-id", &world.print_id()]);
-    for _ in 1..HOLDING_POLLS {
-        if in_force(&read).is_some() {
-            break;
-        }
-        std::thread::sleep(HOLDING_PAUSE);
-        read = running::read(world, &["status", "--print-id", &world.print_id()]);
-    }
-    let held = in_force(&read).unwrap_or_else(|| {
-        panic!(
-            "`{}` opened intervention {opened} and it is not the one in force: {read}",
-            one.command.name
-        )
-    });
+    let read = running::read(world, &["status", "--print-id", &world.print_id()]);
+    let held = read
+        .get("interventions")
+        .and_then(Value::as_array)
+        .and_then(|held| {
+            held.iter()
+                .find(|found| found.get("id").and_then(Value::as_str) == Some(opened.as_str()))
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "`{}` opened intervention {opened} and it is not the one in force: {read}",
+                one.command.name
+            )
+        });
     assert_eq!(
         held.get("adjustable").and_then(Value::as_str),
         Some(adjustable_of(one).as_str()),
@@ -714,9 +698,9 @@ fn the_machine_holds_what_this_invocation_asked_for(world: &World, one: &Driven)
 /// How many times a journey looks for a temperature before it gives up.
 ///
 /// A machine takes a target when it gets to it rather than when it is asked: a
-/// printer part-way through a dwell acknowledges the temperature when the
-/// dwell ends, so this is the same window the world settles a state in rather
-/// than a guess at how fast a socket answers. It is what a **failing**
+/// printer part-way through a ten-second dwell acknowledges the temperature
+/// when the dwell ends, so this is the same window the world settles a state
+/// in rather than a guess at how fast a socket answers. It is what a **failing**
 /// run costs and nothing else — a machine that took the target reports it on
 /// the first look.
 const HOLDING_POLLS: usize = 40;
