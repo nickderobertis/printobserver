@@ -48,6 +48,10 @@ printf 'just %s\\n' "$*" >> "$DISPATCH_STANDIN_RECORD"
 """
 
 
+#: How a step hands a recipe's answer to the steps after it.
+OUTPUT_REDIRECT = '>> "$GITHUB_OUTPUT"'
+
+
 def dispatched(
     gate_copy: Callable[..., GateCopy], tmp_path: Path, job: str, platform: str
 ) -> tuple[WorkflowRun, list[str]]:
@@ -82,9 +86,17 @@ def dispatched(
 
 
 def source_commands(job: str) -> list[str]:
-    """The `run:` commands the committed `ci.yml` job carries, in order."""
+    """The `run:` commands the committed `ci.yml` job carries, in order, as `just` is run.
+
+    A step appending a recipe's answer to `GITHUB_OUTPUT` runs that recipe; the
+    redirect is the shell's, and `just` is never handed it.
+    """
     steps = jobs_of(load_workflow(REPO_ROOT / CI))[job]["steps"]
-    return [str(step["run"]).strip() for step in steps if "run" in step]
+    return [
+        str(step["run"]).strip().removesuffix(OUTPUT_REDIRECT).strip()
+        for step in steps
+        if "run" in step
+    ]
 
 
 def test_a_dispatch_runs_exactly_that_job_on_that_platforms_runner(
