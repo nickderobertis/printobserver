@@ -104,16 +104,30 @@ def test_world_runs_its_supervision_turn_over_no_harness_the_host_has(
         printer.stop()
 
     equal(history.returncode, 0, describing=f"the print's history read: {history.stderr}")
+    answered = json.loads(history.stdout)
+    events = answered.get("events") if isinstance(answered, dict) else None
+    truth(
+        isinstance(events, list)
+        and all(
+            isinstance(event, dict)
+            and isinstance(event.get("kind"), str)
+            and isinstance(event.get("payload"), dict)
+            for event in events
+        ),
+        describing=f"a history of events, each a kind and a payload: {history.stdout}",
+    )
     turns = [
         event["payload"]
-        for event in json.loads(history.stdout)["events"]
+        for event in events or []
         if event["kind"] == "port_failure" and event["payload"].get("site") == "supervision_turn"
     ]
     equal(
         len(turns), 1, describing=f"the alert's supervision turn, recorded once: {history.stdout}"
     )
+    detail = turns[0].get("detail")
+    truth(isinstance(detail, str), describing=f"the turn's failure detail: {turns[0]}")
     contains(
-        turns[0]["detail"],
+        str(detail),
         "`claude` not found on PATH",
         describing="the turn's failure, which is a missing harness rather than one that ran",
     )

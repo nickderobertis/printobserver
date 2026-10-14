@@ -131,11 +131,14 @@ def _host(root: Path) -> str:
     """This host's own target, as the compiler names it."""
     answered = run(["rustc", "-vV"], cwd=root, timeout=300)
     equal(answered.returncode, 0, describing=f"the compiler's answer: {answered.stderr}")
-    return next(
+    hosts = [
         line.removeprefix("host: ")
         for line in answered.stdout.splitlines()
         if line.startswith("host: ")
-    )
+    ]
+    equal(len(hosts), 1, describing=f"the host line of the compiler's answer: {answered.stdout}")
+    truth(bool(hosts[0].strip()), describing=f"a host the compiler names: {answered.stdout}")
+    return hosts[0].strip()
 
 
 def _target_flags(root: Path) -> str:
