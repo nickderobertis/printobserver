@@ -64,6 +64,11 @@ def _source(root: Path) -> Path:
     (root / ".gitignore").write_text("target/\n", encoding="utf-8")
     run(["git", "init", "-q"], cwd=root, check=True)
     run(["git", "add", "-A"], cwd=root, check=True)
+    run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"],
+        cwd=root,
+        check=True,
+    )
     return root
 
 

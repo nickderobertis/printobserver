@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 from repo_checks import workers
 from repo_checks.expect import contains, equal, truth
+from repo_checks.model import Repo
 from treecopy import REPO_ROOT
 
 #: The hosts the gate runs on, and two either side of them.
@@ -84,7 +85,7 @@ def test_the_hosted_runners_shares_are_the_ones_the_gate_was_sized_for() -> None
         for beside in (True, False)
     }
 
-    equal(parallelism, 3, describing="the parallelism `nx.json` leaves to Nx's default")
+    equal(parallelism, 3, describing="the parallelism `nx.json` declares")
     equal(shares["the hosted Linux runners", True], (2, 1, 1), describing="e2e beside the tests")
     equal(shares["the hosted Windows runners", False], (3, 2, 1), describing="the tiers in turn")
 
@@ -106,21 +107,49 @@ def test_a_tree_whose_justfile_cannot_answer_is_taken_to_overlap(tmp_path: Path)
 @pytest.mark.parametrize(
     ("declared", "environ", "parallelism"),
     [
-        ({}, {}, workers.NX_DEFAULT_PARALLELISM),
         ({"parallel": 5}, {}, 5),
         ({"parallel": 5}, {"NX_PARALLEL": "2"}, 2),
-        ({"parallel": 0}, {"NX_PARALLEL": "several"}, workers.NX_DEFAULT_PARALLELISM),
-        ({"parallel": True}, {}, workers.NX_DEFAULT_PARALLELISM),
+        ({"parallel": 4}, {"NX_PARALLEL": "several"}, 4),
     ],
-    ids=["default", "declared", "environment-wins", "nonsense-ignored", "boolean-ignored"],
+    ids=["declared", "environment-wins", "nonsense-in-the-environment-ignored"],
 )
 def test_the_parallelism_is_nxs_own(
-    tmp_path: Path, declared: dict[str, object], environ: dict[str, str], parallelism: int
+    tmp_path: Path, declared: object, environ: dict[str, str], parallelism: int
 ) -> None:
-    """`NX_PARALLEL`, then `nx.json`'s `parallel`, then Nx's default, as Nx reads them."""
+    """`NX_PARALLEL`, then `nx.json`'s `parallel`, as Nx reads them."""
     (tmp_path / "nx.json").write_text(json.dumps(declared), encoding="utf-8")
 
     equal(workers.nx_parallelism(tmp_path, environ), parallelism, describing=f"{declared}")
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [{}, {"parallel": 0}, {"parallel": True}, {"parallel": "3"}, [3], None],
+    ids=["absent", "none", "boolean", "string", "not-an-object", "null"],
+)
+def test_a_workspace_declaring_no_parallelism_is_refused(tmp_path: Path, declared: object) -> None:
+    """Nothing to divide the host by is a refusal naming the file, not a guess."""
+    (tmp_path / "nx.json").write_text(json.dumps(declared), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="declares no `parallel`"):
+        workers.nx_parallelism(tmp_path, {})
+
+
+def test_the_table_names_exactly_the_targets_that_run_under_xdist() -> None:
+    """A target whose pytest takes `-n auto` is one of `SUITES`, and every one of them does."""
+    found: set[workers.Suite] = set()
+    for path in Repo(REPO_ROOT).project_paths:
+        project = json.loads(path.read_text(encoding="utf-8"))
+        for target, declared in project.get("targets", {}).items():
+            command = declared.get("command", "") if isinstance(declared, dict) else ""
+            if "pytest" in command and "-n auto" in command:
+                found.add(workers.Suite(project["name"], target))
+
+    equal(
+        sorted(map(str, found)),
+        sorted(map(str, workers.SUITES)),
+        describing="the targets running pytest under `-n auto`",
+    )
 
 
 def test_a_lone_slot_runs_one_test_suite_at_a_time() -> None:

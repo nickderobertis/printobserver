@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -98,13 +99,27 @@ def breaking(into: Path, name: str) -> dict[str, object]:
     }
 
 
+def _seconds(given: str) -> float:
+    """A duration a role runs for, as a finite number of seconds above none.
+
+    Raises:
+        ValueError: If `given` is anything else, which would make a deadline
+            that has passed already or never comes.
+    """
+    seconds = float(given)
+    if not math.isfinite(seconds) or seconds <= 0:
+        msg = f"a role runs for some seconds, not {given!r}"
+        raise ValueError(msg)
+    return seconds
+
+
 def main(argv: list[str]) -> int:
     """Run the role `argv` names and print what it saw."""
     match argv:
         case ["rewrite", source, seconds]:
-            said = rewrite(Path(source), float(seconds))
+            said = rewrite(Path(source), _seconds(seconds))
         case ["copy", source, into, seconds]:
-            said = copy(Path(source), Path(into), float(seconds))
+            said = copy(Path(source), Path(into), _seconds(seconds))
         case ["break", into, name]:
             said = breaking(Path(into), name)
         case _:

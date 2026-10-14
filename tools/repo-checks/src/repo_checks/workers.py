@@ -55,9 +55,6 @@ MEMORY_PER_WORKER_GIB = 2.0
 #: The processors left to a Windows host's own services rather than to a worker.
 RESERVED_ON_WINDOWS = 1
 
-#: How many tasks Nx runs at once when `nx.json` and the environment say nothing.
-NX_DEFAULT_PARALLELISM = 3
-
 GIB = 1024**3
 
 
@@ -150,17 +147,23 @@ def said(host: Host, suite: Suite, *, parallelism: int, beside: bool) -> str:
 def nx_parallelism(root: Path, environ: dict[str, str] | None = None) -> int:
     """How many tasks Nx runs at once in the workspace at `root`.
 
-    `NX_PARALLEL` wins, as it does for Nx itself; then `nx.json`'s `parallel`;
-    then Nx's own default.
+    `NX_PARALLEL` wins, as it does for Nx itself; otherwise `nx.json`'s own
+    `parallel`, which this workspace declares rather than leaving to Nx's
+    default, so that the number is written in one place both read.
+
+    Raises:
+        ValueError: If neither names a whole number of tasks above none.
     """
     environment = os.environ if environ is None else environ
     named = environment.get("NX_PARALLEL", "").strip()
     if named.isdigit() and int(named) > 0:
         return int(named)
-    declared: Any = json.loads((root / "nx.json").read_text(encoding="utf-8")).get("parallel")
+    graph: Any = json.loads((root / "nx.json").read_text(encoding="utf-8"))
+    declared = graph.get("parallel") if isinstance(graph, dict) else None
     if isinstance(declared, int) and not isinstance(declared, bool) and declared > 0:
         return declared
-    return NX_DEFAULT_PARALLELISM
+    msg = f"{root / 'nx.json'} declares no `parallel` above zero, and NX_PARALLEL names none"
+    raise ValueError(msg)
 
 
 def beside_tests(root: Path) -> bool:
