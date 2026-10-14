@@ -42,6 +42,8 @@ CHANGES = [
     "compiler",
     "manifest-profile",
     "config-profile",
+    "config-build-flags",
+    "config-target-flags",
     "RUSTFLAGS",
     "CARGO_ENCODED_RUSTFLAGS",
     "CARGO_BUILD_RUSTFLAGS",
@@ -85,7 +87,7 @@ def _workspace(root: Path, says: str) -> Path:
 
 def _says(root: Path, says: str) -> None:
     (root / CRATE / "src" / "main.rs").write_text(
-        f'fn main() {{\n    println!("{says}");\n}}\n', encoding="utf-8"
+        f'fn main() {{\n    println!("{says}");\n    eprintln!("{says}");\n}}\n', encoding="utf-8"
     )
 
 
@@ -125,16 +127,20 @@ def _other_compiler(root: Path, into: Path) -> Path:
     return into / "target" / "debug" / f"compiler{_suffix()}"
 
 
-def _target_flags(root: Path) -> str:
-    """The variable cargo reads this host's own target's compiler flags from."""
+def _host(root: Path) -> str:
+    """This host's own target, as the compiler names it."""
     answered = run(["rustc", "-vV"], cwd=root, timeout=300)
     equal(answered.returncode, 0, describing=f"the compiler's answer: {answered.stderr}")
-    host = next(
+    return next(
         line.removeprefix("host: ")
         for line in answered.stdout.splitlines()
         if line.startswith("host: ")
     )
-    return f"CARGO_TARGET_{host.upper().replace('-', '_')}_RUSTFLAGS"
+
+
+def _target_flags(root: Path) -> str:
+    """The variable cargo reads this host's own target's compiler flags from."""
+    return f"CARGO_TARGET_{_host(root).upper().replace('-', '_')}_RUSTFLAGS"
 
 
 def _suffix() -> str:
@@ -258,6 +264,17 @@ def test_a_changed_key_builds_again_rather_than_reusing(
             (root / ".cargo").mkdir()
             (root / ".cargo" / "config.toml").write_text(
                 "[profile.release]\nopt-level = 1\n", encoding="utf-8"
+            )
+        case "config-build-flags":
+            (root / ".cargo").mkdir()
+            (root / ".cargo" / "config.toml").write_text(
+                '[build]\nrustflags = ["-C", "overflow-checks=on"]\n', encoding="utf-8"
+            )
+        case "config-target-flags":
+            (root / ".cargo").mkdir()
+            (root / ".cargo" / "config.toml").write_text(
+                f'[target.{_host(root)}]\nrustflags = ["-C", "overflow-checks=on"]\n',
+                encoding="utf-8",
             )
         case "target-flags":
             monkeypatch.setenv(_target_flags(root), "-C overflow-checks=on")
@@ -422,3 +439,26 @@ def test_the_integration_job_caches_the_directory_under_the_key_the_command_prin
         describing=f"the key, the cache, the preparation and the tier in that order: {runs}",
     )
     _key(REPO_ROOT, capsys)
+
+
+def test_the_world_command_carries_the_kept_program_without_building(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A world asked for no particular program runs the kept one, and builds nothing.
+
+    This suite's program is no supervisor, so the world refuses it — and its
+    refusal quotes what the program said, which is the source the kept program
+    was built from. With cargo's own output gone first, a world that built
+    rather than reused would have left a `target` behind.
+    """
+    root = _workspace(tmp_path / "workspace", says=FIRST)
+    _prepare(root, capsys)
+    _forget_the_build(root)
+
+    refused = main(["world", "--root", str(root), "--into", str(tmp_path / "world")])
+    said = capsys.readouterr()
+
+    equal(refused, 1, describing="a world whose program is no supervisor")
+    contains(said.err, "stopped before it answered", describing="what the world says of it")
+    contains(said.err, FIRST, describing="what the program the world ran said")
+    truth(not (root / "target").exists(), describing="no build made for the world")
