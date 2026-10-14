@@ -108,7 +108,8 @@ def copy(source: Path, into: Path, seconds: float) -> Copied:
         text = (copied / SCHEMA).read_text(encoding="utf-8")
         if text not in (version(1), version(2)):
             torn.append(f"copy{copies}: {len(text)} characters")
-    # The first few say what tore; the count says how often.
+    # Only the first few: a run without the lock tears hundreds of copies, and
+    # the test's message should still be one a reader can read.
     return Copied(copies, len(torn), torn[:3])
 
 
@@ -140,7 +141,12 @@ def _seconds(given: str) -> float:
 
 
 def main(argv: list[str]) -> int:
-    """Run the role `argv` names and print what it saw."""
+    """Run the role `argv` names and print what it saw.
+
+    Exits 0 having printed the role's report as one JSON line; 2, saying why on
+    standard error, for arguments naming no role. A duration that is no number
+    of seconds, or a role that fails, ends in a traceback and exit 1.
+    """
     match argv:
         case ["rewrite", source, seconds]:
             said = rewrite(Path(source), _seconds(seconds))
