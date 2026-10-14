@@ -462,6 +462,7 @@ octoprint-up:
 # Stop it, leaving no process behind.
 octoprint-down:
     uv run -q python tools/octoprint-env/octoprint_env.py down
+    @if [ -n "${PRINTOBSERVER_WORLD_TIMING:-}" ] && [ -f "$PRINTOBSERVER_WORLD_TIMING" ]; then cat "$PRINTOBSERVER_WORLD_TIMING"; fi
 
 # The printer integration tier, against the environment `octoprint-up` started.
 #

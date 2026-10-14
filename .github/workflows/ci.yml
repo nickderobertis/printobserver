@@ -102,6 +102,7 @@ jobs:
   integration:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      PRINTOBSERVER_WORLD_TIMING: ${{ github.workspace }}/world-timing.log
     # Named by platform id, not runner, so a new runner image renames no
     # required check; each cell reports the context AGENTS.md's required-checks
     # record names, and that record says how the live protection follows a rename.
