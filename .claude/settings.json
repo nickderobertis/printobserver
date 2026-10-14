@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(just bootstrap)",
+      "Bash(just runner-temp)",
       "Bash(just check)",
       "Bash(just check-repo)",
       "Bash(just check-pr-title)",
@@ -24,6 +25,8 @@
       "Bash(just release-dry-run)",
       "Bash(cargo:*)",
       "Bash(bash:*)",
+      "Bash(pwsh -NoProfile -File scripts/runner-temp.ps1 -Action 'setup' -DriveRoot 'D:\\')",
+      "Bash(pwsh -NoProfile -File scripts/runner-temp.ps1 -Action 'cleanup' -DriveRoot 'D:\\')",
       "Bash(rustup:*)",
       "Bash(uv:*)",
       "Bash(bun:*)",
