@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from release_artifacts.__main__ import main
-from release_artifacts.reused import DIGEST_FILE, DIRECTORY, IGNORE_FILE, KEY_FIELD, PATH_FIELD
+from release_artifacts.reused import DIGEST_FILE, DIRECTORY, IGNORE_FILE, KEY_FIELD
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
@@ -166,12 +166,11 @@ def _forget_the_build(root: Path) -> None:
 
 
 def _key(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
-    """The key `release-program-key` prints for `root`, and that it names the directory."""
+    """The key `release-program-key` prints for `root`, as its one line."""
     capsys.readouterr()
     equal(main(["release-program-key", "--root", str(root)]), 0, describing="the key")
     lines = capsys.readouterr().out.splitlines()
-    equal(len(lines), 2, describing=f"a `key=` line and a `path=` line, not {lines!r}")
-    equal(lines[1], f"{PATH_FIELD}={DIRECTORY}", describing="the directory the key is kept in")
+    equal(len(lines), 1, describing=f"one `key=` line, not {lines!r}")
     truth(lines[0].startswith(f"{KEY_FIELD}="), describing=f"a `key=` line, not {lines[0]!r}")
     return lines[0].removeprefix(f"{KEY_FIELD}=")
 
@@ -385,12 +384,12 @@ def test_a_toolchain_that_cannot_say_what_it_is_is_refused(
 def test_the_integration_job_caches_the_directory_under_the_key_the_command_prints(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The committed workflow reads the two fields `release-program-key` prints.
+    """The committed workflow caches the kept directory under the key the command prints.
 
-    The job appends the command's lines to `GITHUB_OUTPUT` and caches the
-    directory one field names under the key the other does, then prepares the
-    program before the tier. A field renamed on either side, or a preparation
-    moved after the tier, would leave the tier building the program again.
+    The job appends the command's line to `GITHUB_OUTPUT`, caches the directory
+    this tool keeps the program in under that key, then prepares the program
+    before the tier. A directory or field renamed on either side, or a
+    preparation moved after the tier, would leave the tier building it again.
     """
     workflow = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
     steps = steps_of(jobs_of(workflow)["integration"])
@@ -399,11 +398,7 @@ def test_the_integration_job_caches_the_directory_under_the_key_the_command_prin
     outputs = f"steps.{steps[keyed]['id']}.outputs"
     cached = next(step for step in steps if str(step.get("uses", "")).startswith("actions/cache@"))
 
-    equal(
-        cached["with"]["path"],
-        f"${{{{ {outputs}.{PATH_FIELD} }}}}",
-        describing="the directory the job caches",
-    )
+    equal(cached["with"]["path"], DIRECTORY, describing="the directory the job caches")
     contains(
         cached["with"]["key"],
         f"${{{{ {outputs}.{KEY_FIELD} }}}}",

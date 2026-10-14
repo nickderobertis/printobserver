@@ -41,18 +41,17 @@ from repo_checks.shell import run
 from release_artifacts.build import PROFILE, BuildError, program
 
 #: Where the kept build lives, under the workspace root. It ignores itself, by
-#: a `.gitignore` of its own, so this name is written nowhere else in the tree.
+#: a `.gitignore` of its own; the one other place that names it is the
+#: integration job's cache step, which `test_release_program.py` holds to it.
 DIRECTORY = ".release-program"
 
-#: The two fields `release-program-key` prints, as `<field>=<value>` lines a
-#: workflow step appends to `GITHUB_OUTPUT`: the key, and the directory it keys.
+#: The field `release-program-key` prints, as the `<field>=<value>` line a
+#: workflow step appends to `GITHUB_OUTPUT`.
 KEY_FIELD = "key"
-PATH_FIELD = "path"
 
 #: The file beside a kept program recording the digest it was kept with.
 DIGEST_FILE = "program.sha256"
 
-#: What makes the kept directory ignored wherever it is created.
 IGNORE_FILE = ".gitignore"
 
 CRATES = "crates"
@@ -74,13 +73,11 @@ PROFILE_VARIABLE_PREFIX = "CARGO_PROFILE_"
 TARGET_VARIABLE_PREFIX = "CARGO_TARGET_"
 TARGET_VARIABLE_SUFFIX = "_RUSTFLAGS"
 
-#: What a failed build tells its reader to do next.
 BUILD_REMEDY = (
     "fix what cargo reported — or unset CARGO_TARGET_DIR, if it moved the program out of "
     "`target` — and run `just release-program` again"
 )
 
-#: What a refusal to name the toolchain tells its reader to do next.
 TOOLCHAIN_REMEDY = (
     "unset RUSTC or point it at a Rust compiler, and install the toolchain "
     "`rust-toolchain.toml` declares with `rustup toolchain install`"

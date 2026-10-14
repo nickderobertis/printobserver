@@ -435,9 +435,8 @@ skilltest *ARGS:
 release-program:
     uv run -q python -m release_artifacts release-program
 
-# The key that program is kept under and the directory it is kept in, as the
-# lines a workflow step appends to `GITHUB_OUTPUT`: the integration job caches
-# that directory under that key.
+# The key that program is kept under, as the line a workflow step appends to
+# `GITHUB_OUTPUT`: the integration job caches its directory under that key.
 release-program-key:
     @uv run -q python -m release_artifacts release-program-key
 
