@@ -3,15 +3,15 @@
 `repo_checks.workers` is the one answer the end-to-end tier, `repo-checks` and
 `release-artifacts` take for `-n auto`. Here it is asked for every suite on the
 hosts the gate runs on, at the parallelism this workspace's own `nx.json`
-declares and with the overlap this tree's own `justfile` answers, and every
-set of suites that can run together is summed against the host.
+declares, and every set of suites one Nx invocation can run together is summed
+against the host. The end-to-end tier is an invocation of its own, and keeps
+the whole host even where the justfile starts it beside the test tier.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -32,34 +32,28 @@ HOSTS = {
 }
 
 
-def _running_together(parallelism: int, beside: bool) -> list[tuple[workers.Suite, ...]]:
-    """Every set of xdist suites Nx and the justfile can have running at the same moment."""
-    tests = [suite for suite in workers.SUITES if suite.target == "test"]
-    ends = [suite for suite in workers.SUITES if suite.target == workers.END_TO_END]
+def _running_together(parallelism: int) -> list[tuple[workers.Suite, ...]]:
+    """Every set of xdist suites one Nx invocation can have running at the same moment."""
     sets: list[tuple[workers.Suite, ...]] = []
-    for size in range(1, min(parallelism, len(tests)) + 1):
-        for chosen in itertools.combinations(tests, size):
-            sets.append(chosen)
-            if beside:
-                sets.extend((*chosen, end) for end in ends)
-    sets.extend((end,) for end in ends)
+    for target in sorted({suite.target for suite in workers.SUITES}):
+        suites = [suite for suite in workers.SUITES if suite.target == target]
+        for size in range(1, min(parallelism, len(suites)) + 1):
+            sets.extend(itertools.combinations(suites, size))
     return sets
 
 
-@pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
 @pytest.mark.parametrize("described", sorted(HOSTS))
 def test_the_suites_running_together_fit_the_host_at_this_workspaces_parallelism(
-    described: str, beside: bool
+    described: str,
 ) -> None:
-    """Summed over every set that can run at once, the workers fit the processors and memory."""
+    """Summed over every set one invocation can run at once, the workers fit the host."""
     host = HOSTS[described]
     parallelism = workers.nx_parallelism(REPO_ROOT)
     memory_workers = int(host.memory_gib // workers.MEMORY_PER_WORKER_GIB)
 
-    for running in _running_together(parallelism, beside):
+    for running in _running_together(parallelism):
         counts = {
-            str(suite): workers.share(host, suite, parallelism=parallelism, beside=beside)
-            for suite in running
+            str(suite): workers.share(host, suite, parallelism=parallelism) for suite in running
         }
         total = sum(counts.values())
         truth(
@@ -77,31 +71,29 @@ def test_the_hosted_runners_shares_are_the_ones_the_gate_was_sized_for() -> None
     """Each processor goes somewhere, the left-over ones to the suites with the most to do."""
     parallelism = workers.nx_parallelism(REPO_ROOT)
     shares = {
-        (described, beside): tuple(
-            workers.share(HOSTS[described], suite, parallelism=parallelism, beside=beside)
+        described: tuple(
+            workers.share(HOSTS[described], suite, parallelism=parallelism)
             for suite in workers.SUITES
         )
-        for described in ("the hosted Linux runners", "the hosted Windows runners")
-        for beside in (True, False)
+        for described in HOSTS
     }
 
     equal(parallelism, 3, describing="the parallelism `nx.json` declares")
-    equal(shares["the hosted Linux runners", True], (2, 1, 1), describing="e2e beside the tests")
-    equal(shares["the hosted Windows runners", False], (3, 2, 1), describing="the tiers in turn")
+    equal(shares["the hosted Linux runners"], (4, 2, 2), describing="Linux")
+    equal(shares["the hosted Windows runners"], (3, 2, 1), describing="Windows")
+    equal(shares["the hosted macOS runner"], (3, 2, 1), describing="macOS")
 
 
-def test_the_overlap_is_the_justfiles_own_answer() -> None:
-    """The end-to-end tier is beside the test tier exactly where the justfile starts it there."""
-    equal(
-        workers.beside_tests(REPO_ROOT),
-        sys.platform != "win32",
-        describing="whether the justfile overlaps the two tiers on this host",
-    )
-
-
-def test_a_tree_whose_justfile_cannot_answer_is_taken_to_overlap(tmp_path: Path) -> None:
-    """Where `just` says nothing, each suite gets the smaller share rather than the larger."""
-    truth(workers.beside_tests(tmp_path), describing="the overlap with no justfile to ask")
+def test_the_end_to_end_tier_keeps_the_host_beside_the_test_tier() -> None:
+    """A separate invocation is not divided with: the tier's share is the whole budget."""
+    tier = workers.Suite("repo-e2e", "test-e2e")
+    for described, host in HOSTS.items():
+        equal(
+            workers.together(tier, parallelism=3),
+            (tier,),
+            describing=f"what the end-to-end tier shares with on {described}",
+        )
+        equal(workers.share(host, tier, parallelism=3), host.budget, describing=described)
 
 
 @pytest.mark.parametrize(
@@ -158,19 +150,15 @@ def test_a_lone_slot_runs_one_test_suite_at_a_time() -> None:
     checks = workers.Suite("repo-checks", "test")
     artifacts = workers.Suite("release-artifacts", "test")
 
-    equal(workers.share(host, checks, parallelism=1, beside=False), 3, describing="repo-checks")
-    equal(workers.share(host, artifacts, parallelism=1, beside=False), 3, describing="artifacts")
-    equal(
-        workers.together(artifacts, parallelism=1, beside=True),
-        (workers.Suite("repo-e2e", "test-e2e"), artifacts),
-        describing="what one slot leaves beside release-artifacts with the tiers overlapping",
-    )
+    equal(workers.share(host, checks, parallelism=1), 3, describing="repo-checks")
+    equal(workers.share(host, artifacts, parallelism=1), 3, describing="artifacts")
+    equal(workers.together(artifacts, parallelism=1), (artifacts,), describing="one slot")
 
 
 def test_a_suite_the_table_does_not_name_is_refused() -> None:
     """A fourth xdist suite has to be declared before it is given a share."""
     with pytest.raises(ValueError, match="not one of the xdist suites"):
-        workers.together(workers.Suite("octoprint-env", "test"), parallelism=3, beside=True)
+        workers.together(workers.Suite("octoprint-env", "test"), parallelism=3)
 
 
 def test_the_choice_is_said_with_what_it_was_chosen_from(
