@@ -111,3 +111,16 @@ here may do to prove a point. Every journey drives the publisher against the
 stand-in in `standin.py`, which takes each registry's write as the real one
 takes it, and a route or a media type the forge stopped accepting shows on the
 next release as assets it does not carry and an install-path proof saying so.
+
+## Its tests run beside each other, and beside other suites, writing nothing shared
+
+The suite runs under pytest-xdist, at the share of the host
+`repo_checks.workers` gives it, and Nx runs it beside the end-to-end tier. So
+what a test builds under the repository root is either its own or published
+whole: the compiled stand-in is built in a directory of its own and linked into
+`target/stand-in` under a name made of its source and toolchain, and the Rust
+client is packaged into a target directory of its own. The supervisor the
+client proofs run is built by `cargo`, whose own lock serialises two builds of
+it. A test that comes to need a fixed path another could write declares how it
+is shared, as `tests/repo-e2e/AGENTS.md` asks of a journey, rather than relying
+on running alone; `test_isolation_builds.py` is where such a path is proven.
