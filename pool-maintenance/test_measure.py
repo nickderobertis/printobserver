@@ -1,5 +1,6 @@
 """Audit a real declared maintenance pass and refuse an empty workload."""
 
+import time
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,8 @@ def test_empty_workload_refused_then_alternative_removed(tmp_path: Path) -> None
     build(target, "1111111111111111")
     alternative = age_created(target, baseline, snapshot(target))
     unchanged = snapshot(target)
+    cutoff = time.time_ns() - 2 * 24 * 60 * 60 * 1_000_000_000
+    expect.equal(all(entry.mtime_ns < cutoff for entry in unchanged.values()), True)
     maintain(tmp_path)
     with pytest.raises(ValueError, match="removed no alternative"):
         audit(unchanged, snapshot(target), alternative, set())

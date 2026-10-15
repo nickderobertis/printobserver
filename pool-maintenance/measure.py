@@ -57,7 +57,13 @@ def age_created(target: Path, before: Snapshot, after: Snapshot) -> set[str]:
     aged = oldest - 3 * 24 * 60 * 60 * 1_000_000_000
     for name in sorted(created, reverse=True):
         if not stat.S_ISLNK(after[name].mode):
-            os.utime(target / name, ns=(aged, aged), follow_symlinks=False)
+            # Windows cannot disable following links for utime. Links were
+            # excluded above; use that platform's supported mode for entries.
+            os.utime(
+                target / name,
+                ns=(aged, aged),
+                follow_symlinks=os.utime not in os.supports_follow_symlinks,
+            )
     return created
 
 
