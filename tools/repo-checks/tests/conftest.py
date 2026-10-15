@@ -7,12 +7,25 @@ files, and the files are the ones this repository ships.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from repo_checks import workers
 from repo_checks.model import Repo
-from treecopy import REPO_ROOT, Tree, copy_tree
+from treecopy import REPO_ROOT, Closure, Tree, copy_tree, strayed
+
+# Each worker measures itself when this suite runs under coverage.
+pytest_configure_node = workers.pytest_configure_node
+pytest_configure = workers.pytest_configure
+pytest_unconfigure = workers.pytest_unconfigure
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    """What `-n auto` means for this suite on this host, said once before it starts."""
+    del config
+    return workers.chosen(workers.Suite("repo-checks", "test"), REPO_ROOT)
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +41,33 @@ def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NX_HEAD", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def reads_inside_the_closure() -> Iterator[None]:
+    """Fail a test that read a committed file its closure copy does not carry.
+
+    A check reading a file its copy left out reads nothing, and may accept a
+    tree only because the file that would refuse it is not there. So the read
+    itself fails the test, naming the file its module's `CLOSURE` must add.
+    """
+    strayed()
+    yield
+    missed = strayed()
+    if missed:
+        pytest.fail(
+            "read committed files its closure copy does not carry; add them to the "
+            f"module's CLOSURE: {', '.join(missed)}"
+        )
+
+
+def closure_of(request: pytest.FixtureRequest) -> Closure | None:
+    """The closure a test module's copies are cut to, or none for the whole tree."""
+    declared = getattr(request.module, "CLOSURE", None)
+    if declared is not None and not isinstance(declared, Closure):
+        msg = f"{request.module.__name__}.CLOSURE is {declared!r}, not a Closure"
+        raise TypeError(msg)
+    return declared
+
+
 @pytest.fixture
 def committed() -> Repo:
     """The committed tree, exactly as this repository leaves it."""
@@ -35,12 +75,13 @@ def committed() -> Repo:
 
 
 @pytest.fixture
-def tree(tmp_path: Path) -> Callable[[], Tree]:
-    """A factory for fresh copies of the committed tree."""
+def tree(tmp_path: Path, request: pytest.FixtureRequest) -> Callable[[], Tree]:
+    """A factory for fresh copies of the committed tree, cut to the module's `CLOSURE`."""
     counter = {"n": 0}
+    closure = closure_of(request)
 
     def make() -> Tree:
         counter["n"] += 1
-        return Tree(copy_tree(tmp_path / f"tree{counter['n']}"))
+        return Tree(copy_tree(tmp_path / f"tree{counter['n']}", closure=closure))
 
     return make

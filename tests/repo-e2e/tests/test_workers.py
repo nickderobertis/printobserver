@@ -9,31 +9,43 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import workers
+from repo_checks import workers
 from repo_checks.expect import contains, equal, truth
+
+TIER = workers.Suite("repo-e2e", "test-e2e")
 
 
 @pytest.mark.parametrize(
-    ("cpus", "memory_gib", "reserved", "chosen"),
+    ("cpus", "memory_gib", "reserved", "beside", "chosen"),
     [
-        (4, 16.0, 0, 4),  # the hosted Linux runners: a worker per processor
-        (4, 16.0, 1, 3),  # the hosted Windows runners: one processor left to the host
-        (3, 7.0, 0, 3),  # the hosted macOS runner: its memory holds all three
-        (20, 94.0, 0, 20),
-        (8, 5.0, 0, 2),  # memory bounds it below the processors
-        (4, 1.0, 0, 1),  # and never to none
-        (1, 16.0, 1, 1),  # nor does a processor left to the host
+        (
+            4,
+            16.0,
+            0,
+            True,
+            4,
+        ),  # the hosted Linux runners: beside the test tier, still the whole host
+        (4, 16.0, 1, False, 3),  # the hosted Windows runners: one processor left over
+        (3, 7.0, 0, True, 3),  # the hosted macOS runner
+        (20, 94.0, 0, False, 20),
+        (8, 5.0, 0, True, 2),  # memory bounds it below the processors
+        (4, 1.0, 0, False, 1),  # and never to none
+        (1, 16.0, 1, True, 1),  # nor does a processor left to the host
     ],
 )
-def test_a_worker_per_processor_as_many_as_the_memory_holds(
-    cpus: int, memory_gib: float, reserved: int, chosen: int
+def test_the_tier_takes_the_processors_the_memory_holds(
+    cpus: int, memory_gib: float, reserved: int, beside: bool, chosen: int
 ) -> None:
-    """The count is the smallest of the bounds, and at least one."""
+    """The count is the smallest bound, and at least one: no other suite shares it."""
     host = workers.Host(cpus=cpus, memory_gib=memory_gib, free_disk_gib=50.0, reserved=reserved)
 
-    equal(host.workers, chosen, describing=f"the workers for {cpus} CPUs and {memory_gib} GiB")
+    equal(
+        workers.share(host, TIER, parallelism=3, beside=beside),
+        chosen,
+        describing=f"the tier's workers for {cpus} CPUs and {memory_gib} GiB",
+    )
     contains(
-        host.said(),
+        workers.said(host, TIER, parallelism=3, beside=beside),
         f"repo-e2e: {chosen} xdist workers: {cpus} logical processors "
         f"({reserved} left to the host)",
     )
@@ -51,6 +63,7 @@ def test_this_host_is_read_from_its_own_answers() -> None:
         workers.RESERVED_ON_WINDOWS if sys.platform == "win32" else 0,
         describing="the processors left to this host",
     )
+    equal(host.traced, sys.platform == "win32", describing="whether the test tier is traced")
     truth(host.memory_gib > 0.5, describing=f"{host.memory_gib} GiB of memory read")
     free = shutil.disk_usage(temporary).free / workers.GIB
     truth(abs(host.free_disk_gib - free) < 1.0, describing=f"{host.free_disk_gib} GiB free read")

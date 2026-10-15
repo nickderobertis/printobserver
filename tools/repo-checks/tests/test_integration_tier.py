@@ -18,11 +18,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+from closures import closure
 from repo_checks.checks_integration import integration_tier
 from repo_checks.expect import accepted, refused
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("integration-tier")
 
 CI = ".github/workflows/ci.yml"
 #: The pull-request trigger's activity types, as the committed workflow spells them.
@@ -323,7 +328,7 @@ def test_a_job_carrying_a_condition_that_skips_it_is_refused(tree: Callable[[], 
 
 
 def test_a_conditional_tier_step_is_refused(tree: Callable[[], Tree]) -> None:
-    """The one condition this job may carry is on the teardown that must always run."""
+    """The tier runs on every change even when cleanup has its own condition."""
     broken = tree()
     broken.edit(
         CI,
@@ -334,6 +339,35 @@ def test_a_conditional_tier_step_is_refused(tree: Callable[[], Tree]) -> None:
     findings = integration_tier(broken.repo)
 
     refused(findings, "just test-integration` under the condition")
+
+
+def test_job_scratch_cleanup_may_run_after_a_failed_tier(tree: Callable[[], Tree]) -> None:
+    """The real policy accepts the named host cleanup alongside printer teardown."""
+    allowed = tree()
+    allowed.edit(
+        CI,
+        "        run: just octoprint-down\n",
+        "        run: just octoprint-down\n"
+        "      - if: always()\n        run: just runner-temp cleanup\n",
+    )
+    accepted(integration_tier(allowed.repo), describing="ownership-safe host cleanup")
+
+
+@pytest.mark.parametrize(
+    ("command", "condition"),
+    [("just bootstrap", "always()"), ("just runner-temp cleanup", "success()")],
+)
+def test_host_cleanup_exception_neither_skips_cleanup_nor_admits_other_steps(
+    tree: Callable[[], Tree], command: str, condition: str
+) -> None:
+    """Only the named cleanup with unconditional failure handling earns the exception."""
+    broken = tree()
+    broken.edit(
+        CI,
+        "        run: just octoprint-down\n",
+        f"        run: just octoprint-down\n      - if: {condition}\n        run: {command}\n",
+    )
+    refused(integration_tier(broken.repo), f"{command}` under the condition")
 
 
 def test_a_graph_that_leaves_the_tier_parallelisable_is_refused(

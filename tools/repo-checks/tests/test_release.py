@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.checks_release import (
     _publishable_crates,
     release_automation,
@@ -19,6 +20,15 @@ from repo_checks.checks_release import (
 from repo_checks.expect import accepted, contains, equal, refused
 from repo_checks.model import Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure(
+    "release-automation",
+    "release-dispatch",
+    "release-gating",
+    "release-targets",
+    "release-tracking",
+)
 
 RELEASE = ".github/workflows/release-plz.yml"
 TARGETS = "release-targets.toml"
