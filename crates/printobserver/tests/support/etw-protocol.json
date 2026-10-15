@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "requests": {
+    "prepare": {
+      "kind": "prepare"
+    },
+    "finish": {
+      "kind": "finish",
+      "root": 1
+    },
+    "invalidate": {
+      "kind": "invalidate"
+    },
+    "quit": {
+      "kind": "quit"
+    },
+    "unclosed": {
+      "kind": "unclosed"
+    }
+  },
+  "responses": {
+    "ready": {
+      "kind": "ready",
+      "controller_guid": "00000000-0000-0000-0000-000000000000"
+    },
+    "prepared": {
+      "kind": "prepared"
+    },
+    "completed": {
+      "kind": "completed",
+      "endpoints": []
+    },
+    "invalidated": {
+      "kind": "invalidated"
+    },
+    "stopped": {
+      "kind": "stopped"
+    },
+    "error": {
+      "kind": "error",
+      "message": ""
+    }
+  }
+}

@@ -34,17 +34,17 @@
 //! it opens a connection is its own transport. A run whose own process did not
 //! record the load is refused rather than read as one that did nothing.
 //!
-//! **Windows** has no `strace`. It starts the operating system's kernel event-
-//! tracing session with `logman`, runs the invocation, stops the session and
-//! decodes it with `tracerpt`. The kernel network flag records every TCP connect
-//! request in the context of the process that made it, before a single packet is
-//! sent: so an attempt to an address nothing listens on, or one nothing routes
-//! to, is recorded exactly as a completed connection is. The process flag
-//! records every process start with its parent, which is how the tree is
-//! followed. It cannot see a UDP `connect`, which that trace does not record:
-//! this program speaks HTTP over TCP and resolves no names, so every endpoint it
-//! could reach is a TCP one. Starting a session needs an administrator, which
-//! the hosted runners are; without one this refuses naming why.
+//! **Windows** keeps one native ETW helper per test process, leasing the host
+//! kernel logger per invocation. Before returning, it flushes, rotates and
+//! stops the log, synchronously decoding closed chunks with `ProcessTrace`.
+//! Combined timestamp order reconstructs process lifetimes and ancestry; TCP
+//! request events include unsuccessful attempts. Lost
+//! buffers, missing lifetimes and incomplete decoding are refused. A host-wide
+//! named mutex is independent of TEMP routing, and the controller recovers its
+//! reserved logger after a crashed worker. The test-only C# bridge is compiled
+//! once by PowerShell 7, keeping Rust's unsafe-code prohibition intact. It
+//! cannot see UDP `connect`; this program speaks HTTP over TCP and resolves no
+//! names. Starting the kernel session requires an administrator.
 //!
 //! Only the launcher differs between Linux and macOS: [`connections_in`] reads
 //! either recording into the same set of endpoints, and every assertion over a
@@ -55,15 +55,11 @@
 pub mod interposer;
 
 use std::collections::BTreeSet;
-#[cfg(windows)]
-use std::fs::{File, OpenOptions};
 use std::net::SocketAddr;
 use std::path::Path;
 #[cfg(not(windows))]
 use std::process::{Command, Output};
-#[cfg(windows)]
-use std::sync::Mutex;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The tracer this tier reads a process tree's connections out of.
@@ -71,38 +67,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const TRACER: &str = "strace";
 
 /// How one traced invocation's own output file is named apart from every other.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 static TRACED: AtomicU64 = AtomicU64::new(0);
 
-/// Windows exposes one kernel logger for the whole host, so its invocations
-/// cannot overlap within this test process.
 #[cfg(windows)]
-static KERNEL_TRACE: Mutex<()> = Mutex::new(());
-
-/// Hold Windows' one kernel logger across every Nextest process on this host.
-#[cfg(windows)]
-fn kernel_trace_lock() -> File {
-    let path = std::env::temp_dir().join("printobserver-kernel-trace.lock");
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&path)
-        .unwrap_or_else(|error| {
-            panic!(
-                "kernel trace lock {} could not be opened: {error}",
-                path.display()
-            )
-        });
-    lock.lock().unwrap_or_else(|error| {
-        panic!(
-            "kernel trace lock {} could not be taken: {error}",
-            path.display()
-        )
-    });
-    lock
-}
+#[path = "windows_trace.rs"]
+mod windows_trace;
 
 /// One invocation, and everything it did.
 #[derive(Debug, Clone)]
@@ -314,467 +284,19 @@ pub fn traced(
     environment: &[(String, String)],
     scratch: &Path,
 ) -> Ran {
-    use std::process::{Command, Stdio};
-
-    let _trace = KERNEL_TRACE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // Nextest runs each journey in its own process. The static mutex orders
-    // callers inside one process; this operating-system lock orders those
-    // processes around Windows' one kernel logger.
-    let _host_trace = kernel_trace_lock();
-
-    let invocation = format!(
-        "{}-{}",
-        std::process::id(),
-        TRACED.fetch_add(1, Ordering::Relaxed)
-    );
-    let etl = scratch.join(format!("connections-{invocation}.etl"));
-    let dump = scratch.join(format!("connections-{invocation}.xml"));
-    let probe = scratch.join(format!("connections-{invocation}.probe"));
-    std::fs::write(&probe, b"")
-        .unwrap_or_else(|error| panic!("{} could not be written: {error}", probe.display()));
-    let _ = std::fs::remove_file(&probe);
-    // Made only once the scratch is proven writable, so a scratch that is not a
-    // directory is refused as one rather than as a home that could not be made.
-    let environment = &with_its_own_config_home(environment, scratch);
-
-    etw::tool(
-        "logman",
-        &[
-            "start".as_ref(),
-            "NT Kernel Logger".as_ref(),
-            "-p".as_ref(),
-            "Windows Kernel Trace".as_ref(),
-            "(process,net)".as_ref(),
-            "-ets".as_ref(),
-            "-o".as_ref(),
-            etl.as_os_str(),
-            "-max".as_ref(),
-            "1024".as_ref(),
-            "-bs".as_ref(),
-            "1024".as_ref(),
-            "-nb".as_ref(),
-            "64".as_ref(),
-            "256".as_ref(),
-        ],
-    );
-    let mut process = Command::new(program);
-    process
-        .args(arguments)
-        .env_remove("PRINTOBSERVER_SERVER")
-        .env_remove("PRINTOBSERVER_CREDENTIAL")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    for (name, value) in environment {
-        process.env(name, value);
-    }
-    let started = process.spawn();
-    let output = started.and_then(|child| {
-        let root = child.id();
-        child.wait_with_output().map(|output| (root, output))
-    });
-    // Stopped whatever the invocation did, so a program that could not be
-    // started leaves no session behind to fill the host's limit of them.
-    etw::tool(
-        "logman",
-        &[
-            "stop".as_ref(),
-            "NT Kernel Logger".as_ref(),
-            "-ets".as_ref(),
-        ],
-    );
-    let (root, output) =
-        output.unwrap_or_else(|error| panic!("{} could not be run: {error}", program.display()));
-    etw::tool(
-        "tracerpt",
-        &[
-            etl.as_os_str(),
-            "-of".as_ref(),
-            "XML".as_ref(),
-            "-o".as_ref(),
-            dump.as_os_str(),
-            "-y".as_ref(),
-        ],
-    );
-    let decoded =
-        etw::text_of(&std::fs::read(&dump).unwrap_or_else(|error| {
-            panic!("`tracerpt` wrote nothing to {}: {error}", dump.display())
-        }));
-    let connected = etw::connections_of(&decoded, root);
-    for written in [&etl, &dump] {
-        let _ = std::fs::remove_file(written);
-    }
+    let probe = tempfile::Builder::new()
+        .prefix("trace-probe-")
+        .tempfile_in(scratch)
+        .unwrap_or_else(|error| panic!("{} could not be written: {error}", scratch.display()));
+    probe.close().expect("trace scratch probe removal");
+    let environment = with_its_own_config_home(environment, scratch);
+    let (output, connected) = windows_trace::run(program, arguments, &environment);
     Ran {
         code: output.status.code(),
         out: String::from_utf8_lossy(&output.stdout).into_owned(),
         err: String::from_utf8_lossy(&output.stderr).into_owned(),
         connected,
         arguments: arguments.to_vec(),
-    }
-}
-
-/// Reading a decoded event-tracing session: which processes are one tree, and
-/// which endpoints that tree asked to connect to.
-///
-/// Only starting and stopping a session is Windows' own. Reading what
-/// `tracerpt` wrote is not, so it is built and proven everywhere, over a dump a
-/// Windows runner recorded.
-mod etw {
-    use std::collections::{BTreeMap, BTreeSet};
-    #[cfg(windows)]
-    use std::ffi::OsStr;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-    #[cfg(windows)]
-    use std::process::Command;
-
-    /// The provider recording a TCP connect request, and its event for one.
-    const TCPIP: &str = "Microsoft-Windows-TCPIP";
-    const REQUESTED_TO_CONNECT: &str = "1002";
-
-    /// The provider recording a process start, and its event for one.
-    const KERNEL_PROCESS: &str = "Microsoft-Windows-Kernel-Process";
-    const PROCESS_STARTED: &str = "1";
-    const SYSTEM_TRACE: &str = "MSNT_SystemTrace";
-
-    /// Run one of the operating system's own tracing tools, and require it worked.
-    #[cfg(windows)]
-    pub fn tool(name: &str, arguments: &[&OsStr]) {
-        let output = Command::new(name)
-            .args(arguments)
-            .output()
-            .unwrap_or_else(|error| {
-                panic!(
-                    "`{name}` could not run, and this tier's whole claim about which endpoints \
-                     an invocation reaches rests on it: {error}"
-                )
-            });
-        assert!(
-            output.status.success(),
-            "`{name}` refused, and this tier's whole claim about which endpoints an \
-             invocation reaches rests on it (starting a trace session needs an \
-             administrator): {}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    /// A dump `tracerpt` wrote, as text, whichever encoding it chose.
-    pub fn text_of(bytes: &[u8]) -> String {
-        match bytes {
-            [0xFF, 0xFE, rest @ ..] => {
-                let units: Vec<u16> = rest
-                    .chunks_exact(2)
-                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                    .collect();
-                String::from_utf16_lossy(&units)
-            }
-            [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
-            other => String::from_utf8_lossy(other).into_owned(),
-        }
-    }
-
-    /// Every endpoint the tree rooted at one process requested a connection to.
-    pub fn connections_of(dump: &str, root: u32) -> BTreeSet<SocketAddr> {
-        let events: Vec<&str> = dump.split("<Event ").skip(1).collect();
-        let parents: BTreeMap<u32, u32> = events
-            .iter()
-            .filter(|event| {
-                is(event, KERNEL_PROCESS, PROCESS_STARTED)
-                    || rendered(event, SYSTEM_TRACE, "Process", "Start")
-            })
-            .filter_map(|event| {
-                let decoded = || {
-                    Some((
-                        number(&data(event, "ProcessID").or_else(|| data(event, "ProcessId"))?)?,
-                        number(
-                            &data(event, "ParentProcessID").or_else(|| data(event, "ParentId"))?,
-                        )?,
-                    ))
-                };
-                decoded().or_else(|| raw_process(event))
-            })
-            .collect();
-        let mut tree = BTreeSet::from([root]);
-        loop {
-            let grown: BTreeSet<u32> = parents
-                .iter()
-                .filter(|(_, parent)| tree.contains(parent))
-                .map(|(child, _)| *child)
-                .collect();
-            if grown.is_subset(&tree) {
-                break;
-            }
-            tree.extend(grown);
-        }
-        events
-            .iter()
-            .filter(|event| {
-                is(event, TCPIP, REQUESTED_TO_CONNECT)
-                    || rendered(event, SYSTEM_TRACE, "TcpIp", "Connect")
-                    || rendered(event, SYSTEM_TRACE, "TcpIp", "Reconnect")
-            })
-            .filter_map(|event| connection(event))
-            .filter(|(pid, _)| tree.contains(pid))
-            .map(|(_, endpoint)| endpoint)
-            .collect()
-    }
-
-    /// One connect event's process and destination, whether `tracerpt`
-    /// decoded its fields or left the classic event as a raw payload.
-    fn connection(event: &str) -> Option<(u32, SocketAddr)> {
-        let decoded = || {
-            let pid = data(event, "PID")
-                .as_deref()
-                .or_else(|| between(event, "<Execution ProcessID=\"", "\""))
-                .and_then(number)?;
-            let endpoint = data(event, "RemoteAddress")
-                .and_then(|rendered| endpoint(&rendered))
-                .or_else(|| endpoint_parts(&data(event, "daddr")?, &data(event, "dport")?))?;
-            Some((pid, endpoint))
-        };
-        decoded().or_else(|| raw_connection(event))
-    }
-
-    /// Whether one event is the one event of one provider.
-    fn is(event: &str, provider: &str, id: &str) -> bool {
-        between(event, "<Provider Name=\"", "\"") == Some(provider)
-            && between(event, "<EventID>", "</EventID>").map(str::trim) == Some(id)
-    }
-
-    /// Whether a classic event's rendered identity names one kernel operation.
-    fn rendered(event: &str, provider: &str, event_name: &str, opcode: &str) -> bool {
-        let rendering = rendering(event);
-        rendering.is_some_and(|rendering| {
-            between(rendering, "<Provider>", "</Provider>").map(str::trim) == Some(provider)
-                && between(rendering, "<EventName", "</EventName>")
-                    .and_then(|tag| tag.split_once('>').map(|(_, value)| value.trim()))
-                    == Some(event_name)
-                && between(rendering, "<Opcode>", "</Opcode>")
-                    .map(str::trim)
-                    .is_some_and(|rendered| rendered.starts_with(opcode))
-        })
-    }
-
-    /// The rendering section of one classic event.
-    fn rendering(event: &str) -> Option<&str> {
-        event.split_once("<RenderingInfo").map(|(_, rest)| rest)
-    }
-
-    /// One classic event's rendered operation name.
-    fn rendered_opcode(event: &str) -> Option<&str> {
-        between(rendering(event)?, "<Opcode>", "</Opcode>").map(str::trim)
-    }
-
-    /// One named datum of one event.
-    fn data(event: &str, name: &str) -> Option<String> {
-        between(event, &format!("<Data Name=\"{name}\">"), "</Data>")
-            .map(|value| value.trim().to_owned())
-    }
-
-    /// What one event carries between a marker and the next of another.
-    fn between<'a>(event: &'a str, open: &str, close: &str) -> Option<&'a str> {
-        let rest = event.split_once(open)?.1;
-        Some(rest.split_once(close)?.0)
-    }
-
-    /// A process number, as `tracerpt` renders one: decimal, or hexadecimal.
-    fn number(rendered: &str) -> Option<u32> {
-        let rendered = rendered.trim();
-        rendered.strip_prefix("0x").map_or_else(
-            || rendered.parse().ok(),
-            |hex| u32::from_str_radix(hex, 16).ok(),
-        )
-    }
-
-    /// An address and port, as `tracerpt` renders a socket address.
-    fn endpoint(rendered: &str) -> Option<SocketAddr> {
-        rendered.parse().ok().or_else(|| {
-            let (address, port) = rendered.rsplit_once(':')?;
-            let address: IpAddr = address.trim_matches(['[', ']']).parse().ok()?;
-            Some(SocketAddr::new(address, port.parse().ok()?))
-        })
-    }
-
-    /// A classic kernel network event renders its address and port separately.
-    fn endpoint_parts(address: &str, port: &str) -> Option<SocketAddr> {
-        Some(SocketAddr::new(
-            address.parse().ok()?,
-            number(port)?.try_into().ok()?,
-        ))
-    }
-
-    /// A process start that `tracerpt` left as the classic event's raw bytes.
-    fn raw_process(event: &str) -> Option<(u32, u32)> {
-        let bytes = payload(event)?;
-        Some((little_u32(&bytes, 8)?, little_u32(&bytes, 12)?))
-    }
-
-    /// A TCP connect that `tracerpt` left as the classic event's raw bytes.
-    fn raw_connection(event: &str) -> Option<(u32, SocketAddr)> {
-        let bytes = payload(event)?;
-        let pid = little_u32(&bytes, 0)?;
-        let (address, port_at) = match rendered_opcode(event)? {
-            "ConnectIPV4" | "ReconnectIPV4" => (
-                IpAddr::V4(Ipv4Addr::new(
-                    *bytes.get(8)?,
-                    *bytes.get(9)?,
-                    *bytes.get(10)?,
-                    *bytes.get(11)?,
-                )),
-                16,
-            ),
-            "ConnectIPV6" | "ReconnectIPV6" => {
-                let octets: [u8; 16] = bytes.get(8..24)?.try_into().ok()?;
-                (IpAddr::V6(Ipv6Addr::from(octets)), 40)
-            }
-            _ => return None,
-        };
-        let port = u16::from_be_bytes([*bytes.get(port_at)?, *bytes.get(port_at + 1)?]);
-        Some((pid, SocketAddr::new(address, port)))
-    }
-
-    /// Raw ETW bytes `tracerpt` could not map through a schema on this host.
-    fn payload(event: &str) -> Option<Vec<u8>> {
-        let rendered = between(event, "<EventPayload>", "</EventPayload>")?.trim();
-        (rendered.len() % 2 == 0).then_some(())?;
-        (0..rendered.len())
-            .step_by(2)
-            .map(|at| u8::from_str_radix(&rendered[at..at + 2], 16).ok())
-            .collect()
-    }
-
-    /// One little-endian integer in a classic ETW payload.
-    fn little_u32(bytes: &[u8], at: usize) -> Option<u32> {
-        Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
-    }
-
-    /// What a Windows runner's `tracerpt` wrote for one traced invocation.
-    const RECORDED: &str = include_str!("tracerpt-connects.xml");
-
-    /// The tree's own requests are every one its root and the process it
-    /// started made, to any address — refused, accepted or unroutable — and
-    /// none a process outside it made.
-    #[test]
-    fn a_recorded_session_answers_every_connect_its_tree_requested_and_no_other() {
-        let addresses = |found: BTreeSet<SocketAddr>| -> Vec<String> {
-            found.iter().map(ToString::to_string).collect()
-        };
-
-        assert_eq!(
-            addresses(connections_of(RECORDED, 8508)),
-            [
-                "127.0.0.1:53947",
-                "127.0.0.1:53948",
-                "127.0.0.1:53949",
-                "192.0.2.1:9"
-            ]
-        );
-        assert_eq!(
-            addresses(connections_of(RECORDED, 7280)),
-            ["127.0.0.1:53949"]
-        );
-        assert_eq!(addresses(connections_of(RECORDED, 1396)), ["127.0.0.1:1"]);
-        assert!(connections_of(RECORDED, 4).is_empty());
-    }
-
-    /// The classic kernel logger used on Windows Server renders the same
-    /// process relationship and endpoint as separate fields.
-    #[test]
-    fn a_classic_kernel_session_answers_the_tree_connect() {
-        let recorded = r#"
-<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
-  <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>00000000000000006910000068100000</EventPayload></ProcessingErrorData>
-  <RenderingInfo><Opcode>Start</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">Process</EventName></RenderingInfo>
-</Event>
-<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
-  <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>6910000000000000C00002017F0000010021002A0000000000000000</EventPayload></ProcessingErrorData>
-  <RenderingInfo><Opcode>ReconnectIPV4</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
-</Event>
-<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
-  <ProcessingErrorData><ErrorCode>111</ErrorCode><EventPayload>6910000000000000C00002017F0000010021002AD7FF010000000100FFFF0000080008000000000000000000</EventPayload></ProcessingErrorData>
-  <RenderingInfo><Opcode>ConnectIPV4</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
-</Event>
-<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
-  <System><Provider Guid="{9e814aad-3204-11d2-9a82-006008a86939}"/><EventID>0</EventID></System>
-  <EventData><Data Name="PID">9999</Data><Data Name="daddr">127.0.0.1</Data><Data Name="dport">1</Data></EventData>
-  <RenderingInfo><Opcode>Connect</Opcode><Provider>MSNT_SystemTrace</Provider><EventName xmlns="http://schemas.microsoft.com/win/2004/08/events/trace">TcpIp</EventName></RenderingInfo>
-</Event>"#;
-
-        assert_eq!(
-            connections_of(recorded, 4200),
-            BTreeSet::from(["192.0.2.1:33".parse().expect("fixture endpoint")])
-        );
-    }
-
-    /// A dump written as UTF-16, as `tracerpt` may write one, reads the same.
-    #[test]
-    fn a_dump_written_as_utf16_reads_as_the_same_session() {
-        let mut bytes = vec![0xFF, 0xFE];
-        bytes.extend(RECORDED.encode_utf16().flat_map(u16::to_le_bytes));
-
-        assert_eq!(
-            connections_of(&text_of(&bytes), 8508),
-            connections_of(RECORDED, 8508)
-        );
-    }
-
-    /// A UTF-8 marker from `tracerpt` is not part of the XML it prefixes.
-    #[test]
-    fn a_dump_written_as_utf8_with_a_marker_reads_as_the_same_session() {
-        let mut bytes = vec![0xEF, 0xBB, 0xBF];
-        bytes.extend(RECORDED.as_bytes());
-
-        assert_eq!(text_of(&bytes), RECORDED);
-    }
-
-    /// A missing native tracer is a refusal, never an empty observation.
-    #[cfg(windows)]
-    #[test]
-    fn an_unavailable_trace_tool_is_refused() {
-        let panic = std::panic::catch_unwind(|| tool("printobserver-no-such-trace-tool", &[]))
-            .expect_err("a tool that does not exist unexpectedly ran");
-        let message = panic
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| panic.downcast_ref::<&str>().copied())
-            .unwrap_or("panic carried no text");
-
-        assert!(message.contains("could not run"), "{message}");
-        assert!(message.contains("whole claim"), "{message}");
-    }
-
-    /// A native tracer that runs but refuses the request is not accepted as an
-    /// empty observation.
-    #[cfg(windows)]
-    #[test]
-    fn a_trace_tool_failure_is_refused() {
-        let panic = std::panic::catch_unwind(|| {
-            tool("cmd", &["/C".as_ref(), "exit".as_ref(), "23".as_ref()]);
-        })
-        .expect_err("a failing trace tool was unexpectedly accepted");
-        let message = panic
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| panic.downcast_ref::<&str>().copied())
-            .unwrap_or("panic carried no text");
-
-        assert!(message.contains("refused"), "{message}");
-        assert!(message.contains("whole claim"), "{message}");
-    }
-
-    /// An address `tracerpt` renders without brackets is still an endpoint.
-    #[test]
-    fn an_ipv6_endpoint_is_read_with_or_without_brackets() {
-        let expected = Some(SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, 8420)));
-
-        assert_eq!(endpoint("[::1]:8420"), expected);
-        assert_eq!(endpoint("::1:8420"), expected);
-        assert_eq!(number("0x1C70"), Some(7280));
     }
 }
 
@@ -1020,5 +542,540 @@ mod observing {
             BTreeSet::from([address]),
             "a run reading a path nobody watches did not connect where that path configured"
         );
+    }
+}
+
+/// Real socket traffic, including a child that outlives its parent, observed
+/// through the same interface both command walks use.
+#[cfg(test)]
+mod regression {
+    #[cfg(not(target_os = "macos"))]
+    use std::collections::BTreeSet;
+    #[cfg(not(target_os = "macos"))]
+    use std::net::TcpListener;
+    use std::net::{SocketAddr, TcpStream};
+    use std::process::Command;
+    #[cfg(not(target_os = "macos"))]
+    use std::sync::Arc;
+    #[cfg(not(target_os = "macos"))]
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::traced;
+
+    /// A subprocess fixture that connects itself or starts a connecting child.
+    /// An ordinary test invocation has no fixture environment and does nothing.
+    // llmlint: ignore[tests_assert_real_behavior] This libtest entry is the real subprocess socket fixture, selected by its parent through --exact. The owning regression asserts its exit status and every endpoint the actual OS tracer attributes to it and its descendants; an unselected fixture makes no test claim.
+    #[test]
+    fn connector() {
+        let Ok(address) = std::env::var("PRINTOBSERVER_TRACE_CONNECT") else {
+            return;
+        };
+        #[cfg(not(target_os = "macos"))]
+        if std::env::var("PRINTOBSERVER_TRACE_SCOPE").as_deref() == Ok("yes") {
+            scoped_observer(&address);
+            return;
+        }
+        if std::env::var("PRINTOBSERVER_TRACE_RECOVER").as_deref() == Ok("yes") {
+            let scratch = tempfile::TempDir::new().expect("recovery scratch");
+            let ran = traced(
+                &std::env::current_exe().expect("test executable"),
+                &[
+                    "--exact".to_owned(),
+                    "traced::regression::connector".to_owned(),
+                    "--nocapture".to_owned(),
+                ],
+                &[
+                    ("PRINTOBSERVER_TRACE_CONNECT".to_owned(), address.clone()),
+                    ("PRINTOBSERVER_TRACE_RECOVER".to_owned(), "no".to_owned()),
+                ],
+                scratch.path(),
+            );
+            assert_eq!(ran.code, Some(0), "{}", ran.said());
+            assert_eq!(
+                ran.connected,
+                address
+                    .split(',')
+                    .map(|address| address.parse().expect("endpoint"))
+                    .collect()
+            );
+            return;
+        }
+        if std::env::var("PRINTOBSERVER_TRACE_LOUD").as_deref() == Ok("yes") {
+            print!("{}", "observed stdout\n".repeat(8192));
+            eprint!("{}", "observed stderr\n".repeat(8192));
+        }
+        if std::env::var_os("PRINTOBSERVER_TRACE_CHILD").is_some() {
+            let inherited = std::env::var("PRINTOBSERVER_TRACE_INHERIT").as_deref() == Ok("yes");
+            let child = Command::new(std::env::current_exe().expect("test executable"))
+                .args(["--exact", "traced::regression::connector", "--nocapture"])
+                .env_remove("PRINTOBSERVER_TRACE_CHILD")
+                .env(
+                    "PRINTOBSERVER_TRACE_DELAY",
+                    std::env::var("PRINTOBSERVER_TRACE_DELAY").unwrap_or_else(|_| "100".to_owned()),
+                )
+                .stdout(if inherited {
+                    std::process::Stdio::inherit()
+                } else {
+                    std::process::Stdio::null()
+                })
+                .stderr(if inherited {
+                    std::process::Stdio::inherit()
+                } else {
+                    std::process::Stdio::null()
+                })
+                .spawn()
+                .expect("connecting descendant");
+            if let Some(path) = std::env::var_os("PRINTOBSERVER_TRACE_CHILD_PID") {
+                std::fs::write(path, child.id().to_string()).expect("our child's captured PID");
+            }
+            // The root exits without waiting; the descendant's sockets and
+            // optionally inherited pipes remain part of this invocation.
+            drop(child);
+            return;
+        }
+        if let Ok(delay) = std::env::var("PRINTOBSERVER_TRACE_DELAY") {
+            std::thread::sleep(std::time::Duration::from_millis(
+                delay.parse().expect("fixture delay"),
+            ));
+        }
+        for address in address.split(',') {
+            let address: SocketAddr = address.parse().expect("fixture endpoint");
+            let _ = TcpStream::connect_timeout(&address, std::time::Duration::from_millis(200));
+        }
+    }
+
+    /// Accepted and refused attempts belong to this invocation's lifetime and
+    /// ancestry; adjacent invocations and simultaneous host traffic do not.
+    // macOS has no descendant-exit signal: its interposer cannot observe a
+    // descendant that outlives the root. Follow-up: "Observe macOS descendants
+    // that outlive their root process" (draft 20261015T025150Z).
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn each_invocation_observes_its_descendants_and_refused_attempts_only() {
+        exercise();
+    }
+
+    /// The real observer process holds its session while a scoped worker traces.
+    #[cfg(not(target_os = "macos"))]
+    fn scoped_observer(address: &str) {
+        use std::io::{Read as _, Write as _};
+        let scratch = tempfile::TempDir::new().expect("scoped observer scratch");
+        let program = std::env::current_exe().expect("test executable");
+        let arguments = [
+            "--exact".to_owned(),
+            "traced::regression::connector".to_owned(),
+            "--nocapture".to_owned(),
+        ];
+        let environment = [
+            ("PRINTOBSERVER_TRACE_CONNECT".to_owned(), address.to_owned()),
+            ("PRINTOBSERVER_TRACE_SCOPE".to_owned(), "no".to_owned()),
+        ];
+        let expected: BTreeSet<SocketAddr> = address
+            .split(',')
+            .map(|address| address.parse().expect("scoped endpoint"))
+            .collect();
+        let first = traced(&program, &arguments, &environment, scratch.path());
+        assert_eq!(first.code, Some(0), "{}", first.said());
+        assert_eq!(first.connected, expected);
+        #[cfg(windows)]
+        let identity = super::windows_trace::controller_id();
+        println!("process-session held");
+        std::io::stdout().flush().expect("session readiness");
+        let mut release = [0];
+        std::io::stdin()
+            .read_exact(&mut release)
+            .expect("scoped invocation barrier");
+        assert_eq!(release, [b'Y']);
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                let ran = traced(&program, &arguments, &environment, scratch.path());
+                #[cfg(windows)]
+                assert_eq!(super::windows_trace::controller_id(), identity);
+                ran
+            });
+            let second = worker.join().expect("scoped observer thread");
+            assert_eq!(second.code, Some(0), "{}", second.said());
+            assert_eq!(second.connected, expected);
+        });
+    }
+
+    /// Observe real accepted/refused sockets while another observer stays alive.
+    #[cfg(not(target_os = "macos"))]
+    fn another_live_process_can_trace(
+        child: &mut std::process::Child,
+        accepted: SocketAddr,
+        refused: SocketAddr,
+    ) {
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+        // The first process remains alive at its explicit barrier while a second
+        // real process traces accepted and refused sockets. Its complete Ran
+        // assertions must finish without waiting for the first process to exit.
+        let mut competitor = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env(
+                "PRINTOBSERVER_TRACE_CONNECT",
+                format!("{accepted},{refused}"),
+            )
+            .env("PRINTOBSERVER_TRACE_RECOVER", "yes")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("real concurrent observer process");
+        let fairness_deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            if competitor
+                .try_wait()
+                .expect("concurrent observer status")
+                .is_some()
+            {
+                break;
+            }
+            if Instant::now() >= fairness_deadline {
+                competitor
+                    .kill()
+                    .expect("stop our captured competing observer");
+                competitor
+                    .wait()
+                    .expect("reap our captured competing observer");
+                child.kill().expect("stop our captured barrier observer");
+                child.wait().expect("reap our captured barrier observer");
+                panic!("a live idle observer blocked another real process for 20 seconds");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let competing = competitor
+            .wait_with_output()
+            .expect("concurrent observer output");
+        if !competing.status.success() {
+            child.kill().expect("stop our captured barrier observer");
+            child.wait().expect("reap our captured barrier observer");
+        }
+        assert!(
+            competing.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&competing.stdout),
+            String::from_utf8_lossy(&competing.stderr)
+        );
+    }
+
+    /// A child reproduces the parent-held-session/scoped-worker shape. The
+    /// watchdog begins only after its first real trace acquired the host logger.
+    /// Killing our captured child on failure makes the old deadlock a bounded failure.
+    #[cfg(not(target_os = "macos"))]
+    fn a_process_shares_its_session_with_a_scoped_worker(
+        accepted: SocketAddr,
+        refused: SocketAddr,
+    ) {
+        use std::io::{BufRead as _, BufReader, Write as _};
+        use std::process::Stdio;
+        use std::time::{Duration, Instant};
+
+        let mut child = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env("PRINTOBSERVER_TRACE_SCOPE", "yes")
+            .env(
+                "PRINTOBSERVER_TRACE_CONNECT",
+                format!("{accepted},{refused}"),
+            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("real scoped observer process");
+        let mut lines = BufReader::new(child.stdout.take().expect("observer stdout"));
+        loop {
+            let mut line = String::new();
+            assert!(
+                lines.read_line(&mut line).expect("observer readiness") > 0,
+                "observer exited before holding its session"
+            );
+            if line.contains("process-session held") {
+                break;
+            }
+        }
+        another_live_process_can_trace(&mut child, accepted, refused);
+        child
+            .stdin
+            .take()
+            .expect("observer barrier")
+            .write_all(b"Y")
+            .expect("start scoped trace");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("observer status") {
+                break Some(status);
+            }
+            if Instant::now() >= deadline {
+                child.kill().expect("stop our captured stalled observer");
+                child.wait().expect("reap our captured stalled observer");
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let status = status
+            .expect("a parent-held observer session blocked its scoped worker for 20 seconds");
+        assert!(status.success(), "scoped observer failed: {status}");
+        drop(lines);
+        // A different real process must acquire the logger after normal process exit.
+        let recovered = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env(
+                "PRINTOBSERVER_TRACE_CONNECT",
+                format!("{accepted},{refused}"),
+            )
+            .env("PRINTOBSERVER_TRACE_RECOVER", "yes")
+            .output()
+            .expect("real process-exit recovery");
+        assert!(
+            recovered.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&recovered.stdout),
+            String::from_utf8_lossy(&recovered.stderr)
+        );
+    }
+
+    /// The real subprocess/socket workload, on the caller's named thread.
+    #[cfg(not(target_os = "macos"))]
+    fn exercise() {
+        let scratch = tempfile::TempDir::new().expect("trace scratch");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("accepted endpoint");
+        let accepted = listener.local_addr().expect("listener endpoint");
+        let reservation = TcpListener::bind("127.0.0.1:0").expect("refused endpoint");
+        let refused = reservation.local_addr().expect("reserved endpoint");
+        drop(reservation);
+        let listener6 = TcpListener::bind("[::1]:0").expect("accepted IPv6 endpoint");
+        let accepted6 = listener6.local_addr().expect("IPv6 listener endpoint");
+        let reservation6 = TcpListener::bind("[::1]:0").expect("refused IPv6 endpoint");
+        let refused6 = reservation6.local_addr().expect("reserved IPv6 endpoint");
+        drop(reservation6);
+        let outside = TcpListener::bind("127.0.0.1:0").expect("unrelated endpoint");
+        let unrelated = outside.local_addr().expect("outside endpoint");
+        let done = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&done);
+        let traffic = std::thread::spawn(move || {
+            while !stop.load(Ordering::Acquire) {
+                let _ = TcpStream::connect(unrelated);
+                let _ = outside.accept();
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+        let result = std::panic::catch_unwind(|| {
+            #[cfg(windows)]
+            let mut controller = None;
+            for (endpoints, child) in [
+                (format!("{accepted},{refused},{accepted6},{refused6}"), true),
+                (refused.to_string(), false),
+            ] {
+                let mut environment =
+                    vec![("PRINTOBSERVER_TRACE_CONNECT".to_owned(), endpoints.clone())];
+                if child {
+                    environment.push(("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()));
+                }
+                let ran = traced(
+                    &std::env::current_exe().expect("test executable"),
+                    &[
+                        "--exact".to_owned(),
+                        "traced::regression::connector".to_owned(),
+                        "--nocapture".to_owned(),
+                    ],
+                    &environment,
+                    scratch.path(),
+                );
+                assert_eq!(ran.code, Some(0), "{}", ran.said());
+                let expected: BTreeSet<SocketAddr> = endpoints
+                    .split(',')
+                    .map(|address| address.parse().expect("endpoint"))
+                    .collect();
+                assert_eq!(ran.connected, expected, "{}", ran.said());
+                #[cfg(windows)]
+                {
+                    let current = super::windows_trace::controller_id();
+                    if let Some(previous) = controller {
+                        assert_eq!(
+                            current, previous,
+                            "adjacent invocations did not share the native controller"
+                        );
+                    }
+                    controller = Some(current);
+                }
+            }
+            #[cfg(windows)]
+            super::windows_trace::release();
+            a_process_shares_its_session_with_a_scoped_worker(accepted, refused);
+        });
+        done.store(true, Ordering::Release);
+        traffic.join().expect("unrelated traffic completed");
+        if let Err(error) = result {
+            std::panic::resume_unwind(error);
+        }
+    }
+}
+
+/// Focused endpoint/lifetime scenarios replacing the retired XML decoder's
+/// fixtures with the actual observation interface and real processes/sockets.
+#[cfg(test)]
+mod native_boundaries {
+    use std::collections::BTreeSet;
+    use std::net::{SocketAddr, TcpListener};
+
+    use super::{Ran, traced};
+
+    /// A real invocation of the socket fixture, on this platform's tracer.
+    fn sockets(endpoints: &[SocketAddr], descendant: bool) -> Ran {
+        sockets_with_output(endpoints, descendant, false)
+    }
+
+    /// The descendant can retain its root's actual output handles until exit.
+    fn sockets_with_output(endpoints: &[SocketAddr], descendant: bool, inherited: bool) -> Ran {
+        let scratch = tempfile::TempDir::new().expect("trace scratch");
+        let mut environment = vec![(
+            "PRINTOBSERVER_TRACE_CONNECT".to_owned(),
+            endpoints
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(","),
+        )];
+        environment.push(("PRINTOBSERVER_TRACE_LOUD".to_owned(), "yes".to_owned()));
+        if descendant {
+            environment.push(("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()));
+        }
+        if inherited {
+            environment.push(("PRINTOBSERVER_TRACE_INHERIT".to_owned(), "yes".to_owned()));
+        }
+        let ran = traced(
+            &std::env::current_exe().expect("test executable"),
+            &[
+                "--exact".to_owned(),
+                "traced::regression::connector".to_owned(),
+                "--nocapture".to_owned(),
+            ],
+            &environment,
+            scratch.path(),
+        );
+        assert_eq!(ran.code, Some(0), "{}", ran.said());
+        assert!(
+            ran.out.contains(&"observed stdout\n".repeat(8192)),
+            "stdout truncated"
+        );
+        let copies = if descendant && inherited { 2 } else { 1 };
+        assert_eq!(
+            ran.out
+                .lines()
+                .filter(|line| *line == "observed stdout")
+                .count(),
+            8192 * copies
+        );
+        assert_eq!(ran.err, "observed stderr\n".repeat(8192 * copies));
+        ran
+    }
+
+    /// A TCP attempt rejected by the kernel is still an endpoint observation
+    /// of the real shipped command, with its normal unreachable exit.
+    #[test]
+    fn a_refused_attempt_from_the_real_command_is_observed() {
+        let reservation = TcpListener::bind("127.0.0.1:0").expect("reserved port");
+        let endpoint = reservation.local_addr().expect("reserved endpoint");
+        drop(reservation);
+        let scratch = tempfile::TempDir::new().expect("trace scratch");
+        let ran = traced(
+            std::path::Path::new(env!("CARGO_BIN_EXE_printobserver")),
+            &[
+                "context".to_owned(),
+                "--print-id".to_owned(),
+                "01900000-0000-7000-8000-000000000000".to_owned(),
+            ],
+            &[
+                (
+                    "PRINTOBSERVER_SERVER".to_owned(),
+                    format!("http://{endpoint}"),
+                ),
+                (
+                    "PRINTOBSERVER_CREDENTIAL".to_owned(),
+                    "a-credential".to_owned(),
+                ),
+            ],
+            scratch.path(),
+        );
+        assert_eq!(
+            ran.code,
+            Some(i32::from(
+                printobserver::failure::Exit::Unreachable.status()
+            )),
+            "{}",
+            ran.said()
+        );
+        assert_eq!(ran.connected, BTreeSet::from([endpoint]));
+        let unroutable = "192.0.2.1:9".parse().expect("documentation endpoint");
+        let attempted = sockets(&[unroutable], false);
+        assert_eq!(attempted.connected, BTreeSet::from([unroutable]));
+    }
+
+    /// IPv6 is read at the native boundary, for both accepted and refused
+    /// attempts; this is no longer a string-format parser fixture.
+    #[test]
+    fn ipv6_accepted_and_refused_attempts_are_both_observed() {
+        let listener = TcpListener::bind("[::1]:0").expect("IPv6 listener");
+        let accepted = listener.local_addr().expect("accepted endpoint");
+        let reservation = TcpListener::bind("[::1]:0").expect("IPv6 refused port");
+        let refused = reservation.local_addr().expect("refused endpoint");
+        drop(reservation);
+        assert_eq!(
+            sockets(&[accepted, refused], false).connected,
+            BTreeSet::from([accepted, refused])
+        );
+    }
+
+    /// An observed process tree that genuinely connects nowhere is distinct
+    /// from unavailable or incomplete tracing.
+    #[test]
+    fn the_real_commands_version_has_complete_empty_connection_evidence() {
+        let scratch = tempfile::TempDir::new().expect("trace scratch");
+        let ran = traced(
+            std::path::Path::new(env!("CARGO_BIN_EXE_printobserver")),
+            &["--version".to_owned()],
+            &[],
+            scratch.path(),
+        );
+        assert_eq!(ran.code, Some(0), "{}", ran.said());
+        assert!(ran.out.starts_with("printobserver "), "{}", ran.said());
+        assert!(ran.connected.is_empty(), "{ran:?}");
+    }
+
+    /// Descendants connect after their root exits, with either closed or
+    /// inherited output handles. Both outputs and endpoint evidence are complete.
+    // macOS has no descendant-exit signal: its interposer cannot observe a
+    // descendant that outlives the root. Follow-up: "Observe macOS descendants
+    // that outlive their root process" (draft 20261015T025150Z).
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_descendant_connecting_after_its_parent_exits_is_observed() {
+        let reservation = TcpListener::bind("127.0.0.1:0").expect("refused port");
+        let endpoint = reservation.local_addr().expect("refused endpoint");
+        drop(reservation);
+        for inherited in [false, true] {
+            assert_eq!(
+                sockets_with_output(&[endpoint], true, inherited).connected,
+                BTreeSet::from([endpoint])
+            );
+        }
+    }
+
+    /// Adjacent invocations have distinct endpoint sets while reusing the
+    /// native controller across independently observed process trees.
+    #[test]
+    fn adjacent_invocations_do_not_inherit_each_others_endpoints() {
+        let first = TcpListener::bind("127.0.0.1:0").expect("first listener");
+        let second = TcpListener::bind("127.0.0.1:0").expect("second listener");
+        for endpoint in [
+            first.local_addr().expect("first endpoint"),
+            second.local_addr().expect("second endpoint"),
+        ] {
+            assert_eq!(
+                sockets(&[endpoint], false).connected,
+                BTreeSet::from([endpoint])
+            );
+        }
     }
 }

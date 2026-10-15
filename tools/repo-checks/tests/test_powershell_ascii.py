@@ -5,10 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.__main__ import main
 from repo_checks.expect import contains, equal
 from repo_checks.model import Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("powershell-ascii")
 
 #: The characters a script typed in an editor picks up, spelled by code point so
 #: this file stays readable to the lint that flags them.

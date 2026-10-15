@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from closures import closure
 from repo_checks.checks_repo import module_names
 from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("module-names")
 
 #: A module body is enough: what makes a name ambiguous is the file being there
 #: under a second root, not anything it declares.

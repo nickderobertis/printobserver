@@ -28,10 +28,14 @@ import sys
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.checks_service import ingress_answer_bound, installer_for, service_install
 from repo_checks.expect import accepted, contains, equal, refused, truth
 from repo_checks.model import PolicyValueError, Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("ingress-answer-bound", "service-install")
 
 INSTALLER = "scripts/install-service.sh"
 WINDOWS_INSTALLER = "scripts/install-service.ps1"

@@ -7,10 +7,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from closures import closure
 from repo_checks.checks_ci import secrets
 from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("secrets")
 
 CI = ".github/workflows/ci.yml"
 RELEASE = ".github/workflows/release-plz.yml"
