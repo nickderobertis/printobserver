@@ -35,6 +35,7 @@ from repo_checks.shell import run
 SCANNED_SUFFIXES = frozenset(
     {
         ".rs",
+        ".cs",
         ".py",
         ".ts",
         ".tsx",
@@ -55,6 +56,9 @@ SCANNED_NAMES = frozenset({"justfile", "Justfile", ".justfile"})
 # this repository made.
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 
+# A block opening silences the region and needs its entry. ignore-end closes
+# that region without silencing anything else, so it needs no second entry.
+# llmlint validate checks matched closing rules.
 # (pattern, whether group 1 is a comma-separated rule list)
 DIRECTIVE_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = (
     (re.compile(r"#\s*noqa:\s*([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)"), True),
@@ -64,7 +68,7 @@ DIRECTIVE_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = (
     (re.compile(r"//\s*biome-ignore\s+([\w/]+)"), False),
     (re.compile(r"//\s*@ts-(expect-error|ignore)\b"), False),
     (re.compile(r"#\s*shellcheck\s+disable=([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)"), True),
-    (re.compile(r"llmlint:\s*ignore\[([^\]]+)\]"), True),
+    (re.compile(r"llmlint:\s*ignore(?:-block)?\[([^\]]+)\]"), True),
     (WHOLE_FILE_LLMLINT := re.compile(r"llmlint:\s*ignore-file\[([^\]]+)\]"), True),
 )
 
