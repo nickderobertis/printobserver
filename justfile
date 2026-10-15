@@ -98,7 +98,7 @@ check tier="affected":
 
 # Whether `just check` starts the end-to-end tier beside the test tier: `true`
 # everywhere but Windows, for the reason the recipe above gives.
-E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
+E2E_BESIDE_TESTS := "true"
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any
