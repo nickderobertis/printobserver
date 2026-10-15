@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/nickderobertis/printobserver/compare/v0.4.0...v0.4.1) - 2026-10-15
+
+### Fixed
+
+- time the detector-pause resume grace from the second adjustment ([#225](https://github.com/nickderobertis/printobserver/pull/225))
+
 ## [0.4.0](https://github.com/nickderobertis/printobserver/compare/v0.3.0...v0.4.0) - 2026-10-12
 
 ### Added
