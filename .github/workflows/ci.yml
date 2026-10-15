@@ -44,10 +44,6 @@ jobs:
       # runner here has its own, so on the merge path a missing one fails the
       # journey rather than skipping it.
       PRINTOBSERVER_SERVICE_JOURNEY: required
-      # MEASUREMENT ONLY (python-suites-windows-cost): every test over 1 s is
-      # timed in the log, and the modules this node adds are left out so the
-      # before and after runs collect the same tests. Removed before it lands.
-      PYTEST_ADDOPTS: --durations=0 --durations-min=1.0 --ignore-glob=*/test_closures*.py --ignore-glob=*/test_isolation*.py --ignore-glob=*/test_worker_share*.py
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
