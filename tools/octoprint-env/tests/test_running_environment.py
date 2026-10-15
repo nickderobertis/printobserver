@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -55,7 +56,7 @@ MARKER_TARGET = 1.0
 HOLDING_TARGET = 0.0
 
 #: How long the machine is given to reach a state it was asked for: a cancel
-#: waits out the dwell in flight, which the hold print makes ten seconds long.
+#: waits out the dwell in flight, which the hold print makes one second long.
 SETTLE_S = 120.0
 
 
@@ -89,7 +90,9 @@ def test_the_instance_the_recipe_started_is_running(brought_up: dict[str, Any]) 
     truth(isinstance(version, dict), describing="a decoded /api/version answer")
 
 
-def test_the_instance_authenticates_the_tier(brought_up: dict[str, Any]) -> None:
+def test_the_instance_authenticates_the_tier(
+    brought_up: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The tier reaches it with the provisioned key, and nothing reaches it without one."""
     url = str(brought_up["url"])
 
@@ -98,6 +101,51 @@ def test_the_instance_authenticates_the_tier(brought_up: dict[str, Any]) -> None
 
     equal(carried, 200, describing=f"GET {AUTHENTICATED} carrying the provisioned key")
     contains(REFUSED, refused, describing=f"the status of GET {AUTHENTICATED} carrying no key")
+    _diagnostics_read_the_instance_without_exposing_its_keys(brought_up, tmp_path, monkeypatch)
+
+
+def _diagnostics_read_the_instance_without_exposing_its_keys(
+    brought_up: dict[str, Any], root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real diagnostic subprocess reads real HTTP, bounded files and missing state."""
+    key = key_from_record(brought_up)
+    credential = "a-credential-only-the-diagnostic-child-inherits"
+    password = secrets.token_urlsafe(24)
+    monkeypatch.setenv("PRINTOBSERVER_CREDENTIAL", credential)
+    (root / "api-key").write_text(key, encoding="utf-8")
+    (root / "account-password").write_text(password, encoding="utf-8")
+    record = root / "instance.json"
+    record.write_text(json.dumps(brought_up), encoding="utf-8")
+    logs = root / "instance" / "logs"
+    logs.mkdir(parents=True)
+    content = "discarded\n" * 10000 + (f"{key} {credential} {password} " + "x" * 700 + "\n") * 50
+    for path in (
+        root / "server.log",
+        logs / "octoprint.log",
+        logs / "serial.log",
+        logs / "plugin_virtual_printer_serial.log",
+    ):
+        path.write_text(content, encoding="utf-8")
+
+    result = script("diagnostics", "--state-dir", str(root), "--supervisor-status", credential)
+    equal(result.returncode, 0, describing="the diagnostic command")
+    report = answer(result)
+    for secret in (key, credential, password):
+        truth(secret not in result.stdout, describing="diagnostics containing no credential")
+    for tail in report["logs"].values():
+        equal(len(tail), 40, describing="the bounded log tail")
+        truth(all(len(line) <= 500 for line in tail), describing="bounded log lines")
+        truth(all("discarded" not in line for line in tail), describing="only the tail")
+    for endpoint in ("/api/job", "/api/printer", "/api/connection"):
+        equal(report["octoprint"][endpoint]["status"], 200, describing=endpoint)
+    equal(report["printobserver_last_status"], "[redacted]", describing="redacted status")
+
+    record.unlink()
+    missing = answer(script("diagnostics", "--state-dir", str(root)))
+    equal(missing["octoprint"]["/api/job"], "FileNotFoundError", describing="missing state")
+    record.write_text(json.dumps(brought_up), encoding="utf-8")
+    recovered = answer(script("diagnostics", "--state-dir", str(root)))
+    equal(recovered["octoprint"]["/api/job"]["status"], 200, describing="recovered state")
 
 
 def test_a_file_uploaded_to_the_running_instance_is_held_and_printed_by_nothing(
@@ -224,6 +272,9 @@ def settled(read: Callable[[], object], wanted: object, *, describing: str) -> N
     while seen != wanted and time.monotonic() < deadline:
         time.sleep(0.5)
         seen = read()
+    if seen != wanted:
+        result = script("diagnostics", "--state-dir", str(STATE_DIR))
+        print(f"Printer state deadline diagnostics: {result.stdout}")
     equal(seen, wanted, describing=f"{describing} after {SETTLE_S:g}s")
 
 

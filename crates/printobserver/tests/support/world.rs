@@ -921,6 +921,29 @@ impl World {
                 }
             }
         }
+        if matches!(self.printer, Printer::Scripted { .. }) {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+            match Command::new("uv")
+                .current_dir(root)
+                .args([
+                    "run",
+                    "-q",
+                    "python",
+                    "tools/octoprint-env/octoprint_env.py",
+                    "diagnostics",
+                    "--supervisor-status",
+                    &self.status().to_string(),
+                ])
+                .env("PRINTOBSERVER_CREDENTIAL", CREDENTIAL)
+                .output()
+            {
+                Ok(ran) => eprintln!(
+                    "Printer state deadline diagnostics: {}",
+                    String::from_utf8_lossy(&ran.stdout)
+                ),
+                Err(error) => eprintln!("Printer diagnostics could not run: {error}"),
+            }
+        }
         panic!(
             "the machine never reported {state:?}: it is reporting {:?}, and the last thing \
              asked of it said {said}",
