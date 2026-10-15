@@ -22,7 +22,10 @@
 //! [`CoreConfig::detector_resume_grace`](crate::CoreConfig) after the agent's
 //! last such adjustment, or when its turn ends, whichever comes first — so
 //! that two or three changes asked for one after the other reach the print
-//! together. An agent that acknowledges the detection with the disposition
+//! together. The grace is time passing, read off [`Clock::elapsed`](crate::Clock)
+//! rather than off the wall clock, so a host's time synchronisation stepping
+//! the wall clock under it neither cuts it short nor draws it out. An agent
+//! that acknowledges the detection with the disposition
 //! `stop` has decided a person should look, and the pause is then left alone;
 //! so is one somebody else has already resumed or cancelled.
 //!
@@ -33,11 +36,11 @@
 //! recorded against the detection's own event.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
-use printobserver_types::{EventId, PrintId, Timestamp};
+use printobserver_types::{EventId, PrintId};
 use printobserver_vision_api::Detection;
 
-use crate::clock::plus_seconds;
 use crate::kinds::PortFailureSite;
 use crate::records::{Actor, PrintAction};
 use crate::supervisor::Supervisor;
@@ -63,8 +66,9 @@ pub(crate) struct Adjusted {
     pub first: String,
     /// The reasons of every adjustment asked for after it, in order.
     pub later: Vec<String>,
-    /// When the print is to be resumed: the grace after the last of them.
-    pub resume_due: Timestamp,
+    /// When the print is to be resumed, on the clock's elapsed time: the grace
+    /// after the last of them.
+    pub resume_due: Duration,
 }
 
 impl Adjusted {
@@ -108,10 +112,10 @@ impl Supervisor {
     /// Note an adjustment the agent asked for while the detector's pause held
     /// the print, and schedule the resume it earns.
     pub(crate) fn note_adjustment_while_paused(&self, print_id: PrintId, reason: &str) {
-        let now = self.clock().now();
-        let grace =
-            i64::try_from(self.config().detector_resume_grace.as_secs()).unwrap_or(i64::MAX);
-        let due = plus_seconds(now, grace).unwrap_or(now);
+        let due = self
+            .clock()
+            .elapsed()
+            .saturating_add(self.config().detector_resume_grace);
         if let Some(pause) = self.detector_pauses().get_mut(&print_id) {
             match &mut pause.adjusted {
                 Some(adjusted) => {
@@ -143,7 +147,7 @@ impl Supervisor {
 
     /// Resume every print whose resume has come due.
     pub async fn resume_due_detector_pauses(&self) {
-        let now = self.clock().now();
+        let now = self.clock().elapsed();
         let due: Vec<(PrintId, DetectorPause)> = {
             let mut pauses = self.detector_pauses();
             let ids: Vec<PrintId> = pauses
