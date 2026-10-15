@@ -268,6 +268,9 @@ def test_a_repository_the_forge_does_not_carry_fails_the_step(
         ("PATCH", "/issues/x", b"{}", CREDENTIAL, 404),
         ("POST", "/issues/9/comments", b'{"body": "x"}', CREDENTIAL, 404),
     ],
+    # The credential is drawn afresh in each process, so an id spelling it would
+    # differ between two xdist workers, which then refuse to run the session.
+    ids=lambda value: "the-credential" if value == CREDENTIAL else None,
 )
 def test_the_stand_in_refuses_what_the_forge_refuses(
     forge: IssuesForge,

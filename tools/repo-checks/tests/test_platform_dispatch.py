@@ -25,6 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from closures import closure
 from repo_checks import dispatching
 from repo_checks.checks_ci import JobKind, continuous_integration, platforms, status_contexts
 from repo_checks.checks_dispatch import platform_dispatch
@@ -37,6 +38,9 @@ from repo_checks.parsing import load_workflow
 from repo_checks.platforms import supported
 from repo_checks.shell import run as shell_run
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("ci", "integration-tier", "platform-dispatch", "platforms", "unmatrixed-jobs")
 
 DISPATCH = ".github/workflows/platform-dispatch.yml"
 CI = ".github/workflows/ci.yml"

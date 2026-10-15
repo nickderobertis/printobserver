@@ -17,9 +17,13 @@ import json
 from collections.abc import Iterator
 
 import pytest
+from closures import closure
 from repo_checks.checks_journeys import JOURNEYS, ORDERINGS, STEPS, journey_completeness
 from repo_checks.expect import accepted, refused, refused_naming
 from treecopy import Tree, copy_tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("journey-completeness")
 
 #: Where the three journeys live, by the client that drives each.
 PATHS = {journey.language: journey.path for journey in JOURNEYS}
@@ -31,7 +35,7 @@ OPERATIONS = "schemas/printobserver-server/operations.json"
 @pytest.fixture(scope="module")
 def copied(tmp_path_factory: pytest.TempPathFactory) -> Tree:
     """One copy of the committed tree, for every journey in this module."""
-    return Tree(copy_tree(tmp_path_factory.mktemp("journeys")))
+    return Tree(copy_tree(tmp_path_factory.mktemp("journeys"), closure=CLOSURE))
 
 
 @pytest.fixture(autouse=True)

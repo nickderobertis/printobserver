@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
+from closures import closure
 from repo_checks.checks_obico import obico_tier
 from repo_checks.checks_repo import GATE_TIER_RUNNER
 from repo_checks.expect import accepted, contains, equal, refused, truth
@@ -24,6 +25,9 @@ from repo_checks.model import Repo
 from repo_checks.parsing import recipes
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("obico-tier")
 
 WORKFLOW = ".github/workflows/obico.yml"
 POLICY = "repo-policy.toml"
