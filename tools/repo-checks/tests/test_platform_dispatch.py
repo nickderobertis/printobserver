@@ -706,8 +706,11 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
     copy = tree()
     recording = Recording(tmp_path)
     recording.program(JUST, failing_on="test-integration", exit_code=9)
+    # The runner hands every step a file to append its outputs to.
+    outputs = tmp_path / "github-output"
+    outputs.touch()
 
-    code, said = _run(copy, "integration", "macos-aarch64", recording)
+    code, said = _run(copy, "integration", "macos-aarch64", recording, GITHUB_OUTPUT=str(outputs))
 
     equal(code, 9, describing="the exit of a tier that failed")
     equal(
@@ -715,6 +718,8 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
         [
             "just runner-temp",
             "just bootstrap",
+            "just release-program-key",
+            "just release-program",
             "just octoprint-up",
             "just test-integration",
             "just octoprint-down",
@@ -732,8 +737,11 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
     copy = tree()
     recording = Recording(tmp_path)
     recording.program(JUST, failing_on="octoprint-up")
+    # The runner hands every step a file to append its outputs to.
+    outputs = tmp_path / "github-output"
+    outputs.touch()
 
-    code, _ = _run(copy, "integration", "linux-x86_64", recording)
+    code, _ = _run(copy, "integration", "linux-x86_64", recording, GITHUB_OUTPUT=str(outputs))
 
     equal(code, 7, describing="the exit of a tier whose bring-up failed")
     equal(
@@ -741,6 +749,8 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
         [
             "just runner-temp",
             "just bootstrap",
+            "just release-program-key",
+            "just release-program",
             "just octoprint-up",
             "just octoprint-down",
             "just runner-temp cleanup",

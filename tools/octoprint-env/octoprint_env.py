@@ -46,6 +46,7 @@ import sys
 import time
 import urllib.parse
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, TypedDict
@@ -462,6 +463,7 @@ def managed_config(connection: Connection) -> dict[str, Any]:
             },
         },
         "serial": {
+            "log": True,
             "additionalPorts": [] if connection.is_virtual else [connection.device],
             "autoconnect": True,
             "baudrate": connection.baudrate,
@@ -1171,10 +1173,66 @@ def summarize_install(instance: Instance) -> dict[str, Any]:
     }
 
 
+def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
+    """Bounded, redacted observations after a journey's state deadline expires."""
+    secrets_to_hide: list[str] = [os.environ.get("PRINTOBSERVER_CREDENTIAL", "")]
+    for path in (instance.api_key_file, instance.account_password_file):
+        with suppress(OSError):
+            secrets_to_hide.append(path.read_text(encoding="utf-8").strip())
+    secrets_to_hide.sort(key=len, reverse=True)
+
+    def redacted(text: str) -> str:
+        for secret in secrets_to_hide:
+            if secret:
+                text = text.replace(secret, "[redacted]")
+        return re.sub(r"(?i)(Bearer\s+|X-Api-Key[\s:=]+)\S+", r"\1[redacted]", text)
+
+    logs: dict[str, object] = {}
+    for path in (
+        instance.server_log,
+        instance.octoprint_log,
+        instance.basedir / "logs" / "serial.log",
+        instance.basedir / "logs" / "plugin_virtual_printer_serial.log",
+    ):
+        try:
+            with path.open("rb") as stream:
+                stream.seek(0, os.SEEK_END)
+                offset = max(0, stream.tell() - 65536)
+                stream.seek(offset)
+                if offset:
+                    stream.readline(65536)
+                tail = stream.read(65536).decode("utf-8", errors="replace")
+            logs[path.name] = [redacted(line)[:500] for line in tail.splitlines()[-40:]]
+        except OSError as error:
+            logs[path.name] = type(error).__name__
+
+    observations: dict[str, object] = {}
+    for endpoint in ("/api/job", "/api/printer", "/api/connection"):
+        try:
+            record = json.loads(instance.record.read_text(encoding="utf-8"))
+            # llmlint: ignore[async_typed_clients_at_boundaries] one blocking diagnostic child
+            status, body = call(record_url(record), api_key(instance), endpoint, timeout=5.0)
+            observations[endpoint] = {
+                "status": status,
+                "body": redacted(json.dumps(body))[:4096],
+            }
+        except (OSError, ValueError, RuntimeError, http.client.HTTPException) as error:
+            observations[endpoint] = type(error).__name__
+    return {
+        "octoprint": observations,
+        "printobserver_last_status": redacted(supervisor_status or "no supervisor supplied")[:4096],
+        "logs": logs,
+    }
+
+
 def argument_parser() -> argparse.ArgumentParser:
     """The command surface, whose defaults every recipe and caller shares."""
     parser = argparse.ArgumentParser(prog="octoprint-env", description=__doc__)
-    parser.add_argument("command", choices=("install", "up", "down", "upload"))
+    parser.add_argument("command", choices=("install", "up", "down", "upload", "diagnostics"))
+    parser.add_argument(
+        "--supervisor-status",
+        help="the last supervisor status read by a timed-out journey, for diagnostics",
+    )
     parser.add_argument(
         "--file",
         default=None,
@@ -1264,6 +1322,8 @@ def main(argv: list[str] | None = None) -> int:
                 answer = summarize_install(instance)
             case "down":
                 answer = stop(instance)
+            case "diagnostics":
+                answer = diagnostics(instance, arguments.supervisor_status)
             case "upload":
                 if not arguments.file:
                     raise StartupError(

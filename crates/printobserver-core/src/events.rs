@@ -12,16 +12,15 @@
 //! printer with no record behind it would be a safety one, and this crate takes
 //! the first over the second.
 //!
-//! # The context a turn reads is the one the loop collected
+//! # Context reads gather the print's current state
 //!
 //! A turn reads its print's context by running the command
 //! [`CoreConfig::context_command_for`](crate::CoreConfig::context_command_for)
-//! names, and that command reads it back through [`Supervisor::context`]. While
-//! a turn is running, that call answers the context the loop collected for the
-//! event that prompted it rather than a fresh read: what the agent reasons
-//! about is the state the event was handled at, not whatever the machine has
-//! drifted to since. A look ([`crate::look`]) is how it sees the machine as it
-//! is now.
+//! names, and that command reads it back through [`Supervisor::context`]. Each
+//! read gathers the current printer, job and interventions, even while a turn
+//! is running, so an operator's completed action is visible immediately. The
+//! turn's event and situation still describe what prompted it; a look
+//! ([`crate::look`]) also takes a fresh camera frame.
 //!
 //! # One agent per print
 //!
@@ -427,7 +426,6 @@ impl Supervisor {
                 .map(|detection| detection.paused_the_print),
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
         };
-        self.hold_context(print.id, context);
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
         // abandoned, because dropping what was opened revokes too.
@@ -446,7 +444,6 @@ impl Supervisor {
             )
             .await;
         opened.revoke();
-        self.drop_context(print.id);
         drop(guard);
         match turn {
             Ok(outcome) => {
@@ -484,10 +481,8 @@ impl Supervisor {
         Ok(terminal.map_or(Supervised::Ran, Supervised::Terminal))
     }
 
-    /// Everything a supervision turn is given about one print.
-    ///
-    /// While a turn is running for the print, this answers the context the loop
-    /// collected for the event that prompted it.
+    /// Gather the current context of one print, including while its
+    /// supervision turn is running.
     ///
     /// # Errors
     ///
@@ -495,9 +490,6 @@ impl Supervisor {
     /// identifier, and the store's own error when the context could not be
     /// read.
     pub async fn context(&self, print_id: PrintId) -> Result<PrintContext, CoreError> {
-        if let Some(held) = self.held_context(print_id) {
-            return Ok(held);
-        }
         let print = self
             .stores()
             .prints

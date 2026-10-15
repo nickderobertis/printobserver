@@ -8,6 +8,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { delimiter, dirname, resolve } from "node:path";
 
@@ -25,6 +26,30 @@ export interface Supervisor {
 
 /** The repository this package is in. */
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/** Bounded machine logs and both sides' state after an existing deadline expires. */
+export function printerDiagnostics(status: unknown, credential?: string): string {
+  const ran = spawnSync(
+    "uv",
+    [
+      "run",
+      "-q",
+      "python",
+      "tools/octoprint-env/octoprint_env.py",
+      "diagnostics",
+      "--supervisor-status",
+      JSON.stringify(status),
+    ],
+    {
+      cwd: REPO_ROOT,
+      env: { ...process.env, PRINTOBSERVER_CREDENTIAL: credential ?? "" },
+      encoding: "utf8",
+      timeout: 25_000,
+      maxBuffer: 128 * 1024,
+    },
+  );
+  return ran.stdout || `Printer diagnostics could not run: ${ran.error?.message ?? ran.status}`;
+}
 
 /**
  * Only the real-server setup hook's budget. Three warmed Linux runs measured

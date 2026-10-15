@@ -1650,6 +1650,12 @@ site = "one sequential read of its instance"
 reason = "Each is one read of the OctoPrint `just octoprint-up` started, made by a journey that acts on the answer before its next step — the job before an upload, the file after it, the job again — through the same blocking helpers every journey of this suite reads that instance with, which `tests/environment.py` gives the reason for. A test of a provisioning script's upload has nothing to overlap, and an async client would be a second client of an instance the product never reaches from here."
 
 [[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_world_journey.py"
+site = "The alert's turn finds no harness, even with one on the path the world runs with."
+reason = "This journey proves `release_artifacts.world`, which the client worlds and the client proofs of this same tier stand up, and it sits beside the world-readiness journey that already proves that module here, in the same release-build group, over the release program that group already builds. Its own cost once that build exists is one supervisor start and one history read, a few seconds; a project of its own would build the release program a second time to prove the same module the tier around it already depends on."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, answer = call("
@@ -2537,3 +2543,11 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/tests/support/windows_trace.rs"
 site = "let connected: BTreeSet<SocketAddr> = evidence[\"endpoints\"]"
 reason = "The real worker validates this array against the golden and emits only native IPEndPoint strings. Invalid element types or socket syntax require substituting the tracer serializer, forbidden here. Real IPv4/IPv6 accepted and refused sockets exercise this boundary."
+
+# --- bounded printer timeout diagnostics ----------------------------------
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "status, body = call(record_url(record), api_key(instance), endpoint, timeout=5.0)"
+reason = "This diagnostic subprocess runs once after a state deadline has already expired. It makes three ordered reads of the fixture's own loopback OctoPrint, each with a five-second transport timeout, then prints the bodies only as redacted, bounded evidence: none feeds a product model or drives an action. Reusing the fixture's authenticated HTTP helper preserves one blocking diagnostic child rather than adding another transport and event loop to an error-reporting path. The product still reaches OctoPrint through its typed asynchronous Rust adapter. Real subprocess journeys cover the actual endpoints, missing-record recovery, output bounds and complete redaction, including overlapping secrets."
