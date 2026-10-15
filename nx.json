@@ -13,7 +13,8 @@
       "{workspaceRoot}/uv.lock",
       "{workspaceRoot}/biome.json",
       "{workspaceRoot}/tsconfig.base.json"
-    ]
+    ],
+    "production": ["default"]
   },
   "targetDefaults": {
     "format-check": { "cache": true, "inputs": ["default"] },
@@ -24,7 +25,17 @@
     "test-e2e": { "cache": false },
     "test-integration": { "cache": false, "parallelism": false },
     "test-obico": { "cache": false },
-    "test-skill-install": { "cache": false }
+    "test-skill-install": { "cache": false },
+    "budgets": {
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/**/*",
+        "^production",
+        { "dependentTasksOutputFiles": "**/telemetry/*.json" },
+        { "externalDependencies": ["@onebudgetspec/cli"] }
+      ]
+    },
+    "budgets-host": { "cache": false }
   },
   "defaultBase": "origin/main"
 }

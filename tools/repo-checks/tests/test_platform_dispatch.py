@@ -693,6 +693,7 @@ def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_pa
             "just bootstrap",
             "just gate-tier",
             "just check ",
+            "just budgets-release-pr",
             "just runner-temp cleanup",
         ],
         describing="what ran",

@@ -33,7 +33,8 @@
       "Bash(bunx:*)",
       "Bash(llmlint:*)",
       "Bash(release-plz:*)",
-      "Bash(./scripts/setup-llmlint.sh)"
+      "Bash(./scripts/setup-llmlint.sh)",
+      "Bash(cargo-prune-superseded:*)"
     ],
     "deny": []
   },

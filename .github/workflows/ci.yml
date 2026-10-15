@@ -96,6 +96,8 @@ jobs:
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just check "$(just gate-tier)"
+      # Only the release pull request pays for the two-build maintenance workload.
+      - run: just budgets-release-pr
       - if: always()
         run: just runner-temp cleanup
 
