@@ -1424,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "base64 0.22.1",
  "jsonschema 0.34.0",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "jsonschema 0.34.0",
  "printobserver-printer-api",
@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-obico"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "jsonschema 0.34.0",
@@ -1472,7 +1472,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-octoprint"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "log",
  "printobserver-printer-api",
@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-oneharness"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "jsonschema 0.34.0",
  "oneharness",
@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-printer-api"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "jsonschema 0.34.0",
  "printobserver-types",
@@ -1508,7 +1508,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-sdk"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -1519,7 +1519,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-server"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-store-sqlite"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "printobserver-core",
@@ -1563,7 +1563,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-supervisor-api"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "printobserver-types",
  "quote",
@@ -1572,7 +1572,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-types"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1588,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "printobserver-vision-api"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "jsonschema 0.34.0",
  "printobserver-types",
