@@ -549,6 +549,7 @@ mod observing {
 /// through the same interface both command walks use.
 #[cfg(test)]
 mod regression {
+    #[cfg(not(target_os = "macos"))]
     use std::collections::BTreeSet;
     #[cfg(not(target_os = "macos"))]
     use std::net::TcpListener;

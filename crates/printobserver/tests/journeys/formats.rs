@@ -78,46 +78,52 @@ pub fn both_ways(
     answer: Answer,
     from: Option<crate::machine::Reports>,
 ) {
-    let mut differed: Vec<(Vec<String>, Vec<String>)> = Vec::new();
-    loop {
-        let machine = run(world, arguments, true, from);
-        let plain = run(world, arguments, false, from);
-        // History can grow between reads: `world.wants` may restart the print between them.
-        if operation.name == "history" {
-            let named = (
-                event_ids(&answered(&machine, true)),
-                event_ids(&labelled(&plain.out)),
-            );
-            if named.0 != named.1 {
-                differed.push(named);
-                assert!(
-                    differed.len() < HISTORY_ATTEMPTS,
-                    "{arguments:?} named different events in its two renderings on all \
-                     {HISTORY_ATTEMPTS} attempts, as (machine-readable, labelled) ids: \
-                     {differed:#?}"
-                );
-                continue;
-            }
+    over_one_snapshot(
+        |machine_readable| run(world, arguments, machine_readable, from),
+        operation,
+        answer,
+    );
+}
+
+/// Compare actual command reads, allowing the caller to advance the real
+/// supervisor between them when exercising the observation boundary.
+pub fn over_one_snapshot(
+    mut take: impl FnMut(bool) -> Ran,
+    operation: &printobserver_server::Operation,
+    answer: Answer,
+) {
+    for attempt in 0..HISTORY_ATTEMPTS {
+        let machine = take(true);
+        let plain = take(false);
+        // Validate each rendering even when background producers advanced the
+        // state: an invalid document must never be hidden by another read.
+        the_machine_output_is_a_document_the_schema_admits(&machine, operation, answer);
+        the_default_output_is_not_that_document(&plain);
+        if matches!(operation.name, "history" | "context")
+            && snapshot_ids(&answered(&machine, true)) != snapshot_ids(&labelled(&plain.out))
+            && attempt + 1 < HISTORY_ATTEMPTS
+        {
+            continue;
         }
         the_two_renderings_agree(&machine, &plain, operation, answer);
         return;
     }
 }
 
-/// How many pairs of `history` reads may be taken to find two of one window.
+/// The existing history-read bound also covers context's moving event window.
 const HISTORY_ATTEMPTS: usize = 5;
 
-/// The ids of the events an answer carries, in the order it carries them.
-fn event_ids(fields: &BTreeMap<String, String>) -> Vec<String> {
-    let mut ids: Vec<(usize, String)> = fields
+/// Event and image identities distinguish actual snapshots before comparing
+/// their complete field sets and values. No field is removed from that check.
+fn snapshot_ids(fields: &BTreeMap<String, String>) -> BTreeMap<&String, &String> {
+    fields
         .iter()
-        .filter_map(|(at, value)| {
-            let index = at.strip_prefix("events.")?.strip_suffix(".id")?;
-            Some((index.parse().ok()?, value.clone()))
+        .filter(|(at, _)| {
+            at.as_str() == "context.latest_image.id"
+                || ((at.starts_with("events.") || at.starts_with("context.recent_events."))
+                    && at.rsplit('.').next() == Some("id"))
         })
-        .collect();
-    ids.sort();
-    ids.into_iter().map(|(_, id)| id).collect()
+        .collect()
 }
 
 /// Two runs of one invocation, held to everything both renderings are held to.
@@ -235,4 +241,64 @@ fn the_two_carry_the_same_fields(machine: &Ran, plain: &Ran) {
             machine.arguments
         );
     }
+}
+
+/// A real alert/image arrives between two real CLI reads of one supervisor.
+#[test]
+fn parity_survives_an_image_and_event_arriving_between_reads() {
+    let world = World::open(crate::world::STOOD_IN);
+    let operation = printobserver_server::operation("context").expect("context operation");
+    let mut reads = 0;
+    over_one_snapshot(
+        |machine_readable| {
+            reads += 1;
+            if reads == 2 {
+                world.freshen_the_image();
+            }
+            let mut arguments = vec!["context", "--print-id"];
+            let print = world.print_id();
+            arguments.push(&print);
+            if machine_readable {
+                arguments.push("--json");
+            }
+            running::command(&world, &arguments)
+        },
+        operation,
+        Answer::Success,
+    );
+    assert!(reads > 2, "the changed snapshot was not encountered");
+}
+
+/// A moving producer cannot make the comparison pass without observing parity.
+#[test]
+fn parity_refuses_snapshots_that_keep_changing_through_the_existing_bound() {
+    let world = World::open(crate::world::STOOD_IN);
+    let operation = printobserver_server::operation("context").expect("context operation");
+    let mut reads = 0;
+    // The closure only reads commands and appends fixture events. Its World is
+    // discarded after refusal; no partially completed comparison is reused.
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        over_one_snapshot(
+            |machine_readable| {
+                reads += 1;
+                if !machine_readable {
+                    world.freshen_the_image();
+                }
+                let print = world.print_id();
+                let mut arguments = vec!["context", "--print-id", &print];
+                if machine_readable {
+                    arguments.push("--json");
+                }
+                running::command(&world, &arguments)
+            },
+            operation,
+            Answer::Success,
+        );
+    }))
+    .expect_err("continually different snapshots were accepted as parity");
+    let message = refused
+        .downcast_ref::<String>()
+        .expect("parity failure text");
+    assert!(message.contains("in its two renderings"), "{message}");
+    assert_eq!(reads, HISTORY_ATTEMPTS * 2);
 }
