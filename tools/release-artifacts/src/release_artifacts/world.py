@@ -21,6 +21,7 @@ import json
 import os
 import queue
 import secrets
+import socketserver
 import sqlite3
 import subprocess
 import sys
@@ -48,6 +49,19 @@ class QuietServer(ThreadingHTTPServer):
     — which is nothing a reader of a proof's output needs, and on a tier whose
     pass is one line per proof, it is noise the journeys refuse.
     """
+
+    def server_bind(self) -> None:
+        """Bind, and name the server by the address it bound rather than by a lookup of it.
+
+        The base names itself with `socket.getfqdn`, a reverse lookup of the
+        bound address that nothing here reads, and on a hosted macOS runner that
+        lookup waits out a resolver timeout of about 35 seconds: once per
+        world, and so once per client journey.
+        """
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
 
     def handle_error(self, request: socket | tuple[bytes, socket], client_address: object) -> None:
         """Say nothing of a peer that went away; report anything else as the base does."""
@@ -432,9 +446,20 @@ class World:
             ),
             encoding="utf-8",
         )
+        # Nothing on the path the supervisor runs with, as the program's own
+        # tier runs its supervisor. The alert below prompts a supervision turn,
+        # and over whatever harness this host happens to have installed that
+        # turn would be a real conversation with a real agent, which no client
+        # journey is about and which held every world's start for the length of
+        # one. With nothing to find it fails the way a missing harness does,
+        # recorded against the event, which is the readiness `_recorded` waits
+        # for either way.
+        no_harness = self.root / "no-harness-on-this-path"
+        no_harness.mkdir(exist_ok=True)
         self._supervisor = start(
             [str(self.program), "server", "--config", str(configuration)],
             cwd=self.root,
+            env={**os.environ, "PATH": str(no_harness)},
         )
         server = self._await_serving()
         print_id, image_id, event_id = self._open_a_print(server)

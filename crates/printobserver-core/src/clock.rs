@@ -5,6 +5,14 @@
 //! agent's minimum interval — is read through a [`Clock`], so that expiry is
 //! driven by time passing and by nothing else and a test drives it by
 //! advancing this one dependency alone.
+//!
+//! A wait that is held only in memory — the detector's resume grace — is
+//! timed on [`Clock::elapsed`] instead, which nothing steps: a host's wall
+//! clock is moved by time synchronisation, and a wait measured across one
+//! such step is cut short or drawn out by the step.
+
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use printobserver_types::Timestamp;
 
@@ -15,6 +23,18 @@ use printobserver_types::Timestamp;
 pub trait Clock: Send + Sync {
     /// The instant now.
     fn now(&self) -> Timestamp;
+
+    /// How much time has passed since an origin of this clock's own, on a
+    /// clock nothing steps: two readings differ by the time that passed
+    /// between them, whatever the wall clock did meanwhile.
+    ///
+    /// The provided reading is [`Clock::now`]'s, as time since the Unix epoch,
+    /// which a step of the wall clock moves; a clock over a host's own time
+    /// answers its monotonic clock instead, as [`SystemClock`] does.
+    fn elapsed(&self) -> Duration {
+        let micros = self.now().as_utc().timestamp_micros();
+        Duration::from_micros(u64::try_from(micros).unwrap_or_default())
+    }
 }
 
 /// The system's own clock, which is what a running supervisor is given.
@@ -24,6 +44,11 @@ pub struct SystemClock;
 impl Clock for SystemClock {
     fn now(&self) -> Timestamp {
         Timestamp::now()
+    }
+
+    fn elapsed(&self) -> Duration {
+        static ORIGIN: OnceLock<Instant> = OnceLock::new();
+        ORIGIN.get_or_init(Instant::now).elapsed()
     }
 }
 

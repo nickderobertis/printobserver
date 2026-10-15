@@ -25,6 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from closures import closure
 from repo_checks import dispatching
 from repo_checks.checks_ci import JobKind, continuous_integration, platforms, status_contexts
 from repo_checks.checks_dispatch import platform_dispatch
@@ -37,6 +38,9 @@ from repo_checks.parsing import load_workflow
 from repo_checks.platforms import supported
 from repo_checks.shell import run as shell_run
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("ci", "integration-tier", "platform-dispatch", "platforms", "unmatrixed-jobs")
 
 DISPATCH = ".github/workflows/platform-dispatch.yml"
 CI = ".github/workflows/ci.yml"
@@ -703,8 +707,11 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
     copy = tree()
     recording = Recording(tmp_path)
     recording.program(JUST, failing_on="test-integration", exit_code=9)
+    # The runner hands every step a file to append its outputs to.
+    outputs = tmp_path / "github-output"
+    outputs.touch()
 
-    code, said = _run(copy, "integration", "macos-aarch64", recording)
+    code, said = _run(copy, "integration", "macos-aarch64", recording, GITHUB_OUTPUT=str(outputs))
 
     equal(code, 9, describing="the exit of a tier that failed")
     equal(
@@ -712,6 +719,8 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
         [
             "just runner-temp",
             "just bootstrap",
+            "just release-program-key",
+            "just release-program",
             "just octoprint-up",
             "just test-integration",
             "just octoprint-down",
@@ -729,8 +738,11 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
     copy = tree()
     recording = Recording(tmp_path)
     recording.program(JUST, failing_on="octoprint-up")
+    # The runner hands every step a file to append its outputs to.
+    outputs = tmp_path / "github-output"
+    outputs.touch()
 
-    code, _ = _run(copy, "integration", "linux-x86_64", recording)
+    code, _ = _run(copy, "integration", "linux-x86_64", recording, GITHUB_OUTPUT=str(outputs))
 
     equal(code, 7, describing="the exit of a tier whose bring-up failed")
     equal(
@@ -738,6 +750,8 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
         [
             "just runner-temp",
             "just bootstrap",
+            "just release-program-key",
+            "just release-program",
             "just octoprint-up",
             "just octoprint-down",
             "just runner-temp cleanup",

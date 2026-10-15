@@ -440,6 +440,19 @@ skilltest *ARGS:
     just node-modules
     bunx nx run skilltest:skilltest --output-style=stream "$@"
 
+# Prepare the release program every client's world carries, and print where.
+#
+# Reused from `.release-program` while its key — the source, the toolchain and
+# the profile it was built from — still holds, and built and kept there when it
+# does not, so the integration tier's first world does not compile it.
+release-program:
+    uv run -q python -m release_artifacts release-program
+
+# The key that program is kept under, as the line a workflow step appends to
+# `GITHUB_OUTPUT`: the integration job caches its directory under that key.
+release-program-key:
+    @uv run -q python -m release_artifacts release-program-key
+
 # Bring up the scripted OctoPrint environment the integration tier drives.
 #
 # The virtual printer, a free port and the hold print, under `.octoprint-env`.

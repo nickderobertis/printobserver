@@ -5,10 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
+from closures import closure
 from repo_checks.checks_repo import python_typecheck_platforms
 from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("python-typecheck-platforms")
 
 SDK = "python/printobserver-sdk/project.json"
 ROOT = "python/printobserver-sdk"

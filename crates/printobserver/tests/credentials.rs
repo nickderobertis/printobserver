@@ -345,10 +345,10 @@ impl Drop for Serving {
     }
 }
 
-/// Start the server under `root`, listening where an issued configuration
-/// names, with `line` at the head of its configuration — the verifier line
+/// Start the server under `root` on a port the operating system selects,
+/// with `line` at the head of its configuration — the verifier line
 /// `credential issue` printed, a legacy `api.credential`, or nothing.
-fn serving(root: &Path, listen: &str, line: &str) -> Serving {
+fn serving(root: &Path, line: &str) -> Serving {
     let octoprint = answering_host();
     let skill = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../skills/printobserver/SKILL.md")
@@ -357,7 +357,7 @@ fn serving(root: &Path, listen: &str, line: &str) -> Serving {
     let state = root.join("state");
     let document = toml::toml! {
         state_dir = (state.display().to_string())
-        listen = listen
+        listen = "127.0.0.1:0"
         [octoprint]
         url = (format!("http://{octoprint}"))
         api_key = "a-provisioned-key"
@@ -394,13 +394,19 @@ fn serving(root: &Path, listen: &str, line: &str) -> Serving {
     }
 }
 
-/// A loopback address nothing listens on now, for the server to take.
-fn free_address() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    listener
-        .local_addr()
-        .expect("the bound address")
-        .to_string()
+/// Point an issued configuration at the address the running server announced,
+/// preserving the credential and every other field the command wrote.
+fn names_server(home: &Path, server: &Serving) {
+    let path = issued_at(home);
+    let mut document: toml::Value =
+        toml::from_str(&std::fs::read_to_string(&path).expect("the configuration reads"))
+            .expect("the configuration is a document");
+    document["client"]["server"] = toml::Value::String(server.url.clone());
+    std::fs::write(
+        path,
+        toml::to_string(&document).expect("the configuration renders"),
+    )
+    .expect("the address is writable");
 }
 
 /// Whether one run was admitted: a listing that answered.
@@ -420,17 +426,16 @@ struct Issued {
     server: Serving,
 }
 
-/// Issue the operator a credential naming a free address, and start the
-/// server there with the verifier `credential issue` printed.
+/// Issue the operator a credential, start a server with its printed verifier,
+/// and point the operator at the address the server announced.
 fn issued_and_serving(root: &Path) -> Issued {
     let home = root.join("operator-home");
     std::fs::create_dir_all(&home).expect("the operator's own home");
-    let listen = free_address();
-    let url = format!("http://{listen}");
+    let url = "http://127.0.0.1:0";
     let issued_run = run(
         &home,
         &["credential", "issue"],
-        &[("PRINTOBSERVER_SERVER", &url)],
+        &[("PRINTOBSERVER_SERVER", url)],
         b"",
     );
     assert_eq!(issued_run.status.code(), Some(0), "{}", said(&issued_run));
@@ -438,8 +443,10 @@ fn issued_and_serving(root: &Path) -> Issued {
         .as_str()
         .expect("a credential")
         .to_owned();
-    let server = serving(root, &listen, &verifier_line(&issued_run));
-    assert_eq!(server.url, url);
+    let server = serving(root, &verifier_line(&issued_run));
+    names_server(&home, &server);
+    let url = server.url.clone();
+    assert_eq!(issued(&home)["server"].as_str(), Some(url.as_str()));
     Issued {
         home,
         url,
@@ -568,16 +575,16 @@ fn a_replaced_credential_is_admitted_and_the_old_one_is_refused() {
     let root = TempDir::new().expect("a journey's own root");
     let home = root.path().join("operator-home");
     std::fs::create_dir_all(&home).expect("the operator's own home");
-    let listen = free_address();
-    let url = format!("http://{listen}");
-    let server_env = [("PRINTOBSERVER_SERVER", url.as_str())];
+    let url = "http://127.0.0.1:0";
+    let server_env = [("PRINTOBSERVER_SERVER", url)];
 
     let first = run(&home, &["credential", "issue"], &server_env, b"");
     let old = issued(&home)["credential"]
         .as_str()
         .expect("a credential")
         .to_owned();
-    let server = serving(root.path(), &listen, &verifier_line(&first));
+    let server = serving(root.path(), &verifier_line(&first));
+    names_server(&home, &server);
     assert!(admitted(&run(&home, &["prints", "--json"], &[], b"")));
     drop(server);
 
@@ -588,7 +595,9 @@ fn a_replaced_credential_is_admitted_and_the_old_one_is_refused() {
         b"",
     );
     assert_eq!(replaced.status.code(), Some(0), "{}", said(&replaced));
-    let server = serving(root.path(), &listen, &verifier_line(&replaced));
+    let server = serving(root.path(), &verifier_line(&replaced));
+    names_server(&home, &server);
+    let url = server.url.clone();
     assert!(
         admitted(&run(&home, &["prints", "--json"], &[], b"")),
         "the replaced credential was not admitted"
@@ -642,12 +651,12 @@ fn a_legacy_installation_keeps_its_operators_credential_through_every_route() {
     let root = TempDir::new().expect("a journey's own root");
     let home = root.path().join("operator-home");
     std::fs::create_dir_all(&home).expect("an empty home");
-    let listen = free_address();
-    let url = format!("http://{listen}");
+    let url = "http://127.0.0.1:0";
     let state = root.path().join("state");
-    legacy_layout(&state, LEGACY, &url);
+    legacy_layout(&state, LEGACY, url);
 
-    let server = serving(root.path(), &listen, "");
+    let server = serving(root.path(), "");
+    let url = server.url.clone();
 
     assert!(
         !state.join("api-credential").exists(),
@@ -705,15 +714,9 @@ fn a_plaintext_api_credential_is_admitted_and_warned_about_in_the_log_on_every_s
     let root = TempDir::new().expect("a journey's own root");
     let home = root.path().join("operator-home");
     std::fs::create_dir_all(&home).expect("an empty home");
-    let listen = free_address();
-    let url = format!("http://{listen}");
-
     for start in ["the first start", "the second start"] {
-        let server = serving(
-            root.path(),
-            &listen,
-            &format!("api.credential = \"{PLAINTEXT}\""),
-        );
+        let server = serving(root.path(), &format!("api.credential = \"{PLAINTEXT}\""));
+        let url = &server.url;
         let warning = server
             .log
             .lines()
@@ -1155,8 +1158,7 @@ fn an_operator_with_no_rooted_xdg_config_home_is_kept_under_home() {
     let root = TempDir::new().expect("a journey's own root");
     let home = root.path().join("home");
     std::fs::create_dir_all(&home).expect("the operator's own home");
-    let listen = free_address();
-    let url = format!("http://{listen}");
+    let url = "http://127.0.0.1:0";
     let under_home = |arguments: &[&str], xdg: Option<&str>, server: Option<&str>| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_printobserver"));
         command
@@ -1178,7 +1180,7 @@ fn an_operator_with_no_rooted_xdg_config_home_is_kept_under_home() {
         command.output().expect("the program runs")
     };
 
-    let issued_run = under_home(&["credential", "issue"], None, Some(&url));
+    let issued_run = under_home(&["credential", "issue"], None, Some(url));
 
     assert_eq!(issued_run.status.code(), Some(0), "{}", said(&issued_run));
     let kept = home
@@ -1190,7 +1192,8 @@ fn an_operator_with_no_rooted_xdg_config_home_is_kept_under_home() {
         "nothing was kept under $HOME/.config: {}",
         said(&issued_run)
     );
-    let _server = serving(root.path(), &listen, &verifier_line(&issued_run));
+    let server = serving(root.path(), &verifier_line(&issued_run));
+    names_server(&home.join(".config"), &server);
     for xdg in [None, Some("relative/config")] {
         let answered = under_home(&["prints", "--json"], xdg, None);
         assert!(

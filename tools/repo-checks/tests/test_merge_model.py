@@ -14,11 +14,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from closures import closure
 from repo_checks.checks_ci import merge_model, status_contexts
 from repo_checks.expect import absent, accepted, contains, equal, refused, refused_naming, truth
 from repo_checks.model import Repo
 from repo_checks.parsing import marker_block
 from treecopy import Tree
+
+#: The files the checks this module drives read; see `closures`.
+CLOSURE = closure("merge-model")
 
 BLOCK_START = "[//]: # (BEGIN required-checks)"
 BLOCK_END = "[//]: # (END required-checks)"

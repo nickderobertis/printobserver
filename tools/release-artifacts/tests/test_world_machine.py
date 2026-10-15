@@ -54,3 +54,32 @@ def test_a_peer_that_resets_its_connection_leaves_nothing_on_standard_error(
     captured = capfd.readouterr()
     equal(captured.err, "", describing="what the machine's server said about the resets")
     truth(captured.out == "", describing=f"nothing on standard output either: {captured.out!r}")
+
+
+def test_the_machine_answers_without_looking_its_own_address_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A machine starts and answers with no name lookup of the address it bound.
+
+    The standard server names itself by looking its address up, which on a
+    hosted macOS runner waits out a resolver timeout of about 35 seconds — once
+    per world, so every client journey's world start paid it. A lookup here
+    fails the start, so the machine coming up and answering is the proof it
+    made none.
+    """
+    looked_up: list[str] = []
+
+    def lookup(name: str = "") -> str:
+        looked_up.append(name)
+        msg = f"the machine looked its own address up: {name!r}"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(socket, "getfqdn", lookup)
+    machine = Machine()
+    try:
+        connection = _connect(machine)
+        connection.close()
+    finally:
+        machine.stop()
+
+    equal(looked_up, [], describing="the name lookups the machine made of its own address")

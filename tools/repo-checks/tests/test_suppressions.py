@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from repo_checks.checks_suppressions import scan, suppressions
 from repo_checks.expect import accepted, contains, refused
 from repo_checks.model import Repo
@@ -157,3 +158,37 @@ def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> 
     _git(allowed.root, "commit", "-q", "-m", "feat: silence a rule, with its reason")
 
     accepted(suppressions(allowed.repo, base=base))
+
+
+@pytest.mark.parametrize("suffix", ["cs", "rs"])
+def test_a_block_requires_its_entry_and_its_closer_needs_no_second_entry(
+    tree: Callable[[], Tree],
+    suffix: str,
+) -> None:
+    """Real source blocks are refused until their opening has a registry entry."""
+    copy = tree()
+    relative = f"crates/printobserver/tests/support/registered-block.{suffix}"
+    opening = "// llmlint: " + "ignore-block[tool_output_is_signal] A native consumer reason."
+    closing = "// llmlint: " + "ignore-end[tool_output_is_signal]"
+    copy.write(relative, f"{opening}\npublic void Boundary() {{}}\n{closing}\n")
+    refused(suppressions(copy.repo), "with no entry in suppressions.toml")
+    copy.write(
+        "suppressions.toml",
+        copy.read("suppressions.toml")
+        + f'\n[[suppression]]\nrule = "tool_output_is_signal"\nfile = "{relative}"\n'
+        + 'site = "public void Boundary"\nreason = "A native consumer reason."\n',
+    )
+    accepted(suppressions(copy.repo))
+
+
+def test_a_csharp_line_directive_without_an_entry_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The real helper language carries the same suppression obligations."""
+    copy = tree()
+    directive = "// llmlint: " + "ignore[tool_output_is_signal] A native consumer reason."
+    copy.write(
+        "crates/printobserver/tests/support/unregistered.cs",
+        f"{directive}\npublic void Boundary() {{}}\n",
+    )
+    refused(suppressions(copy.repo), "with no entry in suppressions.toml")

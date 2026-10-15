@@ -48,6 +48,9 @@ use crate::ledger::{FakeLedger, LedgerWrite, timeline};
 pub struct FakeClock {
     /// Whole seconds after the Unix epoch.
     seconds: Mutex<i64>,
+    /// Whole seconds that have passed since the clock started, which a step
+    /// of the wall clock does not move.
+    passed: Mutex<i64>,
 }
 
 impl FakeClock {
@@ -56,11 +59,19 @@ impl FakeClock {
     pub const fn new(seconds: i64) -> Self {
         Self {
             seconds: Mutex::new(seconds),
+            passed: Mutex::new(0),
         }
     }
 
-    /// Move the clock forward, which is the only thing that drives expiry.
+    /// Let time pass, which is the only thing that drives expiry.
     pub fn advance(&self, seconds: i64) {
+        *self.seconds.lock().expect("the clock holds") += seconds;
+        *self.passed.lock().expect("the clock holds") += seconds;
+    }
+
+    /// Step the wall clock alone, as a host's time synchronisation does, with
+    /// no time passing.
+    pub fn step_wall(&self, seconds: i64) {
         *self.seconds.lock().expect("the clock holds") += seconds;
     }
 }
@@ -69,6 +80,11 @@ impl Clock for FakeClock {
     fn now(&self) -> Timestamp {
         Timestamp::from_unix_seconds(*self.seconds.lock().expect("the clock holds"))
             .expect("a representable instant")
+    }
+
+    fn elapsed(&self) -> Duration {
+        let passed = *self.passed.lock().expect("the clock holds");
+        Duration::from_secs(u64::try_from(passed).expect("time passed forwards"))
     }
 }
 

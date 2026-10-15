@@ -25,7 +25,7 @@ import { Client } from "../src/client.ts";
 import { type JobManifest, type PrinterState, payloadOf } from "../src/contract.ts";
 import { NoReason, Refused, Rejected } from "../src/surface.ts";
 import { Recording, same } from "./live.ts";
-import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
+import { SETUP_TIMEOUT_MS, Standing, type Supervisor, printerDiagnostics } from "./world.ts";
 
 /** The reason every mutating step of this walk carries. */
 const REASON = "a printer-integration journey is asking";
@@ -109,8 +109,11 @@ async function unreasoned(world: Supervisor): Promise<void> {
 async function until(client: Client, printId: string, wanted: PrinterState[]): Promise<void> {
   const deadline = Date.now() + PATIENCE_MS;
   let last: unknown = "nothing was reported";
+  let status: unknown = null;
   while (Date.now() < deadline) {
-    const printer = (await client.status(printId)).printer ?? null;
+    const answered = await client.status(printId);
+    status = answered;
+    const printer = answered.printer ?? null;
     if (printer !== null) {
       last = printer.connection;
       if (wanted.includes(printer.connection)) {
@@ -119,6 +122,10 @@ async function until(client: Client, printId: string, wanted: PrinterState[]): P
     }
     await Bun.sleep(500);
   }
+  console.error(
+    "Printer state deadline diagnostics:",
+    printerDiagnostics(status, client.credential),
+  );
   throw new Error(
     `the machine reported ${JSON.stringify(last)} and this step needs one of ${wanted}`,
   );
@@ -133,7 +140,14 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
   });
 
   // journey step 1: status
-  expect((await client.status(world.print_id)).print.id).toBe(world.print_id);
+  const observed = await client.status(world.print_id);
+  expect(observed.print.id).toBe(world.print_id);
+  const diagnostic = printerDiagnostics(observed, world.credential);
+  const report = JSON.parse(diagnostic);
+  expect(JSON.parse(report.printobserver_last_status)).toEqual(observed);
+  expect(report.octoprint["/api/job"].status).toBe(200);
+  expect(report.octoprint["/api/printer"].status).toBe(200);
+  expect(diagnostic).not.toContain(world.credential);
 
   // journey step 2: context
   expect((await client.context(world.print_id)).context.print.id).toBe(world.print_id);

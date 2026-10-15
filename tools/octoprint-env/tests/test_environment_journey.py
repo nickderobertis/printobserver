@@ -44,7 +44,7 @@ REQUIRED_TIER_HOLD_SECONDS = 90 * 60
 # OctoPrint applies pause at a G-code command boundary. Keep each no-motion
 # dwell within the integration journey's settling window while making the
 # complete print long enough for the cold tier.
-REQUIRED_MAX_DWELL_SECONDS = 10
+REQUIRED_MAX_DWELL_SECONDS = 1
 
 CONNECTED = frozenset({"Operational", "Printing"})
 # The G-code file this repository owns, which is what the tier is given to act on.

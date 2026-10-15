@@ -9,7 +9,15 @@
 # llmlint: ignore[changed_behavior_has_e2e] Assigning the integration binary to a group with max-threads = 1 is a structural declaration settled by reading this file, which the narrowed rule excludes; no runtime proof is owed.
 [test-groups]
 octoprint = { max-threads = 1 }
+# The runaway fixture holds the host logger for its 30-second refusal deadline.
+# Serialize it with the 20-second observer watchdogs so that deliberate hold
+# cannot consume their deadlines. Observer processes inside each case still overlap.
+windows-observer-lifecycle = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter = 'binary(integration)'
 test-group = 'octoprint'
+
+[[profile.default.overrides]]
+filter = 'package(printobserver) & not binary(integration) & (test(=traced::windows_trace::incomplete_native_evidence_is_refused_then_the_logger_recovers) | test(=traced::regression::each_invocation_observes_its_descendants_and_refused_attempts_only))'
+test-group = 'windows-observer-lifecycle'

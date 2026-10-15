@@ -1650,6 +1650,12 @@ site = "one sequential read of its instance"
 reason = "Each is one read of the OctoPrint `just octoprint-up` started, made by a journey that acts on the answer before its next step — the job before an upload, the file after it, the job again — through the same blocking helpers every journey of this suite reads that instance with, which `tests/environment.py` gives the reason for. A test of a provisioning script's upload has nothing to overlap, and an async client would be a second client of an instance the product never reaches from here."
 
 [[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_world_journey.py"
+site = "The alert's turn finds no harness, even with one on the path the world runs with."
+reason = "This journey proves `release_artifacts.world`, which the client worlds and the client proofs of this same tier stand up, and it sits beside the world-readiness journey that already proves that module here, in the same release-build group, over the release program that group already builds. Its own cost once that build exists is one supervisor start and one history read, a few seconds; a project of its own would build the release program a second time to prove the same module the tier around it already depends on."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, answer = call("
@@ -2459,3 +2465,89 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "for changelog in sorted(copy.root.glob(\"crates/*/CHANGELOG.md\")):"
 reason = "The fixture writes a section into every crate's changelog because a merged release pull request touches every crate's changelog, and that touch is what the drafting tool attributes the merge commit to each crate by: it reads a crate's history off the files under the crate's directory, and with every internal requirement inherited from the root manifest the version move alone touches none of them. What the section says is not read by anything under test — the loop guard and its control turn on the merge commit's subject and body. Having the drafting tool write them would need a release-worthy history before the merge and a full semver-checked draft of all twelve crates per journey, each well over a minute, to produce text these journeys then ignore; the version half the same fixture writes is held to what the held release-plz writes by `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes`."
+
+[[suppression]]
+rule = "tests_assert_real_behavior"
+file = "crates/printobserver/tests/support/traced.rs"
+site = "fn connector()"
+reason = "The libtest registration is the actual subprocess socket fixture selected with --exact, not an independent behavioral claim. The owning regression asserts its exit status and the OS tracer's complete endpoint attribution for it and its descendants."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "if (result.EventsLost != 0"
+reason = "ControlTrace owns the returned loss counters; callers cannot set their values through a valid request. A deterministic synthetic nonzero result would replace the kernel, which this task forbids. Real controller death and truncated ETL regressions prove refusal and release of unavailable observations."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "if (state.EventsLost != 0"
+reason = "ProcessTrace owns the native loss-counter output. Fabricating a callback structure to force nonzero counters would be the forbidden kernel/tracer double. The regression corrupts the real completed ETL file and requires the actual native consumer to refuse it."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "if (alive.ContainsKey"
+reason = "Valid complete kernel events cannot overlap two live process lifetimes of one PID. This guard detects native evidence corruption, which a valid process launch cannot manufacture without substituting the tracer. The real subprocess/socket regressions cover descendants, adjacent invocations and unrelated traffic."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "if (value == null ||"
+reason = "The TDH provider supplies this sockaddr buffer with its fixed Windows schema length; a valid TCP request cannot choose malformed bytes. Replacing the native property or callback would violate the task ban on kernel/tracer doubles. Real IPv4/IPv6 sockets and a corrupted actual ETL prove accepted evidence and native refusal."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "throw new IOException(\"unknown TCP request socket family"
+reason = "The TCP request provider emits AF_INET or AF_INET6 with its defined sockaddr size. No valid socket request emits a third family or incompatible size here; a synthetic callback would be the forbidden kernel double. Both valid families are exercised against real accepted/refused sockets."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/windows_trace.rs"
+site = "let response: Value = printobserver_types::serde_json::from_str(&line)"
+reason = "The real worker always serializes with ConvertTo-Json. Valid input cannot produce malformed reply JSON without replacing its serializer, which would be the forbidden tracer double. Real worker death tests incomplete transport and a real worker with an incompatible contract tests response-version refusal."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/windows_trace.rs"
+site = "assert_eq!(fields, expected_fields, \"incomplete ETW response fields\")"
+reason = "The real worker validates every output frame against the same golden before writing it. Missing or extra fields cannot reach this second defense without replacing the tracer serializer. Real protocol mismatch and native error replies prove refusal without a double."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "// SDK declaration: https://raw.githubusercontent.com/microsoft/win32metadata/main/generation/WinSDK/RecompiledIdlHeaders/shared/wmistr.h"
+reason = "These declarations consume the external Microsoft SDK ABI, cited beside each type and signature. Exact size and field-offset checks run on x64 and ARM64 before real native calls. Generating another interop copy would duplicate this boundary rather than give the kernel ABI an in-repository source."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "if (length > 65536)"
+reason = "TDH owns this native property size; valid provider events cannot choose an oversized schema field. Forcing this guard requires the forbidden kernel/tracer double. A real corrupted closed ETL exercises native refusal instead."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/etw.cs"
+site = "if (value.Length != sizeof(uint))"
+reason = "The explicitly enabled process provider owns this DWORD property schema. A valid process cannot emit a differently sized process ID; substituting its native property would be the forbidden tracer double. Real starts, descendants and exits exercise the valid provider boundary."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/windows_trace.rs"
+site = "let identity = ready[\"controller_guid\"]"
+reason = "The real worker serializes its controller Guid using the fixed Guid string formatter and validates its response against the golden. Invalid GUID types or spellings require a tracer serializer double, forbidden here. Real controller restart verifies different valid native controller identities."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/support/windows_trace.rs"
+site = "let connected: BTreeSet<SocketAddr> = evidence[\"endpoints\"]"
+reason = "The real worker validates this array against the golden and emits only native IPEndPoint strings. Invalid element types or socket syntax require substituting the tracer serializer, forbidden here. Real IPv4/IPv6 accepted and refused sockets exercise this boundary."
+
+# --- bounded printer timeout diagnostics ----------------------------------
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "status, body = call(record_url(record), api_key(instance), endpoint, timeout=5.0)"
+reason = "This diagnostic subprocess runs once after a state deadline has already expired. It makes three ordered reads of the fixture's own loopback OctoPrint, each with a five-second transport timeout, then prints the bodies only as redacted, bounded evidence: none feeds a product model or drives an action. Reusing the fixture's authenticated HTTP helper preserves one blocking diagnostic child rather than adding another transport and event loop to an error-reporting path. The product still reaches OctoPrint through its typed asynchronous Rust adapter. Real subprocess journeys cover the actual endpoints, missing-record recovery, output bounds and complete redaction, including overlapping secrets."

@@ -607,3 +607,78 @@ async fn a_turn_credentials_forbidden_requests_are_refused_whatever_their_bodies
     world.agent.release_turns();
     world.server.stop().await;
 }
+
+/// Status and context reflect an operator's completed action even while the
+/// event's supervision turn remains open; a refused action changes neither.
+#[tokio::test(flavor = "multi_thread")]
+async fn reads_during_a_turn_reflect_the_operators_latest_action() {
+    let world = World::open().await;
+    let (print_id, pass) = held_turn(&world).await;
+    let action = action_url(&world, print_id, "set_feedrate_factor");
+    let (accepted, answer) = world
+        .post(
+            &action,
+            &claiming(
+                &json!("operator"),
+                &[("factor", json!(1.2)), ("duration_s", json!(120))],
+            ),
+        )
+        .await;
+    assert_eq!(accepted, reqwest::StatusCode::OK, "{answer}");
+    let intervention = answer["intervention"]["id"].clone();
+    assert!(intervention.is_string(), "{answer}");
+    for credential in [&world.credential, &pass.credential] {
+        for read in ["status", "context"] {
+            let (status, answer) =
+                sent(presenting(credential).get(world.url(&format!("/prints/{print_id}/{read}"))))
+                    .await;
+            assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+            let context = if read == "context" {
+                &answer["context"]
+            } else {
+                &answer
+            };
+            assert_eq!(
+                context["printer"]["feedrate_factor"]["value"],
+                json!(1.2),
+                "{answer}"
+            );
+            assert!(
+                context["interventions"]
+                    .as_array()
+                    .expect("interventions")
+                    .iter()
+                    .any(|held| held["id"] == intervention),
+                "the operator's intervention is absent during the held turn: {answer}"
+            );
+        }
+    }
+    let (refused, answer) = world
+        .post(
+            &action,
+            &claiming(&json!("operator"), &[("factor", json!(9.0))]),
+        )
+        .await;
+    assert_eq!(refused, reqwest::StatusCode::CONFLICT, "{answer}");
+    let (_, unchanged) = world
+        .get(&world.url(&format!("/prints/{print_id}/status")))
+        .await;
+    assert_eq!(
+        unchanged["printer"]["feedrate_factor"]["value"],
+        json!(1.2),
+        "{unchanged}"
+    );
+    assert_eq!(
+        unchanged["interventions"][0]["id"], intervention,
+        "{unchanged}"
+    );
+    let (_, history) = world
+        .get(&world.url(&format!("/prints/{print_id}/history")))
+        .await;
+    assert!(
+        history.to_string().contains("9.0"),
+        "the refused action is absent: {history}"
+    );
+    world.agent.release_turns();
+    world.server.stop().await;
+}

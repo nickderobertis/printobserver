@@ -10,7 +10,7 @@ from pathlib import Path
 
 from repo_checks.model import Repo
 
-from release_artifacts import tracking
+from release_artifacts import reused, tracking
 from release_artifacts.arming import ArmingError, arm
 from release_artifacts.build import BuildError, build, build_all, staged_release
 from release_artifacts.installing import InstallError, prove
@@ -45,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
             "prove",
             "publish",
             "world",
+            "release-program",
+            "release-program-key",
             "standin",
             "released",
             "answered",
@@ -186,6 +188,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"staged {staged}", file=sys.stderr)
             case "world":
                 return _world(repo, arguments)
+            case "release-program":
+                return _release_program(repo)
+            case "release-program-key":
+                print(f"{reused.KEY_FIELD}={reused.key(repo.root).value}")
             case "standin":
                 return _standin(repo, arguments)
             case "released":
@@ -549,6 +555,17 @@ def _supervisor(given: Path) -> Path:
     return given
 
 
+def _release_program(repo: Repo) -> int:
+    """Prepare the release program the worlds carry, and say in one line how and where.
+
+    `reused <path>` or `built <path>`: the path's own directory is the key it
+    is kept under, so the line names that too.
+    """
+    made = reused.prepared(repo)
+    print(f"{'reused' if made.reused else 'built'} {made.path}")
+    return 0
+
+
 def _world(repo: Repo, arguments: argparse.Namespace) -> int:
     """Bring a supervisor up, say where it is, and hold it up until stdin closes.
 
@@ -560,9 +577,12 @@ def _world(repo: Repo, arguments: argparse.Namespace) -> int:
     from release_artifacts.build import program
 
     printer = scripted_printer(repo.root) if arguments.octoprint else None
-    world = World(
-        program(repo, arguments.binary), arguments.into, printer, refusing=arguments.refusing
+    carried = (
+        program(repo, arguments.binary)
+        if arguments.binary is not None
+        else reused.prepared(repo).path
     )
+    world = World(carried, arguments.into, printer, refusing=arguments.refusing)
     try:
         running = world.start()
         print(

@@ -16,6 +16,7 @@
 
 import { expect } from "bun:test";
 import type { Client, PrinterState } from "../src/index.ts";
+import { printerDiagnostics } from "./world.ts";
 
 /** One request that went to the supervisor, and the answer it sent back. */
 export interface Exchange {
@@ -147,8 +148,11 @@ export async function ready(client: Client, printId: string, wanted: string): Pr
   }
   const deadline = Date.now() + PATIENCE_MS;
   let last: unknown = "nothing was reported";
+  let status: unknown = null;
   while (Date.now() < deadline) {
-    const printer = (await client.status(printId)).printer ?? null;
+    const answered = await client.status(printId);
+    status = answered;
+    const printer = answered.printer ?? null;
     if (printer !== null) {
       last = printer.connection;
       if ((printer.connection as PrinterState) === wanted) {
@@ -157,6 +161,10 @@ export async function ready(client: Client, printId: string, wanted: string): Pr
     }
     await Bun.sleep(500);
   }
+  console.error(
+    "Printer state deadline diagnostics:",
+    printerDiagnostics(status, client.credential),
+  );
   throw new Error(
     `the machine reported ${JSON.stringify(last)} and the next step needs \`${wanted}\``,
   );

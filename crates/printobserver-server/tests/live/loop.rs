@@ -293,11 +293,31 @@ fn prints_url(world: &Composed) -> String {
     )
 }
 
+/// Take only the elapsed job times out of a listing, retaining every other
+/// field for the whole-document comparison. A running job must report a
+/// nonnegative elapsed time on each read.
+fn elapsed_times(listing: &mut Value) -> Vec<u64> {
+    listing["prints"]
+        .as_array_mut()
+        .expect("the prints are a list")
+        .iter_mut()
+        .map(|print| {
+            print
+                .as_object_mut()
+                .expect("each print is an object")
+                .remove("job_print_time_s")
+                .expect("the running job reports its elapsed time")
+                .as_u64()
+                .expect("elapsed job time is a nonnegative integer")
+        })
+        .collect()
+}
+
 /// With no alert posted, a prints read names the job the bring-up started as
 /// active — adopting it, since nothing has reported on it — a second read opens
 /// nothing further, and the print it names can be read by that identifier.
 async fn a_listing_adopts_the_running_job_before_any_alert(world: &Composed) -> PrintId {
-    let (code, listed) = world.get(&prints_url(world)).await;
+    let (code, mut listed) = world.get(&prints_url(world)).await;
     assert_eq!(code, reqwest::StatusCode::OK, "{listed}");
     let active = listed["active"]
         .as_str()
@@ -320,11 +340,20 @@ async fn a_listing_adopts_the_running_job_before_any_alert(world: &Composed) -> 
         "the adopted print carries an identifier nothing reported: {listed}"
     );
 
-    let (code, again) = world.get(&prints_url(world)).await;
+    let (code, mut again) = world.get(&prints_url(world)).await;
     assert_eq!(code, reqwest::StatusCode::OK, "{again}");
+    let before_times = elapsed_times(&mut listed);
+    let after_times = elapsed_times(&mut again);
     assert_eq!(
         again, listed,
         "a second read while the same job runs changed the listing"
+    );
+    assert!(
+        after_times
+            .iter()
+            .zip(&before_times)
+            .all(|(after, before)| after >= before),
+        "elapsed job time decreased: {before_times:?} to {after_times:?}"
     );
 
     let print_id: PrintId = active.parse().expect("a print identifier");

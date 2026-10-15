@@ -49,7 +49,6 @@ use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{FileName, PrintId, Timestamp};
 use printobserver_vision_api::VisionPort;
 
-use crate::context::PrintContext;
 use crate::store::{StoreError, Stores};
 
 use crate::block_on::block_on;
@@ -138,8 +137,6 @@ pub struct Supervisor {
     seen_running: Mutex<BTreeSet<PrintId>>,
     /// When the agent last acted on each print.
     last_agent_action: Mutex<BTreeMap<PrintId, Timestamp>>,
-    /// The context collected for the turn currently running on each print.
-    pending_context: Mutex<BTreeMap<PrintId, PrintContext>>,
     /// What reaches each print's running turn, and which prints have one.
     inboxes: Inboxes,
     /// The prints the detector paused and nobody has resumed yet.
@@ -196,7 +193,6 @@ impl Supervisor {
             spool_writes: TurnLocks::default(),
             seen_running: Mutex::new(BTreeSet::new()),
             last_agent_action: Mutex::new(BTreeMap::new()),
-            pending_context: Mutex::new(BTreeMap::new()),
             inboxes: Inboxes::default(),
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
@@ -318,31 +314,6 @@ impl Supervisor {
             .expect("the agent's own record is not poisoned")
             .get(&print_id)
             .copied()
-    }
-
-    /// Hold the context collected for the turn now running on one print.
-    pub(crate) fn hold_context(&self, print_id: PrintId, context: PrintContext) {
-        self.pending_context
-            .lock()
-            .expect("the held context is not poisoned")
-            .insert(print_id, context);
-    }
-
-    /// Drop the context held for one print, once its turn has returned.
-    pub(crate) fn drop_context(&self, print_id: PrintId) {
-        self.pending_context
-            .lock()
-            .expect("the held context is not poisoned")
-            .remove(&print_id);
-    }
-
-    /// The context held for the turn now running on one print, if one is.
-    pub(crate) fn held_context(&self, print_id: PrintId) -> Option<PrintContext> {
-        self.pending_context
-            .lock()
-            .expect("the held context is not poisoned")
-            .get(&print_id)
-            .cloned()
     }
 
     /// Read the printer's current state.
