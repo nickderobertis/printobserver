@@ -26,7 +26,7 @@ import { Client } from "../src/client.ts";
 import type { JobManifest } from "../src/contract.ts";
 import { Rejected } from "../src/surface.ts";
 import { Recording, ready, same } from "./live.ts";
-import { SETUP_TIMEOUT_MS, Standing, type Supervisor, printerDiagnostics } from "./world.ts";
+import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
 
 /** The reason every mutating call of this walk carries. */
 const REASON = "a generated walk is asking";
@@ -537,14 +537,6 @@ test("every method is answered by a real supervisor", async () => {
     actor: "operator",
     credential: world.credential,
   });
-
-  const observed = await client.status(world.print_id);
-  const diagnostic = printerDiagnostics(observed, world.credential);
-  const report = JSON.parse(diagnostic);
-  expect(JSON.parse(report.printobserver_last_status)).toEqual(observed);
-  expect(report.octoprint["/api/job"].status).toBe(200);
-  expect(report.octoprint["/api/printer"].status).toBe(200);
-  expect(diagnostic).not.toContain(world.credential);
 
   await stepStatus(client, proxy);
   await stepContext(client, proxy);

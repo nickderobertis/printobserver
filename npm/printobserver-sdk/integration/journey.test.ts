@@ -140,7 +140,14 @@ test("the same nine steps are answered against a real OctoPrint", async () => {
   });
 
   // journey step 1: status
-  expect((await client.status(world.print_id)).print.id).toBe(world.print_id);
+  const observed = await client.status(world.print_id);
+  expect(observed.print.id).toBe(world.print_id);
+  const diagnostic = printerDiagnostics(observed, world.credential);
+  const report = JSON.parse(diagnostic);
+  expect(JSON.parse(report.printobserver_last_status)).toEqual(observed);
+  expect(report.octoprint["/api/job"].status).toBe(200);
+  expect(report.octoprint["/api/printer"].status).toBe(200);
+  expect(diagnostic).not.toContain(world.credential);
 
   // journey step 2: context
   expect((await client.context(world.print_id)).context.print.id).toBe(world.print_id);
