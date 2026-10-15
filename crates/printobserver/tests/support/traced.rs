@@ -550,9 +550,13 @@ mod observing {
 #[cfg(test)]
 mod regression {
     use std::collections::BTreeSet;
-    use std::net::{SocketAddr, TcpListener, TcpStream};
+    #[cfg(not(target_os = "macos"))]
+    use std::net::TcpListener;
+    use std::net::{SocketAddr, TcpStream};
     use std::process::Command;
+    #[cfg(not(target_os = "macos"))]
     use std::sync::Arc;
+    #[cfg(not(target_os = "macos"))]
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::traced;
@@ -565,6 +569,7 @@ mod regression {
         let Ok(address) = std::env::var("PRINTOBSERVER_TRACE_CONNECT") else {
             return;
         };
+        #[cfg(not(target_os = "macos"))]
         if std::env::var("PRINTOBSERVER_TRACE_SCOPE").as_deref() == Ok("yes") {
             scoped_observer(&address);
             return;
@@ -640,12 +645,17 @@ mod regression {
 
     /// Accepted and refused attempts belong to this invocation's lifetime and
     /// ancestry; adjacent invocations and simultaneous host traffic do not.
+    // macOS has no descendant-exit signal: its interposer cannot observe a
+    // descendant that outlives the root. Follow-up: "Observe macOS descendants
+    // that outlive their root process" (draft 20261015T025150Z).
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn each_invocation_observes_its_descendants_and_refused_attempts_only() {
         exercise();
     }
 
     /// The real observer process holds its session while a scoped worker traces.
+    #[cfg(not(target_os = "macos"))]
     fn scoped_observer(address: &str) {
         use std::io::{Read as _, Write as _};
         let scratch = tempfile::TempDir::new().expect("scoped observer scratch");
@@ -689,6 +699,7 @@ mod regression {
     }
 
     /// Observe real accepted/refused sockets while another observer stays alive.
+    #[cfg(not(target_os = "macos"))]
     fn another_live_process_can_trace(
         child: &mut std::process::Child,
         accepted: SocketAddr,
@@ -750,6 +761,7 @@ mod regression {
     /// A child reproduces the parent-held-session/scoped-worker shape. The
     /// watchdog begins only after its first real trace acquired the host logger.
     /// Killing our captured child on failure makes the old deadlock a bounded failure.
+    #[cfg(not(target_os = "macos"))]
     fn a_process_shares_its_session_with_a_scoped_worker(
         accepted: SocketAddr,
         refused: SocketAddr,
@@ -823,6 +835,7 @@ mod regression {
     }
 
     /// The real subprocess/socket workload, on the caller's named thread.
+    #[cfg(not(target_os = "macos"))]
     fn exercise() {
         let scratch = tempfile::TempDir::new().expect("trace scratch");
         let listener = TcpListener::bind("127.0.0.1:0").expect("accepted endpoint");
@@ -1031,6 +1044,10 @@ mod native_boundaries {
 
     /// Descendants connect after their root exits, with either closed or
     /// inherited output handles. Both outputs and endpoint evidence are complete.
+    // macOS has no descendant-exit signal: its interposer cannot observe a
+    // descendant that outlives the root. Follow-up: "Observe macOS descendants
+    // that outlive their root process" (draft 20261015T025150Z).
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn a_descendant_connecting_after_its_parent_exits_is_observed() {
         let reservation = TcpListener::bind("127.0.0.1:0").expect("refused port");
