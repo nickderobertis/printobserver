@@ -156,16 +156,6 @@ jobs:
       - run: just release-program
       - run: just octoprint-up
       - run: just test-integration
-      # Temporary draft diagnostics for the virtual printer's cancellation.
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-printer-${{ matrix.platform.id }}
-          path: |
-            .octoprint-env/server.log
-            .octoprint-env/instance/logs/*.log
-          if-no-files-found: error
-          include-hidden-files: true
       # Both teardowns run after failure: stop the printer environment, then
       # restore usable temp for post-job actions before removing owned scratch.
       - if: always()
