@@ -109,7 +109,7 @@ def _diagnostics_read_the_instance_without_exposing_its_keys(
 ) -> None:
     """A real diagnostic subprocess reads real HTTP, bounded files and missing state."""
     key = key_from_record(brought_up)
-    credential = "a-credential-only-the-diagnostic-child-inherits"
+    credential = key[:8]
     password = secrets.token_urlsafe(24)
     monkeypatch.setenv("PRINTOBSERVER_CREDENTIAL", credential)
     (root / "api-key").write_text(key, encoding="utf-8")
@@ -136,6 +136,10 @@ def _diagnostics_read_the_instance_without_exposing_its_keys(
         equal(len(tail), 40, describing="the bounded log tail")
         truth(all(len(line) <= 500 for line in tail), describing="bounded log lines")
         truth(all("discarded" not in line for line in tail), describing="only the tail")
+        truth(
+            all(line.startswith("[redacted] [redacted] [redacted] ") for line in tail),
+            describing="complete redaction when one credential is another key's prefix",
+        )
     for endpoint in ("/api/job", "/api/printer", "/api/connection"):
         equal(report["octoprint"][endpoint]["status"], 200, describing=endpoint)
     equal(report["printobserver_last_status"], "[redacted]", describing="redacted status")

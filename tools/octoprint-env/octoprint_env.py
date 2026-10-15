@@ -1175,10 +1175,11 @@ def summarize_install(instance: Instance) -> dict[str, Any]:
 
 def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
     """Bounded, redacted observations after a journey's state deadline expires."""
-    secrets_to_hide = [os.environ.get("PRINTOBSERVER_CREDENTIAL", "")]
+    secrets_to_hide: list[str] = [os.environ.get("PRINTOBSERVER_CREDENTIAL", "")]
     for path in (instance.api_key_file, instance.account_password_file):
         with suppress(OSError):
             secrets_to_hide.append(path.read_text(encoding="utf-8").strip())
+    secrets_to_hide.sort(key=len, reverse=True)
 
     def redacted(text: str) -> str:
         for secret in secrets_to_hide:
@@ -1209,6 +1210,7 @@ def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, 
     for endpoint in ("/api/job", "/api/printer", "/api/connection"):
         try:
             record = json.loads(instance.record.read_text(encoding="utf-8"))
+            # llmlint: ignore[async_typed_clients_at_boundaries] one blocking diagnostic child
             status, body = call(record_url(record), api_key(instance), endpoint, timeout=5.0)
             observations[endpoint] = {
                 "status": status,
