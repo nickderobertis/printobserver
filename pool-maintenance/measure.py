@@ -8,12 +8,23 @@ import stat
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 from repo_checks.shell import run
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTAINERS = frozenset({"deps", ".fingerprint", "build", "incremental"})
-type Snapshot = dict[str, tuple[int, int, int]]
+
+
+class Entry(NamedTuple):
+    """Filesystem identity relevant to detecting one build's output changes."""
+
+    mtime_ns: int
+    size: int
+    mode: int
+
+
+type Snapshot = dict[str, Entry]
 
 
 def snapshot(target: Path) -> Snapshot:
@@ -29,7 +40,7 @@ def snapshot(target: Path) -> Snapshot:
         for name in [*dirs, *files]:
             path = directory / name
             metadata = path.lstat()
-            result[path.relative_to(target).as_posix()] = (
+            result[path.relative_to(target).as_posix()] = Entry(
                 metadata.st_mtime_ns,
                 metadata.st_size,
                 metadata.st_mode,
@@ -42,10 +53,10 @@ def age_created(target: Path, before: Snapshot, after: Snapshot) -> set[str]:
     created = {name for name, value in after.items() if before.get(name) != value}
     # Older than both the retention window and every pre-existing build, so
     # an already-cached ordinary build remains newer than the alternative.
-    oldest = min([time.time_ns(), *(value[0] for value in before.values())])
+    oldest = min([time.time_ns(), *(value.mtime_ns for value in before.values())])
     aged = oldest - 3 * 24 * 60 * 60 * 1_000_000_000
     for name in sorted(created, reverse=True):
-        if not stat.S_ISLNK(after[name][2]):
+        if not stat.S_ISLNK(after[name].mode):
             os.utime(target / name, ns=(aged, aged), follow_symlinks=False)
     return created
 
