@@ -1,0 +1,19 @@
+{
+  "name": "pool-maintenance",
+  "root": "pool-maintenance",
+  "projectType": "library",
+  "tags": [
+    "type:tooling"
+  ],
+  "targets": {
+    "lint": {
+      "command": "uv run -q ruff check pool-maintenance && uv run -q shellcheck pool-maintenance/measure.sh"
+    },
+    "test": {
+      "command": "uv run -q pytest pool-maintenance/test_measure.py"
+    },
+    "budgets-host": {
+      "command": "bunx onebudgetspec check pool-maintenance/budgets.yaml --label host"
+    }
+  }
+}

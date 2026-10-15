@@ -19,6 +19,8 @@ TOOL_PACKAGES := "tools/repo-checks/src:tools/contract-codegen/src:tools/release
 export PATH_SEPARATOR := if os_family() == "windows" { ";" } else { ":" }
 export PYTHONPATH := replace(TOOL_PACKAGES, ":", PATH_SEPARATOR)
 
+PRUNE_SUPERSEDED_VERSION := "0.1.1"
+
 # Show the command surface.
 default:
     @just --list
@@ -27,6 +29,7 @@ default:
 bootstrap:
     rustup show active-toolchain
     cargo fetch --locked
+    just install-pool-maintenance
     uv sync
     just node-modules
     uv run -q python -m repo_checks install-tools
@@ -546,3 +549,26 @@ obico-down:
 test-obico:
     just node-modules
     bunx nx run-many -t test-obico --output-style=stream
+
+# Hold the released pruner at one version, without reinstalling a matching PATH tool.
+install-pool-maintenance:
+    @if [ "$(cargo-prune-superseded --version 2>/dev/null)" != "cargo-prune-superseded {{PRUNE_SUPERSEDED_VERSION}}" ]; then \
+    cargo install --locked cargo-prune-superseded --version {{PRUNE_SUPERSEDED_VERSION}}; \
+    fi
+
+# `.cargo/config.toml` resolves every workspace's build output to root `target/`.
+pool-maintenance:
+    cargo-prune-superseded --keep-within 2d target
+
+# Expensive host measurements, selected explicitly and after the release-PR gate.
+budgets:
+    just node-modules
+    bunx nx run pool-maintenance:budgets-host --output-style=stream
+
+# The release-PR path alone measures maintenance, after its gate has passed.
+budgets-release-pr:
+    @if [ "${GITHUB_EVENT_NAME:-}" = pull_request ] && \
+    [ "${PRINTOBSERVER_PLATFORM:-}" = linux-x86_64 ] && \
+    [ "$(just gate-tier)" = all ]; then \
+    just budgets; \
+    fi
