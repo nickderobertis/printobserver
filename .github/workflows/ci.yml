@@ -94,6 +94,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just runner-temp
       - run: just bootstrap
+      # MEASUREMENT-ONLY (removed before this draft settles): this line is a change
+      # to a file no project owns, so every measured run's affected tier is the
+      # full sweep and each run's gate does identical work.
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just check "$(just gate-tier)"
       - if: always()
