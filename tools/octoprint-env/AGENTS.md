@@ -46,6 +46,11 @@ the repository-wide rules; this file holds the ones only this script carries.
   mode, so the two modes still differ only in their connection keys.
   `test_running_environment.py` carries a print past line 115 and reads
   OctoPrint's log for resend requests.
+- **A heater simulation that cannot raise.** `install` repairs the pinned
+  release's `_simulateTemps`, which leaves `factor` unassigned for a heater
+  exactly `delta` short of its target, and refuses a module carrying neither
+  the defect nor the repair. Replace the module, **never edit it in place**:
+  `uv` hard-links it from its cache, which every environment on the host shares.
 - **Diagnosed, not timed out.** Every way starting can fail is one of the
   script's `FAILURE_CLASSES`, reported by name with a next action; anything
   outside that closed set is reported with the underlying error's own text. One

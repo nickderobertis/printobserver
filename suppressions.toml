@@ -417,6 +417,30 @@ site = "http.client.HTTPConnection"
 reason = "This is the tier's own observation helper, deliberately sharing no code with the script it observes, and it polls one loopback instance the tier brought up — either the journey's own `up`, or the one `just octoprint-up` left running — one observation at a time, with each answer asserted on before the next call is made. Making it async would put an event loop and an async test framework under a suite whose assertions are strictly sequential, without a single call gaining anything. The boundary this rule is about is the product's, which is the `printobserver-octoprint` crate."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_heater_simulation.py"
+site = 'status, body = api(url, "/api/printer", key)'
+reason = "A call through `environment.py`'s observation helper, whose entry above is the reason: one poll of the loopback instance this journey brought up, asserted on before the next request. The helper is the boundary; this site only reads the bed's temperature through it."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_heater_simulation.py"
+site = 'post(url, "/api/printer/bed", key'
+reason = "The one command this journey sends, through the same observation helper as the entry above and for the same reason: setting the bed target is the step every later observation waits on, so there is nothing to overlap it with."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_heater_simulation.py"
+site = "printer_state(url, key)"
+reason = "One read of the printer's state through the same observation helper as the two entries above, for the same reason."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_heater_simulation.py"
+site = "The heater simulation survives the state that took the tier's printer offline."
+reason = "The slow tier is already split by target rather than by a marker: this project's `test` target names its fast suites file by file, and only `test-integration` runs the whole `tests/` directory against real OctoPrint, beside the neighbouring journeys that start an instance the same way. Moving one journey into a new project would split one tier across two and leave the bring-up it exercises in neither alone."
+
+[[suppression]]
 rule = "clippy::too_many_lines"
 file = "crates/printobserver/tests/journeys/documented.rs"
 site = "pub fn operator_workflow("

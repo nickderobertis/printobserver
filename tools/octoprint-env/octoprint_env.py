@@ -61,6 +61,27 @@ import yaml
 OCTOPRINT_REQUIREMENT = "OctoPrint==1.11.8"
 OCTOPRINT_PYTHON = "3.11"
 
+# The pinned release's virtual printer leaves its heater simulation's `factor`
+# unassigned when a heater is exactly `delta` (0.5 °C) short of its target:
+# `_simulateTemps`'s nested `simulate` tests `remaining > delta` and then
+# `remaining < delta`, and nothing else. The thread raising `UnboundLocalError`
+# is the one answering the serial line, so the printer goes silent and OctoPrint
+# takes it offline mid-print. No release fixes it, so the install replaces the
+# second test with the `else` it means; `_repair_virtual_printer` applies this.
+VIRTUAL_PRINTER_MODULE = ("octoprint", "plugins", "virtual_printer", "virtual.py")
+HEATER_DEFECT = (
+    b"                if remaining > delta:\n"
+    b"                    factor = 10\n"
+    b"                elif remaining < delta:\n"
+    b"                    factor = remaining\n"
+)
+HEATER_REPAIR = (
+    b"                if remaining > delta:\n"
+    b"                    factor = 10\n"
+    b"                else:\n"
+    b"                    factor = remaining\n"
+)
+
 # The account the provisioned API key belongs to. OctoPrint's global API key is
 # deprecated and stops working in 1.13, so the key is a user key.
 ACCOUNT = "printobserver"
@@ -400,6 +421,7 @@ def install(instance: Instance) -> None:
     # so in a second, rather than after an install that will not be used.
     read_config(instance)
     _install_octoprint(instance)
+    _repair_virtual_printer(instance)
     _provision_api_key(instance)
     # Written last, because creating the account writes a configuration of its
     # own that this one is composed over.
@@ -434,6 +456,45 @@ def _install_octoprint(instance: Instance) -> None:
     if installed.returncode != 0:
         message = f"could not install {OCTOPRINT_REQUIREMENT}:\n{installed.stdout}"
         raise RuntimeError(message)
+
+
+def _repair_virtual_printer(instance: Instance) -> None:
+    """Replace the virtual printer's heater simulation with one that cannot raise.
+
+    The repaired module is written beside the installed one and renamed over
+    it, never edited in place: `uv` installs by hard link from its own cache, so
+    an edit in place would rewrite the cached copy every other environment on
+    the host is installed from.
+
+    Raises:
+        RuntimeError: If the module is not where the pinned release keeps it,
+            or carries neither the defect nor its repair.
+    """
+    found = [
+        path
+        for path in instance.venv.glob("**/site-packages/" + "/".join(VIRTUAL_PRINTER_MODULE))
+        if path.is_file()
+    ]
+    if len(found) != 1:
+        message = (
+            f"expected one {'/'.join(VIRTUAL_PRINTER_MODULE)} under {instance.venv}; "
+            f"found {len(found)}"
+        )
+        raise RuntimeError(message)
+    module = found[0]
+    source = module.read_bytes()
+    if HEATER_REPAIR in source:
+        return
+    if source.count(HEATER_DEFECT) != 1:
+        message = (
+            f"{module} carries neither the heater defect {OCTOPRINT_REQUIREMENT} ships "
+            f"nor its repair; re-read `_simulateTemps` before changing the pin"
+        )
+        raise RuntimeError(message)
+    repaired = module.with_name(module.name + ".repaired")
+    repaired.write_bytes(source.replace(HEATER_DEFECT, HEATER_REPAIR))
+    repaired.replace(module)
+    note(f"repaired the virtual printer's heater simulation in {module}")
 
 
 def managed_config(connection: Connection) -> dict[str, Any]:
