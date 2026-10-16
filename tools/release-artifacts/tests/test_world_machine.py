@@ -56,6 +56,61 @@ def test_a_peer_that_resets_its_connection_leaves_nothing_on_standard_error(
     truth(captured.out == "", describing=f"nothing on standard output either: {captured.out!r}")
 
 
+def test_a_peer_gone_before_its_answers_are_written_leaves_nothing_on_standard_error(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A peer that leaves before its answers are written is nothing the machine reports.
+
+    On macOS a peer's reset reaches the handler mid-answer as a broken pipe on
+    write rather than as `ConnectionResetError`. Here the peer asks a run of
+    questions and closes without reading one answer: the first answer written
+    draws a reset from it, and a write after that reset fails with
+    `BrokenPipeError` — the same error, from the same write, on Linux. On
+    Windows that write fails with `ConnectionAbortedError` instead.
+    """
+    machine = Machine()
+    try:
+        host, _, port = machine.url.rpartition("://")[2].partition(":")
+        for _ in range(3):
+            with socket.create_connection((host, int(port)), timeout=10) as connection:
+                connection.sendall(b"GET /api/version HTTP/1.1\r\nHost: machine\r\n\r\n" * 64)
+        # The handler threads write into the closed connections; give them the
+        # moment that takes before the server is stopped underneath them.
+        time.sleep(0.5)
+    finally:
+        machine.stop()
+
+    captured = capfd.readouterr()
+    equal(captured.err, "", describing="what the machine's server said about the broken pipes")
+    truth(captured.out == "", describing=f"nothing on standard output either: {captured.out!r}")
+
+
+def test_a_request_the_machine_fails_on_still_reaches_standard_error(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """Only a peer going away is kept quiet: any other failure is still reported."""
+    machine = Machine()
+    try:
+        host, _, port = machine.url.rpartition("://")[2].partition(":")
+        with socket.create_connection((host, int(port)), timeout=10) as connection:
+            connection.sendall(
+                b"POST /api/job HTTP/1.1\r\nHost: machine\r\nContent-Length: many\r\n\r\n"
+            )
+            # The handler fails on the length and closes without answering.
+            equal(
+                connection.recv(65536), b"", describing="the machine's answer to a malformed post"
+            )
+    finally:
+        machine.stop()
+
+    captured = capfd.readouterr()
+    contains(
+        captured.err,
+        "ValueError",
+        describing="what the machine's server said about the malformed post",
+    )
+
+
 def test_the_machine_answers_without_looking_its_own_address_up(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
