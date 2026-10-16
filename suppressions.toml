@@ -2575,3 +2575,9 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_prove_service_journey.py"
 site = '(shims / "uname").write_text('
 reason = "`uname -s` is how both the committed installer and `prove-service` decide they are on a launchd host, so the stand-in machine answers `Darwin` there and nothing else: every other `uname` call reaches the real one. It is the same shim `test_service_manager_journey.py` uses beside the same launchctl stand-in."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '@pytest.fixture(scope="module")'
+reason = "The build is the debug `printobserver` every `DEBUG_BUILD` journey of this project shares — `test_service_manager_journey.py`'s fixture is the same command — and `repo-e2e`'s `test-e2e` target already depends on `printobserver:build`, so on the merge path this `cargo build` finds the program built and compiles nothing. The journey lives here, rather than behind the release tooling's own edge, because the launchd stand-in it is driven against is this project's (`launchctl_standin.py`), and `repo-e2e` already depends on both projects it exercises, `printobserver` and `release-artifacts`."

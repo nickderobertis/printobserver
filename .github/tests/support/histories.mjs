@@ -48,15 +48,28 @@ export function baseFiles() {
   ];
 }
 
-/** The environment a child process gets: this one, minus anything naming a repository. */
+/**
+ * The environment a child process gets: this one, minus anything naming a
+ * repository, and minus what the forge or a budget check hands the process
+ * running these tests — a gate on a pull request runs them under
+ * `GITHUB_EVENT_NAME=pull_request`, which a test of the classifier with the
+ * variable unset would otherwise inherit. `extra` is set on top.
+ *
+ * @param {Record<string, string>} [extra]
+ * @returns {Record<string, string | undefined>}
+ */
 export function cleanEnvironment(extra = {}) {
-  const environment = { ...process.env, ...extra };
+  const environment = { ...process.env };
   for (const name of Object.keys(environment)) {
-    if (/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|COMMON_DIR|PREFIX)$/.test(name)) {
+    if (
+      /^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|COMMON_DIR|PREFIX)$/.test(name) ||
+      /^GITHUB_(EVENT_NAME|EVENT_PATH|OUTPUT|STEP_SUMMARY|HEAD_REF|BASE_REF)$/.test(name) ||
+      name.startsWith("ONEBUDGETSPEC_")
+    ) {
       delete environment[name];
     }
   }
-  return environment;
+  return { ...environment, ...extra };
 }
 
 /**

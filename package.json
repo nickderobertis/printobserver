@@ -2,7 +2,7 @@
   "name": "printobserver-repo",
   "private": true,
   "packageManager": "bun@1.3.14",
-  "workspaces": ["npm/*"],
+  "workspaces": ["npm/*", ".github"],
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",
     "@onebudgetspec/cli": "0.1.3",

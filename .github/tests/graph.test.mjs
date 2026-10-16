@@ -162,6 +162,24 @@ describe("the carriers", () => {
     }
   });
 
+  test("each judges the lane its own context names, through the committed recipe", () => {
+    for (const lane of ["gate", "integration"]) {
+      const job = Object.values(ci.jobs).find((one) => one.name === `${lane} (macos-aarch64)`);
+      assert.deepEqual(
+        commands(job),
+        [`just macos-carry ${lane}`],
+        `${lane} (macos-aarch64)'s command`,
+      );
+      const step = job.steps.find((one) => one.run === `just macos-carry ${lane}`);
+      assert.equal(step.env.NEEDS, expression("toJSON(needs)"));
+    }
+    const justfile = readFileSync(join(ROOT, "justfile"), "utf8");
+    assert.match(
+      justfile,
+      /\nmacos-carry LANE:\n {4}@node \.github\/macos-policy\.mjs carry --lane \{\{quote\(LANE\)\}\}\n/,
+    );
+  });
+
   test("carry the lane each names to the step of the macOS job publishing its outcome", () => {
     const outputs = ci.jobs.macos.outputs;
     assert.equal(outputs.gate, expression("steps.gate.outcome"));

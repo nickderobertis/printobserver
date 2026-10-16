@@ -338,6 +338,11 @@ def label_of(words: list[str]) -> str:
     return Path(words[-1]).name.removesuffix(".plist")
 
 
+#: What `launchctl bootout` exits with for a label launchd has not loaded —
+#: `ESRCH`, "No such process" — which after a load that never happened is the
+#: answer that nothing was left loaded.
+NOT_LOADED = 3
+
 #: What `uname -s` answers on a launchd host, which is how the installer itself
 #: decides it is writing launchd's property list rather than systemd's unit.
 DARWIN = "Darwin"
@@ -387,6 +392,7 @@ def prove_service(
         [*installer, *beneath], cwd=repo.root, describing="the committed service installer"
     )
     said = [f"{label}: installed by scripts/install-service.sh"]
+    failed: InstallError | None = None
     try:
         installing.ran([*sudo, *words[1:]], cwd=repo.root, describing=f"`{shlex.join(words)}`")
         installing.ran(
@@ -395,13 +401,22 @@ def prove_service(
             describing=f"`launchctl print system/{label}`",
         )
         said.append(f"loaded by `{shlex.join(words)}` and printed by launchd")
-    finally:
-        unloaded = run([*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root)
-    if unloaded.returncode != 0:
-        msg = (
+    except InstallError as refused:
+        failed = refused
+    # Unloaded whatever happened above, and its own answer kept: a failure to
+    # unload is reported beside the failure that came first, never instead of it.
+    unloaded = run([*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root)
+    left = unloaded.returncode not in {0, NOT_LOADED}
+    if left:
+        stuck = (
             f"`launchctl bootout system/{label}` failed ({unloaded.returncode}), so the service "
-            f"this proof loaded is still loaded:\n{unloaded.stdout}{unloaded.stderr}"
+            f"this proof loaded may still be loaded:\n{unloaded.stdout}{unloaded.stderr}"
         )
-        raise InstallError(msg)
+        if failed is not None:
+            msg = f"{failed}\nand then {stuck}"
+            raise InstallError(msg) from failed
+        raise InstallError(stuck)
+    if failed is not None:
+        raise failed
     said.append("unloaded")
     return said

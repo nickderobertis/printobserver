@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { isObject } from "./util.mjs";
+import { isMacosLabel, isObject } from "./util.mjs";
 
 /** Where the record is written, under `.github/`. */
 export const TELEMETRY = join(".telemetry", "macos-policy.json");
@@ -40,7 +40,8 @@ export function digestFiles(root) {
     ...under("crates", /^[^/]+\/Cargo\.toml$/),
     ".github/macos-policy.mjs",
     ".github/package.json",
-    ".github/bun.lock",
+    "package.json",
+    "bun.lock",
     "release-plz.toml",
     "AGENTS.md",
     "justfile",
@@ -102,6 +103,10 @@ export function invalid(record) {
       );
       if (jobs.length !== run.jobs.length) {
         return `${where} (${scenario.id}) has a job of ${run.workflow} that is not a job row`;
+      }
+      const mislabelled = jobs.find((job) => job.macos !== job.runner.some(isMacosLabel));
+      if (mislabelled) {
+        return `${where} (${scenario.id}) marks ${mislabelled.display} on ${mislabelled.runner.join("+")} as ${mislabelled.macos ? "" : "not "}macOS`;
       }
       if (jobs.filter((job) => job.macos).length !== run.macos_jobs) {
         return `${where} (${scenario.id}) counts ${run.macos_jobs} macOS job(s) in ${run.workflow} and lists another number`;
@@ -171,8 +176,14 @@ export function jobsPerRun(record) {
 }
 
 /**
- * How many distinct runs over one change's automatic lifecycle request a
- * macOS runner; manual diagnostics are outside the lifecycle.
+ * How many distinct runs over the automatic lifecycle of one change that
+ * receives one push request a macOS runner: the pull request that push opens,
+ * its merge, release automation's pull request and its merge, the release it
+ * cuts, tags and publishes, the downstream proofs and the weekly schedules —
+ * the scenarios marked with a lifecycle step. A further push to the same pull
+ * request (`synchronize`) or a reopen is that pull request's run again, a
+ * second push rather than this change's, and is recorded as a scenario of its
+ * own with no lifecycle step. Manual diagnostics are outside the lifecycle.
  *
  * @param {{scenarios: ScenarioRow[]}} record
  * @returns {{value: number, detail: string}}
@@ -195,6 +206,6 @@ export function runsPerChange(record) {
   const steps = [...new Set(lifecycle.map((scenario) => scenario.lifecycle_step))].sort();
   return {
     value: spending.length,
-    detail: `lifecycle steps: ${steps.join(" -> ")}. Runs requesting macOS: ${spending.join("; ") || "none"}`,
+    detail: `one-push lifecycle steps: ${steps.join(" -> ")}. Runs requesting macOS: ${spending.join("; ") || "none"}`,
   };
 }

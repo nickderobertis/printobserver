@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { data, Evaluator, Lexer, Parser } from "@actions/expressions";
 import { truthy } from "@actions/expressions/result";
 import { parse as parseYaml } from "yaml";
-import { isObject } from "./util.mjs";
+import { isMacosLabel, isObject } from "./util.mjs";
 
 /** A part of the graph this cannot resolve, named rather than counted as nothing. */
 export class Unresolved extends Error {
@@ -27,11 +27,6 @@ export class Unresolved extends Error {
     super(message);
     this.name = "Unresolved";
   }
-}
-
-/** A runner label that is a macOS runner. */
-export function isMacosLabel(label) {
-  return /^macos(-|$)/i.test(label) || /(^|-)macos(-|$)/i.test(label);
 }
 
 /**

@@ -33,7 +33,6 @@
       "Bash(bunx:*)",
       "Bash(node .github/macos-policy.mjs:*)",
       "Bash(node --test)",
-      "Bash(node .github/node_modules/@onebudgetspec/cli/bin/onebudgetspec.js check .github/budgets.yaml)",
       "Bash(llmlint:*)",
       "Bash(release-plz:*)",
       "Bash(./scripts/setup-llmlint.sh)",

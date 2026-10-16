@@ -14,17 +14,17 @@
       "command": "bunx biome lint .github"
     },
     "typecheck": {
-      "command": "bun install --frozen-lockfile --cwd .github && bunx tsc -p .github/tsconfig.json"
+      "command": "bunx tsc -p .github/tsconfig.json"
     },
     "test": {
-      "command": "bun install --frozen-lockfile && node --test",
+      "command": "node --test",
       "options": {
         "cwd": ".github"
       },
       "outputs": ["{projectRoot}/.telemetry"]
     },
     "budgets": {
-      "command": "node .github/node_modules/@onebudgetspec/cli/bin/onebudgetspec.js check .github/budgets.yaml",
+      "command": "bunx onebudgetspec check .github/budgets.yaml",
       "dependsOn": ["test"],
       "cache": false
     }

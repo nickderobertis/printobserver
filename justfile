@@ -600,7 +600,7 @@ pool-maintenance:
 # the pull request is diffed between. The classification itself goes to
 # standard error, for the log.
 macos-classify EVENT BASE HEAD:
-    @bun install --frozen-lockfile --cwd .github >&2
+    @bun install --frozen-lockfile >&2
     @node .github/macos-policy.mjs classify --event {{quote(EVENT)}} --base {{quote(BASE)}} --head {{quote(HEAD)}} | node .github/macos-policy.mjs outputs -
 
 # One required macOS context's verdict, carried on Linux from `NEEDS`, the

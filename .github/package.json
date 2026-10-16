@@ -7,6 +7,6 @@
     "@actions/expressions": "0.3.61",
     "@onebudgetspec/sdk": "0.1.5",
     "smol-toml": "1.6.1",
-    "yaml": "2.9.1"
+    "yaml": "2.9.0"
   }
 }
