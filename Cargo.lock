@@ -1468,6 +1468,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]
