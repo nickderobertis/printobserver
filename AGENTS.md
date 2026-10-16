@@ -1034,10 +1034,11 @@ reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
 `just gate-shards <n>` hands it; and `gate-<platform>` reports the required
 context, failing unless every shard in its `needs` succeeded. Three things
 must stay true and `just check-repo`'s `sharded-jobs` holds the workflow to
-them: the shards together run every tier `just check` runs, none twice and no
-test twice, at the tier `just gate-tier` answers; `test` and `coverage` share a
-shard, because the floors are read off that run; and the aggregator runs `if:
-always()` and nothing but `just shard-verdict` over the workflow's own `needs`.
+them: the shards together run every tier `just check` runs, no Nx task twice
+and no test twice, at the tier `just gate-tier` answers; `coverage` runs beside
+the `test` run it reads, each side of the split judged at its own ecosystem's
+floor; and the aggregator runs `if: always()` and nothing but `just
+shard-verdict` over the workflow's own `needs`.
 `repo_checks.gate_jobs` is the one reading of how long a sharded or unsharded
 context is waited on.
 

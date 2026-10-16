@@ -119,15 +119,19 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 1
-            shards: 3
+            shards: 4
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 2
-            shards: 3
+            shards: 4
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 3
-            shards: 3
+            shards: 4
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 4
+            shards: 4
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -146,9 +150,10 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
-      # instrumented test builds, the others the debug program the end-to-end
-      # tier runs and, in the third, the lints and the build tier — and one key
-      # shared by all would hold whichever shard saved first.
+      # Rust crates' instrumented test builds, the second the lints, the debug
+      # program the Python suites run and the build tier, the last two the
+      # debug program the end-to-end tier runs — and one key shared by all
+      # would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
@@ -199,15 +204,19 @@ jobs:
           - id: windows-x86_64
             runner: windows-2025
             shard: 1
-            shards: 3
+            shards: 4
           - id: windows-x86_64
             runner: windows-2025
             shard: 2
-            shards: 3
+            shards: 4
           - id: windows-x86_64
             runner: windows-2025
             shard: 3
-            shards: 3
+            shards: 4
+          - id: windows-x86_64
+            runner: windows-2025
+            shard: 4
+            shards: 4
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -226,9 +235,10 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
-      # instrumented test builds, the others the debug program the end-to-end
-      # tier runs and, in the third, the lints and the build tier — and one key
-      # shared by all would hold whichever shard saved first.
+      # Rust crates' instrumented test builds, the second the lints, the debug
+      # program the Python suites run and the build tier, the last two the
+      # debug program the end-to-end tier runs — and one key shared by all
+      # would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}

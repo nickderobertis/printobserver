@@ -24,10 +24,14 @@ from collections.abc import Callable
 
 import pytest
 from closures import closure
+from repo_checks.checks_graph import projects
 from repo_checks.checks_shards import sharded_jobs
+from repo_checks.commands import measured_for, measured_sources
 from repo_checks.expect import accepted, contains, equal, failing, passing, refused
 from repo_checks.gate_shards import END_TO_END_PART_VARIABLE, END_TO_END_SECOND_PART, plan
 from repo_checks.gate_shards import main as gate_shards_main
+from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, command
+from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -38,10 +42,12 @@ CLOSURE = closure("sharded-jobs")
 CI = ".github/workflows/ci.yml"
 #: The committed sharded platform.
 SHARDED = "windows-aarch64"
-#: The split that keeps the end-to-end tier whole, a shard of its own.
-WHOLE_END_TO_END = 2
+#: The committed split.
+SHARDS = 4
 #: One `just <recipe> ['<tier>']` invocation, as `just --dry-run` prints one.
 INVOCATION = re.compile(r"just (?P<recipe>[a-z][a-z0-9-]*)(?: '(?P<tier>[a-z]+)')?")
+RUST = f"{PROJECTS_VARIABLE}=lang:rust"
+OTHERS = f"{PROJECTS_VARIABLE}=!lang:rust"
 
 
 def dry_run_check(tier: str) -> set[tuple[str, ...]]:
@@ -67,17 +73,17 @@ def invoked(command: str) -> tuple[str, ...]:
     return tuple(words[words.index("just") + 1 :])
 
 
-@pytest.mark.parametrize("count", [2, 3])
 @pytest.mark.parametrize("tier", ["affected", "all"])
 def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
-    capsys: pytest.CaptureFixture[str], tier: str, count: int
+    capsys: pytest.CaptureFixture[str], tier: str
 ) -> None:
-    """Every invocation `just check` makes is made by one shard, at the same tier, once.
+    """Every invocation `just check` makes is made by the shards, each part of it once.
 
-    Split three ways, the end-to-end tier is the last two shards' and each runs
-    one of its two parts, which together are the tier's whole collection.
+    The `test` tier and its `coverage` run on each side of `lang:rust`, side by
+    side in the first two shards, and the end-to-end tier's two parts are the
+    last two shards'.
     """
-    shards = [shard_commands(capsys, tier, f"{index}/{count}") for index in range(1, count + 1)]
+    shards = [shard_commands(capsys, tier, f"{index}/{SHARDS}") for index in range(1, SHARDS + 1)]
     selected = [command for shard in shards for command in shard]
 
     equal(
@@ -90,29 +96,19 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
         dry_run_check(tier),
         describing="the shards' union against `check`",
     )
+    measured = {"test", "coverage", "test-e2e"}
     equal(
-        [[one for one in shard if "test-e2e" in one] for shard in shards],
-        [[], [f"just test-e2e {tier}"]]
-        if count == WHOLE_END_TO_END
-        else [
-            [],
+        [[one for one in shard if invoked(one)[0] in measured] for shard in shards],
+        [
+            [f"{RUST} just test {tier}", f"{RUST} just coverage {tier}"],
+            [f"{OTHERS} just test {tier}", f"{OTHERS} just coverage {tier}"],
             *([f"{END_TO_END_PART_VARIABLE}={part}/2 just test-e2e {tier}"] for part in (1, 2)),
         ],
-        describing="the end-to-end tier each shard runs",
-    )
-    equal(
-        [one for one in selected if invoked(one)[0] in {"test", "coverage"}],
-        [f"just test {tier}", f"just coverage {tier}"],
-        describing="the tier coverage reads and coverage itself, in order",
-    )
-    equal(
-        [i for i, shard in enumerate(shards) for one in shard if invoked(one)[0] == "coverage"],
-        [i for i, shard in enumerate(shards) for one in shard if invoked(one)[0] == "test"],
-        describing="the shard running coverage against the one running test",
+        describing="the parts of the tests and their coverage each shard runs",
     )
 
 
-@pytest.mark.parametrize("count", [1, 2, 3])
+@pytest.mark.parametrize("count", [1, SHARDS])
 def test_the_printed_split_is_the_plan_each_shard_runs(count: int) -> None:
     """`just gate-shards` prints one shard a line; together they are the tiers `check` runs."""
     shown = run(["just", "gate-shards", str(count)], cwd=REPO_ROOT, timeout=120)
@@ -122,13 +118,13 @@ def test_the_printed_split_is_the_plan_each_shard_runs(count: int) -> None:
     equal(printed, [[str(step) for step in shard] for shard in plan(Repo(REPO_ROOT), count)])
     equal(len(printed), count, describing="the shards printed")
     equal(
-        {word.partition("[")[0] for line in printed for word in line},
+        {re.split(r"[\[{]", word)[0] for line in printed for word in line},
         {invocation[0] for invocation in dry_run_check("all")},
         describing=f"the {count}-shard plan against `check`",
     )
 
 
-@pytest.mark.parametrize("asked", ["4", "0"])
+@pytest.mark.parametrize("asked", ["3", "0"])
 def test_a_split_no_plan_makes_is_refused(asked: str) -> None:
     """A count no plan splits the gate into is refused rather than guessed at."""
     shown = run(["just", "gate-shards", asked], cwd=REPO_ROOT, timeout=120)
@@ -136,7 +132,7 @@ def test_a_split_no_plan_makes_is_refused(asked: str) -> None:
     failing(shown, naming=f"no plan splits the gate into {asked} shards")
 
 
-@pytest.mark.parametrize("shard", ["3/2", "0/2", "1", "one/two"])
+@pytest.mark.parametrize("shard", ["5/4", "0/4", "1", "one/two"])
 def test_a_shard_that_is_not_k_of_n_is_refused(shard: str) -> None:
     """A shard outside its count, or not `k/n` at all, is refused before anything runs."""
     shown = run(["just", "check-shard", "all", shard], cwd=REPO_ROOT, timeout=120)
@@ -144,12 +140,104 @@ def test_a_shard_that_is_not_k_of_n_is_refused(shard: str) -> None:
     failing(shown, naming=f"shard {shard!r} is not `k/n`")
 
 
+def nx_tasks(narrowed: str) -> set[str]:
+    """The Nx tasks the gate's real `test` tier invocation selects, as Nx plans them.
+
+    The invocation is `gate_tier`'s own, for the full sweep and narrowed to
+    `narrowed` where one is named; Nx is asked for its task graph instead of
+    running it.
+    """
+    environment = {PROJECTS_VARIABLE: narrowed} if narrowed else {}
+    argv, _ = command(Repo(REPO_ROOT), "all", ["test"], environment)
+    shown = run(
+        [*argv, "--graph=stdout"],
+        cwd=REPO_ROOT,
+        env={**os.environ, "NX_DAEMON": "false", "NX_NO_CLOUD": "true"},
+        timeout=600,
+    )
+    passing(shown, describing=f"Nx's plan of `{' '.join(argv)}`")
+    return set(json.loads(shown.stdout)["tasks"]["tasks"])
+
+
+def test_the_two_sides_of_the_test_tier_are_its_nx_tasks_none_twice() -> None:
+    """Nx plans the Rust side and the other side as two halves of the unsharded tier's tasks.
+
+    The task each side's tests depend on is planned on that side: the schema
+    generation beside the Rust crates, the debug build beside the Python suites
+    that run it.
+    """
+    whole = nx_tasks("")
+    rust, others = nx_tasks("lang:rust"), nx_tasks("!lang:rust")
+
+    equal(rust & others, set(), describing="tasks both sides run")
+    equal(rust | others, whole, describing="the two sides against the unsharded tier")
+    contains(rust, "printobserver-types:schemas")
+    contains(others, "printobserver:build")
+    equal(
+        {task for task in whole if task.endswith(":test")},
+        {
+            f"{project.name}:test"
+            for project in projects(Repo(REPO_ROOT))
+            if "test" in project.targets
+        },
+        describing="the unsharded tier against every project with a `test` target",
+    )
+
+
+@pytest.mark.parametrize("named", ["rust", "lang:", "!!lang:rust", "lang:rust,lang:python"])
+def test_a_side_that_names_no_tag_is_refused_before_nx_runs(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], named: str
+) -> None:
+    """A variable no tag can be read from narrows nothing, so the tier's run is refused.
+
+    Through the runner every graph tier's recipe calls, and in-process, so
+    nothing a tier recipe clears first touches the checkout's coverage data.
+    """
+    monkeypatch.setenv(PROJECTS_VARIABLE, named)
+
+    exited = gate_tier_main(["--root", str(REPO_ROOT), "run", "all", "test"])
+
+    equal(exited, REFUSED, describing="the runner's exit")
+    contains(capsys.readouterr().err, f"{PROJECTS_VARIABLE}={named!r} is not a project tag")
+
+
+@pytest.mark.parametrize(
+    ("narrowed", "rust", "python"),
+    [("lang:rust", True, False), ("!lang:rust", False, True), ("", None, None)],
+)
+def test_each_side_s_coverage_is_over_its_own_ecosystem_alone(
+    monkeypatch: pytest.MonkeyPatch, narrowed: str, rust: bool | None, python: bool | None
+) -> None:
+    """Narrowed, the report holds one ecosystem's whole figure and leaves the other unruled.
+
+    Unnarrowed, the full sweep's report is over every project, as before.
+    """
+    if narrowed:
+        monkeypatch.setenv(PROJECTS_VARIABLE, narrowed)
+    else:
+        monkeypatch.delenv(PROJECTS_VARIABLE, raising=False)
+    repo = Repo(REPO_ROOT)
+    every = projects(repo)
+
+    scope = measured_for(repo, "all")
+
+    if rust is None:
+        equal((scope.rust, scope.python), (None, None), describing="the full sweep's scope")
+        return
+    crates = tuple(project.root for project in every if "lang:rust" in project.tags)
+    sources = measured_sources(repo, every)
+    equal(scope.rust, crates if rust else (), describing="the Rust crates the report covers")
+    equal(scope.python, sources if python else (), describing="the Python sources it covers")
+    contains(scope.reason, f"only {narrowed}'s side")
+
+
 def recording_justfile(repo: Repo, failing_recipe: str = "") -> str:
     """A justfile whose gate tiers write what they were handed to `reached`.
 
     Each tier keeps the parameters the committed recipe declares, so the
     selector hands each the tier exactly as it would the real one, and each
-    writes the end-to-end part it was handed, where it was handed one.
+    writes the end-to-end part and the side of the projects it was handed,
+    where it was handed one.
     """
     from repo_checks.parsing import recipes
 
@@ -159,52 +247,39 @@ def recording_justfile(repo: Repo, failing_recipe: str = "") -> str:
         parameters = declared[tier].parameters
         lines.append(" ".join([tier, *parameters]) + ":")
         handed = " ".join([tier, *(f"{{{{{one}}}}}" for one in parameters)])
-        lines.append(f"    echo '{handed}' ${{{END_TO_END_PART_VARIABLE}:-}} >> reached")
+        parts = f"${{{END_TO_END_PART_VARIABLE}:-}}${{{PROJECTS_VARIABLE}:-}}"
+        lines.append(f"    echo '{handed}' {parts} >> reached")
         if tier == failing_recipe:
             lines.append("    exit 3")
         lines.append("")
     return "\n".join(lines)
 
 
-ALL_BUT_END_TO_END = [
-    "format-check all",
-    "lint all",
-    "typecheck all",
-    "test all",
-    "coverage all",
-    "build all",
-    "lint-workflows",
-    "check-repo",
-]
-
-
-@pytest.mark.parametrize(
-    ("count", "reached"),
-    [
-        (2, [*ALL_BUT_END_TO_END, "test-e2e all"]),
-        (
-            3,
-            [
-                "test all",
-                "coverage all",
-                "test-e2e all 1/2",
-                *(one for one in ALL_BUT_END_TO_END if one.split()[0] not in {"test", "coverage"}),
-                "test-e2e all 2/2",
-            ],
-        ),
-    ],
-)
-def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(
-    tree: Callable[[], Tree], count: int, reached: list[str]
-) -> None:
+def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(tree: Callable[[], Tree]) -> None:
     """Shard by shard, each runs its tiers in `gate.tiers` order, handed the tier and part."""
     copy = tree()
     copy.write("justfile", recording_justfile(copy.repo))
 
-    for index in range(1, count + 1):
-        equal(gate_shards_main(["--root", str(copy.root), "run", "all", f"{index}/{count}"]), 0)
+    for index in range(1, SHARDS + 1):
+        equal(gate_shards_main(["--root", str(copy.root), "run", "all", f"{index}/{SHARDS}"]), 0)
 
-    equal([line.strip() for line in copy.read("reached").splitlines()], reached)
+    equal(
+        [line.strip() for line in copy.read("reached").splitlines()],
+        [
+            "test all lang:rust",
+            "coverage all lang:rust",
+            "format-check all",
+            "lint all",
+            "typecheck all",
+            "test all !lang:rust",
+            "coverage all !lang:rust",
+            "build all",
+            "lint-workflows",
+            "check-repo",
+            "test-e2e all 1/2",
+            "test-e2e all 2/2",
+        ],
+    )
 
 
 def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[], Tree]) -> None:
@@ -212,7 +287,7 @@ def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[]
     copy = tree()
     copy.write("justfile", recording_justfile(copy.repo, failing_recipe="typecheck"))
 
-    exited = gate_shards_main(["--root", str(copy.root), "run", "affected", "1/2"])
+    exited = gate_shards_main(["--root", str(copy.root), "run", "affected", f"2/{SHARDS}"])
 
     equal(exited, 3, describing="the shard's exit")
     equal(
@@ -385,16 +460,16 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
     ("old", "new", "naming"),
     [
         (
-            "            shard: 3\n            shards: 3\n",
-            "            shard: 4\n            shards: 3\n",
+            "            shard: 4\n            shards: 4\n",
+            "            shard: 5\n            shards: 4\n",
             "runs every shard 1 to its count",
         ),
         (
-            "            shard: 3\n            shards: 3\n",
-            "            shard: 3\n            shards: 4\n",
+            "            shard: 4\n            shards: 4\n",
+            "            shard: 4\n            shards: 5\n",
             "runs every shard 1 to its count",
         ),
-        ("            shards: 3\n", "            shards: 1\n", "runs every shard 1 to its count"),
+        ("            shards: 4\n", "            shards: 1\n", "runs every shard 1 to its count"),
         (
             "            runner: windows-11-arm\n            shard: 2",
             "            runner: windows-2025\n            shard: 2",
@@ -407,7 +482,7 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
         ),
         (
             "          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}\n",
-            "          GATE_SHARD: 1/3\n",
+            "          GATE_SHARD: 1/4\n",
             "so its cells do not each run the shard their own matrix values name",
         ),
         (
@@ -418,8 +493,8 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
             "is a shard job with no `platform` matrix cells",
         ),
         (
-            "            shard: 1\n            shards: 3\n",
-            "            shard: 1\n            shards: [3]\n",
+            "            shard: 1\n            shards: 4\n",
+            "            shard: 1\n            shards: [4]\n",
             "whose value is not something a status context can be named after",
         ),
     ],

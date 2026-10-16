@@ -108,7 +108,7 @@ E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 # One shard (`k/n`) of the gate at a tier, for a platform whose gate is split
 # across runners: `repo_checks.gate_shards` hands each of the tiers `check`
 # invokes to exactly one shard, so the shards together run the whole gate and
-# nothing twice. `just gate-shards 3` prints the three-way split.
+# nothing twice. `just gate-shards 4` prints the four-way split.
 check-shard tier shard:
     uv run -q python -m repo_checks.gate_shards run {{quote(tier)}} {{quote(shard)}}
 

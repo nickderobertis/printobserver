@@ -9,17 +9,18 @@ halves of that split, so the workflow carries no selection of its own:
   line. The tiers are `repo-policy.toml`'s `gate.tiers` — exactly the ones
   `just check` invokes — and a plan hands each of them to exactly one shard, in
   the order `gate.tiers` declares, so the shards together run what the
-  unsharded gate runs and nothing twice. The end-to-end tier, the one longest
-  on its own, is apart from the rest. In two shards it is the second. In three
-  its test files run in two parts, `test-e2e[1/2]` and `test-e2e[2/2]`, the
-  part a run collects named in `PRINTOBSERVER_E2E_PART`: the first shard runs
-  the `test` and `coverage` tiers, which share a shard because the coverage
-  floors are read off what that `test` run measured; the second runs the
-  first part; and the third runs every other tier and then the second part,
-  whose build of the program the `build` tier has already made. The partition
-  is `END_TO_END_SECOND_PART`: a fixed set of the tier's test files, every
-  other file in the first part, so each test is collected by exactly one part.
-  That tier measures no coverage, so its split moves no coverage figure.
+  unsharded gate runs and nothing twice. Split four ways, the `test` tier
+  and its `coverage` run on each side of the `lang:rust` tag (`{lang:rust}`
+  and `{!lang:rust}`), which share no Nx task, so the Rust crates' tests and
+  every other project's run on two runners and each side's coverage is judged
+  at its own ecosystem's floor over exactly the code its tests measured; every
+  other tier but the end-to-end one runs beside the non-Rust side; and the
+  end-to-end tier's test files run in two parts, `test-e2e[1/2]` and
+  `test-e2e[2/2]`, the part a run collects named in `PRINTOBSERVER_E2E_PART`.
+  The partition is `END_TO_END_SECOND_PART`: a fixed set of the tier's test
+  files, every other file in the first part, so each test is collected by
+  exactly one part. That tier measures no coverage, so its split moves no
+  coverage figure.
 * `commands TIER SHARD` prints the recipe invocations shard `SHARD` (`k/n`) of
   the gate at `TIER` runs, one a line, and runs none of them.
 * `run TIER SHARD` runs shard `SHARD` (`k/n`) of the gate at `TIER`: each of its
@@ -46,7 +47,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from repo_checks.gate_tier import TIERS, TierError, tier_named
+from repo_checks.gate_tier import PROJECTS_VARIABLE, TIERS, ProjectFilter, TierError, tier_named
 from repo_checks.model import Repo
 from repo_checks.parsing import recipes
 from repo_checks.shell import run
@@ -65,15 +66,11 @@ END_TO_END = "test-e2e"
 END_TO_END_PART_VARIABLE = "PRINTOBSERVER_E2E_PART"
 #: The end-to-end tier's test files its second part collects when it is split in
 #: two; the first collects every other file, so a file nobody placed is run.
-#: Chosen so that the shard running this part, which runs every tier but
-#: `test` and `coverage` first, ends near the shard running the first part, and
-#: so that each of `tests/journey.py`'s xdist groups stays within one part: a
-#: group's journeys
-#: share a build of the repository root that a second runner would pay for
-#: again, and the two groups building the repository root's own program — the
-#: release build this part keeps and the debug build the first keeps — are in
-#: different parts, so neither part's host runs both builds beside its other
-#: journeys. The first part also keeps the `release-plz-drafting` group.
+#: Chosen to even out the two parts' time on a cold Windows runner. The
+#: `repo-root-release-build` group stays within this part, since its journeys
+#: share a release build of the repository root that the other part's runner
+#: would pay for again; the debug build is each part's anyway, because the
+#: tier's own target depends on it, so that group's files sit in both.
 END_TO_END_SECOND_PART = frozenset(
     {
         # repo-root-release-build
@@ -82,6 +79,9 @@ END_TO_END_SECOND_PART = frozenset(
         "test_registry_proof_journey.py",
         "test_shipped_artifacts_journey.py",
         "test_world_journey.py",
+        # repo-root-debug-build, whose other files are the first part's
+        "test_windows_lint_journey.py",
+        "test_windows_service_installer_journey.py",
         # no group
         "test_bootstrap_journey.py",
         "test_cargo_build_contract_journey.py",
@@ -94,8 +94,12 @@ END_TO_END_SECOND_PART = frozenset(
 )
 #: How many parts the end-to-end tier's test files split into where they split.
 END_TO_END_PARTS = 2
-#: The tiers that share a shard because `coverage` reads what `test` measured.
+#: The tiers that share a shard because `coverage` reads what `test` measured,
+#: and that a four-way split runs on each side of `SPLIT_ON`: the Rust crates on
+#: one runner, every other project on another, each side's coverage judged at
+#: its own ecosystem's floor over the code that side's tests measured.
 MEASURED = ("test", "coverage")
+SPLIT_ON = ProjectFilter("lang:rust", negated=False)
 #: The parameter a tier recipe takes its tier through.
 TIER_PARAMETER = "tier"
 #: The kinds of required job a verdict is reached for.
@@ -134,16 +138,32 @@ class Shard:
 
 @dataclass(frozen=True, slots=True)
 class Step:
-    """One gate tier a shard runs, or one part of it."""
+    """One gate tier a shard runs, or one part of it.
+
+    A part is either one of the end-to-end tier's two halves of test files, or
+    one side of a project tag (`gate_tier.ProjectFilter`) for a tier run over
+    only that side's projects.
+    """
 
     tier: str
     part: Shard | None = None
+    projects: ProjectFilter | None = None
 
     def __str__(self) -> str:
-        """The tier, with the part it is where it is one."""
-        return (
-            self.tier if self.part is None else f"{self.tier}[{self.part.index}/{self.part.count}]"
-        )
+        """The tier, with the part or the side it is where it is one."""
+        part = "" if self.part is None else f"[{self.part.index}/{self.part.count}]"
+        side = "" if self.projects is None else f"{{{self.projects}}}"
+        return f"{self.tier}{part}{side}"
+
+    @property
+    def environment(self) -> dict[str, str]:
+        """What its recipe is handed beyond the caller's environment to run only this part."""
+        handed: dict[str, str] = {}
+        if self.part is not None:
+            handed[END_TO_END_PART_VARIABLE] = f"{self.part.index}/{self.part.count}"
+        if self.projects is not None:
+            handed[PROJECTS_VARIABLE] = str(self.projects)
+        return handed
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,15 +191,17 @@ def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
         ShardError: If no plan splits the gate into `count` shards.
     """
     tiers = gate_tiers(repo)
-    rest = tuple(Step(tier) for tier in tiers if tier != END_TO_END)
-    first, second = (Step(END_TO_END, Shard(part, END_TO_END_PARTS)) for part in (1, 2))
+    rust, others = SPLIT_ON, ProjectFilter(SPLIT_ON.tag, negated=True)
     plans = {
         1: (tuple(Step(tier) for tier in tiers),),
-        2: (rest, (Step(END_TO_END),)),
-        3: (
-            tuple(step for step in rest if step.tier in MEASURED),
-            (first,),
-            (*(step for step in rest if step.tier not in MEASURED), second),
+        4: (
+            tuple(Step(tier, projects=rust) for tier in tiers if tier in MEASURED),
+            tuple(
+                Step(tier, projects=others if tier in MEASURED else None)
+                for tier in tiers
+                if tier != END_TO_END
+            ),
+            *((Step(END_TO_END, Shard(part, END_TO_END_PARTS)),) for part in (1, 2)),
         ),
     }
     if count not in plans:
@@ -221,12 +243,7 @@ def commands(repo: Repo, tier: str, shard: Shard) -> list[Invocation]:
             msg = f"the gate tier `{step.tier}` names no recipe of the justfile"
             raise ShardError(msg)
         handed = (tier,) if TIER_PARAMETER in declared.parameters else ()
-        environment = (
-            {}
-            if step.part is None
-            else {END_TO_END_PART_VARIABLE: f"{step.part.index}/{step.part.count}"}
-        )
-        invocations.append(Invocation(("just", step.tier, *handed), environment))
+        invocations.append(Invocation(("just", step.tier, *handed), step.environment))
     return invocations
 
 

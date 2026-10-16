@@ -18,6 +18,15 @@ name nor a commit SHA, or that names no commit, is refused rather than guessed
 around: it came from outside, and a base nobody meant is a narrower run nobody
 asked for.
 
+A run may also be narrowed to one side of a project tag, named in
+`PRINTOBSERVER_GATE_PROJECTS` as `<tag>` (the projects carrying it) or `!<tag>`
+(the projects carrying none of it): every project the other side holds is
+excluded from the Nx invocation, so the two sides of one tag together run
+exactly what the unnarrowed run does, none of it twice. A sharded gate runs
+its `test` tier and that tier's coverage that way, the Rust projects on one
+runner and every other project on another; `repo_checks.gate_shards` says
+which.
+
 Two verbs:
 
 * `run TIER TARGET...` runs the targets over the tier's projects, saying first
@@ -36,7 +45,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -71,6 +80,10 @@ REF_NAME = re.compile(r"^(?![-./])(?!.*\.\.)(?!.*//)(?!.*/$)(?!.*\.lock$)[A-Za-z
 #: and `- _ :`, starting with a letter, so nothing option-shaped reaches Nx.
 TARGET_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_:-]*$")
 
+#: The variable narrowing a run to one side of a project tag, and what it may hold.
+PROJECTS_VARIABLE = "PRINTOBSERVER_GATE_PROJECTS"
+TAG_FILTER = re.compile(r"^(?P<negated>!)?(?P<tag>[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*)$")
+
 #: The exit a refused tier or base answers with, apart from the exit of an Nx
 #: run, which is passed back as it is.
 REFUSED = 2
@@ -99,12 +112,96 @@ class Scope:
     #: Why the run reaches what it reaches, as a reader is told it.
     reason: str
 
-    def nx(self, *targets: str) -> list[str]:
-        """The `nx` invocation running `targets` over this scope."""
+    def nx(self, *targets: str, exclude: Sequence[str] = ()) -> list[str]:
+        """The `nx` invocation running `targets` over this scope, leaving `exclude` out."""
+        left_out = [f"--exclude={','.join(exclude)}"] if exclude else []
         if self.base is None:
-            return ["bunx", "nx", "run-many", "-t", *targets]
+            return ["bunx", "nx", "run-many", "-t", *targets, *left_out]
         head = [f"--head={self.head}"] if self.head is not None else []
-        return ["bunx", "nx", "affected", f"--base={self.base}", *head, "-t", *targets]
+        return [
+            "bunx",
+            "nx",
+            "affected",
+            f"--base={self.base}",
+            *head,
+            "-t",
+            *targets,
+            *left_out,
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectFilter:
+    """One side of a project tag: the projects carrying it, or those carrying none of it."""
+
+    tag: str
+    negated: bool
+
+    @classmethod
+    def named(cls, named: str) -> ProjectFilter:
+        """The side a caller named, as `<tag>` or `!<tag>`.
+
+        Raises:
+            TierError: If it is neither, so no project could be told apart by it.
+        """
+        found = TAG_FILTER.match(named)
+        if found is None:
+            msg = (
+                f"{PROJECTS_VARIABLE}={named!r} is not a project tag such as `lang:rust`, "
+                f"or one with `!` in front for the projects carrying none of it"
+            )
+            raise TierError(msg)
+        return cls(found["tag"], found["negated"] is not None)
+
+    def admits(self, tags: Iterable[str]) -> bool:
+        """Whether a project carrying `tags` is on this side."""
+        return (self.tag in tags) != self.negated
+
+    def __str__(self) -> str:
+        """As a caller names it."""
+        return f"{'!' if self.negated else ''}{self.tag}"
+
+
+def project_filter(environ: Mapping[str, str] | None = None) -> ProjectFilter | None:
+    """The side of a tag `PRINTOBSERVER_GATE_PROJECTS` narrows a run to, or none.
+
+    Raises:
+        TierError: If it names no tag `ProjectFilter.named` reads.
+    """
+    named = (os.environ if environ is None else environ).get(PROJECTS_VARIABLE, "")
+    return ProjectFilter.named(named) if named else None
+
+
+def excluded(repo: Repo, narrowed: ProjectFilter | None) -> list[str]:
+    """Every project the other side of `narrowed` holds, by name, in name order.
+
+    Raises:
+        TierError: If a project file is not one the graph reader reads.
+    """
+    if narrowed is None:
+        return []
+    from repo_checks import checks_graph
+
+    try:
+        declared = checks_graph.projects(repo)
+    except checks_graph.ProjectFileError as malformed:
+        raise TierError(str(malformed)) from malformed
+    return sorted(project.name for project in declared if not narrowed.admits(project.tags))
+
+
+def command(
+    repo: Repo, tier: str, targets: Sequence[str], environ: Mapping[str, str] | None = None
+) -> tuple[list[str], str]:
+    """The `nx` invocation one run of `targets` at `tier` makes, and why it reaches what it does.
+
+    Raises:
+        TierError: As `resolve`, `target_names` and `project_filter` do.
+    """
+    named = target_names(targets)
+    scope = resolve(repo, tier, environ)
+    narrowed = project_filter(environ)
+    reason = scope.reason if narrowed is None else f"{scope.reason}, only {narrowed}'s side"
+    return scope.nx(*named, exclude=excluded(repo, narrowed)), reason
 
 
 def _git(repo: Repo, *arguments: str) -> str | None:
@@ -358,15 +455,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if parsed.tier is None or not parsed.targets:
             parser.error("run needs a tier and at least one target")
-        targets = target_names(parsed.targets)
-        scope = resolve(repo, parsed.tier)
+        invocation, reason = command(repo, parsed.tier, parsed.targets)
     except TierError as error:
         print(f"gate-tier: refused: {error}", file=sys.stderr)
         return REFUSED
-    command = scope.nx(*targets)
-    print(f"gate-tier: {parsed.tier}: {scope.reason}", file=sys.stderr)
-    print(f"gate-tier: {' '.join(command)}", file=sys.stderr)
-    return run([*command, "--output-style=stream"], cwd=repo.root, capture=False).returncode
+    print(f"gate-tier: {parsed.tier}: {reason}", file=sys.stderr)
+    print(f"gate-tier: {' '.join(invocation)}", file=sys.stderr)
+    return run([*invocation, "--output-style=stream"], cwd=repo.root, capture=False).returncode
 
 
 if __name__ == "__main__":
