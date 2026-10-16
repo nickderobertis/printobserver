@@ -557,14 +557,20 @@ function runnerOf(job, contexts, where) {
   } else {
     throw new Unresolved(`${where} declares no \`runs-on\` this graph can read`);
   }
-  const resolved = labels.map((label) =>
-    String(template(String(label), contexts, `${where}.runs-on`)),
-  );
-  if (resolved.some((label) => label === "" || label.includes("${{"))) {
-    throw new Unresolved(
-      `${where}'s \`runs-on\` resolved to ${JSON.stringify(resolved)}, which names no runner`,
-    );
-  }
+  const resolved = labels.map((label) => {
+    if (typeof label !== "string") {
+      throw new Unresolved(
+        `${where}'s \`runs-on\` carries ${JSON.stringify(label)}, which is no label`,
+      );
+    }
+    const value = template(label, contexts, `${where}.runs-on`);
+    if (typeof value !== "string" || value === "" || value.includes("${{")) {
+      throw new Unresolved(
+        `${where}'s \`runs-on\` label \`${label}\` resolved to ${JSON.stringify(value)}, which names no runner`,
+      );
+    }
+    return value;
+  });
   return resolved;
 }
 

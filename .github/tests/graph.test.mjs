@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { before, describe, test } from "node:test";
 import { condition, loadWorkflows, plan, Unresolved } from "../lib/graph.mjs";
 import { isObject } from "../lib/util.mjs";
-import { classified, fixture, history, outputsOf, ROOT } from "./support/histories.mjs";
+import { classified, fixture, history, outputsOf, policy, ROOT } from "./support/histories.mjs";
 import { dispatchRunner, pullRequestPayload, runsFor, WORKFLOWS } from "./support/lifecycle.mjs";
 
 const workflows = loadWorkflows(WORKFLOWS);
@@ -525,4 +525,91 @@ describe("what the graph cannot resolve is an error, never zero", () => {
     );
     assert.ok(isObject(run.jobs[0].cell));
   });
+});
+
+describe("the macOS job's own steps, walked as the forge runs them", () => {
+  const job = workflows.get("ci.yml").jobs.macos;
+
+  /**
+   * Each step in order, run or skipped by its own `if:` over what the steps
+   * before it ended as; the steps named in `failing` fail when they run.
+   *
+   * @param {string[]} failing
+   * @returns {{outcomes: Record<string, string>, result: string, ran: string[]}}
+   */
+  function walk(failing) {
+    /** @type {Record<string, string>} */
+    const outcomes = {};
+    const ran = [];
+    let failed = false;
+    for (const [index, step] of job.steps.entries()) {
+      const id = step.id ?? `step ${index}`;
+      const steps = Object.fromEntries(
+        Object.entries(outcomes).map(([name, outcome]) => [
+          name,
+          { outcome, conclusion: outcome, outputs: {} },
+        ]),
+      );
+      const contexts = {
+        github: { event_name: "pull_request" },
+        inputs: null,
+        needs: {},
+        vars: {},
+        steps,
+      };
+      const runs = condition(step.if, contexts, [failed ? "failure" : "success"], `macos: ${id}`);
+      const outcome = !runs ? "skipped" : failing.includes(id) ? "failure" : "success";
+      failed ||= outcome === "failure";
+      outcomes[id] = outcome;
+      if (runs) {
+        ran.push(step.run ?? step.uses);
+      }
+    }
+    return { outcomes, result: failed ? "failure" : "success", ran };
+  }
+
+  /** What the two carriers say of one walk, through the committed command line. */
+  function carried(walked) {
+    const needs = {
+      classify: {
+        result: "success",
+        outputs: { "macos-required": "true", reason: "an ordinary pull request" },
+      },
+      macos: {
+        result: walked.result,
+        outputs: { gate: walked.outcomes.gate, integration: walked.outcomes.integration },
+      },
+    };
+    return Object.fromEntries(
+      ["gate", "integration"].map((lane) => [
+        lane,
+        policy(["carry", "--lane", lane], { env: { NEEDS: JSON.stringify(needs) } }).status === 0
+          ? "pass"
+          : "fail",
+      ]),
+    );
+  }
+
+  for (const [failing, gate, integration] of /** @type {[string[], string, string][]} */ ([
+    [[], "pass", "pass"],
+    [["gate"], "fail", "pass"],
+    [["bootstrap"], "fail", "fail"],
+    [["octoprint-up"], "pass", "fail"],
+    [["integration"], "pass", "fail"],
+  ])) {
+    const verb = (verdict) => (verdict === "pass" ? "passes" : "fails");
+    test(`with ${failing.join(", ") || "nothing"} failing, the gate context ${verb(gate)} and integration ${verb(integration)}`, () => {
+      const walked = walk(failing);
+      assert.deepEqual(carried(walked), { gate, integration });
+      // The bring-down and the temp cleanup run whatever failed before them.
+      assert.ok(walked.ran.includes("just octoprint-down"));
+      assert.ok(walked.ran.includes("just runner-temp cleanup"));
+      if (failing.includes("gate")) {
+        assert.ok(
+          walked.ran.includes("just test-integration"),
+          "the integration lane runs after a failed gate",
+        );
+      }
+    });
+  }
 });

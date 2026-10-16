@@ -326,6 +326,31 @@ def test_a_checksum_file_not_vouching_for_the_archive_is_refused(
     contains(capsys.readouterr().err, f"does not vouch for {asset}", describing="the refusal")
 
 
+@pytest.mark.parametrize(
+    ("written", "naming"),
+    [
+        ("not a checksum line\n", "line 1 is not a digest and a file name"),
+        (f"{'0' * 64}  a.tar.gz\n{'1' * 64}  a.tar.gz\n", "vouches for a.tar.gz more than once"),
+    ],
+)
+def test_a_checksum_file_that_is_not_sha256sums_is_refused(
+    finished: Path,
+    supervisor: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    written: str,
+    naming: str,
+) -> None:
+    """The file the install script verifies by is read as `sha256sum` writes it, or refused."""
+    dist = Path(shutil.copytree(finished, tmp_path / "dist"))
+    (dist / CHECKSUMS).write_text(written, encoding="utf-8")
+    capsys.readouterr()
+
+    equal(_prove(dist, tmp_path / "proof", supervisor), 1, describing="prove-built's exit")
+
+    contains(capsys.readouterr().err, naming, describing="the refusal")
+
+
 def test_every_install_platform_owes_its_own_named_artifacts() -> None:
     """The contract names each platform's route files apart and its clients alike.
 

@@ -251,7 +251,7 @@ describe("no automatic run but a pull request's requests macOS", () => {
 });
 
 describe("the command line", () => {
-  test("outputs prints the three step outputs and logs the classification", () => {
+  test("outputs prints the two step outputs the workflow reads and logs the classification", () => {
     const ran = policy(["outputs", "-"], {
       input: JSON.stringify({ isReleaseOnly: true, macosRequired: false, reason: "two\nlines" }),
     });

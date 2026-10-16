@@ -34,6 +34,7 @@ owes is held at the contract — `expected` names every platform's files, and
 from __future__ import annotations
 
 import hashlib
+import re
 import shlex
 import shutil
 import struct
@@ -257,8 +258,7 @@ def contract(repo: Repo, dist: Path, binary: Path) -> list[str]:
             f"[{owed_os}], [{owed_cpu}], {version} and {platform.id}"
         )
         raise InstallError(msg)
-    sums = (dist / CHECKSUMS).read_text(encoding="utf-8").split()
-    vouched = dict(zip(sums[1::2], sums[0::2], strict=True))
+    vouched = _checksums(dist / CHECKSUMS)
     if vouched.get(archive.name) != packages.digest_of(archive):
         msg = f"{CHECKSUMS} does not vouch for {archive.name} as it was built"
         raise InstallError(msg)
@@ -267,6 +267,30 @@ def contract(repo: Repo, dist: Path, binary: Path) -> list[str]:
         f"{platform.id} at {version}, and {CHECKSUMS} vouches for {archive.name}"
     )
     return said
+
+
+#: One line of the checksum file, as `sha256sum` writes it: a digest, two
+#: spaces, a file name.
+CHECKSUM_LINE = re.compile(r"^(?P<digest>[0-9a-f]{64})  (?P<name>\S+)$")
+
+
+def _checksums(path: Path) -> dict[str, str]:
+    """Each file the checksum file vouches for, and the digest it states.
+
+    Raises:
+        InstallError: If a line is not `sha256sum`'s, or one file is vouched for twice.
+    """
+    vouched: dict[str, str] = {}
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        found = CHECKSUM_LINE.match(line)
+        if found is None:
+            msg = f"{path.name} line {number} is not a digest and a file name: {line!r}"
+            raise InstallError(msg)
+        if found["name"] in vouched:
+            msg = f"{path.name} vouches for {found['name']} more than once"
+            raise InstallError(msg)
+        vouched[found["name"]] = found["digest"]
+    return vouched
 
 
 def _taken(repo: Repo, target: str, paths: tuple[Path, ...], into: Path) -> installing.Installed:
