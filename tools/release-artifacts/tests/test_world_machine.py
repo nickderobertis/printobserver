@@ -65,7 +65,8 @@ def test_a_peer_gone_before_its_answers_are_written_leaves_nothing_on_standard_e
     write rather than as `ConnectionResetError`. Here the peer asks a run of
     questions and closes without reading one answer: the first answer written
     draws a reset from it, and a write after that reset fails with
-    `BrokenPipeError` — the same error, from the same write, on this host.
+    `BrokenPipeError` — the same error, from the same write, on Linux. On
+    Windows that write fails with `ConnectionAbortedError` instead.
     """
     machine = Machine()
     try:

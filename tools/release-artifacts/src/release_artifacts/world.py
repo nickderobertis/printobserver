@@ -44,11 +44,12 @@ class QuietServer(ThreadingHTTPServer):
 
     The supervisor keeps its connections to the stand-in machine open, and
     stopping it closes them from its end. On Windows that reaches the handler
-    thread as `ConnectionResetError` rather than as the end of the stream — and
-    on macOS, met by a write, as `BrokenPipeError` — and the default
-    `handle_error` prints a traceback to standard error for each
-    — which is nothing a reader of a proof's output needs, and on a tier whose
-    pass is one line per proof, it is noise the journeys refuse.
+    thread as `ConnectionResetError` rather than as the end of the stream; met
+    by a write instead, it is `BrokenPipeError` on Linux and macOS and
+    `ConnectionAbortedError` on Windows. The default `handle_error` prints a
+    traceback to standard error for each — which is nothing a reader of a
+    proof's output needs, and on a tier whose pass is one line per proof, it is
+    noise the journeys refuse.
     """
 
     def server_bind(self) -> None:
@@ -66,7 +67,9 @@ class QuietServer(ThreadingHTTPServer):
 
     def handle_error(self, request: socket | tuple[bytes, socket], client_address: object) -> None:
         """Say nothing of a peer that went away; report anything else as the base does."""
-        if isinstance(sys.exc_info()[1], ConnectionResetError | BrokenPipeError):
+        if isinstance(
+            sys.exc_info()[1], ConnectionResetError | BrokenPipeError | ConnectionAbortedError
+        ):
             return
         super().handle_error(request, client_address)
 
