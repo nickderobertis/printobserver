@@ -71,7 +71,8 @@ export function dispatchRunner(job, platform) {
   if (ran.status !== 0) {
     throw new Error(`just dispatch-resolve ${job} ${platform} exited ${ran.status}: ${ran.stderr}`);
   }
-  const line = ran.stdout.split("\n").find((one) => one.startsWith("runner="));
+  // A Windows `just` ends its lines with CRLF.
+  const line = ran.stdout.split(/\r?\n/).find((one) => one.startsWith("runner="));
   if (!line) {
     throw new Error(`just dispatch-resolve ${job} ${platform} answered no runner: ${ran.stdout}`);
   }

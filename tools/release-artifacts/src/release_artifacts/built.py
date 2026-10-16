@@ -202,16 +202,8 @@ def contract(repo: Repo, dist: Path, binary: Path) -> list[str]:
     """
     platform = platforms.host(repo)
     version = targets.workspace(repo.root)["version"]
-    names = expected(repo, platform, baseline_of(platform, binary))
-    missing = [
-        f"{target}: {name}"
-        for target, owed in names.items()
-        for name in owed
-        if not (dist / name).is_file()
-    ]
-    if missing:
-        msg = f"{dist} lacks what {platform.id} publishes: {', '.join(missing)}"
-        raise InstallError(msg)
+    # The program's own header first: what the cell owes is named from the
+    # floor the program states, which only a program of this platform has.
     built = binary.read_bytes()
     digest = hashlib.sha256(built).hexdigest()
     executable = processor_of(built)
@@ -220,6 +212,21 @@ def contract(repo: Repo, dist: Path, binary: Path) -> list[str]:
             f"{binary} is a {executable.family} {executable.processor} program, and this "
             f"cell publishes {platform.id}'s artifacts"
         )
+        raise InstallError(msg)
+    try:
+        baseline = baseline_of(platform, binary)
+    except platforms.PlatformError as unstated:
+        msg = f"{binary} states no floor a {platform.id} wheel can be tagged with: {unstated}"
+        raise InstallError(msg) from unstated
+    names = expected(repo, platform, baseline)
+    missing = [
+        f"{target}: {name}"
+        for target, owed in names.items()
+        for name in owed
+        if not (dist / name).is_file()
+    ]
+    if missing:
+        msg = f"{dist} lacks what {platform.id} publishes: {', '.join(missing)}"
         raise InstallError(msg)
     said = [
         f"{platform.id}: program {digest[:16]} is a {executable.family} "

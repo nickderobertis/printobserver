@@ -401,7 +401,7 @@ export function outputsOf(classification) {
   return Object.fromEntries(
     ran.stdout
       .trim()
-      .split("\n")
+      .split(/\r?\n/)
       .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
   );
 }
