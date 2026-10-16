@@ -219,9 +219,14 @@ mod trusted {
     #[tokio::test]
     #[ignore = "run in a child process by the journey above, with its own trust store"]
     async fn the_child_fetches_a_snapshot_over_tls() {
-        assert!(
-            std::env::var_os(TRUST_FILE).is_some(),
-            "{TRUST_FILE} names the trust store a child is handed"
+        // Named exactly rather than merely set: the parent's own client probes
+        // for a system bundle and sets this variable in its environment, which
+        // a child handed no store of its own would inherit.
+        let trust = std::env::var_os(TRUST_FILE);
+        assert_eq!(
+            trust.as_deref(),
+            Some(tls_fixtures().join("ca.pem").as_os_str()),
+            "{TRUST_FILE} names the test CA the journey hands its child"
         );
         let (url, serving) = serving_one().await;
 
