@@ -56,8 +56,10 @@ _FORMATS: dict[str, tuple[str, str]] = {
     "integration": (INTEGRATION_JOB, INTEGRATION_SHARD_JOB),
 }
 
-#: The statuses of a job no runner has picked up yet.
+#: The statuses of a job no runner has picked up yet, and every status the
+#: jobs API answers.
 _UNSTARTED = frozenset({"queued", "waiting", "pending", "requested"})
+_STATUSES = _UNSTARTED | {"in_progress", "completed"}
 
 
 class GateJobsError(ValueError):
@@ -158,10 +160,19 @@ def _job(job: Mapping[str, object], kind: str, platform: str) -> GateJob:
     if not isinstance(name, str) or created is None:
         msg = f"{kind} ({platform}): job {name!r} records no name or no created_at"
         raise GateJobsError(msg)
-    started = _instant(job, "started_at", kind, platform)
-    if job.get("status") in _UNSTARTED or (
-        job.get("status") == "completed" and not job.get("runner_name")
+    status, runner = job.get("status"), job.get("runner_name")
+    if (
+        not isinstance(status, str)
+        or status not in _STATUSES
+        or not (runner is None or isinstance(runner, str))
     ):
+        msg = (
+            f"{kind} ({platform}): job {name!r} has status={status!r} and "
+            f"runner_name={runner!r}, which say nothing of whether it started"
+        )
+        raise GateJobsError(msg)
+    started = _instant(job, "started_at", kind, platform)
+    if status in _UNSTARTED or (status == "completed" and not runner):
         started = None
     return GateJob(name, created, started, _instant(job, "completed_at", kind, platform))
 

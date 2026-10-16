@@ -246,6 +246,22 @@ def test_a_timestamp_that_is_no_instant_is_refused_naming_the_job(stamp: object)
     contains(str(refused.value), "not an instant")
 
 
+@pytest.mark.parametrize(
+    "fields",
+    [{"status": "teleported"}, {"status": ["completed"]}, {"status": None}, {"runner_name": 7}],
+)
+def test_a_status_or_runner_that_says_nothing_of_a_start_is_refused(
+    fields: dict[str, object],
+) -> None:
+    """A status the jobs API never answers, or a runner that is no name, is not read as a start."""
+    jobs = _with(SHARDED, "gate-shard (windows-aarch64, 2/2)", **fields)
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate(jobs, "windows-aarch64")
+    contains(str(refused.value), "'gate-shard (windows-aarch64, 2/2)' has status=")
+    contains(str(refused.value), "which say nothing of whether it started")
+
+
 def test_a_job_recording_no_creation_is_refused() -> None:
     """The aggregator with no `created_at` is no job a queue or a span is read from."""
     jobs = _with(SHARDED, "gate (windows-aarch64)", created_at=None)

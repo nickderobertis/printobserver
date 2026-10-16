@@ -47,7 +47,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from repo_checks.gate_tier import PROJECTS_VARIABLE, TIERS, ProjectFilter, TierError, tier_named
+from repo_checks.gate_tier import (
+    PROJECTS_VARIABLE,
+    TARGET_NAME,
+    TIERS,
+    ProjectFilter,
+    TierError,
+    tier_named,
+)
 from repo_checks.model import Repo
 from repo_checks.parsing import recipes
 from repo_checks.shell import run
@@ -180,8 +187,23 @@ class Invocation:
 
 
 def gate_tiers(repo: Repo) -> tuple[str, ...]:
-    """The tiers `just check` invokes, as `repo-policy.toml`'s `gate.tiers` declares them."""
-    return tuple(repo.policy["gate"]["tiers"])
+    """The tiers `just check` invokes, as `repo-policy.toml`'s `gate.tiers` declares them.
+
+    Raises:
+        ShardError: If that is not a non-empty list of distinct recipe names, so
+            no split of it could be said to run each tier exactly once.
+    """
+    gate = repo.policy.get("gate")
+    tiers = gate.get("tiers") if isinstance(gate, dict) else None
+    if (
+        not isinstance(tiers, list)
+        or not tiers
+        or not all(isinstance(tier, str) and TARGET_NAME.match(tier) for tier in tiers)
+        or len(set(tiers)) != len(tiers)
+    ):
+        msg = f"repo-policy.toml's `gate.tiers` is {tiers!r}, not a list of distinct recipe names"
+        raise ShardError(msg)
+    return tuple(tiers)
 
 
 def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:

@@ -15,7 +15,10 @@ from collections.abc import Callable
 
 import pytest
 from journey import GateCopy, capture, clean_environment, plain
+from repo_checks.commands import Measured, measured_for
 from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.gate_tier import PROJECTS_VARIABLE
+from repo_checks.model import Repo
 
 #: Every journey here runs Nx in a copy nobody will clean up after, so it runs
 #: without the daemon a local Nx would otherwise leave behind per copy.
@@ -352,3 +355,43 @@ def test_a_named_head_leaves_out_what_landed_after_it(gate_copy: Callable[..., G
         "printobserver-octoprint" not in selected,
         describing=f"the crate changed after the head left out of {sorted(selected)}",
     )
+
+
+def test_each_side_of_a_split_test_tier_is_scoped_to_its_ecosystem_of_the_change(
+    gate_copy: Callable[..., GateCopy], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change to a crate and to the Python client: each side's report is its own half.
+
+    At the affected tier, through the real graph's own answer — Nx's affected
+    projects in the copy, and every project's tags and roots — the Rust side of
+    `lang:rust` keeps exactly the crates the unnarrowed report keeps and no
+    Python source, and the other side the reverse, so the two sides' floors
+    together rule on what one unsharded report rules on.
+    """
+    copy = as_a_clone(gate_copy())
+    branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
+    client = "python/printobserver-sdk/src/printobserver_sdk/__init__.py"
+    copy.write(client, f"{copy.read(client)}\n# A change a contributor made.\n")
+    copy.git("add", "-A")
+    copy.git("commit", "-q", "-m", "feat: a change to the Python client")
+    for name, value in QUIET.items():
+        monkeypatch.setenv(name, value)
+    repo = Repo(copy.root)
+
+    def scoped(side: str) -> Measured:
+        if side:
+            monkeypatch.setenv(PROJECTS_VARIABLE, side)
+        else:
+            monkeypatch.delenv(PROJECTS_VARIABLE, raising=False)
+        return measured_for(repo, "affected")
+
+    whole, rust, others = scoped(""), scoped("lang:rust"), scoped("!lang:rust")
+
+    contains(whole.rust or (), "crates/printobserver-vision-api")
+    truth(
+        any(source.startswith("python/printobserver-sdk/") for source in whole.python or ()),
+        describing=f"the unnarrowed report over the Python client; it is over {whole.python}",
+    )
+    equal((rust.rust, rust.python), (whole.rust, ()), describing="the Rust side's report")
+    equal((others.rust, others.python), ((), whole.python), describing="the other side's")
+    contains(rust.reason, "only lang:rust's side")

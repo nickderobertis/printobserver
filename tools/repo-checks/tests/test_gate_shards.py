@@ -29,6 +29,7 @@ from repo_checks.checks_shards import sharded_jobs
 from repo_checks.commands import measured_for, measured_sources
 from repo_checks.expect import accepted, contains, equal, failing, passing, refused
 from repo_checks.gate_shards import END_TO_END_PART_VARIABLE, END_TO_END_SECOND_PART, plan
+from repo_checks.gate_shards import REFUSED as REFUSED_SHARD
 from repo_checks.gate_shards import main as gate_shards_main
 from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, command
 from repo_checks.gate_tier import main as gate_tier_main
@@ -229,6 +230,24 @@ def test_each_side_s_coverage_is_over_its_own_ecosystem_alone(
     equal(scope.rust, crates if rust else (), describing="the Rust crates the report covers")
     equal(scope.python, sources if python else (), describing="the Python sources it covers")
     contains(scope.reason, f"only {narrowed}'s side")
+
+
+@pytest.mark.parametrize(
+    "tiers",
+    ['tiers = "format-check"', "tiers = []", 'tiers = ["lint", "lint"]', 'tiers = ["--all"]'],
+)
+def test_gate_tiers_no_split_could_run_once_each_are_refused(
+    tree: Callable[[], Tree], tiers: str
+) -> None:
+    """A tier list that is no list, empty, repeated or no recipe name is refused, not split."""
+    copy = tree()
+    text = copy.read("repo-policy.toml")
+    start = text.index("tiers = [", text.index("[gate]"))
+    copy.write("repo-policy.toml", text[:start] + tiers + text[text.index("]", start) + 1 :])
+
+    exited = gate_shards_main(["--root", str(copy.root), "plan", str(SHARDS)])
+
+    equal(exited, REFUSED_SHARD, describing="the plan's exit")
 
 
 def recording_justfile(repo: Repo, failing_recipe: str = "") -> str:
