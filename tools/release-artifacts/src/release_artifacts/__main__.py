@@ -10,9 +10,10 @@ from pathlib import Path
 
 from repo_checks.model import Repo
 
-from release_artifacts import reused, tracking
+from release_artifacts import built, reused, tracking
 from release_artifacts.arming import ArmingError, arm
 from release_artifacts.build import BuildError, build, build_all, staged_release
+from release_artifacts.build import program as release_build
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.registries import (
@@ -43,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
             "build-all",
             "stage-release",
             "prove",
+            "prove-built",
+            "prove-service",
             "publish",
             "world",
             "release-program",
@@ -162,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
         help="a release workflow job and the result the forge reports it as",
     )
     parser.add_argument("--into", type=Path, default=Path("dist"))
+    parser.add_argument(
+        "--dist",
+        type=Path,
+        default=Path("dist"),
+        help="what `build-all` wrote, which prove-built holds to the release contract and installs",
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
         "--binary",
@@ -174,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     # directories of its own, and a relative path handed to one of those would
     # name a different place in each.
     arguments.into = arguments.into.resolve()
+    arguments.dist = arguments.dist.resolve()
     if arguments.binary is not None:
         arguments.binary = arguments.binary.resolve()
     repo = Repo(arguments.root)
@@ -210,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
                 return _publish(repo, arguments)
             case "prove":
                 return _prove(repo, arguments)
+            case "prove-built":
+                return _prove_built(repo, arguments)
+            case "prove-service":
+                return _prove_service(repo, arguments)
             case "build-all":
                 for built in build_all(repo, arguments.into, arguments.binary):
                     for path in built.paths:
@@ -274,6 +288,26 @@ def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
         print(proof.report, file=sys.stdout if proof.exit_status == 0 else sys.stderr)
         return proof.exit_status
     print(prove(repo, arguments.target, arguments.into, arguments.binary))
+    return 0
+
+
+def _prove_built(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Prove what `build-all` wrote, before it is published: its contract, then each install.
+
+    The program is `--binary`, or the release build `build-all` carried where
+    none is named — already built, so nothing is compiled again: what is proven
+    is the files in `--dist` and the program inside them.
+    """
+    binary = arguments.binary or release_build(repo)
+    for line in built.prove_built(repo, arguments.dist, arguments.into, binary):
+        print(line)
+    return 0
+
+
+def _prove_service(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Install the built program as the launchd service, load it, read it back, unload it."""
+    for line in built.prove_service(repo, arguments.binary or release_build(repo)):
+        print(line)
     return 0
 
 

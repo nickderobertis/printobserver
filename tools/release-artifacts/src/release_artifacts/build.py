@@ -242,6 +242,14 @@ def _node(repo: Repo, target: targets.Target, name: str = "") -> packages.NodePa
     )
 
 
+#: The two descriptions every artifact's file name is composed from, under the
+#: names what proves a finished build reads them by: `release_artifacts.built`
+#: names the files a cell owes from these, so a builder renaming an artifact
+#: renames what is expected of it.
+distribution = _distribution
+node_package = _node
+
+
 def python_client(repo: Repo, target: targets.Target, into: Path) -> Built:
     """The Python client, as the wheel an ordinary install takes.
 
