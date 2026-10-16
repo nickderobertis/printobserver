@@ -26,8 +26,8 @@ import pytest
 from closures import closure
 from repo_checks.checks_shards import sharded_jobs
 from repo_checks.expect import accepted, contains, equal, failing, passing, refused
+from repo_checks.gate_shards import END_TO_END_PART_VARIABLE, END_TO_END_SECOND_PART, plan
 from repo_checks.gate_shards import main as gate_shards_main
-from repo_checks.gate_shards import plan
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -53,52 +53,69 @@ def dry_run_check(tier: str) -> set[tuple[str, ...]]:
     }
 
 
-def shard_commands(
-    capsys: pytest.CaptureFixture[str], tier: str, shard: str
-) -> list[tuple[str, ...]]:
+def shard_commands(capsys: pytest.CaptureFixture[str], tier: str, shard: str) -> list[str]:
     """What the real selector's `commands` verb says shard `shard` of the gate at `tier` runs."""
     capsys.readouterr()
     equal(gate_shards_main(["--root", str(REPO_ROOT), "commands", tier, shard]), 0)
-    return [tuple(line.split()[1:]) for line in capsys.readouterr().out.splitlines()]
+    return capsys.readouterr().out.splitlines()
 
 
+def invoked(command: str) -> tuple[str, ...]:
+    """A printed command's recipe and arguments, without the variables it hands it."""
+    words = command.split()
+    return tuple(words[words.index("just") + 1 :])
+
+
+@pytest.mark.parametrize("count", [2, 3])
 @pytest.mark.parametrize("tier", ["affected", "all"])
 def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
-    capsys: pytest.CaptureFixture[str], tier: str
+    capsys: pytest.CaptureFixture[str], tier: str, count: int
 ) -> None:
-    """Every invocation `just check` makes is made by exactly one shard, at the same tier."""
-    selected = [
-        invocation
-        for index in range(1, SHARDS + 1)
-        for invocation in shard_commands(capsys, tier, f"{index}/{SHARDS}")
-    ]
+    """Every invocation `just check` makes is made by one shard, at the same tier, once.
+
+    Split three ways, the end-to-end tier is the last two shards' and each runs
+    one of its two parts, which together are the tier's whole collection.
+    """
+    shards = [shard_commands(capsys, tier, f"{index}/{count}") for index in range(1, count + 1)]
+    selected = [command for shard in shards for command in shard]
 
     equal(
-        [one for one, count in Counter(selected).items() if count > 1],
+        [one for one, seen in Counter(selected).items() if seen > 1],
         [],
-        describing="invocations two shards both run",
+        describing="commands two shards both run",
     )
-    equal(set(selected), dry_run_check(tier), describing="the shards' union against `check`")
-    equal(shard_commands(capsys, tier, f"{SHARDS}/{SHARDS}"), [("test-e2e", tier)])
+    equal(
+        {invoked(command) for command in selected},
+        dry_run_check(tier),
+        describing="the shards' union against `check`",
+    )
+    end_to_end = [shard for shard in shards if any("test-e2e" in one for one in shard)]
+    equal(
+        end_to_end,
+        [[f"just test-e2e {tier}"]]
+        if count == SHARDS
+        else [[f"{END_TO_END_PART_VARIABLE}={part}/2 just test-e2e {tier}"] for part in (1, 2)],
+        describing="the shards running the end-to-end tier",
+    )
 
 
-def test_the_printed_split_is_the_plan_each_shard_runs() -> None:
-    """`just gate-shards` prints one shard a line, and one shard is the whole gate."""
-    shown = run(["just", "gate-shards", str(SHARDS)], cwd=REPO_ROOT, timeout=120)
+@pytest.mark.parametrize("count", [1, 2, 3])
+def test_the_printed_split_is_the_plan_each_shard_runs(count: int) -> None:
+    """`just gate-shards` prints one shard a line; together they are the tiers `check` runs."""
+    shown = run(["just", "gate-shards", str(count)], cwd=REPO_ROOT, timeout=120)
 
     passing(shown)
+    printed = [line.split() for line in shown.stdout.splitlines()]
+    equal(printed, [[str(step) for step in shard] for shard in plan(Repo(REPO_ROOT), count)])
+    equal(len(printed), count, describing="the shards printed")
     equal(
-        [tuple(line.split()) for line in shown.stdout.splitlines()],
-        list(plan(Repo(REPO_ROOT), SHARDS)),
-    )
-    equal(
-        set(plan(Repo(REPO_ROOT), 1)[0]),
+        {word.partition("[")[0] for line in printed for word in line},
         {invocation[0] for invocation in dry_run_check("all")},
-        describing="the one-shard plan against `check`",
+        describing=f"the {count}-shard plan against `check`",
     )
 
 
-@pytest.mark.parametrize("asked", ["3", "0"])
+@pytest.mark.parametrize("asked", ["4", "0"])
 def test_a_split_no_plan_makes_is_refused(asked: str) -> None:
     """A count no plan splits the gate into is refused rather than guessed at."""
     shown = run(["just", "gate-shards", asked], cwd=REPO_ROOT, timeout=120)
@@ -118,44 +135,53 @@ def recording_justfile(repo: Repo, failing_recipe: str = "") -> str:
     """A justfile whose gate tiers write what they were handed to `reached`.
 
     Each tier keeps the parameters the committed recipe declares, so the
-    selector hands each the tier exactly as it would the real one.
+    selector hands each the tier exactly as it would the real one, and each
+    writes the end-to-end part it was handed, where it was handed one.
     """
     from repo_checks.parsing import recipes
 
     declared = recipes(repo.justfile)
     lines = ['set shell := ["bash", "-euo", "pipefail", "-c"]', ""]
-    for tier in plan(repo, 1)[0]:
+    for tier in (step.tier for step in plan(repo, 1)[0]):
         parameters = declared[tier].parameters
         lines.append(" ".join([tier, *parameters]) + ":")
         handed = " ".join([tier, *(f"{{{{{one}}}}}" for one in parameters)])
-        lines.append(f"    echo '{handed}' >> reached")
+        lines.append(f"    echo '{handed}' ${{{END_TO_END_PART_VARIABLE}:-}} >> reached")
         if tier == failing_recipe:
             lines.append("    exit 3")
         lines.append("")
     return "\n".join(lines)
 
 
-def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(tree: Callable[[], Tree]) -> None:
-    """The first shard runs every tier but the end-to-end one, in order; the second runs that."""
+EVERY_TIER = [
+    "format-check all",
+    "lint all",
+    "typecheck all",
+    "test all",
+    "coverage all",
+    "build all",
+    "lint-workflows",
+    "check-repo",
+]
+
+
+@pytest.mark.parametrize(
+    ("count", "end_to_end"),
+    [(2, ["test-e2e all"]), (3, ["test-e2e all 1/2", "test-e2e all 2/2"])],
+)
+def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(
+    tree: Callable[[], Tree], count: int, end_to_end: list[str]
+) -> None:
+    """The first shard runs every tier but the end-to-end one, in order; the rest run that."""
     copy = tree()
     copy.write("justfile", recording_justfile(copy.repo))
 
-    for index in (1, 2):
-        equal(gate_shards_main(["--root", str(copy.root), "run", "all", f"{index}/2"]), 0)
+    for index in range(1, count + 1):
+        equal(gate_shards_main(["--root", str(copy.root), "run", "all", f"{index}/{count}"]), 0)
 
     equal(
         [line.strip() for line in copy.read("reached").splitlines()],
-        [
-            "format-check all",
-            "lint all",
-            "typecheck all",
-            "test all",
-            "coverage all",
-            "build all",
-            "lint-workflows",
-            "check-repo",
-            "test-e2e all",
-        ],
+        [*EVERY_TIER, *end_to_end],
     )
 
 
@@ -171,6 +197,65 @@ def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[]
         [line.strip() for line in copy.read("reached").splitlines()],
         ["format-check affected", "lint affected", "typecheck affected"],
     )
+
+
+def collected(part: str, *selection: str) -> tuple[int, list[str]]:
+    """The end-to-end tier's collection, as `PRINTOBSERVER_E2E_PART=part` leaves it.
+
+    Through pytest's own collection of the committed suite, with the same
+    marker selection its project target runs it under, at the verbosity the
+    repository's own `addopts` sets, which lists one test a line; `part` empty
+    is the unsharded tier.
+    """
+    environment = {
+        **{key: value for key, value in os.environ.items() if key != END_TO_END_PART_VARIABLE},
+        "PYTHONPATH": os.pathsep.join(
+            str(REPO_ROOT / one)
+            for one in (
+                "tools/repo-checks/src",
+                "tools/contract-codegen/src",
+                "tools/release-artifacts/src",
+            )
+        ),
+        **({END_TO_END_PART_VARIABLE: part} if part else {}),
+    }
+    shown = run(
+        ["uv", "run", "-q", "pytest", "tests/repo-e2e/tests", "--collect-only", *selection],
+        cwd=REPO_ROOT,
+        env=environment,
+        timeout=600,
+    )
+    return shown.returncode, [line for line in shown.stdout.splitlines() if "::" in line]
+
+
+@pytest.mark.parametrize("selection", [(), ("-m", "not alone"), ("-m", "alone")])
+def test_the_end_to_end_parts_collect_the_whole_tier_and_no_test_twice(
+    selection: tuple[str, ...],
+) -> None:
+    """Split in two by test file, the tier's two parts are its whole collection, disjoint.
+
+    Under each selection the tier's target runs with, each part exits as a
+    collection that ran what it was asked does, an empty share included.
+    """
+    whole = collected("", *selection)
+    parts = [collected(f"{index}/2", *selection) for index in (1, 2)]
+
+    equal(whole[0], 0, describing="the unsharded collection's exit")
+    equal([exited for exited, _ in parts], [0, 0], describing="each part's exit")
+    together = [test for _, tests in parts for test in tests]
+    equal(
+        [test for test, seen in Counter(together).items() if seen > 1],
+        [],
+        describing="tests both parts collect",
+    )
+    equal(sorted(together), sorted(whole[1]), describing="the parts' union against the tier")
+    if not selection:
+        equal([bool(tests) for _, tests in parts], [True, True], describing="each part's share")
+        equal(
+            {test.split("::")[0].rsplit("/", 1)[-1] for test in parts[1][1]},
+            set(END_TO_END_SECOND_PART),
+            describing="the files the second part collects",
+        )
 
 
 def needs(**results: str) -> str:

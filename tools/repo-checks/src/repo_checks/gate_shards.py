@@ -10,7 +10,12 @@ halves of that split, so the workflow carries no selection of its own:
   `just check` invokes — and a plan hands each of them to exactly one shard, in
   the order `gate.tiers` declares, so the shards together run what the
   unsharded gate runs and nothing twice. The end-to-end tier, the one longest
-  on its own, is a shard of its own; every other tier is the first shard's.
+  on its own, is apart from the rest: one shard of its own in two, and in three
+  split by test file into two parts, `test-e2e[1/2]` and `test-e2e[2/2]`, the
+  part a run collects named in `PRINTOBSERVER_E2E_PART`. The partition is
+  `END_TO_END_SECOND_PART`: a fixed set of the tier's test files, every other
+  file in the first part, so each test is collected by exactly one part. That
+  tier measures no coverage, so its split moves no coverage figure.
 * `commands TIER SHARD` prints the recipe invocations shard `SHARD` (`k/n`) of
   the gate at `TIER` runs, one a line, and runs none of them.
 * `run TIER SHARD` runs shard `SHARD` (`k/n`) of the gate at `TIER`: each of its
@@ -49,8 +54,43 @@ VERDICT_RECIPE = "shard-verdict"
 NEEDS_VARIABLE = "NEEDS"
 #: The one result a needed job may conclude with for the verdict to pass.
 SUCCESS = "success"
-#: The tier that is a shard of its own.
+#: The tier that is a shard of its own, or two.
 END_TO_END = "test-e2e"
+#: The variable naming the part (`k/n`) of the end-to-end tier's test files a
+#: run collects; absent, a run collects all of them.
+END_TO_END_PART_VARIABLE = "PRINTOBSERVER_E2E_PART"
+#: The end-to-end tier's test files its second part collects when it is split in
+#: two; the first collects every other file, so a file nobody placed is run.
+#: Chosen to halve the tier's summed test time, and so that each of
+#: `tests/journey.py`'s xdist groups stays within one part: a group's journeys
+#: share a build of the repository root that a second runner would pay for
+#: again. The first part keeps the `release-plz-drafting` group; this one takes
+#: the `repo-root-release-build` and `repo-root-debug-build` groups.
+END_TO_END_SECOND_PART = frozenset(
+    {
+        # repo-root-release-build
+        "test_install_powershell_script_journey.py",
+        "test_install_script_journey.py",
+        "test_registry_proof_journey.py",
+        "test_shipped_artifacts_journey.py",
+        "test_world_journey.py",
+        # repo-root-debug-build
+        "test_server_shutdown_journey.py",
+        "test_service_manager_journey.py",
+        "test_windows_lint_journey.py",
+        "test_windows_service_installer_journey.py",
+        # no group
+        "test_bootstrap_journey.py",
+        "test_cargo_build_contract_journey.py",
+        "test_commit_msg_journey.py",
+        "test_fresh_clone_journey.py",
+        "test_platform_matrix_journey.py",
+        "test_release_gating_journey.py",
+        "test_workflow_validation.py",
+    }
+)
+#: How many parts the end-to-end tier's test files split into where they split.
+END_TO_END_PARTS = 2
 #: The parameter a tier recipe takes its tier through.
 TIER_PARAMETER = "tier"
 #: The kinds of required job a verdict is reached for.
@@ -87,32 +127,78 @@ class Shard:
         return cls(int(found["index"]), int(found["count"]))
 
 
+@dataclass(frozen=True, slots=True)
+class Step:
+    """One gate tier a shard runs, or one part of it."""
+
+    tier: str
+    part: Shard | None = None
+
+    def __str__(self) -> str:
+        """The tier, with the part it is where it is one."""
+        return (
+            self.tier if self.part is None else f"{self.tier}[{self.part.index}/{self.part.count}]"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Invocation:
+    """One recipe a shard runs, and what it hands it beyond the caller's environment."""
+
+    argv: tuple[str, ...]
+    environment: Mapping[str, str]
+
+    def __str__(self) -> str:
+        """As a shell would read it: the variables, then the command."""
+        handed = [f"{name}={value}" for name, value in sorted(self.environment.items())]
+        return " ".join([*handed, *self.argv])
+
+
 def gate_tiers(repo: Repo) -> tuple[str, ...]:
     """The tiers `just check` invokes, as `repo-policy.toml`'s `gate.tiers` declares them."""
     return tuple(repo.policy["gate"]["tiers"])
 
 
-def plan(repo: Repo, count: int) -> tuple[tuple[str, ...], ...]:
+def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
     """The gate tiers each of `count` shards runs, first shard first.
 
     Raises:
         ShardError: If no plan splits the gate into `count` shards.
     """
     tiers = gate_tiers(repo)
+    rest = tuple(Step(tier) for tier in tiers if tier != END_TO_END)
     plans = {
-        1: (tiers,),
-        2: (tuple(tier for tier in tiers if tier != END_TO_END), (END_TO_END,)),
+        1: (tuple(Step(tier) for tier in tiers),),
+        2: (rest, (Step(END_TO_END),)),
+        3: (
+            rest,
+            *((Step(END_TO_END, Shard(part, END_TO_END_PARTS)),) for part in (1, 2)),
+        ),
     }
     if count not in plans:
         msg = (
             f"no plan splits the gate into {count} shards: "
-            f"{' or '.join(str(one) for one in plans)} (the end-to-end tier apart)"
+            f"{', '.join(str(one) for one in plans)} (the end-to-end tier apart)"
         )
         raise ShardError(msg)
     return plans[count]
 
 
-def commands(repo: Repo, tier: str, shard: Shard) -> list[list[str]]:
+def end_to_end_part(file_name: str, parts: int) -> int:
+    """Which of `parts` parts of the end-to-end tier collects the test file `file_name`.
+
+    Raises:
+        ShardError: If the tier is split into a number of parts no partition makes.
+    """
+    if parts == 1:
+        return 1
+    if parts == END_TO_END_PARTS:
+        return 2 if file_name in END_TO_END_SECOND_PART else 1
+    msg = f"the end-to-end tier's test files are split into one part or two, not {parts}"
+    raise ShardError(msg)
+
+
+def commands(repo: Repo, tier: str, shard: Shard) -> list[Invocation]:
     """The recipe invocations shard `shard` of the gate at `tier` runs, in order.
 
     Raises:
@@ -121,14 +207,19 @@ def commands(repo: Repo, tier: str, shard: Shard) -> list[list[str]]:
     """
     tier = tier_named(tier).value
     parsed = recipes(repo.justfile)
-    invocations: list[list[str]] = []
-    for recipe in plan(repo, shard.count)[shard.index - 1]:
-        declared = parsed.get(recipe)
+    invocations: list[Invocation] = []
+    for step in plan(repo, shard.count)[shard.index - 1]:
+        declared = parsed.get(step.tier)
         if declared is None:
-            msg = f"the gate tier `{recipe}` names no recipe of the justfile"
+            msg = f"the gate tier `{step.tier}` names no recipe of the justfile"
             raise ShardError(msg)
-        handed = [tier] if TIER_PARAMETER in declared.parameters else []
-        invocations.append(["just", recipe, *handed])
+        handed = (tier,) if TIER_PARAMETER in declared.parameters else ()
+        environment = (
+            {}
+            if step.part is None
+            else {END_TO_END_PART_VARIABLE: f"{step.part.index}/{step.part.count}"}
+        )
+        invocations.append(Invocation(("just", step.tier, *handed), environment))
     return invocations
 
 
@@ -172,8 +263,13 @@ def _verdict(kind: str, platform: str, environ: Mapping[str, str]) -> int:
 def _run(repo: Repo, tier: str, shard: Shard) -> int:
     """Run one shard's recipes in order, stopping at the first that fails."""
     for invocation in commands(repo, tier, shard):
-        print(f"gate-shard {shard.index}/{shard.count}: {' '.join(invocation)}", file=sys.stderr)
-        exited = run(invocation, cwd=repo.root, capture=False).returncode
+        print(f"gate-shard {shard.index}/{shard.count}: {invocation}", file=sys.stderr)
+        exited = run(
+            list(invocation.argv),
+            cwd=repo.root,
+            env={**os.environ, **invocation.environment},
+            capture=False,
+        ).returncode
         if exited != 0:
             return exited
     return 0
@@ -201,12 +297,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if parsed.verb == "plan":
-            for tiers in plan(repo, parsed.count):
-                print(" ".join(tiers))
+            for steps in plan(repo, parsed.count):
+                print(" ".join(str(step) for step in steps))
             return 0
         if parsed.verb == "commands":
             for invocation in commands(repo, parsed.tier, Shard.named(parsed.shard)):
-                print(" ".join(invocation))
+                print(invocation)
             return 0
         if parsed.verb == "run":
             return _run(repo, parsed.tier, Shard.named(parsed.shard))

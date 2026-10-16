@@ -20,3 +20,9 @@ ones only this suite carries.
   beside the test tier wherever the root `justfile`'s `check` overlaps them.
   Its `implicitDependencies` are what selects it at the affected tier, and
   `test_gate_tier_journey.py` drives a change to each.
+- **A sharded gate runs it in two parts, by test file.** Where a platform's
+  gate is split three ways, `PRINTOBSERVER_E2E_PART` names the part a run
+  collects and `repo_checks.gate_shards.END_TO_END_SECOND_PART` is the second
+  part's files; a file it does not name is the first part's, so a new journey
+  is never left out. Keep each xdist group's files in one part: its journeys
+  share a build another runner would pay for again.
