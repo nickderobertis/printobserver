@@ -249,6 +249,37 @@ def test_a_per_platform_package_declaring_another_platform_is_refused(
     truth(not (tmp_path / "proof").exists(), describing="nothing was installed")
 
 
+#: An ELF program for a processor no supported platform runs (32-bit ARM), and
+#: an MZ stub whose header offset points at something that is not `PE\0\0`.
+ELF_ARM32 = b"\x7fELF" + bytes(14) + struct.pack("<H", 0x28)
+PE_UNSIGNED = b"MZ" + bytes(0x3A) + struct.pack("<I", 0x40) + b"XX\0\0" + bytes(4)
+
+
+@pytest.mark.parametrize(
+    ("header", "naming"),
+    [
+        (ELF_ARM32, "is a linux unknown program"),
+        (PE_UNSIGNED, "carries no ELF, Mach-O or PE header"),
+    ],
+)
+def test_a_program_no_platform_names_is_refused_before_anything_is_installed(
+    finished: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    header: bytes,
+    naming: str,
+) -> None:
+    """A processor no platform runs, or a header that is no executable's, is refused by name."""
+    other = tmp_path / "printobserver"
+    other.write_bytes(header)
+    capsys.readouterr()
+
+    equal(_prove(finished, tmp_path / "proof", other), 1, describing="prove-built's exit")
+
+    contains(capsys.readouterr().err, naming, describing="the refusal")
+    truth(not (tmp_path / "proof").exists(), describing="nothing was installed")
+
+
 def test_a_wheel_carrying_no_program_is_refused_naming_the_member(
     finished: Path,
     supervisor: Path,

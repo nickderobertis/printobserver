@@ -399,6 +399,7 @@ NOT_LOADED = 3
 DARWIN = "Darwin"
 
 
+# llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
 def _launchctl(argv: list[str], repo: Repo, timeout: float, describing: str) -> None:
     """One `launchctl` command, its failure and its overrunning `timeout` both a refusal.
 
@@ -483,6 +484,7 @@ def prove_service(
     # unload is reported beside the failure that came first, never instead of it.
     unload = f"`launchctl bootout system/{label}`"
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         unloaded = run(
             [*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root, timeout=timeout
         )

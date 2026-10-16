@@ -418,3 +418,23 @@ def test_a_read_back_that_hangs_fails_the_proof_and_the_loaded_service_is_unload
         [["bootstrap", "system", PLIST], ["bootout", f"system/{LABEL}"]],
         describing="the load, then the unload after the hung read-back",
     )
+
+
+def test_a_host_with_no_uname_is_refused_before_anything_is_installed(
+    program: Path, tmp_path: Path
+) -> None:
+    """With no `uname` on `PATH` nothing can say this is a launchd host, so nothing is installed."""
+    environment = _machine(tmp_path)
+    (tmp_path / "bin" / "uname").unlink()
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    uv = shutil.which("uv")
+    truth(uv is not None, describing="`uv` on this host's PATH")
+    (bare / "uv").symlink_to(str(uv))
+    environment["PATH"] = os.pathsep.join([str(tmp_path / "bin"), str(bare)])
+
+    proved = _prove(program, tmp_path, environment)
+
+    equal(proved.returncode, 1, describing="prove-service's exit")
+    contains(proved.stderr, "this host has no `uname`, so it is no launchd host", describing="it")
+    equal(_asked(tmp_path), [], describing="what reached launchd")

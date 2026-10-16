@@ -2593,3 +2593,15 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_prove_service_journey.py"
 site = "shim.write_text("
 reason = "The launchctl stand-in's own shim, made to hang on `bootstrap` the way a wedged launchd does: no real launchd can be made to hang for one test, and what is under test is the proof's own timeout and the unload it still attempts, both driven through its real command line."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/built.py"
+site = "def _launchctl("
+reason = "A release-time proof that runs four `launchctl` commands one after another, each depending on the one before, from a command line that exits when they are done: there is nothing to overlap and no caller to keep responsive, so an async client would add an event loop and change nothing the proof observes. `launchctl` is a program rather than an API, and the boundary is typed where it is crossed — each call's argv is composed from the activation command `activation` has already held to its one shape, and every outcome, a timeout included, comes back as an `InstallError` naming the command. `test_service_manager_journey.py` drives the same launchd boundary through the same synchronous calls under its own entry for this rule."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/built.py"
+site = "unloaded = run("
+reason = "A release-time proof that runs four `launchctl` commands one after another, each depending on the one before, from a command line that exits when they are done: there is nothing to overlap and no caller to keep responsive, so an async client would add an event loop and change nothing the proof observes. `launchctl` is a program rather than an API, and the boundary is typed where it is crossed — each call's argv is composed from the activation command `activation` has already held to its one shape, and every outcome, a timeout included, comes back as an `InstallError` naming the command. `test_service_manager_journey.py` drives the same launchd boundary through the same synchronous calls under its own entry for this rule."
