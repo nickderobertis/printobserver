@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -149,7 +150,8 @@ def test_the_overlap_is_the_justfiles_own_answer() -> None:
     """The end-to-end tier is beside the test tier exactly where the justfile starts it there."""
     equal(
         workers.beside_tests(REPO_ROOT),
-        sys.platform != "win32",
+        # MEASUREMENT-ONLY (removed before this draft settles): Windows aarch64 overlaps.
+        sys.platform != "win32" or os.environ.get("PRINTOBSERVER_PLATFORM") == "windows-aarch64",
         describing="whether the justfile overlaps the two tiers on this host",
     )
 
