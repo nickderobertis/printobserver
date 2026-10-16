@@ -2605,3 +2605,24 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/release-artifacts/src/release_artifacts/built.py"
 site = "unloaded = run("
 reason = "A release-time proof that runs four `launchctl` commands one after another, each depending on the one before, from a command line that exits when they are done: there is nothing to overlap and no caller to keep responsive, so an async client would add an event loop and change nothing the proof observes. `launchctl` is a program rather than an API, and the boundary is typed where it is crossed — each call's argv is composed from the activation command `activation` has already held to its one shape, and every outcome, a timeout included, comes back as an `InstallError` naming the command. `test_service_manager_journey.py` drives the same launchd boundary through the same synchronous calls under its own entry for this rule."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/lib/graph.mjs"
+site = "export function triggers("
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/lib/graph.mjs"
+site = "function cellsOf("
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/lib/graph.mjs"
+site = "export function condition("
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+

@@ -108,6 +108,7 @@ function triggersOf(on, file) {
  * @param {Event} event
  * @returns {boolean}
  */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 export function triggers(workflow, event) {
   const filter = workflow.on[event.name];
   if (filter === undefined) {
@@ -211,7 +212,15 @@ function pushed(filter, ref) {
  * @returns {boolean}
  */
 function globbed(pattern, name) {
-  const source = String(pattern)
+  const text = String(pattern);
+  // `*` and `**` are the forge's filter syntax this reads; `!`, `?`, `+` and
+  // character classes are the rest of it, refused rather than read as literals.
+  if (/[!?+[\]]/.test(text)) {
+    throw new Unresolved(
+      `the filter pattern \`${text}\` uses glob syntax this graph does not resolve`,
+    );
+  }
+  const source = text
     .split(/(\*\*|\*)/)
     .map((part) =>
       part === "**" ? ".*" : part === "*" ? "[^/]*" : part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"),
@@ -478,6 +487,7 @@ function calledWorkflow(workflows, caller, key, uses) {
  * @param {string} where
  * @returns {(Record<string, any> | null)[]}
  */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 function cellsOf(job, where) {
   const matrix = isObject(job.strategy) ? job.strategy.matrix : undefined;
   if (matrix === undefined) {
@@ -618,6 +628,7 @@ const STATUS = ["success", "failure", "cancelled", "always"];
  * @param {string} where
  * @returns {boolean}
  */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 export function condition(declared, contexts, results, where) {
   let text = declared === undefined || declared === null ? "" : String(declared).trim();
   const whole = /^\$\{\{([\s\S]*)\}\}$/.exec(text);

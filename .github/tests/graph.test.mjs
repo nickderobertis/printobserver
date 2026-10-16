@@ -435,6 +435,14 @@ describe("what the graph cannot resolve is an error, never zero", () => {
   /** @type {[string, Record<string, string>, RegExp][]} */
   const UNRESOLVED = [
     [
+      "a branch filter in glob syntax beyond `*`",
+      {
+        "a.yml":
+          "on:\n  push:\n    branches: ['release/v[0-9]*']\njobs:\n  a:\n    runs-on: macos-15\n    steps: [{run: echo}]\n",
+      },
+      /uses glob syntax this graph does not resolve/,
+    ],
+    [
       "a reusable workflow in another repository",
       { "a.yml": "on: push\njobs:\n  x:\n    uses: other/repo/.github/workflows/w.yml@v1\n" },
       /outside this repository/,
