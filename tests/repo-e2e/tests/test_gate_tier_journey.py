@@ -395,3 +395,75 @@ def test_each_side_of_a_split_test_tier_is_scoped_to_its_ecosystem_of_the_change
     equal((rust.rust, rust.python), (whole.rust, ()), describing="the Rust side's report")
     equal((others.rust, others.python), ((), whole.python), describing="the other side's")
     contains(rust.reason, "only lang:rust's side")
+
+
+#: Preloaded into every Node process a recipe starts, it makes the Nx host as
+#: slow as a loaded Windows runner at the two moments that runner is slow. Nx
+#: builds its native `ProcessMetricsCollector` on the host's main thread the
+#: first time a plugin worker connects, and the constructor refreshes every
+#: process on the machine before it returns; a runner busy compiling made that
+#: take longer than the ten seconds each worker waits for its `load` message.
+#: The first block starves the host while its workers boot, as that runner did,
+#: so it reaches every worker in one tick; the second is the slow refresh.
+SLOW_HOST = """
+const Module = require("node:module");
+const childProcess = require("node:child_process");
+const block = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const spawn = childProcess.spawn;
+let starved = false;
+childProcess.spawn = function (command, args, ...rest) {
+  const child = spawn.call(this, command, args, ...rest);
+  if (!starved && Array.isArray(args) && args.some((a) => String(a).endsWith("plugin-worker.js"))) {
+    starved = true;
+    setImmediate(() => block(3000));
+  }
+  return child;
+};
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  const loaded = load.call(this, request, ...rest);
+  if (request === "./native-bindings.js" && !loaded.slowedByTheJourney) {
+    const Collector = loaded.ProcessMetricsCollector;
+    loaded.ProcessMetricsCollector = function (...args) {
+      block(15000);
+      return new Collector(...args);
+    };
+    loaded.slowedByTheJourney = true;
+  }
+  return loaded;
+};
+"""
+
+#: What a plugin worker says when it gives up on a host that never sent `load`.
+WORKER_GAVE_UP = "did not receive a load message within 10 seconds"
+
+
+def test_a_graph_tier_survives_a_host_too_slow_for_the_plugin_workers(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """`just format-check` on a host whose Nx stalls past the plugin workers' wait passes."""
+    copy = as_a_clone(gate_copy())
+    branch_with_a_change(copy, "tools/obico-env/obico_env.py")
+    preload = copy.root.parent / f"{copy.root.name}-slow-host.cjs"
+    preload.write_text(SLOW_HOST, encoding="utf-8")
+    # Nx keeps its plugins in-process for an agent's sandbox whatever the
+    # recipes say, so a sandboxed host would pass this without the recipes' part.
+    unsandboxed = dict.fromkeys(
+        ("SANDBOX_RUNTIME", "GEMINI_SANDBOX", "CODEX_SANDBOX", "CURSOR_SANDBOX"), ""
+    )
+
+    result = copy.just(
+        "format-check",
+        environment={
+            **QUIET,
+            **unsandboxed,
+            "NODE_OPTIONS": f'--require "{preload.as_posix()}"',
+        },
+    )
+
+    passing(result, describing="`just format-check` with a stalling Nx host")
+    truth(
+        WORKER_GAVE_UP not in result.stdout + result.stderr,
+        describing=f"no plugin worker giving up:\n{result.stdout}{result.stderr}",
+    )
+    equal(ran(result.stdout), {"obico-env"}, describing="what a change to the Obico tier runs")
