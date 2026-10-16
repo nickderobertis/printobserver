@@ -30,9 +30,21 @@ from repo_checks.shell import start
 
 
 def _virtual_printer_module(state: Path) -> Path:
-    """Where an earlier install left the virtual printer's module."""
-    site = state / "venv" / "lib" / "python3.11" / "site-packages"
+    """Where an earlier install on this host left the virtual printer's module.
+
+    Windows keeps an environment's packages under `Lib`, every other host under
+    `lib/python<version>`.
+    """
+    if sys.platform == "win32":
+        site = state / "venv" / "Lib" / "site-packages"
+    else:
+        site = state / "venv" / "lib" / "python3.11" / "site-packages"
     return site.joinpath(*octoprint_env.VIRTUAL_PRINTER_MODULE)
+
+
+def _host_program() -> Path:
+    """Where this host's environments keep the OctoPrint program, relative to one."""
+    return octoprint_env.environment_program(Path(), "octoprint")
 
 
 def _provisioned_over(state: Path, program: Path) -> None:
@@ -101,7 +113,7 @@ def test_an_install_over_an_unrepaired_release_repairs_it_without_touching_its_l
     repair leaves the other name of that file exactly as it found it.
     """
     state = tmp_path / "state"
-    _provisioned_over(state, Path("bin") / "octoprint")
+    _provisioned_over(state, _host_program())
     module = _virtual_printer_module(state)
     cached = tmp_path / "cache" / "virtual.py"
     cached.parent.mkdir()
@@ -123,7 +135,7 @@ def test_a_virtual_printer_carrying_neither_the_defect_nor_its_repair_is_refused
 ) -> None:
     """A release whose heater simulation changed is reported, not patched blind."""
     state = tmp_path / "state"
-    _provisioned_over(state, Path("bin") / "octoprint")
+    _provisioned_over(state, _host_program())
     module = _virtual_printer_module(state)
     rewritten = b"# a release that rewrote the heater simulation\n"
     module.write_bytes(rewritten)
