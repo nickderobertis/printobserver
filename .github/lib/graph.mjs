@@ -371,19 +371,31 @@ function planJobs(workflows, workflow, scenario, github, inputs, prefix) {
     }
     if (typeof job.uses === "string") {
       const called = calledWorkflow(workflows, workflow, key, job.uses);
-      const withInputs = Object.fromEntries(
-        Object.entries(isObject(job.with) ? job.with : {}).map(([name, value]) => [
-          name,
-          String(
-            template(String(value), contexts, `${workflow.file}: job \`${key}\`.with.${name}`),
-          ),
-        ]),
-      );
-      const nested = planJobs(workflows, called, scenario, github, withInputs, qualified);
-      jobs.push(
-        ...nested.jobs.map((one) => ({ ...one, via: `${workflow.file}:${key} -> ${called.file}` })),
-      );
-      skipped.push(...nested.skipped);
+      // A caller's own matrix calls the workflow once per cell, each cell's
+      // `with:` evaluated against it.
+      for (const cell of cellsOf(job, `${workflow.file}: job \`${key}\``)) {
+        const cellContexts = { ...contexts, matrix: cell ?? {} };
+        const withInputs = Object.fromEntries(
+          Object.entries(isObject(job.with) ? job.with : {}).map(([name, value]) => [
+            name,
+            String(
+              template(
+                String(value),
+                cellContexts,
+                `${workflow.file}: job \`${key}\`.with.${name}`,
+              ),
+            ),
+          ]),
+        );
+        const nested = planJobs(workflows, called, scenario, github, withInputs, qualified);
+        jobs.push(
+          ...nested.jobs.map((one) => ({
+            ...one,
+            via: `${workflow.file}:${key} -> ${called.file}`,
+          })),
+        );
+        skipped.push(...nested.skipped);
+      }
     } else {
       for (const cell of cellsOf(job, `${workflow.file}: job \`${key}\``)) {
         const cellContexts = { ...contexts, matrix: cell ?? {} };

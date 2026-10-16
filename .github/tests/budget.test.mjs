@@ -173,11 +173,24 @@ describe("the digest a record is held current by", () => {
 
 describe("a record whose rows are not the rows the test writes", () => {
   test("a record of no workload is refused rather than read as zero", () => {
-    for (const scenarios of [[], record().scenarios.filter((scenario) => scenario.manual)]) {
+    const manualOnly = record().scenarios.map((scenario) => ({ ...scenario, manual: true }));
+    for (const scenarios of [
+      [],
+      record().scenarios.filter((scenario) => scenario.manual),
+      manualOnly,
+    ]) {
       const ran = budget("runs-per-change", record({ scenarios }));
       assert.equal(ran.status, 1);
       assert.match(ran.stderr, /records no scenario of a change's lifecycle/);
     }
+  });
+
+  test("a scenario whose lifecycle step is empty is refused", () => {
+    const broken = record();
+    broken.scenarios[0].lifecycle_step = "";
+    const ran = budget("runs-per-change", broken);
+    assert.equal(ran.status, 1);
+    assert.match(ran.stderr, /lacks its id, event class, lifecycle step/);
   });
 
   test("a run whose macOS count disagrees with its jobs is refused", () => {

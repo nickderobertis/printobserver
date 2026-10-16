@@ -529,6 +529,24 @@ describe("what the graph cannot resolve is an error, never zero", () => {
     assert.equal(runsFor(loaded, finished("feature"), {}).length, 0);
   });
 
+  test("a reusable workflow called from a matrix is called once per cell", () => {
+    const called = graph({
+      "caller.yml":
+        "on: push\njobs:\n  build:\n    strategy:\n      matrix:\n        os: [macos-15, macos-14]\n    uses: ./.github/workflows/called.yml\n    with:\n      os: " +
+        expression("matrix.os") +
+        "\n",
+      "called.yml":
+        "on:\n  workflow_call:\n    inputs:\n      os: {type: string}\njobs:\n  inner:\n    runs-on: " +
+        expression("inputs.os") +
+        "\n    steps: [{run: echo}]\n",
+    });
+    const run = plan(called, "caller.yml", { event: push });
+    assert.deepEqual(
+      run.jobs.map((job) => job.runner[0]),
+      ["macos-15", "macos-14"],
+    );
+  });
+
   test("an output the scenario does give is read", () => {
     const loaded = graph({
       "a.yml":
