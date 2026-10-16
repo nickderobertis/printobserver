@@ -47,6 +47,10 @@ COMPLETED = 38694510250
 #: A run of `main` at e69dc35 read while it ran: every Linux and Windows job in
 #: progress, and both macOS jobs still queued.
 IN_FLIGHT = 38710213811
+#: A finished run of this change's draft at fc06115, with `gate (windows-aarch64)`
+#: split into two shards: each queued 2 s, and the aggregator queued 60 s for its
+#: runner after the last shard completed.
+SHARDED = 38887035697
 
 CI = ".github/workflows/ci.yml"
 #: The job keys whose cells report a gate or integration context.
@@ -174,6 +178,46 @@ def test_a_platform_whose_required_job_is_absent_is_refused_naming_it() -> None:
     with pytest.raises(GateJobsError) as missing:
         platform_span(recorded(COMPLETED), "integration", "freebsd-riscv64")
     contains(str(missing.value), "integration (freebsd-riscv64)")
+
+
+def test_a_sharded_gate_spans_its_first_shard_start_to_its_aggregator_s_completion() -> None:
+    """The critical path a pull request waits on, the queue between shards included."""
+    span = platform_gate(recorded(SHARDED), "windows-aarch64")
+
+    equal(span.started_at, at("2026-10-16T10:24:38"))
+    equal(
+        [job.name for job in span.jobs],
+        [
+            "gate (windows-aarch64)",
+            "gate-shard (windows-aarch64, 1/2)",
+            "gate-shard (windows-aarch64, 2/2)",
+        ],
+    )
+    equal([job.queue_seconds for job in span.jobs], [60.0, 2.0, 2.0])
+    equal([job.duration_seconds for job in span.jobs], [9.0, 2071.0, 2134.0])
+    equal(span.completed_seconds, 2203.0)
+    equal(span.seconds_to(at("2026-10-16T11:00:12")), 2134.0)
+    equal(platform_gate(recorded(SHARDED), "windows-x86_64").jobs[0].name, "gate (windows-x86_64)")
+
+
+def test_a_sharded_gate_whose_aggregator_is_absent_is_refused_naming_it() -> None:
+    """Without the job carrying the required name its shards have no verdict to span."""
+    jobs = [job for job in recorded(SHARDED) if job["name"] != "gate (windows-aarch64)"]
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate(jobs, "windows-aarch64")
+    contains(str(refused.value), "gate (windows-aarch64)")
+    contains(str(refused.value), "no job of that name")
+
+
+def test_a_sharded_gate_missing_a_shard_is_refused_naming_it() -> None:
+    """Shards 1 of 2 alone are not 1 to their count, so no span is read off them."""
+    jobs = [job for job in recorded(SHARDED) if job["name"] != "gate-shard (windows-aarch64, 2/2)"]
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate(jobs, "windows-aarch64")
+    contains(str(refused.value), "gate (windows-aarch64)")
+    contains(str(refused.value), "not 1 to their count")
 
 
 def _pattern(template: str) -> re.Pattern[str]:

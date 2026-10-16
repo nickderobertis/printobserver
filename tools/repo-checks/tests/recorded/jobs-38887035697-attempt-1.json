@@ -1,0 +1,2509 @@
+{
+  "total_count": 16,
+  "jobs": [
+    {
+      "id": 116927166680,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb42A",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166680",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166680",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T11:00:12Z",
+      "name": "gate-shard (windows-aarch64, 2/2)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:43Z",
+          "completed_at": "2026-10-16T10:24:53Z"
+        },
+        {
+          "name": "Run nrwl/nx-set-shas@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:54Z",
+          "completed_at": "2026-10-16T10:24:54Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:54Z",
+          "completed_at": "2026-10-16T10:25:20Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:20Z",
+          "completed_at": "2026-10-16T10:25:39Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:39Z",
+          "completed_at": "2026-10-16T10:25:44Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:44Z",
+          "completed_at": "2026-10-16T10:25:47Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:47Z",
+          "completed_at": "2026-10-16T10:25:47Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:47Z",
+          "completed_at": "2026-10-16T10:27:21Z"
+        },
+        {
+          "name": "Run just check-shard \"$(just gate-tier)\" \"$GATE_SHARD\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:27:21Z",
+          "completed_at": "2026-10-16T10:58:50Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:58:50Z",
+          "completed_at": "2026-10-16T10:58:50Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-16T10:58:50Z",
+          "completed_at": "2026-10-16T10:58:51Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-10-16T10:58:51Z",
+          "completed_at": "2026-10-16T10:58:51Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-16T10:58:51Z",
+          "completed_at": "2026-10-16T11:00:03Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-16T11:00:03Z",
+          "completed_at": "2026-10-16T11:00:08Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-16T11:00:08Z",
+          "completed_at": "2026-10-16T11:00:08Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166680",
+      "labels": [
+        "windows-11-arm"
+      ],
+      "runner_id": 1000239397,
+      "runner_name": "GitHub Actions 1000239397",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166869,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb5lQ",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166869",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166869",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:25:16Z",
+      "name": "supply-chain",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:43Z",
+          "completed_at": "2026-10-16T10:24:45Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:45Z",
+          "completed_at": "2026-10-16T10:25:01Z"
+        },
+        {
+          "name": "Run extractions/setup-just@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:25:01Z",
+          "completed_at": "2026-10-16T10:25:03Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:03Z",
+          "completed_at": "2026-10-16T10:25:04Z"
+        },
+        {
+          "name": "Run just tool-version cargo-deny >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:04Z",
+          "completed_at": "2026-10-16T10:25:07Z"
+        },
+        {
+          "name": "Run just tool-version cargo-machete >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:07Z",
+          "completed_at": "2026-10-16T10:25:07Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:07Z",
+          "completed_at": "2026-10-16T10:25:08Z"
+        },
+        {
+          "name": "Run just supply-chain",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:08Z",
+          "completed_at": "2026-10-16T10:25:12Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-10-16T10:25:12Z",
+          "completed_at": "2026-10-16T10:25:13Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-16T10:25:13Z",
+          "completed_at": "2026-10-16T10:25:13Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-16T10:25:13Z",
+          "completed_at": "2026-10-16T10:25:13Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-16T10:25:13Z",
+          "completed_at": "2026-10-16T10:25:13Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166869",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239402,
+      "runner_name": "GitHub Actions 1000239402",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166917,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb5xQ",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166917",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166917",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:25:00Z",
+      "name": "skill-install",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:38Z",
+          "completed_at": "2026-10-16T10:24:41Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:41Z",
+          "completed_at": "2026-10-16T10:24:42Z"
+        },
+        {
+          "name": "Run extractions/setup-just@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:42Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:24:46Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:24:46Z",
+          "completed_at": "2026-10-16T10:24:47Z"
+        },
+        {
+          "name": "Run just tool-version gh >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:24:47Z",
+          "completed_at": "2026-10-16T10:24:51Z"
+        },
+        {
+          "name": "Run just install-gh 2.100.0",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:24:51Z",
+          "completed_at": "2026-10-16T10:24:52Z"
+        },
+        {
+          "name": "Run echo \"$HOME/.local/bin\" >> \"$GITHUB_PATH\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:24:52Z",
+          "completed_at": "2026-10-16T10:24:52Z"
+        },
+        {
+          "name": "Run just test-skill-install",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:24:52Z",
+          "completed_at": "2026-10-16T10:24:57Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-10-16T10:24:57Z",
+          "completed_at": "2026-10-16T10:24:57Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-10-16T10:24:57Z",
+          "completed_at": "2026-10-16T10:24:58Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-10-16T10:24:58Z",
+          "completed_at": "2026-10-16T10:24:58Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-16T10:24:58Z",
+          "completed_at": "2026-10-16T10:24:58Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166917",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239403,
+      "runner_name": "GitHub Actions 1000239403",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166943,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb53w",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166943",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166943",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T11:01:10Z",
+      "name": "gate (windows-x86_64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:41Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:41Z",
+          "completed_at": "2026-10-16T10:24:51Z"
+        },
+        {
+          "name": "Run nrwl/nx-set-shas@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:51Z",
+          "completed_at": "2026-10-16T10:24:51Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:51Z",
+          "completed_at": "2026-10-16T10:25:53Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:53Z",
+          "completed_at": "2026-10-16T10:25:58Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:58Z",
+          "completed_at": "2026-10-16T10:26:08Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:26:08Z",
+          "completed_at": "2026-10-16T10:26:10Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:26:10Z",
+          "completed_at": "2026-10-16T10:26:11Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:26:11Z",
+          "completed_at": "2026-10-16T10:26:46Z"
+        },
+        {
+          "name": "Run just check \"$(just gate-tier)\"",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 10,
+          "started_at": "2026-10-16T10:26:46Z",
+          "completed_at": "2026-10-16T11:00:59Z"
+        },
+        {
+          "name": "Run just budgets-release-pr",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 11,
+          "started_at": "2026-10-16T11:00:59Z",
+          "completed_at": "2026-10-16T11:00:59Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T11:00:59Z",
+          "completed_at": "2026-10-16T11:01:00Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 21,
+          "started_at": "2026-10-16T11:01:00Z",
+          "completed_at": "2026-10-16T11:01:00Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 22,
+          "started_at": "2026-10-16T11:01:00Z",
+          "completed_at": "2026-10-16T11:01:00Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-16T11:01:00Z",
+          "completed_at": "2026-10-16T11:01:05Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-10-16T11:01:05Z",
+          "completed_at": "2026-10-16T11:01:08Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-10-16T11:01:08Z",
+          "completed_at": "2026-10-16T11:01:08Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166943",
+      "labels": [
+        "windows-2025"
+      ],
+      "runner_id": 1000239401,
+      "runner_name": "GitHub Actions 1000239401",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166945,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb54Q",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166945",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166945",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:40Z",
+      "completed_at": "2026-10-16T10:31:49Z",
+      "name": "integration (linux-aarch64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:40Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:43Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:25:03Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:25:03Z",
+          "completed_at": "2026-10-16T10:25:04Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:04Z",
+          "completed_at": "2026-10-16T10:25:07Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:07Z",
+          "completed_at": "2026-10-16T10:25:08Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:08Z",
+          "completed_at": "2026-10-16T10:25:08Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:08Z",
+          "completed_at": "2026-10-16T10:25:17Z"
+        },
+        {
+          "name": "Run just release-program-key >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:17Z",
+          "completed_at": "2026-10-16T10:25:17Z"
+        },
+        {
+          "name": "Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:25:17Z",
+          "completed_at": "2026-10-16T10:25:17Z"
+        },
+        {
+          "name": "Run just release-program",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:25:17Z",
+          "completed_at": "2026-10-16T10:25:18Z"
+        },
+        {
+          "name": "Run just octoprint-up",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:25:18Z",
+          "completed_at": "2026-10-16T10:25:27Z"
+        },
+        {
+          "name": "Run just test-integration",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-16T10:25:27Z",
+          "completed_at": "2026-10-16T10:31:44Z"
+        },
+        {
+          "name": "Run just octoprint-down",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-16T10:31:44Z",
+          "completed_at": "2026-10-16T10:31:45Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-16T10:31:45Z",
+          "completed_at": "2026-10-16T10:31:45Z"
+        },
+        {
+          "name": "Post Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-10-16T10:31:45Z",
+          "completed_at": "2026-10-16T10:31:45Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-10-16T10:31:45Z",
+          "completed_at": "2026-10-16T10:31:45Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 28,
+          "started_at": "2026-10-16T10:31:45Z",
+          "completed_at": "2026-10-16T10:31:45Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 29,
+          "started_at": "2026-10-16T10:31:45Z",
+          "completed_at": "2026-10-16T10:31:46Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-16T10:31:46Z",
+          "completed_at": "2026-10-16T10:31:46Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-10-16T10:31:46Z",
+          "completed_at": "2026-10-16T10:31:46Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166945",
+      "labels": [
+        "ubuntu-24.04-arm"
+      ],
+      "runner_id": 1000239399,
+      "runner_name": "GitHub Actions 1000239399",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166965,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb59Q",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166965",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166965",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:38:35Z",
+      "name": "integration (windows-aarch64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:43Z",
+          "completed_at": "2026-10-16T10:24:52Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:52Z",
+          "completed_at": "2026-10-16T10:25:56Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:25:56Z",
+          "completed_at": "2026-10-16T10:26:14Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:26:14Z",
+          "completed_at": "2026-10-16T10:26:21Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:26:21Z",
+          "completed_at": "2026-10-16T10:26:24Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:26:24Z",
+          "completed_at": "2026-10-16T10:26:24Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:26:24Z",
+          "completed_at": "2026-10-16T10:27:02Z"
+        },
+        {
+          "name": "Run just release-program-key >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:27:02Z",
+          "completed_at": "2026-10-16T10:27:05Z"
+        },
+        {
+          "name": "Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:27:05Z",
+          "completed_at": "2026-10-16T10:27:07Z"
+        },
+        {
+          "name": "Run just release-program",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:27:07Z",
+          "completed_at": "2026-10-16T10:27:08Z"
+        },
+        {
+          "name": "Run just octoprint-up",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:27:08Z",
+          "completed_at": "2026-10-16T10:27:52Z"
+        },
+        {
+          "name": "Run just test-integration",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-16T10:27:52Z",
+          "completed_at": "2026-10-16T10:38:21Z"
+        },
+        {
+          "name": "Run just octoprint-down",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-16T10:38:21Z",
+          "completed_at": "2026-10-16T10:38:22Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-16T10:38:22Z",
+          "completed_at": "2026-10-16T10:38:22Z"
+        },
+        {
+          "name": "Post Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-10-16T10:38:22Z",
+          "completed_at": "2026-10-16T10:38:23Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-10-16T10:38:23Z",
+          "completed_at": "2026-10-16T10:38:23Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 28,
+          "started_at": "2026-10-16T10:38:23Z",
+          "completed_at": "2026-10-16T10:38:23Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 29,
+          "started_at": "2026-10-16T10:38:23Z",
+          "completed_at": "2026-10-16T10:38:24Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-16T10:38:24Z",
+          "completed_at": "2026-10-16T10:38:28Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-10-16T10:38:28Z",
+          "completed_at": "2026-10-16T10:38:28Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166965",
+      "labels": [
+        "windows-11-arm"
+      ],
+      "runner_id": 1000239398,
+      "runner_name": "GitHub Actions 1000239398",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166966,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb59g",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166966",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166966",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:29:40Z",
+      "completed_at": "2026-10-16T10:42:10Z",
+      "name": "integration (macos-aarch64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:29:40Z",
+          "completed_at": "2026-10-16T10:29:44Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:29:45Z",
+          "completed_at": "2026-10-16T10:29:47Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:29:47Z",
+          "completed_at": "2026-10-16T10:30:29Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:30:29Z",
+          "completed_at": "2026-10-16T10:30:30Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:30:30Z",
+          "completed_at": "2026-10-16T10:30:34Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:30:34Z",
+          "completed_at": "2026-10-16T10:30:36Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:30:36Z",
+          "completed_at": "2026-10-16T10:30:36Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:30:36Z",
+          "completed_at": "2026-10-16T10:30:48Z"
+        },
+        {
+          "name": "Run just release-program-key >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:30:48Z",
+          "completed_at": "2026-10-16T10:30:49Z"
+        },
+        {
+          "name": "Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:30:49Z",
+          "completed_at": "2026-10-16T10:30:51Z"
+        },
+        {
+          "name": "Run just release-program",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:30:51Z",
+          "completed_at": "2026-10-16T10:30:51Z"
+        },
+        {
+          "name": "Run just octoprint-up",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:30:51Z",
+          "completed_at": "2026-10-16T10:31:36Z"
+        },
+        {
+          "name": "Run just test-integration",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-16T10:31:36Z",
+          "completed_at": "2026-10-16T10:42:03Z"
+        },
+        {
+          "name": "Run just octoprint-down",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-16T10:42:03Z",
+          "completed_at": "2026-10-16T10:42:04Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-16T10:42:04Z",
+          "completed_at": "2026-10-16T10:42:04Z"
+        },
+        {
+          "name": "Post Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-10-16T10:42:04Z",
+          "completed_at": "2026-10-16T10:42:04Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-10-16T10:42:04Z",
+          "completed_at": "2026-10-16T10:42:05Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 28,
+          "started_at": "2026-10-16T10:42:05Z",
+          "completed_at": "2026-10-16T10:42:05Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 29,
+          "started_at": "2026-10-16T10:42:05Z",
+          "completed_at": "2026-10-16T10:42:05Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-16T10:42:05Z",
+          "completed_at": "2026-10-16T10:42:05Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-10-16T10:42:05Z",
+          "completed_at": "2026-10-16T10:42:07Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166966",
+      "labels": [
+        "macos-15"
+      ],
+      "runner_id": 1000239452,
+      "runner_name": "GitHub Actions 1000239452",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927166996,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6FA",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927166996",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927166996",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:32:19Z",
+      "name": "integration (linux-x86_64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:24:46Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:46Z",
+          "completed_at": "2026-10-16T10:25:07Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:25:07Z",
+          "completed_at": "2026-10-16T10:25:10Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:10Z",
+          "completed_at": "2026-10-16T10:25:12Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:12Z",
+          "completed_at": "2026-10-16T10:25:14Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:14Z",
+          "completed_at": "2026-10-16T10:25:14Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:14Z",
+          "completed_at": "2026-10-16T10:25:23Z"
+        },
+        {
+          "name": "Run just release-program-key >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:23Z",
+          "completed_at": "2026-10-16T10:25:23Z"
+        },
+        {
+          "name": "Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:25:23Z",
+          "completed_at": "2026-10-16T10:25:25Z"
+        },
+        {
+          "name": "Run just release-program",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:25:25Z",
+          "completed_at": "2026-10-16T10:25:25Z"
+        },
+        {
+          "name": "Run just octoprint-up",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:25:25Z",
+          "completed_at": "2026-10-16T10:25:35Z"
+        },
+        {
+          "name": "Run just test-integration",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-16T10:25:35Z",
+          "completed_at": "2026-10-16T10:32:13Z"
+        },
+        {
+          "name": "Run just octoprint-down",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-16T10:32:13Z",
+          "completed_at": "2026-10-16T10:32:14Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-16T10:32:14Z",
+          "completed_at": "2026-10-16T10:32:14Z"
+        },
+        {
+          "name": "Post Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-10-16T10:32:14Z",
+          "completed_at": "2026-10-16T10:32:14Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-10-16T10:32:14Z",
+          "completed_at": "2026-10-16T10:32:14Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 28,
+          "started_at": "2026-10-16T10:32:14Z",
+          "completed_at": "2026-10-16T10:32:14Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 29,
+          "started_at": "2026-10-16T10:32:14Z",
+          "completed_at": "2026-10-16T10:32:15Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-16T10:32:15Z",
+          "completed_at": "2026-10-16T10:32:15Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-10-16T10:32:15Z",
+          "completed_at": "2026-10-16T10:32:15Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927166996",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239404,
+      "runner_name": "GitHub Actions 1000239404",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167002,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6Gg",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167002",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167002",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:40Z",
+      "completed_at": "2026-10-16T10:44:30Z",
+      "name": "gate (linux-aarch64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:41Z",
+          "completed_at": "2026-10-16T10:24:42Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:42Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run nrwl/nx-set-shas@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:25:03Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:03Z",
+          "completed_at": "2026-10-16T10:25:05Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:05Z",
+          "completed_at": "2026-10-16T10:25:07Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:07Z",
+          "completed_at": "2026-10-16T10:25:07Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:07Z",
+          "completed_at": "2026-10-16T10:25:08Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:08Z",
+          "completed_at": "2026-10-16T10:25:16Z"
+        },
+        {
+          "name": "Run just check \"$(just gate-tier)\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:25:16Z",
+          "completed_at": "2026-10-16T10:44:27Z"
+        },
+        {
+          "name": "Run just budgets-release-pr",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:44:27Z",
+          "completed_at": "2026-10-16T10:44:27Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:44:27Z",
+          "completed_at": "2026-10-16T10:44:27Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-16T10:44:27Z",
+          "completed_at": "2026-10-16T10:44:27Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-16T10:44:27Z",
+          "completed_at": "2026-10-16T10:44:28Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-16T10:44:28Z",
+          "completed_at": "2026-10-16T10:44:28Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-10-16T10:44:28Z",
+          "completed_at": "2026-10-16T10:44:28Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-10-16T10:44:28Z",
+          "completed_at": "2026-10-16T10:44:28Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167002",
+      "labels": [
+        "ubuntu-24.04-arm"
+      ],
+      "runner_id": 1000239400,
+      "runner_name": "GitHub Actions 1000239400",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167066,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6Wg",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167066",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167066",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:37:48Z",
+      "completed_at": "2026-10-16T11:04:09Z",
+      "name": "gate (macos-aarch64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:37:48Z",
+          "completed_at": "2026-10-16T10:37:52Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:37:52Z",
+          "completed_at": "2026-10-16T10:37:54Z"
+        },
+        {
+          "name": "Run nrwl/nx-set-shas@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:37:54Z",
+          "completed_at": "2026-10-16T10:37:54Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:37:54Z",
+          "completed_at": "2026-10-16T10:38:37Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:38:37Z",
+          "completed_at": "2026-10-16T10:38:38Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:38:38Z",
+          "completed_at": "2026-10-16T10:38:42Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:38:42Z",
+          "completed_at": "2026-10-16T10:38:43Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:38:43Z",
+          "completed_at": "2026-10-16T10:38:43Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:38:43Z",
+          "completed_at": "2026-10-16T10:38:53Z"
+        },
+        {
+          "name": "Run just check \"$(just gate-tier)\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:38:53Z",
+          "completed_at": "2026-10-16T11:03:58Z"
+        },
+        {
+          "name": "Run just budgets-release-pr",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T11:03:58Z",
+          "completed_at": "2026-10-16T11:03:58Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T11:03:58Z",
+          "completed_at": "2026-10-16T11:03:58Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-16T11:03:58Z",
+          "completed_at": "2026-10-16T11:03:59Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-16T11:03:59Z",
+          "completed_at": "2026-10-16T11:03:59Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-16T11:03:59Z",
+          "completed_at": "2026-10-16T11:04:00Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-10-16T11:04:00Z",
+          "completed_at": "2026-10-16T11:04:01Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-10-16T11:04:01Z",
+          "completed_at": "2026-10-16T11:04:04Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167066",
+      "labels": [
+        "macos-15"
+      ],
+      "runner_id": 1000239491,
+      "runner_name": "GitHub Actions 1000239491",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167083,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6aw",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167083",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167083",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:24:50Z",
+      "name": "pr-title",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:40Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:40Z",
+          "completed_at": "2026-10-16T10:24:42Z"
+        },
+        {
+          "name": "Run extractions/setup-just@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:42Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:43Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run just check-pr-title",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:24:47Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:24:47Z",
+          "completed_at": "2026-10-16T10:24:48Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:24:48Z",
+          "completed_at": "2026-10-16T10:24:48Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:24:48Z",
+          "completed_at": "2026-10-16T10:24:48Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167083",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239405,
+      "runner_name": "GitHub Actions 1000239405",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167094,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6dg",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167094",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167094",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:49:23Z",
+      "name": "gate (linux-x86_64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:42Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:42Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run nrwl/nx-set-shas@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:25:10Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:10Z",
+          "completed_at": "2026-10-16T10:25:11Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:11Z",
+          "completed_at": "2026-10-16T10:25:15Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:15Z",
+          "completed_at": "2026-10-16T10:25:16Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:16Z",
+          "completed_at": "2026-10-16T10:25:16Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:16Z",
+          "completed_at": "2026-10-16T10:25:25Z"
+        },
+        {
+          "name": "Run just check \"$(just gate-tier)\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:25:25Z",
+          "completed_at": "2026-10-16T10:49:18Z"
+        },
+        {
+          "name": "Run just budgets-release-pr",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:49:18Z",
+          "completed_at": "2026-10-16T10:49:18Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:49:18Z",
+          "completed_at": "2026-10-16T10:49:18Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-16T10:49:18Z",
+          "completed_at": "2026-10-16T10:49:18Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-16T10:49:18Z",
+          "completed_at": "2026-10-16T10:49:19Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-16T10:49:19Z",
+          "completed_at": "2026-10-16T10:49:19Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-10-16T10:49:19Z",
+          "completed_at": "2026-10-16T10:49:19Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-10-16T10:49:19Z",
+          "completed_at": "2026-10-16T10:49:19Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167094",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239406,
+      "runner_name": "GitHub Actions 1000239406",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167097,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6eQ",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167097",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167097",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:35:47Z",
+      "name": "integration (windows-x86_64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:42Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:42Z",
+          "completed_at": "2026-10-16T10:24:49Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:49Z",
+          "completed_at": "2026-10-16T10:25:29Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:25:29Z",
+          "completed_at": "2026-10-16T10:25:34Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:34Z",
+          "completed_at": "2026-10-16T10:25:39Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:39Z",
+          "completed_at": "2026-10-16T10:25:42Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:42Z",
+          "completed_at": "2026-10-16T10:25:43Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:43Z",
+          "completed_at": "2026-10-16T10:26:19Z"
+        },
+        {
+          "name": "Run just release-program-key >> \"$GITHUB_OUTPUT\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:26:19Z",
+          "completed_at": "2026-10-16T10:26:19Z"
+        },
+        {
+          "name": "Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:26:19Z",
+          "completed_at": "2026-10-16T10:26:21Z"
+        },
+        {
+          "name": "Run just release-program",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:26:21Z",
+          "completed_at": "2026-10-16T10:26:21Z"
+        },
+        {
+          "name": "Run just octoprint-up",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-10-16T10:26:21Z",
+          "completed_at": "2026-10-16T10:26:49Z"
+        },
+        {
+          "name": "Run just test-integration",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-10-16T10:26:49Z",
+          "completed_at": "2026-10-16T10:35:35Z"
+        },
+        {
+          "name": "Run just octoprint-down",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-16T10:35:35Z",
+          "completed_at": "2026-10-16T10:35:36Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-16T10:35:36Z",
+          "completed_at": "2026-10-16T10:35:42Z"
+        },
+        {
+          "name": "Post Run actions/cache@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-10-16T10:35:42Z",
+          "completed_at": "2026-10-16T10:35:42Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 27,
+          "started_at": "2026-10-16T10:35:42Z",
+          "completed_at": "2026-10-16T10:35:42Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 28,
+          "started_at": "2026-10-16T10:35:42Z",
+          "completed_at": "2026-10-16T10:35:42Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 29,
+          "started_at": "2026-10-16T10:35:42Z",
+          "completed_at": "2026-10-16T10:35:42Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 30,
+          "started_at": "2026-10-16T10:35:42Z",
+          "completed_at": "2026-10-16T10:35:44Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 31,
+          "started_at": "2026-10-16T10:35:44Z",
+          "completed_at": "2026-10-16T10:35:44Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167097",
+      "labels": [
+        "windows-2025"
+      ],
+      "runner_id": 1000239408,
+      "runner_name": "GitHub Actions 1000239408",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167181,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb6zQ",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167181",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167181",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:59:09Z",
+      "name": "gate-shard (windows-aarch64, 1/2)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:43Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:43Z",
+          "completed_at": "2026-10-16T10:24:53Z"
+        },
+        {
+          "name": "Run nrwl/nx-set-shas@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:53Z",
+          "completed_at": "2026-10-16T10:24:53Z"
+        },
+        {
+          "name": "Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:53Z",
+          "completed_at": "2026-10-16T10:25:20Z"
+        },
+        {
+          "name": "Run taiki-e/install-action@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:25:20Z",
+          "completed_at": "2026-10-16T10:25:38Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:25:38Z",
+          "completed_at": "2026-10-16T10:25:44Z"
+        },
+        {
+          "name": "Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-10-16T10:25:44Z",
+          "completed_at": "2026-10-16T10:25:47Z"
+        },
+        {
+          "name": "Run just runner-temp",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-10-16T10:25:47Z",
+          "completed_at": "2026-10-16T10:25:48Z"
+        },
+        {
+          "name": "Run just bootstrap",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T10:25:48Z",
+          "completed_at": "2026-10-16T10:27:27Z"
+        },
+        {
+          "name": "Run just check-shard \"$(just gate-tier)\" \"$GATE_SHARD\"",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T10:27:27Z",
+          "completed_at": "2026-10-16T10:57:11Z"
+        },
+        {
+          "name": "Run just runner-temp cleanup",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T10:57:11Z",
+          "completed_at": "2026-10-16T10:57:11Z"
+        },
+        {
+          "name": "Post Run oven-sh/setup-bun@v2",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-10-16T10:57:11Z",
+          "completed_at": "2026-10-16T10:57:12Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-10-16T10:57:12Z",
+          "completed_at": "2026-10-16T10:57:12Z"
+        },
+        {
+          "name": "Post Run actions-rust-lang/setup-rust-toolchain@v1",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-10-16T10:57:12Z",
+          "completed_at": "2026-10-16T10:59:01Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-10-16T10:59:01Z",
+          "completed_at": "2026-10-16T10:59:05Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-10-16T10:59:05Z",
+          "completed_at": "2026-10-16T10:59:05Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167181",
+      "labels": [
+        "windows-11-arm"
+      ],
+      "runner_id": 1000239407,
+      "runner_name": "GitHub Actions 1000239407",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116927167395,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOWb7ow",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116927167395",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116927167395",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-10-16T10:24:36Z",
+      "started_at": "2026-10-16T10:24:38Z",
+      "completed_at": "2026-10-16T10:29:57Z",
+      "name": "llmlint",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T10:24:39Z",
+          "completed_at": "2026-10-16T10:24:41Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T10:24:41Z",
+          "completed_at": "2026-10-16T10:24:44Z"
+        },
+        {
+          "name": "Run extractions/setup-just@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T10:24:44Z",
+          "completed_at": "2026-10-16T10:24:45Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T10:24:45Z",
+          "completed_at": "2026-10-16T10:24:47Z"
+        },
+        {
+          "name": "Run just setup-llmlint",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T10:24:47Z",
+          "completed_at": "2026-10-16T10:24:56Z"
+        },
+        {
+          "name": "Run just lint-llm-validate",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-10-16T10:24:56Z",
+          "completed_at": "2026-10-16T10:24:57Z"
+        },
+        {
+          "name": "Run just lint-llm-diff",
+          "status": "completed",
+          "conclusion": "failure",
+          "number": 7,
+          "started_at": "2026-10-16T10:24:57Z",
+          "completed_at": "2026-10-16T10:29:54Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 13,
+          "started_at": "2026-10-16T10:29:54Z",
+          "completed_at": "2026-10-16T10:29:54Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-10-16T10:29:54Z",
+          "completed_at": "2026-10-16T10:29:54Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-10-16T10:29:54Z",
+          "completed_at": "2026-10-16T10:29:55Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116927167395",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239409,
+      "runner_name": "GitHub Actions 1000239409",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 116939877820,
+      "run_id": 38887035697,
+      "workflow_name": "ci",
+      "head_branch": "nick/207/gate-composition",
+      "run_url": "https://api.github.com/repos/nickderobertis/printobserver/actions/runs/38887035697",
+      "run_attempt": 1,
+      "node_id": "CR_kwDOUQmSo88AAAAbOijtvA",
+      "head_sha": "fc06115331d3632583642ee31e284d594c266f2b",
+      "url": "https://api.github.com/repos/nickderobertis/printobserver/actions/jobs/116939877820",
+      "html_url": "https://github.com/nickderobertis/printobserver/actions/runs/38887035697/job/116939877820",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-16T11:00:12Z",
+      "started_at": "2026-10-16T11:01:12Z",
+      "completed_at": "2026-10-16T11:01:21Z",
+      "name": "gate (windows-aarch64)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-10-16T11:01:12Z",
+          "completed_at": "2026-10-16T11:01:13Z"
+        },
+        {
+          "name": "Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-10-16T11:01:13Z",
+          "completed_at": "2026-10-16T11:01:15Z"
+        },
+        {
+          "name": "Run extractions/setup-just@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-10-16T11:01:15Z",
+          "completed_at": "2026-10-16T11:01:15Z"
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-10-16T11:01:15Z",
+          "completed_at": "2026-10-16T11:01:17Z"
+        },
+        {
+          "name": "Run just shard-verdict gate windows-aarch64",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-10-16T11:01:17Z",
+          "completed_at": "2026-10-16T11:01:19Z"
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v7",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-10-16T11:01:19Z",
+          "completed_at": "2026-10-16T11:01:20Z"
+        },
+        {
+          "name": "Post Run actions/checkout@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-10-16T11:01:20Z",
+          "completed_at": "2026-10-16T11:01:20Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-10-16T11:01:20Z",
+          "completed_at": "2026-10-16T11:01:20Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/nickderobertis/printobserver/check-runs/116939877820",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_id": 1000239600,
+      "runner_name": "GitHub Actions 1000239600",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}

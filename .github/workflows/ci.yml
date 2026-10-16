@@ -119,11 +119,15 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 1
-            shards: 2
+            shards: 3
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 2
-            shards: 2
+            shards: 3
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 3
+            shards: 3
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -141,7 +145,13 @@ jobs:
       # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
+      # A cache per shard: each compiles different things — the first the
+      # instrumented test builds and the lints, the others the debug program
+      # the end-to-end tier runs — and one key shared by all would hold
+      # whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
       # `just` from the same action as the cargo tools: `extractions/setup-just`
       # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2

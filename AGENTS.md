@@ -1029,7 +1029,9 @@ forever.
 1,800 s each platform's required job is designed to fit, so its work runs in the
 cells of `gate-shard-windows-aarch64`, each reporting `gate-shard
 (windows-aarch64, <k>/<n>)` and running the gate tiers `just gate-shards <n>`
-hands it, and the required context is reported by `gate-windows-aarch64`. That
+hands it — every tier but the end-to-end one in the first, and that tier's
+test files in two parts across the other two — and the required context is
+reported by `gate-windows-aarch64`. That
 job `needs` the shards, runs `if: always()`, and runs nothing but `just
 shard-verdict` over the workflow's own `needs`, failing unless every shard
 succeeded. The shards together run exactly the tiers `just check` does, none

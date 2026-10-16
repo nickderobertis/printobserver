@@ -36,9 +36,10 @@ from treecopy import REPO_ROOT, Tree
 CLOSURE = closure("sharded-jobs")
 
 CI = ".github/workflows/ci.yml"
-#: The committed sharded platform and how many shards its gate is split into.
+#: The committed sharded platform.
 SHARDED = "windows-aarch64"
-SHARDS = 2
+#: The split that keeps the end-to-end tier whole, a shard of its own.
+WHOLE_END_TO_END = 2
 #: One `just <recipe> ['<tier>']` invocation, as `just --dry-run` prints one.
 INVOCATION = re.compile(r"just (?P<recipe>[a-z][a-z0-9-]*)(?: '(?P<tier>[a-z]+)')?")
 
@@ -93,7 +94,7 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
     equal(
         end_to_end,
         [[f"just test-e2e {tier}"]]
-        if count == SHARDS
+        if count == WHOLE_END_TO_END
         else [[f"{END_TO_END_PART_VARIABLE}={part}/2 just test-e2e {tier}"] for part in (1, 2)],
         describing="the shards running the end-to-end tier",
     )
@@ -363,16 +364,16 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
     ("old", "new", "naming"),
     [
         (
-            "            shard: 2\n            shards: 2\n",
-            "            shard: 3\n            shards: 2\n",
+            "            shard: 3\n            shards: 3\n",
+            "            shard: 4\n            shards: 3\n",
             "runs every shard 1 to its count",
         ),
         (
-            "            shard: 2\n            shards: 2\n",
-            "            shard: 2\n            shards: 3\n",
+            "            shard: 3\n            shards: 3\n",
+            "            shard: 3\n            shards: 4\n",
             "runs every shard 1 to its count",
         ),
-        ("            shards: 2\n", "            shards: 1\n", "runs every shard 1 to its count"),
+        ("            shards: 3\n", "            shards: 1\n", "runs every shard 1 to its count"),
         (
             "            runner: windows-11-arm\n            shard: 2",
             "            runner: windows-2025\n            shard: 2",
