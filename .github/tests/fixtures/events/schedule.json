@@ -1,0 +1,14 @@
+{
+  "schedule": "CRON",
+  "repository": {
+    "id": 1,
+    "name": "printobserver",
+    "full_name": "nickderobertis/printobserver",
+    "fork": false,
+    "owner": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "default_branch": "main"
+  }
+}

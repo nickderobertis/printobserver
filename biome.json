@@ -1,7 +1,16 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["npm/**/*.ts", "npm/**/*.mjs", "npm/**/*.json", "*.json"]
+    "includes": [
+      "npm/**/*.ts",
+      "npm/**/*.mjs",
+      "npm/**/*.json",
+      "*.json",
+      ".github/**/*.mjs",
+      ".github/**/*.json",
+      "!.github/node_modules",
+      "!.github/.telemetry"
+    ]
   },
   "formatter": {
     "enabled": true,

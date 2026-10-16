@@ -32,6 +32,7 @@ AARCH64 = (
 )
 
 
+# The gate's two Linux cells; its macOS cell is carried by `ci.yml`'s `macos` job.
 MATRIX = """    strategy:
       fail-fast: false
       matrix:
@@ -40,8 +41,6 @@ MATRIX = """    strategy:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
 """
 
 # What follows the macOS cell in the gate's own matrix: its two Windows gates
@@ -94,6 +93,8 @@ def test_a_policy_whose_table_is_not_a_table_is_refused(
         "repo-policy.toml", "schema_version = 1\n", 'schema_version = 1\nworkflows = "yes"\n'
     )
     broken.edit("repo-policy.toml", "\n[workflows]\n", "\n[workflow-settings]\n")
+    for _ in range(2):
+        broken.edit("repo-policy.toml", "[[workflows.carried]]", "[[workflow-settings.carried]]")
 
     findings = platforms(broken.repo)
 
@@ -295,12 +296,10 @@ def test_an_install_jobs_matrix_is_held_to_the_list_too(
     broken.edit(
         ".github/workflows/install-path.yml",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
-        "          - id: macos-aarch64\n            runner: macos-15\n"
         "          - id: windows-x86_64\n            runner: windows-2025\n"
         "          - id: windows-aarch64\n            runner: windows-11-arm\n"
         "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
         "      - uses: actions/setup-python@v5\n",
-        "          - id: macos-aarch64\n            runner: macos-15\n"
         "          - id: windows-x86_64\n            runner: windows-2025\n"
         "          - id: windows-aarch64\n            runner: windows-11-arm\n"
         "    runs-on: ${{ matrix.platform.runner }}\n    steps:\n"
@@ -310,3 +309,50 @@ def test_an_install_jobs_matrix_is_held_to_the_list_too(
     findings = platforms(broken.repo)
 
     refused_naming(findings, "job `install-route-pypi`", "omits platform `linux-aarch64`")
+
+
+def test_a_carried_cell_whose_carrier_runs_on_another_runner_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A macOS cell carried by a job that is not on macOS is a cell nothing runs."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/ci.yml",
+        "    runs-on: macos-15\n",
+        "    runs-on: ubuntu-24.04\n",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "carrier `ci.yml:macos`", "does not run on `macos-15`")
+    refused_naming(findings, "job `gate`'s matrix omits platform `macos-aarch64`")
+
+
+def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The one macOS job owes the integration tier as much as the gate."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/ci.yml",
+        "        run: just test-integration\n",
+        "        run: just octoprint-down\n",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "carrier `ci.yml:macos`", "does not run `just test-integration`")
+
+
+def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
+    """An omitted cell says why it is carried, as an exclusion says why it does not run."""
+    broken = tree()
+    text = broken.read("repo-policy.toml")
+    start = text.index("[[workflows.carried]]")
+    reason = text.index("\nreason = ", start)
+    end = text.index("\n", reason + 1)
+    broken.write("repo-policy.toml", f'{text[:reason]}\nreason = ""{text[end:]}')
+
+    findings = platforms(broken.repo)
+
+    refused(findings, "a non-empty `reason`")

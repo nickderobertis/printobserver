@@ -107,9 +107,18 @@ PROVING = (
     "prove-registry-client-node",
 )
 
+#: What the release's macOS build cell proves before anything is published:
+#: the built artifacts installed and run, and the launchd service loaded. The
+#: first needs the release build this journey records rather than makes, and
+#: the second a launchd; `tools/release-artifacts/tests/test_built.py` runs the
+#: first over a real build and `test_prove_service_journey.py` the second
+#: against the launchd stand-in. Here the question is only where they run.
+PROVING_BUILT = ("prove-built-artifacts", "prove-built-service")
+
 #: The recipes the two downstream jobs run, recorded rather than run — and the
 #: six registry proofs, which would otherwise read the real registries.
-RECORDED = ("bootstrap", "build-artifacts", "publish-artifacts", *PROVING)
+# llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
+RECORDED = ("bootstrap", "build-artifacts", "publish-artifacts", *PROVING, *PROVING_BUILT)
 
 
 def cells(job: str) -> int:
@@ -547,6 +556,13 @@ def test_a_drafting_failure_does_not_stop_a_cut_release_from_reaching_its_artifa
     )
     equal(reached.count("publish-artifacts"), 1, describing=f"the publishes reached: {reached}")
     truth(reached.count("build-artifacts") >= 1, describing=f"the builds reached: {reached}")
+    # The macOS cell, and only it, proves what it built — before the publish.
+    for proving in PROVING_BUILT:
+        equal(reached.count(proving), 1, describing=f"the `{proving}` runs reached: {reached}")
+        truth(
+            reached.index(proving) < reached.index("publish-artifacts"),
+            describing=f"`{proving}` reached before the publish: {reached}",
+        )
 
 
 def test_a_push_runs_nothing_of_the_dispatched_shape(

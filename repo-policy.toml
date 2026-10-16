@@ -739,6 +739,43 @@ waived_steps = [
 ]
 waived_report = "GITHUB_STEP_SUMMARY"
 
+# A platform cell ONE consolidated job carries for several platform-dependent
+# jobs, each of which then omits it. Not a cell that does not run — it runs,
+# inside the carrier — so it is recorded here rather than in AGENTS.md's
+# exclusions block, whose entries are bring-ups still owed. `just check-repo`
+# admits an omitted cell only where its record names a carrier that runs on that
+# platform's own runner and runs every command in `runs`; AGENTS.md's "The
+# consolidated macOS lanes" is the prose half.
+[[workflows.carried]]
+platform = "macos-aarch64"
+jobs = ["gate", "integration"]
+carrier = "ci.yml:macos"
+runs = [
+  "just bootstrap",
+  "just check",
+  "just octoprint-up",
+  "just test-integration",
+  "just octoprint-down",
+]
+reason = "the account's few macOS slots are shared with other repositories, so a pull request's gate and printer integration tier run as one macOS job, owed only where the classifier says so; `gate (macos-aarch64)` and `integration (macos-aarch64)` are carried from Linux, each reporting that job's own lane"
+
+[[workflows.carried]]
+platform = "macos-aarch64"
+jobs = [
+  "prove-registry-pypi",
+  "prove-registry-npm",
+  "prove-registry-script",
+  "prove-registry-client-rust",
+  "prove-registry-client-python",
+  "prove-registry-client-node",
+  "install-route-pypi",
+  "install-route-npm",
+  "install-route-script",
+]
+carrier = "release-plz.yml:artifacts"
+runs = ["just build-artifacts", "just prove-built-artifacts", "just prove-built-service"]
+reason = "the release's macOS build cell is the one macOS job a release runs: before publishing it installs every route and client from the artifacts it built and runs them, and installs and loads the launchd service, where these jobs would start nine more macOS jobs after every release and every week"
+
 [dispatch]
 # The workflow that runs ONE job of ONE source workflow on ONE supported
 # platform, by hand, and no other job: the lever a platform is brought up with

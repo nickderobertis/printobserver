@@ -11,6 +11,14 @@
 # a dependent takes it from and running its own smoke check against the
 # supervisor the same release's asset carries.
 #
+# None of these jobs runs on macOS, on any trigger. The account's few macOS
+# slots are shared with other repositories, and this workflow fires after every
+# release and every week; the release's own macOS cell proves the same routes,
+# clients and launchd service from the artifacts it is about to publish
+# (`just prove-built-artifacts`, `just prove-built-service` in `release-plz.yml`),
+# and `platform-dispatch.yml` runs any one of these jobs on macOS by hand.
+# `repo-policy.toml`'s `[[workflows.carried]]` records the cells as carried.
+#
 # Nothing here runs on a change. Every one of these six proofs takes its
 # artifact from a registry, so over a pull request it could only report what
 # was published before the change — and the six each start one job per
@@ -147,8 +155,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -190,8 +196,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -231,8 +235,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -271,8 +273,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -316,8 +316,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -356,8 +354,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -391,8 +387,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -456,8 +450,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -517,8 +509,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64

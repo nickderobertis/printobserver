@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/nickderobertis/printobserver/compare/v0.4.1...v0.4.3) - 2026-10-16
+
+### Fixed
+
+- *(deps)* move rustls past RUSTSEC-2026-0346, 0347 and 0348 ([#235](https://github.com/nickderobertis/printobserver/pull/235))
+
+## [0.4.2](https://github.com/nickderobertis/printobserver/compare/v0.4.1...v0.4.2) - 2026-10-16
+
+### Fixed
+
+- *(deps)* move rustls past RUSTSEC-2026-0346, 0347 and 0348 ([#235](https://github.com/nickderobertis/printobserver/pull/235))
+
 ## [0.4.0](https://github.com/nickderobertis/printobserver/compare/v0.3.0...v0.4.0) - 2026-10-12
 
 ### Added

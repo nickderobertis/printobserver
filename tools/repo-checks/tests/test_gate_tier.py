@@ -359,20 +359,31 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
             )
         jobs = jobs_of(workflow)
         job = jobs[context.job]
-        # A sharded context's aggregator waits on its shards whatever they
-        # conclude, so it is reported whenever they run; they are held instead.
-        waited = [need for need in job.get("needs") or [] if is_shard_job(jobs[need])]
-        if waited:
-            equal(waited, job["needs"], describing=f"what `{context.job}` waits on")
-            equal(job.get("if"), "always()", describing=f"`{context.job}`'s condition")
-        for key in waited or [context.job]:
-            held = jobs[key]
-            equal(held.get("needs"), None, describing=f"what `{key}` waits on")
-            condition = held.get("if")
-            truth(
-                condition in (None, "github.event_name == 'pull_request'"),
-                describing=f"`{key}`'s condition, {condition!r}, holding on a pull request",
+        condition = job.get("if")
+        needs = job.get("needs")
+        if needs is not None:
+            # A carrier of a consolidated lane, or the aggregator of a sharded
+            # context, waits on the jobs doing the work and reports whatever
+            # they ended as: `always()` is what no result can skip. A shard it
+            # waits on is held to running on every pull request instead.
+            equal(
+                condition,
+                "always()",
+                describing=f"`{context.job}`'s condition, waiting on {needs}",
             )
+            for key in [needs] if isinstance(needs, str) else needs:
+                if not is_shard_job(jobs[key]):
+                    continue
+                equal(jobs[key].get("needs"), None, describing=f"what `{key}` waits on")
+                truth(
+                    jobs[key].get("if") in (None, "github.event_name == 'pull_request'"),
+                    describing=f"`{key}`'s condition, {jobs[key].get('if')!r}",
+                )
+            continue
+        truth(
+            condition in (None, "github.event_name == 'pull_request'"),
+            describing=f"`{context.job}`'s condition, {condition!r}, holding on a pull request",
+        )
 
 
 def test_the_required_checks_record_is_the_fixed_contract_in_full() -> None:

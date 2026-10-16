@@ -52,6 +52,9 @@ on:
       platform:
         description: The platform to run it on, as `AGENTS.md`'s supported-platform list names it.
         required: true
+        # Off macOS unless macOS is chosen: a dispatch is the one manual macOS
+        # lever, and it starts at most one macOS job — the one job it runs.
+        default: linux-x86_64
         type: choice
         options:
           - linux-x86_64

@@ -1,0 +1,23 @@
+{
+  "inputs": {
+    "job": "gate",
+    "platform": "macos-aarch64"
+  },
+  "ref": "refs/heads/main",
+  "workflow": ".github/workflows/platform-dispatch.yml",
+  "repository": {
+    "id": 1,
+    "name": "printobserver",
+    "full_name": "nickderobertis/printobserver",
+    "fork": false,
+    "owner": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "nickderobertis",
+    "type": "User"
+  }
+}

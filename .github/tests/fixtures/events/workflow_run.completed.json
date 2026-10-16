@@ -1,0 +1,31 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 9001,
+    "name": "release-plz",
+    "event": "push",
+    "head_branch": "main",
+    "head_sha": "HEAD_SHA",
+    "conclusion": "success",
+    "status": "completed"
+  },
+  "workflow": {
+    "name": "release-plz",
+    "path": ".github/workflows/release-plz.yml"
+  },
+  "repository": {
+    "id": 1,
+    "name": "printobserver",
+    "full_name": "nickderobertis/printobserver",
+    "fork": false,
+    "owner": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "nickderobertis",
+    "type": "User"
+  }
+}

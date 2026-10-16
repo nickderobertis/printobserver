@@ -354,7 +354,7 @@ records a platform the tier cannot run on, and this one a cell whose bring-up is
 still owed, so either excuses a cell of that job and a matrix carrying a cell
 either records is refused.
 
-### The seven jobs that carry no platform matrix
+### The jobs that carry no platform matrix
 
 These run once per change rather than once per platform, and a matrix would say
 nothing about any of them. Each carries the reason it has none — the record is
@@ -368,7 +368,27 @@ what makes a job running once a decision rather than an omission.
 - `gate-windows-aarch64` — it is the aggregating job of the sharded `gate (windows-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-aarch64`, whose cells are on that platform's runner.
 - `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
+- `gate-macos` — it carries one required context, `gate (macos-aarch64)`, from Linux: it reads the one `macos` job's result and its gate lane's outcome, so what it judges is that job's macOS run rather than this host, and a second cell would judge the same result twice.
+- `integration-macos` — it carries one required context, `integration (macos-aarch64)`, from Linux: it reads the one `macos` job's result and its integration lane's outcome, so what it judges is that job's macOS run rather than this host, and a second cell would judge the same result twice.
 [//]: # (END unmatrixed-jobs)
+
+### The consolidated macOS lanes
+
+The account's few macOS slots are shared with other repositories, so one change
+may occupy at most one per workflow run, and at most two runs over its
+automatic life: its pull request's `macos` job in `ci.yml`, which runs the gate
+and the integration tier in turn, and the release's macOS `artifacts` cell,
+which proves what it built before publishing. Nothing else starts macOS
+automatically; `platform-dispatch.yml` is the one manual lever, one job per
+dispatch.
+
+`.github/macos-policy.mjs classify` decides whether a pull request owes the
+lane — release automation's version/changelog-only pull request does not, and
+unknown input does — and the Linux jobs carrying `gate (macos-aarch64)` and
+`integration (macos-aarch64)` report what that one job's lane did, or the
+omission the classifier authorized. `repo-policy.toml`'s `[[workflows.carried]]`
+records each omitted cell and its carrier, and `.github/budgets.yaml` holds both
+bounds against the graph `github-workflows:test` evaluates.
 
 ## The scripted OctoPrint environment
 

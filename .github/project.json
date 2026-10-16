@@ -1,0 +1,32 @@
+{
+  "name": "github-workflows",
+  "root": ".github",
+  "projectType": "library",
+  "tags": ["lang:javascript", "type:tooling"],
+  "targets": {
+    "format": {
+      "command": "bunx biome format --write .github"
+    },
+    "format-check": {
+      "command": "bunx biome format .github"
+    },
+    "lint": {
+      "command": "bunx biome lint .github"
+    },
+    "typecheck": {
+      "command": "bunx tsc -p .github/tsconfig.json"
+    },
+    "test": {
+      "command": "node --test",
+      "options": {
+        "cwd": ".github"
+      },
+      "outputs": ["{projectRoot}/.telemetry"]
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check .github/budgets.yaml",
+      "dependsOn": ["test"],
+      "cache": false
+    }
+  }
+}

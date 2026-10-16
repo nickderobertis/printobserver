@@ -21,10 +21,9 @@ INSTALL = ".github/workflows/install-path.yml"
 POLICY = "repo-policy.toml"
 DECLARED_KINDS = 'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]'
 AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
-MACOS = """          - id: macos-aarch64
-            runner: macos-15
-"""
-# The two Windows cells, which follow the macOS one in every matrix carrying them.
+# The two Windows cells, which follow the Linux ones in every matrix carrying
+# them: the macOS cell of each is carried by one consolidated job, per
+# `repo-policy.toml`'s `[[workflows.carried]]`.
 WINDOWS = (
     "          - id: windows-x86_64\n            runner: windows-2025\n"
     "          - id: windows-aarch64\n            runner: windows-11-arm\n"
@@ -34,7 +33,6 @@ WINDOWS = (
 # tells it apart from the gate's.
 INTEGRATION_AARCH64 = (
     AARCH64
-    + MACOS
     + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
     + "    # Git's own bash on the Windows runners rather than PowerShell, so that\n"
@@ -49,7 +47,6 @@ INTEGRATION_AARCH64 = (
 # sets up Python, which none of the registry proofs ahead of it in that file does.
 INSTALL_ROUTE_AARCH64 = (
     AARCH64
-    + MACOS
     + WINDOWS
     + (
         "    runs-on: ${{ matrix.platform.runner }}\n"
@@ -68,7 +65,6 @@ GATE_MATRIX = (
             runner: ubuntu-24.04
 """
     + AARCH64
-    + MACOS
     + "          # The two Windows gates are sharded: `gate-shard-<platform>` runs\n"
     + "          # each one's work and `gate-<platform>` reports its context.\n"
     + "    runs-on: ${{ matrix.platform.runner }}\n"
@@ -186,6 +182,8 @@ def test_a_policy_whose_table_is_not_a_table_is_refused(
     # reader calling `.get` on it without narrowing would trip over.
     broken.edit(POLICY, "schema_version = 1\n", 'schema_version = 1\nworkflows = "yes"\n')
     broken.edit(POLICY, "\n[workflows]\n", "\n[workflow-settings]\n")
+    for _ in range(2):
+        broken.edit(POLICY, "[[workflows.carried]]", "[[workflow-settings.carried]]")
 
     result = broken.just("check-repo")
 

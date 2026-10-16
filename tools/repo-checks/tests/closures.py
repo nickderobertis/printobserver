@@ -66,7 +66,7 @@ CHECKS: dict[str, Closure] = {
     "sharded-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "install-path": Closure((WORKFLOWS, AGENTS, "README.md", POLICY)),
     "ci": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
-    "artifact-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, RELEASE_TARGETS)),
+    "artifact-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, RELEASE_TARGETS, POLICY)),
     "install-script": Closure((AGENTS, "scripts/")),
     "install-path-not-narrowed": Closure((AGENTS, POLICY)),
     "integration-tier": Closure((PROJECTS, WORKFLOWS, AGENTS, JUSTFILE, "nx.json", POLICY)),
