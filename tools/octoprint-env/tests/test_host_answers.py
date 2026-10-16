@@ -16,6 +16,7 @@ runs against the host it is on, so each platform's cell proves its own answer.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,12 @@ from repo_checks.shell import run as shell_run
 from repo_checks.shell import start
 
 
+def _virtual_printer_module(state: Path) -> Path:
+    """Where an earlier install left the virtual printer's module."""
+    site = state / "venv" / "lib" / "python3.11" / "site-packages"
+    return site.joinpath(*octoprint_env.VIRTUAL_PRINTER_MODULE)
+
+
 def _provisioned_over(state: Path, program: Path) -> None:
     """A state directory an earlier install left, its OctoPrint at `program`.
 
@@ -36,6 +43,9 @@ def _provisioned_over(state: Path, program: Path) -> None:
     """
     (state / "venv" / program).parent.mkdir(parents=True)
     (state / "venv" / program).write_text("an installed program\n", encoding="utf-8")
+    module = _virtual_printer_module(state)
+    module.parent.mkdir(parents=True)
+    module.write_bytes(b"# the release's own module\n" + octoprint_env.HEATER_DEFECT)
     (state / "instance").mkdir(parents=True)
     (state / "instance" / "users.yaml").write_text(
         yaml.safe_dump({octoprint_env.ACCOUNT: {"apikey": "a-provisioned-key"}}),
@@ -80,6 +90,50 @@ def test_an_installed_instance_is_found_where_the_host_keeps_its_programs(
         str(state.resolve() / "api-key"),
         describing="the key file the install named",
     )
+
+
+def test_an_install_over_an_unrepaired_release_repairs_it_without_touching_its_links(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An environment installed before the repair is repaired by the next install.
+
+    The module is a hard link, as `uv` installs it from its own cache, and the
+    repair leaves the other name of that file exactly as it found it.
+    """
+    state = tmp_path / "state"
+    _provisioned_over(state, Path("bin") / "octoprint")
+    module = _virtual_printer_module(state)
+    cached = tmp_path / "cache" / "virtual.py"
+    cached.parent.mkdir()
+    os.link(module, cached)
+    published = cached.read_bytes()
+
+    code = octoprint_env.main(["install", "--state-dir", str(state)])
+
+    said = capsys.readouterr()
+    equal(code, 0, describing=f"installing over an unrepaired release: {said.err}")
+    contains(said.err, "repaired the virtual printer", describing="what the install said")
+    contains(module.read_bytes(), octoprint_env.HEATER_REPAIR, describing="the module")
+    equal(cached.read_bytes(), published, describing="the cache's copy of the module")
+    equal(module.stat().st_nlink, 1, describing="the links to the repaired module")
+
+
+def test_a_virtual_printer_carrying_neither_the_defect_nor_its_repair_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release whose heater simulation changed is reported, not patched blind."""
+    state = tmp_path / "state"
+    _provisioned_over(state, Path("bin") / "octoprint")
+    module = _virtual_printer_module(state)
+    rewritten = b"# a release that rewrote the heater simulation\n"
+    module.write_bytes(rewritten)
+
+    code = octoprint_env.main(["install", "--state-dir", str(state)])
+
+    said = capsys.readouterr()
+    truth(code != 0, describing="an install over an unrecognised heater simulation failing")
+    contains(said.err, "carries neither the heater defect", describing="what the install said")
+    equal(module.read_bytes(), rewritten, describing="the module the install refused")
 
 
 # A process that outlives the one that started it, as the server `up` starts
