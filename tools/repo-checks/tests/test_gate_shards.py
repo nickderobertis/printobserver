@@ -513,6 +513,11 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
         ),
         (
             "            shard: 1\n            shards: 4\n",
+            "            shard: true\n            shards: 4\n",
+            "runs every shard 1 to its count",
+        ),
+        (
+            "            shard: 1\n            shards: 4\n",
             "            shard: 1\n            shards: [4]\n",
             "whose value is not something a status context can be named after",
         ),

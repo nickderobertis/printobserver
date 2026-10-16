@@ -15,10 +15,8 @@ from collections.abc import Callable
 
 import pytest
 from journey import GateCopy, capture, clean_environment, plain
-from repo_checks.commands import Measured, measured_for
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.gate_tier import PROJECTS_VARIABLE
-from repo_checks.model import Repo
 
 #: Every journey here runs Nx in a copy nobody will clean up after, so it runs
 #: without the daemon a local Nx would otherwise leave behind per copy.
@@ -357,16 +355,21 @@ def test_a_named_head_leaves_out_what_landed_after_it(gate_copy: Callable[..., G
     )
 
 
-def test_each_side_of_a_split_test_tier_is_scoped_to_its_ecosystem_of_the_change(
+@pytest.mark.skipif(
+    os.environ.get("PRINTOBSERVER_PLATFORM") == "windows-aarch64",
+    reason="that toolchain cannot read its own profiles; repo-policy.toml records the exemption",
+)
+def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
     gate_copy: Callable[..., GateCopy], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A change to a crate and to the Python client: each side's report is its own half.
 
-    At the affected tier, through the real graph's own answer — Nx's affected
-    projects in the copy, and every project's tags and roots — the Rust side of
-    `lang:rust` keeps exactly the crates the unnarrowed report keeps and no
-    Python source, and the other side the reverse, so the two sides' floors
-    together rule on what one unsharded report rules on.
+    The changed crate's and the client's own `test` targets are run, so each
+    ecosystem has measurements to read, and `just coverage` is run once per side
+    of `lang:rust` as a sharded gate runs it. At the affected tier, through the
+    real graph's own answer, the Rust side reports the crate and rules on no
+    Python source, and the other side reports the client and rules on no crate,
+    so the two sides' floors together rule on what one unsharded report does.
     """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
@@ -374,27 +377,45 @@ def test_each_side_of_a_split_test_tier_is_scoped_to_its_ecosystem_of_the_change
     copy.write(client, f"{copy.read(client)}\n# A change a contributor made.\n")
     copy.git("add", "-A")
     copy.git("commit", "-q", "-m", "feat: a change to the Python client")
-    for name, value in QUIET.items():
-        monkeypatch.setenv(name, value)
-    repo = Repo(copy.root)
-
-    def scoped(side: str) -> Measured:
-        if side:
-            monkeypatch.setenv(PROJECTS_VARIABLE, side)
-        else:
-            monkeypatch.delenv(PROJECTS_VARIABLE, raising=False)
-        return measured_for(repo, "affected")
-
-    whole, rust, others = scoped(""), scoped("lang:rust"), scoped("!lang:rust")
-
-    contains(whole.rust or (), "crates/printobserver-vision-api")
-    truth(
-        any(source.startswith("python/printobserver-sdk/") for source in whole.python or ()),
-        describing=f"the unnarrowed report over the Python client; it is over {whole.python}",
+    for name in list(os.environ):
+        if name.startswith(("CARGO_LLVM_COV", "LLVM_PROFILE_FILE")) or name == "CARGO_TARGET_DIR":
+            monkeypatch.delenv(name)
+    tested = capture(
+        [
+            "bunx",
+            "nx",
+            "run-many",
+            "-t",
+            "test",
+            "--projects=printobserver-vision-api,printobserver-sdk-python",
+            "--output-style=stream",
+        ],
+        copy.root,
+        timeout=1800,
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
     )
-    equal((rust.rust, rust.python), (whole.rust, ()), describing="the Rust side's report")
-    equal((others.rust, others.python), ((), whole.python), describing="the other side's")
-    contains(rust.reason, "only lang:rust's side")
+    passing(tested, describing="the crate's and the client's own `test` targets")
+
+    rust = report(
+        copy.just("coverage", environment={**QUIET, PROJECTS_VARIABLE: "lang:rust"}).stdout
+    )
+    others = report(
+        copy.just("coverage", environment={**QUIET, PROJECTS_VARIABLE: "!lang:rust"}).stdout
+    )
+
+    contains(rust, "only lang:rust's side")
+    contains(rust, "printobserver-vision-api/src/lib.rs", describing="the Rust side's report")
+    contains(rust, "python lines not measured: this run's tests reached no Python source")
+    truth(
+        "printobserver_sdk" not in rust, describing=f"the Rust side leaving the client out:\n{rust}"
+    )
+    contains(others, "only !lang:rust's side")
+    contains(others, client, describing="the other side's report")
+    contains(others, "rust lines not measured: this run's tests reached no crate")
+    truth(
+        "printobserver-vision-api" not in others,
+        describing=f"the other side leaving the crate out:\n{others}",
+    )
 
 
 #: Preloaded into every Node process a recipe starts, it makes the Nx host as

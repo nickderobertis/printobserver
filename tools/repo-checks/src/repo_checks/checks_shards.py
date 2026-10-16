@@ -96,6 +96,11 @@ def sharded_platforms(repo: Repo) -> dict[str, dict[str, str]]:
     return sharded
 
 
+def _whole(value: object) -> bool:
+    """Whether a matrix value is a whole number, YAML's `true` and `false` not among them."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _needs(job: dict[str, Any]) -> list[str]:
     """The job keys a job `needs`, in either of the shapes a workflow writes them."""
     match job.get("needs"):
@@ -124,12 +129,13 @@ def _shard_findings(
             f"platform's, so the result its aggregator reads is that platform's alone"
         )
     counts = [cell.get("shards") for cell in cells]
-    whole = {count for count in counts if isinstance(count, int)}
-    indices = sorted(index for cell in cells if isinstance(index := cell.get("shard"), int))
+    whole = {count for count in counts if _whole(count)}
+    indices = sorted(index for cell in cells if _whole(index := cell.get("shard")))
     count = next(iter(whole)) if len(whole) == 1 else None
     if (
         count is None
-        or not all(isinstance(one, int) for one in counts)
+        or not all(_whole(one) for one in counts)
+        or len(indices) != len(cells)
         or indices != list(range(1, count + 1))
     ):
         findings.append(
