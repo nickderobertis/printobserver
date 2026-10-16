@@ -32,7 +32,7 @@
 #      `$HOME/.local/bin`.
 #
 # Harness selection: the committed `oneharness.toml` is in fallback mode (codex +
-# gpt-5.5 primary, claude-code + opus-4.8 secondary), so llmlint runs the primary
+# gpt-6.1-sol primary, claude-code + opus-4.8 secondary), so llmlint runs the primary
 # for a contributor with Codex authenticated and falls through to claude-code in a
 # Claude Code session where codex is absent — no `ONEHARNESS_*` override needed
 # (one would only clobber the fallback list). If your fallback order can't select
