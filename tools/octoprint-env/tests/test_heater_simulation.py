@@ -118,11 +118,8 @@ def test_a_bed_exactly_delta_short_of_its_target_heats_without_crashing_the_prin
     equal(_bed(url, key).actual, AMBIENT_C, describing="the bed before it is heated")
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    equal(
-        post(url, "/api/printer/bed", key, {"command": "target", "target": TARGET_C}),
-        204,
-        describing="setting the bed target exactly `delta` above where it stands",
-    )
+    heated = post(url, "/api/printer/bed", key, {"command": "target", "target": TARGET_C})
+    equal(heated, 204, describing="setting the bed target exactly `delta` above where it stands")
     deadline = time.monotonic() + HEATING_S
     while time.monotonic() < deadline and _bed(url, key).actual <= AMBIENT_C:
         time.sleep(1.0)
