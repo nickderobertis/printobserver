@@ -395,3 +395,26 @@ def test_a_timeout_that_is_no_finite_positive_duration_is_a_usage_error(
     equal(proved.returncode, 2, describing="prove-service's exit")
     contains(proved.stderr, "--service-timeout", describing="the usage error")
     equal(_asked(tmp_path), [], describing="what reached launchd")
+
+
+def test_a_read_back_that_hangs_fails_the_proof_and_the_loaded_service_is_unloaded(
+    program: Path, tmp_path: Path
+) -> None:
+    """A `print` that never answers fails at its timeout, and what was loaded is unloaded."""
+    environment = _machine(tmp_path)
+    _hanging(tmp_path, "print")
+
+    proved = _prove(program, tmp_path, environment, extra=("--service-timeout", "2"))
+
+    equal(proved.returncode, 1, describing="prove-service's exit")
+    contains(
+        proved.stderr,
+        f"`launchctl print system/{LABEL}` did not finish within 2s",
+        describing="the refusal",
+    )
+    truth("bootout" not in proved.stderr, describing="the unload succeeding")
+    equal(
+        _asked(tmp_path),
+        [["bootstrap", "system", PLIST], ["bootout", f"system/{LABEL}"]],
+        describing="the load, then the unload after the hung read-back",
+    )
