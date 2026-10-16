@@ -19,7 +19,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import NamedTuple
 
 import yaml
 from environment import answer, api, key_from, post, printer_state, script
@@ -41,7 +41,21 @@ REPORTED_S = 30.0
 CONNECTED = frozenset({"Operational", "Printing"})
 
 
-def _bed(url: str, key: str) -> dict[str, Any]:
+class Bed(NamedTuple):
+    """The bed's temperatures as OctoPrint reports them, in °C."""
+
+    actual: float
+    target: float
+
+
+def _celsius(reading: object) -> float | None:
+    """A reported temperature, or nothing if what was reported is not a number."""
+    if isinstance(reading, bool) or not isinstance(reading, int | float):
+        return None
+    return float(reading)
+
+
+def _bed(url: str, key: str) -> Bed:
     """The bed's actual and target temperature, once the instance reports them.
 
     A printer that has just connected has answered no temperature poll yet, so
@@ -52,12 +66,16 @@ def _bed(url: str, key: str) -> dict[str, Any]:
         status, body = api(url, "/api/printer", key)
         temperature = body.get("temperature") if isinstance(body, dict) else None
         bed = temperature.get("bed") if isinstance(temperature, dict) else None
-        if isinstance(bed, dict) or time.monotonic() >= deadline:
+        actual = _celsius(bed.get("actual")) if isinstance(bed, dict) else None
+        target = _celsius(bed.get("target")) if isinstance(bed, dict) else None
+        if (actual is not None and target is not None) or time.monotonic() >= deadline:
             break
         time.sleep(1.0)
     equal(status, 200, describing="GET /api/printer")
-    truth(isinstance(bed, dict), describing=f"a bed temperature in {body!r}")
-    return bed if isinstance(bed, dict) else {}
+    if actual is None or target is None:
+        message = f"expected a numeric bed actual and target in {body!r}"
+        raise AssertionError(message)
+    return Bed(actual=actual, target=target)
 
 
 def _raised(state: Path) -> list[str]:
@@ -91,9 +109,12 @@ def test_a_bed_exactly_delta_short_of_its_target_heats_without_crashing_the_prin
     result = script("up", "--state-dir", str(state), "--no-print")
     passing(result, describing="starting an instance whose bed stands at the ambient")
     started = answer(result)
-    url = str(started["url"])
-    key = key_from(str(started["api_key_file"]))
-    equal(_bed(url, key)["actual"], AMBIENT_C, describing="the bed before it is heated")
+    url, key_file = started["url"], started["api_key_file"]
+    if not isinstance(url, str) or not isinstance(key_file, str):
+        message = f"expected a string url and api_key_file in {started!r}"
+        raise AssertionError(message)
+    key = key_from(key_file)
+    equal(_bed(url, key).actual, AMBIENT_C, describing="the bed before it is heated")
 
     equal(
         post(url, "/api/printer/bed", key, {"command": "target", "target": TARGET_C}),
@@ -101,16 +122,16 @@ def test_a_bed_exactly_delta_short_of_its_target_heats_without_crashing_the_prin
         describing="setting the bed target exactly `delta` above where it stands",
     )
     deadline = time.monotonic() + HEATING_S
-    while time.monotonic() < deadline and _bed(url, key)["actual"] <= AMBIENT_C:
+    while time.monotonic() < deadline and _bed(url, key).actual <= AMBIENT_C:
         time.sleep(1.0)
 
     equal(_raised(state), [], describing=f"tracebacks ending in {DEFECT} in the logs")
     contains(CONNECTED, printer_state(url, key), describing="the printer after heating")
     bed = _bed(url, key)
-    equal(bed["target"], TARGET_C, describing="the bed target")
+    equal(bed.target, TARGET_C, describing="the bed target")
     truth(
-        AMBIENT_C < bed["actual"] <= TARGET_C,
-        describing=f"a bed heated from {AMBIENT_C} towards {TARGET_C}; it reads {bed['actual']}",
+        AMBIENT_C < bed.actual <= TARGET_C,
+        describing=f"a bed heated from {AMBIENT_C} towards {TARGET_C}; it reads {bed.actual}",
     )
     module = next(
         (state / "venv").glob("**/site-packages/octoprint/plugins/virtual_printer/virtual.py")

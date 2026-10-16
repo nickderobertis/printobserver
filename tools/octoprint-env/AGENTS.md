@@ -46,18 +46,11 @@ the repository-wide rules; this file holds the ones only this script carries.
   mode, so the two modes still differ only in their connection keys.
   `test_running_environment.py` carries a print past line 115 and reads
   OctoPrint's log for resend requests.
-- **A heater simulation that cannot raise.** The pinned release's
-  `_simulateTemps` assigns `factor` when a heater is more than `delta` short of
-  its target and when it is less, never when it is exactly `delta` short. That
-  is a bed at 59.50 °C against 60.00 °C, and the thread raising
-  `UnboundLocalError` is the one answering the serial line. No release fixes it,
-  so `install` replaces the `elif remaining < delta:` with `else:` on every run,
-  and refuses a module carrying neither. The repaired file is written beside the
-  installed one and renamed over it, **never edited in place**: `uv` installs by
-  hard link from its own cache, so an edit in place rewrites the copy every
-  environment on the host is installed from. `test_heater_simulation.py` starts
-  an instance whose ambient, and therefore whose bed, is 59.5 °C, sets the bed
-  to 60 °C, and reads the logs for the exception.
+- **A heater simulation that cannot raise.** `install` repairs the pinned
+  release's `_simulateTemps`, which leaves `factor` unassigned for a heater
+  exactly `delta` short of its target, and refuses a module carrying neither
+  the defect nor the repair. Replace the module, **never edit it in place**:
+  `uv` hard-links it from its cache, which every environment on the host shares.
 - **Diagnosed, not timed out.** Every way starting can fail is one of the
   script's `FAILURE_CLASSES`, reported by name with a next action; anything
   outside that closed set is reported with the underlying error's own text. One
