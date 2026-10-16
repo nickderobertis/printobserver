@@ -221,7 +221,10 @@ describe("the macOS job carries what the two macOS cells ran", () => {
       others.filter((platform) => !sharded.includes(platform)),
     );
     for (const cell of shards) {
-      assert.deepEqual(cell, others.find((platform) => platform.id === cell.id));
+      assert.deepEqual(
+        cell,
+        others.find((platform) => platform.id === cell.id),
+      );
     }
   });
 });
