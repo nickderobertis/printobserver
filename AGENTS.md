@@ -1026,26 +1026,20 @@ matters is that the record spells each context the way the job actually reports
 it, because a context named here that nothing reports blocks every pull request
 forever.
 
-**The two Windows gates are sharded.** On a 4-processor Windows runner the
-gate run in turn measured 2,710 s to 3,360 s, over the 1,800 s each platform's
-required job is designed to fit, and running its end-to-end and test tiers
-beside each other was longer still on Windows aarch64 and failed three of six
-runs on Windows x86 as Nx's plugin workers starved. So each Windows platform's
-work runs in the three cells of `gate-shard-<platform>`, each reporting
-`gate-shard (<platform>, <k>/3)` and running, in turn, the gate tiers `just
-gate-shards 3` hands it: the `test` and `coverage` tiers in the first, one half
-of the end-to-end tier's test files in the second, and every other tier and
-then the other half in the third. The required context is reported by
-`gate-<platform>`, which `needs` that platform's shards, runs `if: always()`,
-and runs nothing but `just shard-verdict` over the workflow's own `needs`,
-failing unless every shard succeeded. The shards together run exactly the
-tiers `just check` does, none twice and no test twice, at the tier `just
-gate-tier` answers, so the release pull request still takes the sweep and
-coverage is held to the same floors over the code the same `test` tier
-reached. `repo_checks.gate_jobs` is the one reading of how long a sharded or
-unsharded context is waited on, and `just check-repo`'s `sharded-jobs` holds
-the workflow to this shape. No other gate and no integration job is sharded,
-because each measured within 1,800 s.
+**The two Windows gates are sharded.** A 4-processor Windows runner cannot
+run the whole gate in 1,800 s with its tiers in turn, and running the
+end-to-end and test tiers beside each other there starves Nx's plugin workers.
+So each Windows platform's work runs in the cells of `gate-shard-<platform>`,
+reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
+`just gate-shards <n>` hands it; and `gate-<platform>` reports the required
+context, failing unless every shard in its `needs` succeeded. Three things
+must stay true and `just check-repo`'s `sharded-jobs` holds the workflow to
+them: the shards together run every tier `just check` runs, none twice and no
+test twice, at the tier `just gate-tier` answers; `test` and `coverage` share a
+shard, because the floors are read off that run; and the aggregator runs `if:
+always()` and nothing but `just shard-verdict` over the workflow's own `needs`.
+`repo_checks.gate_jobs` is the one reading of how long a sharded or unsharded
+context is waited on.
 
 The record names the contexts the committed workflows report, which is not
 always what the live protection requires: a person applies that. A change that

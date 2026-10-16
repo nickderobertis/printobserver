@@ -220,6 +220,64 @@ def test_a_sharded_gate_missing_a_shard_is_refused_naming_it() -> None:
     contains(str(refused.value), "not 1 to their count")
 
 
+def _with(run: int, name: str, **fields: object) -> list[dict[str, Any]]:
+    """One recorded document's jobs, with job `name`'s `fields` replaced."""
+    return [{**job, **fields} if job["name"] == name else job for job in recorded(run)]
+
+
+@pytest.mark.parametrize(
+    "stamp", ["2026-10-16T10:24:38", "2026-10-16", "yesterday", 1792154016, ["2026-10-16"]]
+)
+def test_a_timestamp_that_is_no_instant_is_refused_naming_the_job(stamp: object) -> None:
+    """No zone, no time, no date, or no string: none of them names one moment."""
+    jobs = _with(SHARDED, "gate-shard (windows-aarch64, 1/2)", started_at=stamp)
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate(jobs, "windows-aarch64")
+    contains(str(refused.value), "gate (windows-aarch64)")
+    contains(str(refused.value), "'gate-shard (windows-aarch64, 1/2)' has started_at=")
+    contains(str(refused.value), "not an instant")
+
+
+def test_a_job_recording_no_creation_is_refused() -> None:
+    """The aggregator with no `created_at` is no job a queue or a span is read from."""
+    jobs = _with(SHARDED, "gate (windows-aarch64)", created_at=None)
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate(jobs, "windows-aarch64")
+    contains(str(refused.value), "records no name or no created_at")
+
+
+def test_a_job_completed_with_no_runner_never_started() -> None:
+    """A cancelled or skipped aggregator ran nowhere: its shards' start begins the span."""
+    jobs = _with(
+        SHARDED,
+        "gate (windows-aarch64)",
+        conclusion="skipped",
+        runner_name=None,
+        started_at="2026-10-16T11:00:12Z",
+        completed_at="2026-10-16T11:00:12Z",
+    )
+
+    span = platform_gate(jobs, "windows-aarch64")
+
+    equal(span.jobs[0].started_at, None)
+    equal(span.jobs[0].queue_seconds, None)
+    equal(span.jobs[0].duration_seconds, None)
+    equal(span.started_at, at("2026-10-16T10:24:38"))
+    equal(span.completed_seconds, 2134.0)
+
+
+def test_a_shard_reported_twice_is_refused_naming_it() -> None:
+    """Two jobs under one shard's name are two answers to which ran it."""
+    jobs = recorded(SHARDED)
+    shard = next(job for job in jobs if job["name"] == "gate-shard (windows-aarch64, 1/2)")
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate([*jobs, shard], "windows-aarch64")
+    contains(str(refused.value), "gate (windows-aarch64): shard 1 is reported twice")
+
+
 def _pattern(template: str) -> re.Pattern[str]:
     """One of the module's name formats as a pattern over a rendered name."""
     escaped = re.escape(template)

@@ -304,20 +304,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     repo = Repo(Path(parsed.root))
 
     try:
-        if parsed.verb == "plan":
-            for steps in plan(repo, parsed.count):
-                print(" ".join(str(step) for step in steps))
-            return 0
-        if parsed.verb == "commands":
-            for invocation in commands(repo, parsed.tier, Shard.named(parsed.shard)):
-                print(invocation)
-            return 0
-        if parsed.verb == "run":
-            return _run(repo, parsed.tier, Shard.named(parsed.shard))
+        match parsed.verb:
+            case "plan":
+                for steps in plan(repo, parsed.count):
+                    print(" ".join(str(step) for step in steps))
+                return 0
+            case "commands":
+                for invocation in commands(repo, parsed.tier, Shard.named(parsed.shard)):
+                    print(invocation)
+                return 0
+            case "run":
+                return _run(repo, parsed.tier, Shard.named(parsed.shard))
+            case _:
+                return _verdict(parsed.kind, parsed.platform, os.environ)
     except (ShardError, TierError) as error:
         print(f"gate-shards: refused: {error}", file=sys.stderr)
         return REFUSED
-    return _verdict(parsed.kind, parsed.platform, os.environ)
 
 
 if __name__ == "__main__":

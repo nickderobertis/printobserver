@@ -8,8 +8,8 @@ worker:
 
 - The end-to-end tier is its own Nx invocation, and keeps that whole budget.
 - Where the root `justfile` starts it beside the test tier — everywhere but
-  Windows aarch64, by its `E2E_BESIDE_TESTS` — the test tier's suites run on
-  one worker each, as they ran before they were parallelised. The end-to-end tier is the
+  Windows, by its `E2E_BESIDE_TESTS` — the test tier's suites run on one worker
+  each, as they ran before they were parallelised. The end-to-end tier is the
   longest thing those hosts run, so a worker given to the test tier there is
   taken from it: on the paired runs 38556419344 and 38566907789, giving the two
   suites two workers each lengthened the end-to-end tier on Linux from 631 to
@@ -19,8 +19,8 @@ worker:
   38508602716), because xdist cannot grow a suite's workers once it has
   started. These suites wait on the subprocesses they start more than they
   compute, so the two tiers together may hold more workers than processors.
-- On Windows aarch64 the test tier's suites run on one worker each too, though
-  the tiers run in turn there. The Rust client journeys in the same invocation
+- On Windows the test tier's suites run on one worker each too, though the
+  tiers run in turn there. The Rust client journeys in the same invocation
   trace the whole system with the NT Kernel Logger, and with the two suites on
   two and one workers beside them `logman` refused that session ("No more data
   is available") in every Windows x86 run of this change and on the re-run of

@@ -80,11 +80,9 @@ tool-version TOOL:
 # either answers, so a run reports every failure of both, and fails if either
 # failed. On Windows it runs last, as the other tiers do in turn: beside each
 # other on a 4-processor Windows runner they only slow both down, and load
-# Nx's plugin workers past the time they are given to start. This draft
-# measured overlapping at 3,325 s and 4,195 s on Windows aarch64 against
-# 3,360 s in turn, and on Windows x86 three of six overlapped runs failed that
-# way. Continuous integration splits both Windows gates into shards
-# (`just check-shard`), which run their tiers in turn too.
+# Nx's plugin workers past the time they are given to start. Continuous
+# integration splits both Windows gates into shards (`just check-shard`), which
+# run their tiers in turn too.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}

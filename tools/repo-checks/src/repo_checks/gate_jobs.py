@@ -128,16 +128,21 @@ def _instant(job: Mapping[str, object], field: str, kind: str, platform: str) ->
     """A job's timestamp, or none where the forge recorded none.
 
     Raises:
-        GateJobsError: If it is present and is not an ISO 8601 instant.
+        GateJobsError: If it is present and is not an ISO 8601 instant carrying
+            its offset from UTC: a date, or a time of day with no zone, names no
+            one moment to subtract another from.
     """
     value = job.get(field)
     if value is None:
         return None
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value)
+            instant = datetime.fromisoformat(value)
         except ValueError:
             pass
+        else:
+            if instant.tzinfo is not None and "T" in value.upper():
+                return instant
     msg = f"{kind} ({platform}): job {job.get('name')!r} has {field}={value!r}, not an instant"
     raise GateJobsError(msg)
 

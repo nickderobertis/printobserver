@@ -403,7 +403,24 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
         (
             '      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"\n',
             '      - run: just check "$(just gate-tier)"\n',
-            "runs no `just check-shard`",
+            "runs no one step `just check-shard",
+        ),
+        (
+            "          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}\n",
+            "          GATE_SHARD: 1/3\n",
+            "so its cells do not each run the shard their own matrix values name",
+        ),
+        (
+            "    strategy:\n      fail-fast: false\n      matrix:\n        platform:\n"
+            "          - id: windows-aarch64\n",
+            "    strategy: sharded\n    unused:\n      matrix:\n        platform:\n"
+            "          - id: windows-aarch64\n",
+            "is a shard job with no `platform` matrix cells",
+        ),
+        (
+            "            shard: 1\n            shards: 3\n",
+            "            shard: 1\n            shards: [3]\n",
+            "whose value is not something a status context can be named after",
         ),
     ],
 )

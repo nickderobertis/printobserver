@@ -70,7 +70,8 @@ def _workflows(repo: Repo) -> dict[str, dict[str, Any]]:
 
 def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     """The `platform` matrix a job declares, if it declares one."""
-    matrix = (job.get("strategy") or {}).get("matrix")
+    strategy = job.get("strategy")
+    matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
     if not isinstance(matrix, dict):
         return None
     entries = matrix.get("platform")

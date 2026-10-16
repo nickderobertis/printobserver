@@ -8,7 +8,8 @@ is the check holding the workflow to it:
 
 * a shard job's cells are one platform's, under `gate_jobs.SHARD_JOB`, with
   `shard` running 1 to one `shards` count a plan exists for, each on the runner
-  the supported-platform list declares and each running `just check-shard`;
+  the supported-platform list declares, and its one `just check-shard` step is
+  handed the cell's own `shard/shards`, so no two cells run one shard;
 * exactly one aggregating job reports that platform's `gate_jobs.GATE_JOB`: it
   `needs` the shard job, runs `if: always()` so a failed or cancelled shard
   still reaches it, and runs nothing but `just shard-verdict` over the
@@ -51,6 +52,10 @@ SHARD_NAME = SHARD_JOB.format(
     index="${{ matrix.platform.shard }}",
     count="${{ matrix.platform.shards }}",
 )
+#: The one step a shard job runs its shard by, and the cell's own shard it hands it.
+SHARD_VARIABLE = "GATE_SHARD"
+SHARD_STEP = f'just {SHARD_RECIPE} "$(just gate-tier)" "${SHARD_VARIABLE}"'
+SHARD_VALUE = "${{ matrix.platform.shard }}/${{ matrix.platform.shards }}"
 #: The value the aggregating job hands its verdict the `needs` context in.
 NEEDS_VALUE = "${{ toJSON(needs) }}"
 #: The condition that runs the aggregator whatever its shards concluded.
@@ -65,7 +70,8 @@ def is_shard_job(job: dict[str, Any]) -> bool:
 
 def _cells(job: dict[str, Any]) -> list[dict[str, Any]]:
     """The `platform` matrix cells a job declares."""
-    matrix = (job.get("strategy") or {}).get("matrix")
+    strategy = job.get("strategy")
+    matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
     entries = matrix.get("platform") if isinstance(matrix, dict) else None
     if not isinstance(entries, list):
         return []
@@ -111,10 +117,15 @@ def _shard_findings(
             f"{where}'s cells carry {', '.join(sorted(platforms))}: a shard job is one "
             f"platform's, so the result its aggregator reads is that platform's alone"
         )
-    counts = {cell.get("shards") for cell in cells}
+    counts = [cell.get("shards") for cell in cells]
+    whole = {count for count in counts if isinstance(count, int)}
     indices = sorted(index for cell in cells if isinstance(index := cell.get("shard"), int))
-    count = next(iter(counts)) if len(counts) == 1 else None
-    if not isinstance(count, int) or indices != list(range(1, count + 1)):
+    count = next(iter(whole)) if len(whole) == 1 else None
+    if (
+        count is None
+        or not all(isinstance(one, int) for one in counts)
+        or indices != list(range(1, count + 1))
+    ):
         findings.append(
             f"{where}'s cells run shards {indices} of {sorted(map(str, counts))}: a shard job "
             f"runs every shard 1 to its count under one count"
@@ -130,8 +141,16 @@ def _shard_findings(
         for cell in cells
         if cell.get("id") in runners and cell.get("runner") != runners[cell["id"]]
     )
-    if not any(command.startswith(f"just {SHARD_RECIPE} ") for command in run_commands(job)):
-        findings.append(f"{where} runs no `just {SHARD_RECIPE}`, so its cells run no shard")
+    handed = [
+        step.get("env", {}).get(SHARD_VARIABLE) if isinstance(step.get("env"), dict) else None
+        for step in steps_of(job)
+        if str(step.get("run", "")).strip() == SHARD_STEP
+    ]
+    if handed != [SHARD_VALUE]:
+        findings.append(
+            f"{where} runs no one step `{SHARD_STEP}` handed `{SHARD_VARIABLE}: {SHARD_VALUE}`, "
+            f"so its cells do not each run the shard their own matrix values name"
+        )
     platform = next(iter(platforms)) if len(platforms) == 1 else None
     return platform, findings
 

@@ -146,9 +146,9 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
-      # instrumented test builds and the lints, the others the debug program
-      # the end-to-end tier runs — and one key shared by all would hold
-      # whichever shard saved first.
+      # instrumented test builds, the others the debug program the end-to-end
+      # tier runs and, in the third, the lints and the build tier — and one key
+      # shared by all would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
@@ -226,9 +226,9 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
-      # instrumented test builds and the lints, the others the debug program
-      # the end-to-end tier runs — and one key shared by all would hold
-      # whichever shard saved first.
+      # instrumented test builds, the others the debug program the end-to-end
+      # tier runs and, in the third, the lints and the build tier — and one key
+      # shared by all would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
