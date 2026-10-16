@@ -138,6 +138,20 @@ impl Watching {
         path
     }
 
+    /// Wait until the agent's fan adjustment to `print` is in its history,
+    /// and say when it was seen there. The file the turn redirects that
+    /// command's output into says nothing of it: a shell creates the file
+    /// before it runs the command, so the file is there while the adjustment
+    /// is still to be asked for.
+    fn adjusted(&self, print: &str) -> Instant {
+        wait_for("the adjustment to be recorded", PATIENCE, || {
+            actions_asked(&self.world, print)
+                .iter()
+                .any(|action| action["action"] == "set_fan_percent")
+        });
+        Instant::now()
+    }
+
     /// Let every waiting turn carry on.
     fn go(&self) {
         std::fs::write(self.directory.join(GO), b"").expect("the signal is writable");
@@ -499,10 +513,7 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
     let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
-    watching.written(&format!("fan-{print}"));
-    wait_for("the adjustment to be recorded", PATIENCE, || {
-        !actions_asked(world, &print).is_empty()
-    });
+    watching.adjusted(&print);
     assert!(
         world.machine_refuses(true),
         "a stood-in machine can be told to refuse"
@@ -549,21 +560,8 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
     let print = world.print_id().clone();
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
-    watching.written(&format!("fan-{print}"));
-    let adjusted = Instant::now();
-    let ran = super::running::command(
-        world,
-        &[
-            "cancel",
-            "--print-id",
-            &print,
-            "--actor",
-            "operator",
-            "--reason",
-            "the part has come off the bed",
-        ],
-    );
-    assert_eq!(ran.code, Some(0), "{}", ran.said());
+    let adjusted = watching.adjusted(&print);
+    operator_cancels(world, &print);
     watching.go();
     watching.settled_after(&print, 1);
     // Past the grace the adjustment would have earned, so a resume it could
@@ -580,6 +578,81 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
         api.received().is_empty(),
         "Obico was told about a cancelled print"
     );
+}
+
+/// The operator cancelling `print`, as the cancel journeys ask for it.
+fn operator_cancels(world: &World, print: &str) {
+    let ran = super::running::command(
+        world,
+        &[
+            "cancel",
+            "--print-id",
+            print,
+            "--actor",
+            "operator",
+            "--reason",
+            "the part has come off the bed",
+        ],
+    );
+    assert_eq!(ran.code, Some(0), "{}", ran.said());
+}
+
+/// The cancel journey's cancel follows the agent's adjustment even while the
+/// turn holds open the window a shell's redirection opens — the file that
+/// command answers into is there, and the command has not yet run — so the
+/// two are recorded in the order the journey asked for them.
+///
+/// The turn is let go only once the journey's wait-and-cancel has been seen
+/// at the recording proxy inside that window, which records an exchange once
+/// the server has answered it: a wait that did not wait has had its cancel
+/// recorded by then, and one that does has read a history without the
+/// adjustment in it.
+#[test]
+fn a_cancel_after_the_adjustment_waits_for_it_to_be_recorded() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"{ until [ -e "$dir/release" ]; do sleep 0.1; done
+eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about"; } > "$dir/fan-$print" 2>&1
+until [ -e "$dir/go" ]; do sleep 0.1; done"#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    watching.written(&format!("fan-{print}"));
+    world.proxy.forget();
+
+    std::thread::scope(|scope| {
+        let cancelling = scope.spawn(|| {
+            watching.adjusted(&print);
+            operator_cancels(world, &print);
+        });
+        let history = format!("/v1/prints/{print}/history");
+        let cancel = format!("/v1/prints/{print}/actions/cancel");
+        let reaching = || {
+            world.proxy.received().into_iter().find(|exchange| {
+                (exchange.method == "GET" && exchange.target.starts_with(&history))
+                    || (exchange.method == "POST" && exchange.target == cancel)
+            })
+        };
+        wait_for("the journey to reach the held window", PATIENCE, || {
+            reaching().is_some()
+        });
+        let reached = reaching().expect("the journey reached the held window");
+        assert!(
+            !reached.answered.contains("set_fan_percent"),
+            "the turn adjusted before it was let go: {reached:?}"
+        );
+        std::fs::write(watching.directory.join("release"), b"").expect("the release is writable");
+        cancelling.join().expect("the cancel is asked for");
+    });
+    watching.go();
+    watching.settled_after(&print, 1);
+
+    let asked = actions_asked(world, &print);
+    let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
+    assert_eq!(kinds, ["set_fan_percent", "cancel"], "{asked:?}");
 }
 
 /// A print somebody else resumed is no longer the detector's: when it is

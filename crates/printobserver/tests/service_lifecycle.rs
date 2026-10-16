@@ -734,3 +734,243 @@ fn the_console_server_stops_cleanly_on_a_console_break() {
         "the start under a plaintext credential did not warn: {said}"
     );
 }
+
+/// The same program under the real service control manager.
+///
+/// Everything above stands the manager in, because only a Windows host has
+/// one; on Windows the manager itself starts the program. Each case here
+/// registers the crate's own `printobserver` as a service of its own name,
+/// starts it through `sc.exe`, and reads back what the manager says — so the
+/// connection to the manager, the call back into the service, the handler
+/// registration and every report reaching the manager's handle are this
+/// program's, driven the way the installed service is.
+///
+/// The manager starts the program with an environment of its own rather than
+/// this test's, so the coverage profile this run is writing to is handed to it
+/// through the service's own registry environment: without that, what the
+/// service ran would be measured nowhere.
+#[cfg(windows)]
+mod under_the_manager {
+    use std::path::Path;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    use printobserver::failure::Exit;
+    use tempfile::TempDir;
+
+    use super::{
+        SETTLES_WITHIN, answering_host, ask, configuration, host_answering, where_it_serves,
+    };
+
+    /// What `sc.exe` answers a caller the manager will not let register a
+    /// service: `ERROR_ACCESS_DENIED`.
+    const ACCESS_DENIED: i32 = 5;
+
+    /// The variable the gate's cells set so that a case whose prerequisite is
+    /// missing fails rather than skips — here, a shell that may register one.
+    const REQUIRED: &str = "PRINTOBSERVER_SERVICE_JOURNEY";
+
+    /// What the manager records for a service that stopped with an exit of its
+    /// own: `ERROR_SERVICE_SPECIFIC_ERROR`, with that exit beside it.
+    const SERVICE_SPECIFIC: &str = "1066";
+
+    /// One `sc.exe` invocation's exit and everything it said.
+    fn sc(arguments: &[&str]) -> (Option<i32>, String) {
+        let output = Command::new("sc.exe")
+            .args(arguments)
+            .output()
+            .expect("`sc.exe` runs");
+        let mut said = String::from_utf8_lossy(&output.stdout).into_owned();
+        said.push_str(&String::from_utf8_lossy(&output.stderr));
+        (output.status.code(), said)
+    }
+
+    /// The first word of `FIELD : value` in `sc.exe`'s own listing.
+    fn field(listing: &str, name: &str) -> Option<String> {
+        listing.lines().find_map(|line| {
+            let (head, value) = line.split_once(':')?;
+            (head.trim() == name).then(|| value.split_whitespace().next().unwrap_or("").to_owned())
+        })
+    }
+
+    /// The service's state by the manager's name for it, as `sc.exe query` reads it.
+    fn state(name: &str) -> (String, String) {
+        let (_, listing) = sc(&["query", name]);
+        let state = listing
+            .lines()
+            .find_map(|line| {
+                let (head, value) = line.split_once(':')?;
+                (head.trim() == "STATE")
+                    .then(|| value.split_whitespace().nth(1).unwrap_or("").to_owned())
+            })
+            .unwrap_or_default();
+        (state, listing)
+    }
+
+    /// Wait until the manager reports the service in `wanted`, and answer its listing.
+    fn reaches(name: &str, wanted: &str) -> String {
+        let started = Instant::now();
+        loop {
+            let (state, listing) = state(name);
+            if state == wanted {
+                return listing;
+            }
+            assert!(
+                started.elapsed() < SETTLES_WITHIN,
+                "the manager never reported `{name}` {wanted}:\n{listing}"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+
+    /// A service this case registered, removed again however the case ends.
+    struct Registered {
+        name: String,
+    }
+
+    impl Registered {
+        /// Register the crate's own program as the service `name`, serving
+        /// under `configuration`; `None` where this shell may not register
+        /// one and nothing requires that it can.
+        fn register(name: &str, configuration: &Path) -> Option<Self> {
+            let program = env!("CARGO_BIN_EXE_printobserver");
+            let command_line = format!(
+                "\"{program}\" server --config \"{}\"",
+                configuration.display()
+            );
+            let (code, said) = sc(&[
+                "create",
+                name,
+                "binPath=",
+                &command_line,
+                "start=",
+                "demand",
+            ]);
+            if code == Some(ACCESS_DENIED) && std::env::var(REQUIRED).as_deref() != Ok("required") {
+                eprintln!("skipped: this shell may not register a service ({said})");
+                return None;
+            }
+            assert_eq!(code, Some(0), "`sc.exe create {name}` failed:\n{said}");
+            let registered = Self {
+                name: name.to_owned(),
+            };
+            if let Ok(profile) = std::env::var("LLVM_PROFILE_FILE") {
+                let key = format!(r"HKLM\SYSTEM\CurrentControlSet\Services\{name}");
+                let entry = format!("LLVM_PROFILE_FILE={profile}");
+                // `|` separates a multi-string's entries rather than reg.exe's
+                // default `\0`, which a Windows path could carry.
+                let output = Command::new("reg.exe")
+                    .args([
+                        "add",
+                        &key,
+                        "/v",
+                        "Environment",
+                        "/t",
+                        "REG_MULTI_SZ",
+                        "/s",
+                        "|",
+                    ])
+                    .args(["/d", &entry, "/f"])
+                    .output()
+                    .expect("`reg.exe` runs");
+                assert!(
+                    output.status.success(),
+                    "the service's environment was not written: {output:?}"
+                );
+            }
+            Some(registered)
+        }
+
+        /// Ask the manager to start it.
+        fn start(&self) -> (Option<i32>, String) {
+            sc(&["start", &self.name])
+        }
+    }
+
+    impl Drop for Registered {
+        fn drop(&mut self) {
+            let _ = sc(&["stop", &self.name]);
+            let started = Instant::now();
+            while state(&self.name).0 != "STOPPED" && started.elapsed() < SETTLES_WITHIN {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let _ = sc(&["delete", &self.name]);
+        }
+    }
+
+    /// A service name of this case's own, so no two cases share one.
+    fn own_name(case: &str) -> String {
+        format!("printobserver-tier-{case}-{}", std::process::id())
+    }
+
+    /// Started by the manager, the program reports itself running and answers
+    /// the API; stopped through the manager, it is recorded as a clean exit.
+    #[test]
+    fn the_manager_starts_it_it_answers_and_a_stop_is_a_clean_exit() {
+        let root = TempDir::new().expect("the tier's own root");
+        let octoprint = format!("http://{}", answering_host());
+        let configuration = configuration(root.path(), &octoprint);
+        let name = own_name("clean");
+        let Some(service) = Registered::register(&name, &configuration) else {
+            return;
+        };
+
+        let (code, said) = service.start();
+        assert_eq!(code, Some(0), "`sc.exe start {name}` failed:\n{said}");
+        reaches(&name, "RUNNING");
+
+        let (address, credential) = where_it_serves(&root.path().join("state"));
+        let answer = ask(&address, &credential);
+        assert!(
+            answer.contains("HTTP/1.1 200") && answer.contains("application/json"),
+            "the manager said the service was running and its API did not answer:\n{answer}"
+        );
+
+        let (code, said) = sc(&["stop", &name]);
+        assert_eq!(code, Some(0), "`sc.exe stop {name}` failed:\n{said}");
+        let listing = reaches(&name, "STOPPED");
+        assert_eq!(
+            field(&listing, "WIN32_EXIT_CODE").as_deref(),
+            Some("0"),
+            "{listing}"
+        );
+        assert_eq!(
+            field(&listing, "SERVICE_EXIT_CODE").as_deref(),
+            Some("0"),
+            "{listing}"
+        );
+    }
+
+    /// A service whose server will not start is recorded by the manager as
+    /// stopped with this program's own refusal, never as running.
+    #[test]
+    fn a_service_that_will_not_start_is_recorded_stopped_with_the_refusal() {
+        let root = TempDir::new().expect("the tier's own root");
+        let refusing = format!(
+            "http://{}",
+            host_answering(
+                b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+        );
+        let configuration = configuration(root.path(), &refusing);
+        let name = own_name("refused");
+        let Some(service) = Registered::register(&name, &configuration) else {
+            return;
+        };
+
+        // The start is taken whether or not the server then refuses, so what
+        // `sc.exe start` answers says nothing here; the manager's record does.
+        let _ = service.start();
+        let listing = reaches(&name, "STOPPED");
+        assert_eq!(
+            field(&listing, "WIN32_EXIT_CODE").as_deref(),
+            Some(SERVICE_SPECIFIC),
+            "{listing}"
+        );
+        assert_eq!(
+            field(&listing, "SERVICE_EXIT_CODE"),
+            Some(Exit::Unconfigured.status().to_string()),
+            "{listing}"
+        );
+    }
+}
