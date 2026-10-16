@@ -104,6 +104,22 @@ check tier="affected":
 # everywhere but Windows aarch64, for the reason the recipe above gives.
 E2E_BESIDE_TESTS := if os_family() != "windows" { "true" } else if arch() == "aarch64" { "false" } else { "true" }
 
+# One shard (`k/n`) of the gate at a tier, for a platform whose gate is split
+# across runners: `repo_checks.gate_shards` hands each of the tiers `check`
+# invokes to exactly one shard, so the shards together run the whole gate and
+# nothing twice. `just gate-shards 2` prints the split.
+check-shard tier shard:
+    uv run -q python -m repo_checks.gate_shards run {{quote(tier)}} {{quote(shard)}}
+
+# Each shard's gate tiers when the gate is split into COUNT shards, one shard a line.
+gate-shards count:
+    @uv run -q python -m repo_checks.gate_shards plan {{quote(count)}}
+
+# The verdict of a sharded required job: fails unless every shard in the
+# workflow's `needs`, handed over as `NEEDS`, succeeded.
+shard-verdict kind platform:
+    uv run -q python -m repo_checks.gate_shards verdict {{quote(kind)}} {{quote(platform)}}
+
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any
 # other pull request and on a push to the base branch.

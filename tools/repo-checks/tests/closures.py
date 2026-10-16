@@ -63,6 +63,7 @@ CHECKS: dict[str, Closure] = {
     ),
     "unmatrixed-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "platform-dispatch": Closure((WORKFLOWS, AGENTS, POLICY)),
+    "sharded-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "install-path": Closure((WORKFLOWS, AGENTS, "README.md", POLICY)),
     "ci": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "artifact-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, RELEASE_TARGETS)),

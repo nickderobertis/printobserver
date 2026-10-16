@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from repo_checks.checks_ci import status_contexts
+from repo_checks.checks_shards import is_shard_job
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
 from repo_checks.gate_tier import main as gate_tier_main
@@ -275,12 +276,24 @@ def test_a_release_configuration_naming_no_prefix_is_refused(tree: Callable[[], 
         select(copy.repo, {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_HEAD_REF": RELEASE_BRANCH})
 
 
-def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base() -> None:
-    """The half of the selection only a forge runs, read off the committed workflow."""
-    gate = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))["gate"]
+@pytest.mark.parametrize(
+    ("key", "command"),
+    [
+        ("gate", 'just check "$(just gate-tier)"'),
+        ("gate-shard-windows-aarch64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
+    ],
+)
+def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base(
+    key: str, command: str
+) -> None:
+    """The half of the selection only a forge runs, read off the committed workflow.
+
+    A shard of a sharded gate is held to it as the unsharded gate is.
+    """
+    gate = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))[key]
     uses = [str(step.get("uses", "")) for step in steps_of(gate)]
 
-    contains(run_commands(gate), 'just check "$(just gate-tier)"')
+    contains(run_commands(gate), command)
     truth(
         any(action.startswith("nrwl/nx-set-shas@") for action in uses),
         describing=f"the gate job deriving NX_BASE explicitly; it uses {uses}",
@@ -343,13 +356,22 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
                 kind,
                 describing=f"{context.file}'s pull_request activity types",
             )
-        job = jobs_of(workflow)[context.job]
-        equal(job.get("needs"), None, describing=f"what `{context.job}` waits on")
-        condition = job.get("if")
-        truth(
-            condition in (None, "github.event_name == 'pull_request'"),
-            describing=f"`{context.job}`'s condition, {condition!r}, holding on a pull request",
-        )
+        jobs = jobs_of(workflow)
+        job = jobs[context.job]
+        # A sharded context's aggregator waits on its shards whatever they
+        # conclude, so it is reported whenever they run; they are held instead.
+        waited = [need for need in job.get("needs") or [] if is_shard_job(jobs[need])]
+        if waited:
+            equal(waited, job["needs"], describing=f"what `{context.job}` waits on")
+            equal(job.get("if"), "always()", describing=f"`{context.job}`'s condition")
+        for key in waited or [context.job]:
+            held = jobs[key]
+            equal(held.get("needs"), None, describing=f"what `{key}` waits on")
+            condition = held.get("if")
+            truth(
+                condition in (None, "github.event_name == 'pull_request'"),
+                describing=f"`{key}`'s condition, {condition!r}, holding on a pull request",
+            )
 
 
 def test_the_required_checks_record_is_the_fixed_contract_in_full() -> None:

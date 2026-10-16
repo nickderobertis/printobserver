@@ -57,7 +57,8 @@ INSTALL_ROUTE_AARCH64 = (
         "      - uses: actions/setup-python@v5\n"
     )
 )
-# The gate's whole matrix, down to the line that reads a cell out of it.
+# The gate's whole matrix, down to the line that reads a cell out of it. Its
+# Windows aarch64 gate is sharded, so the shard job carries that cell instead.
 GATE_MATRIX = (
     """    strategy:
       fail-fast: false
@@ -68,7 +69,9 @@ GATE_MATRIX = (
 """
     + AARCH64
     + MACOS
-    + WINDOWS
+    + "          - id: windows-x86_64\n            runner: windows-2025\n"
+    + "          # `windows-aarch64` is a sharded gate: `gate-shard-windows-aarch64`\n"
+    + "          # runs its work and `gate-windows-aarch64` reports its context.\n"
     + "    runs-on: ${{ matrix.platform.runner }}\n"
 )
 NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"

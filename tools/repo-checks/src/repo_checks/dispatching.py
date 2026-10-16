@@ -193,6 +193,10 @@ class Source:
 def matrixed_jobs(repo: Repo, sources: tuple[str, ...]) -> dict[str, Source]:
     """Every platform-matrixed job of the source workflows, by name.
 
+    A shard job is not one: which shard a cell runs is a matrix value a
+    dispatch has none of, and dispatching the job it is a shard of — `gate` on
+    the sharded platform — runs the whole of that work on the one runner.
+
     `Any` at the deserialization boundary: a job is whatever the YAML reader
     handed back, and what this reads out of one is narrowed where it is read.
 
@@ -203,6 +207,7 @@ def matrixed_jobs(repo: Repo, sources: tuple[str, ...]) -> dict[str, Source]:
             about the other — refused here rather than resolved by order.
     """
     from repo_checks.checks_ci import _matrix_platforms
+    from repo_checks.checks_shards import is_shard_job
 
     found: dict[str, Source] = {}
     for source in sources:
@@ -210,7 +215,7 @@ def matrixed_jobs(repo: Repo, sources: tuple[str, ...]) -> dict[str, Source]:
         if not path.is_file():
             continue
         for name, job in jobs_of(load_workflow(path)).items():
-            if _matrix_platforms(job) is None:
+            if _matrix_platforms(job) is None or is_shard_job(job):
                 continue
             if name in found:
                 msg = (

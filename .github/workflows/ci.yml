@@ -60,8 +60,8 @@ jobs:
             runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
-          - id: windows-aarch64
-            runner: windows-11-arm
+          # `windows-aarch64` is a sharded gate: `gate-shard-windows-aarch64`
+          # runs its work and `gate-windows-aarch64` reports its context.
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -101,6 +101,81 @@ jobs:
       - run: just check "$(just gate-tier)"
       - if: always()
         run: just runner-temp cleanup
+
+  # A platform whose gate does not fit one runner in the 30 minutes each
+  # platform is held to is split: one matrix cell per shard, each running the
+  # gate tiers `just gate-shards <shards>` hands that shard, and an aggregating
+  # job carrying the required name. AGENTS.md's "Commits, releases, and merging"
+  # records which platform is split and the run that measured it over.
+  gate-shard-windows-aarch64:
+    env:
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      PRINTOBSERVER_SERVICE_JOURNEY: required
+    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 1
+            shards: 2
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 2
+            shards: 2
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The affected tier, the end-to-end tier and the suppression check all
+          # diff against the base branch, which a shallow checkout omits.
+          fetch-depth: 0
+      # The base the affected tier is diffed against, derived explicitly and
+      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
+      # request, and the last commit this workflow passed on for a push to it.
+      - uses: nrwl/nx-set-shas@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      # `just` from the same action as the cargo tools: `extractions/setup-just`
+      # has no build for the `windows-11-arm` runner.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
+      - run: just bootstrap
+      # MEASUREMENT-ONLY (removed before this draft settles): this line is a change
+      # to a file no project owns, so every measured run's affected tier is the
+      # full sweep and each run's gate does identical work.
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
+        env:
+          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
+      - if: always()
+        run: just runner-temp cleanup
+
+  # The required `gate (windows-aarch64)` context: it waits on every shard
+  # whatever each concluded, and fails unless each succeeded. Its one verdict
+  # reads nothing of the platform, so it takes no runner of that platform's.
+  gate-windows-aarch64:
+    name: gate (windows-aarch64)
+    needs: [gate-shard-windows-aarch64]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just shard-verdict gate windows-aarch64
+        env:
+          NEEDS: ${{ toJSON(needs) }}
 
   integration:
     env:
