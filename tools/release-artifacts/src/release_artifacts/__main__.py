@@ -13,6 +13,7 @@ from repo_checks.model import Repo
 from release_artifacts import built, reused, tracking
 from release_artifacts.arming import ArmingError, arm
 from release_artifacts.build import BuildError, build, build_all, finished_program, staged_release
+from release_artifacts.built import LAUNCHCTL_TIMEOUT_SECONDS
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.registries import (
@@ -183,6 +184,12 @@ def main(argv: list[str] | None = None) -> int:
         help="for prove-service: the user the installed service runs as",
     )
     parser.add_argument(
+        "--service-timeout",
+        type=float,
+        default=LAUNCHCTL_TIMEOUT_SECONDS,
+        help="for prove-service: the seconds each launchctl command is given",
+    )
+    parser.add_argument(
         "--binary",
         type=Path,
         default=None,
@@ -325,6 +332,7 @@ def _prove_service(repo: Repo, arguments: argparse.Namespace) -> int:
         arguments.binary or finished_program(repo),
         root=arguments.service_root,
         user=arguments.service_user,
+        timeout=arguments.service_timeout,
     )
     print(f"prove-service: {'; '.join(said)}")
     return 0

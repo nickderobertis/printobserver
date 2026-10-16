@@ -109,7 +109,12 @@ def _machine(scratch: Path, *, refusing: tuple[str, ...] = ()) -> dict[str, str]
 
 
 def _prove(
-    program: Path, scratch: Path, environment: dict[str, str], *, root: Path = REPO_ROOT
+    program: Path,
+    scratch: Path,
+    environment: dict[str, str],
+    *,
+    root: Path = REPO_ROOT,
+    extra: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     return run(
         [
@@ -128,6 +133,7 @@ def _prove(
             str(scratch / "machine"),
             "--service-user",
             getpass.getuser(),
+            *extra,
         ],
         cwd=REPO_ROOT,
         env=environment,
@@ -278,7 +284,9 @@ ACTIVATION = f"sudo launchctl bootstrap system {PLIST}"
     ("stated", "naming"),
     [
         ("", "AGENTS.md's install path states no launchd activation command"),
-        (ACTIVATION.removeprefix("sudo "), "which runs as no root"),
+        (ACTIVATION.removeprefix("sudo "), "which is not `sudo launchctl bootstrap system"),
+        (f"sudo launchctl kickstart system/{LABEL}", "which is not `sudo launchctl bootstrap"),
+        (f"sudo launchctl bootstrap system /tmp/{LABEL}.plist", "/Library/LaunchDaemons/<label>"),
     ],
 )
 def test_an_install_path_stating_no_rooted_activation_is_refused(
@@ -288,6 +296,7 @@ def test_an_install_path_stating_no_rooted_activation_is_refused(
     environment = _machine(tmp_path)
     tree = tmp_path / "tree"
     tree.mkdir()
+    shutil.copy2(REPO_ROOT / "repo-policy.toml", tree / "repo-policy.toml")
     text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
     contains(text, f"```console\n{ACTIVATION}\n```\n", describing="AGENTS.md's launchd pair")
     replacement = f"```console\n{stated}\n```\n" if stated else ""
@@ -313,3 +322,28 @@ def test_an_installer_that_fails_stops_the_proof_before_anything_is_loaded(
     equal(proved.returncode, 1, describing="prove-service's exit")
     contains(proved.stderr, "the committed service installer failed", describing="the refusal")
     equal(_asked(tmp_path), [], describing="what reached launchd")
+
+
+def test_a_load_that_hangs_fails_the_proof_and_still_asks_to_unload(
+    program: Path, tmp_path: Path
+) -> None:
+    """A `bootstrap` that never answers is a failure at its timeout, not a proof that hangs."""
+    environment = _machine(tmp_path)
+    shim = tmp_path / "bin" / "launchctl"
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    shim.write_text(
+        shim.read_text(encoding="utf-8").replace(
+            "#!/bin/sh\n", '#!/bin/sh\nif [ "$1" = bootstrap ]; then exec sleep 30; fi\n', 1
+        ),
+        encoding="utf-8",
+    )
+
+    proved = _prove(program, tmp_path, environment, extra=("--service-timeout", "2"))
+
+    equal(proved.returncode, 1, describing="prove-service's exit")
+    contains(
+        proved.stderr,
+        f"`sudo launchctl bootstrap system {PLIST}` did not finish within 2s",
+        describing="the refusal",
+    )
+    equal(_asked(tmp_path), [["bootout", f"system/{LABEL}"]], describing="the unload after it")

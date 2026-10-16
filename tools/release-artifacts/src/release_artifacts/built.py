@@ -38,13 +38,14 @@ import re
 import shlex
 import shutil
 import struct
+import subprocess
 import tarfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
 from repo_checks import install_path, platforms
-from repo_checks.model import Repo
+from repo_checks.model import Repo, policy_table
 from repo_checks.shell import run
 
 from release_artifacts import installing, packages, targets, wheels
@@ -343,18 +344,44 @@ def prove_built(repo: Repo, dist: Path, into: Path, binary: Path) -> list[str]:
 LAUNCHD = "launchd"
 
 
+#: The shape the launchd activation command takes: load one property list from
+#: the directory launchd starts daemons from into the system domain, as root.
+ACTIVATION_SHAPE = ("sudo", "launchctl", "bootstrap", "system")
+
+
 def activation(repo: Repo) -> list[str]:
     """The launchd activation command `AGENTS.md`'s install path states, as words.
 
+    Held to its shape before anything runs it: the proof then reads back and
+    unloads the label that command loads, so a command of another shape would
+    have the proof inspect a service nothing loaded.
+
     Raises:
-        InstallError: If the section states no command for launchd's pair.
+        InstallError: If the section states no command for launchd's pair, or
+            one that is not `sudo launchctl bootstrap system <directory>/<label>.plist`.
     """
     path = install_path.parse(repo.agents_md)
     pair = path.commands_for(LAUNCHD)
-    if len(pair) == len(("install", "activate")):
-        return shlex.split(pair[1])
-    msg = "AGENTS.md's install path states no launchd activation command"
-    raise InstallError(msg)
+    if len(pair) != len(("install", "activate")):
+        msg = "AGENTS.md's install path states no launchd activation command"
+        raise InstallError(msg)
+    words = shlex.split(pair[1])
+    managers = policy_table(repo, "service").get("managers", {})
+    directory = (managers.get(LAUNCHD, {}) if isinstance(managers, dict) else {}).get(
+        "registration_directory", ""
+    )
+    plist = PurePosixPath(words[-1]) if words else PurePosixPath()
+    if (
+        tuple(words[:-1]) != ACTIVATION_SHAPE
+        or plist.suffix != ".plist"
+        or str(plist.parent) != directory
+    ):
+        msg = (
+            f"AGENTS.md's launchd activation command is `{pair[1]}`, which is not "
+            f"`{shlex.join(ACTIVATION_SHAPE)} {directory or '<directory>'}/<label>.plist`"
+        )
+        raise InstallError(msg)
+    return words
 
 
 def label_of(words: list[str]) -> str:
@@ -372,8 +399,33 @@ NOT_LOADED = 3
 DARWIN = "Darwin"
 
 
+def _launchctl(argv: list[str], repo: Repo, timeout: float, describing: str) -> None:
+    """One `launchctl` command, its failure and its overrunning `timeout` both a refusal.
+
+    Raises:
+        InstallError: If it failed or did not finish in time.
+    """
+    try:
+        result = run(argv, cwd=repo.root, timeout=timeout)
+    except subprocess.TimeoutExpired as late:
+        msg = f"{describing} did not finish within {timeout:g}s"
+        raise InstallError(msg) from late
+    if result.returncode != 0:
+        msg = f"{describing} failed ({result.returncode}):\n{result.stdout}{result.stderr}"
+        raise InstallError(msg)
+
+
+#: How long one `launchctl` command is given: loading, reading back or
+#: unloading one daemon is seconds of work, so a minute past that is a hang.
+LAUNCHCTL_TIMEOUT_SECONDS = 120.0
+
+
 def prove_service(
-    repo: Repo, binary: Path, root: Path | None = None, user: str | None = None
+    repo: Repo,
+    binary: Path,
+    root: Path | None = None,
+    user: str | None = None,
+    timeout: float = LAUNCHCTL_TIMEOUT_SECONDS,
 ) -> list[str]:
     """Install the built program as launchd's daemon, load it, read it back, unload it.
 
@@ -382,7 +434,9 @@ def prove_service(
     than a hang. `root` and `user` are the installer's own `--root` and
     `--user`: a machine whose `/` is `root`, owned by `user`, which is how a
     journey drives this against a launchd stand-in with nothing installed on
-    the host — and then nothing needs root.
+    the host — and then nothing needs root. Each `launchctl` command is given
+    `timeout` seconds, and one that overruns fails the proof like one that
+    exits non-zero — the unload still attempted.
 
     Raises:
         InstallError: If this is not a launchd host, any step fails, or the
@@ -402,9 +456,6 @@ def prove_service(
         )
         raise InstallError(msg)
     words = activation(repo)
-    if words[:1] != ["sudo"]:
-        msg = f"the launchd activation command is `{shlex.join(words)}`, which runs as no root"
-        raise InstallError(msg)
     label = label_of(words)
     sudo = [] if root is not None else ["sudo", "-n"]
     beneath = [
@@ -418,24 +469,32 @@ def prove_service(
     said = [f"{label}: installed by scripts/install-service.sh"]
     failed: InstallError | None = None
     try:
-        installing.ran([*sudo, *words[1:]], cwd=repo.root, describing=f"`{shlex.join(words)}`")
-        installing.ran(
+        _launchctl([*sudo, *words[1:]], repo, timeout, f"`{shlex.join(words)}`")
+        _launchctl(
             [*sudo, "launchctl", "print", f"system/{label}"],
-            cwd=repo.root,
-            describing=f"`launchctl print system/{label}`",
+            repo,
+            timeout,
+            f"`launchctl print system/{label}`",
         )
         said.append(f"loaded by `{shlex.join(words)}` and printed by launchd")
     except InstallError as refused:
         failed = refused
     # Unloaded whatever happened above, and its own answer kept: a failure to
     # unload is reported beside the failure that came first, never instead of it.
-    unloaded = run([*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root)
-    left = unloaded.returncode not in {0, NOT_LOADED}
-    if left:
-        stuck = (
-            f"`launchctl bootout system/{label}` failed ({unloaded.returncode}), so the service "
-            f"this proof loaded may still be loaded:\n{unloaded.stdout}{unloaded.stderr}"
+    unload = f"`launchctl bootout system/{label}`"
+    try:
+        unloaded = run(
+            [*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root, timeout=timeout
         )
+        stuck = (
+            ""
+            if unloaded.returncode in {0, NOT_LOADED}
+            else f"{unload} failed ({unloaded.returncode}), so the service this proof loaded "
+            f"may still be loaded:\n{unloaded.stdout}{unloaded.stderr}"
+        )
+    except subprocess.TimeoutExpired:
+        stuck = f"{unload} did not finish within {timeout:g}s, so the service may still be loaded"
+    if stuck:
         if failed is not None:
             msg = f"{failed}\nand then {stuck}"
             raise InstallError(msg) from failed

@@ -49,6 +49,23 @@ export function baseFiles() {
 }
 
 /**
+ * The variables naming a repository a git subprocess would otherwise operate
+ * on, as `repo_checks.shell.GIT_LOCATION_VARIABLES` lists them; a test holds
+ * the two lists to each other.
+ */
+export const GIT_LOCATION_VARIABLES = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_QUARANTINE_PATH",
+];
+
+/**
  * The environment a child process gets: this one, minus anything naming a
  * repository, and minus what the forge or a budget check hands the process
  * running these tests — a gate on a pull request runs them under
@@ -62,7 +79,7 @@ export function cleanEnvironment(extra = {}) {
   const environment = { ...process.env };
   for (const name of Object.keys(environment)) {
     if (
-      /^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|COMMON_DIR|PREFIX)$/.test(name) ||
+      GIT_LOCATION_VARIABLES.includes(name) ||
       /^GITHUB_(EVENT_NAME|EVENT_PATH|OUTPUT|STEP_SUMMARY|HEAD_REF|BASE_REF)$/.test(name) ||
       name.startsWith("ONEBUDGETSPEC_")
     ) {
@@ -175,6 +192,15 @@ export const BASES = {
       ),
     );
   },
+  "lock-source-qualified": (dir) => {
+    const from = workspaceVersion();
+    rewrite(dir, "Cargo.lock", (text) =>
+      text.replace(
+        /(name = "printobserver-server"\nversion = "[^"]+"\ndependencies = \[\n(?: "[^"]+",\n)*?) "printobserver-core",/,
+        `$1 "printobserver-core ${from} (registry+https://github.com/rust-lang/crates.io-index)",`,
+      ),
+    );
+  },
   "config-garbled": (dir) => {
     writeFileSync(join(dir, "release-plz.toml"), "[workspace\npr_branch_prefix = ");
   },
@@ -216,6 +242,16 @@ Object.assign(DIFFS, {
       }
       return moved;
     });
+  },
+  "lock-source-qualified": (dir) => {
+    bumpVersions(dir);
+    const from = workspaceVersion();
+    rewrite(dir, "Cargo.lock", (text) =>
+      text.replace(
+        `"printobserver-core ${from} (registry+`,
+        `"printobserver-core ${bumped(from)} (registry+`,
+      ),
+    );
   },
   "lock-version-garbled": (dir) => {
     bumpVersions(dir);

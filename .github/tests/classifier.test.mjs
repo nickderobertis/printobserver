@@ -2,10 +2,19 @@
 // committed command line over a real event payload and a generated history.
 
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { classified, fixture, git, history, outputsOf, policy } from "./support/histories.mjs";
+import {
+  classified,
+  fixture,
+  GIT_LOCATION_VARIABLES,
+  git,
+  history,
+  outputsOf,
+  policy,
+  ROOT,
+} from "./support/histories.mjs";
 import { pullRequestPayload } from "./support/lifecycle.mjs";
 
 const RELEASE_ONLY = { isReleaseOnly: true, macosRequired: false };
@@ -83,6 +92,7 @@ describe("what a release pull request may carry, read semantically", () => {
       "lock-version-garbled",
       /Cargo\.lock in a way that is not a version: printobserver-core's version is "garbled"/,
     ],
+    ["lock-source-qualified", /Cargo\.lock beyond its version fields/],
     ["config-garbled", /release-plz\.toml at [0-9a-f]+ is not TOML/],
     ["config-no-prefix", /release-plz\.toml at [0-9a-f]+ names no \[workspace\] pr_branch_prefix/],
   ];
@@ -301,4 +311,14 @@ describe("the command line", () => {
       assert.match(ran.stderr, /usage: macos-policy\.mjs classify/);
     });
   }
+});
+
+describe("the test environment", () => {
+  test("drops every variable repo_checks.shell drops as naming a repository", () => {
+    const source = readFileSync(join(ROOT, "tools/repo-checks/src/repo_checks/shell.py"), "utf8");
+    const declared = /GIT_LOCATION_VARIABLES = \(([^)]*)\)/.exec(source);
+    assert.ok(declared, "repo_checks.shell declares GIT_LOCATION_VARIABLES");
+    const listed = [...declared[1].matchAll(/"([A-Z_]+)"/g)].map((found) => found[1]);
+    assert.deepEqual([...GIT_LOCATION_VARIABLES].sort(), listed.sort());
+  });
 });

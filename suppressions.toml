@@ -2587,3 +2587,9 @@ rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_prove_service_journey.py"
 site = '(tmp_path / "bin" / "uname").write_text('
 reason = "The same `uname` shim the stand-in machine answers `Darwin` with, made to fail instead: a host on which `uname -s` itself fails is the one case the proof must refuse before it installs anything, and no real host can be made to have a broken `uname` for one test."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = "shim.write_text("
+reason = "The launchctl stand-in's own shim, made to hang on `bootstrap` the way a wedged launchd does: no real launchd can be made to hang for one test, and what is under test is the proof's own timeout and the unload it still attempts, both driven through its real command line."

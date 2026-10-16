@@ -6,8 +6,7 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["bun"],
-    "skipLibCheck": true
+    "types": ["bun"]
   },
   "include": ["*.mjs", "lib/**/*.mjs", "tests/**/*.mjs"],
   "exclude": ["node_modules", ".telemetry"]

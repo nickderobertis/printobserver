@@ -399,9 +399,12 @@ function withoutLockVersions(lock, members) {
       delete entry.version;
     }
     if (Array.isArray(entry.dependencies)) {
+      // Only `<member> <version>` is a workspace reference qualified by its
+      // version; one naming a source too is another package's, kept whole.
       entry.dependencies = entry.dependencies.map((dependency) => {
-        const [name, version] = String(dependency).split(" ");
-        return members.has(name) && version && VERSION.test(version) ? name : dependency;
+        const parts = String(dependency).split(" ");
+        const [name, version] = parts;
+        return parts.length === 2 && members.has(name) && VERSION.test(version) ? name : dependency;
       });
     }
   }
