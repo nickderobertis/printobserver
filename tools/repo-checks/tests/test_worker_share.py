@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import itertools
 import json
+import platform
+import sys
 from pathlib import Path
 
 import pytest
@@ -145,10 +147,10 @@ def test_a_traced_test_tier_runs_one_worker_a_suite_even_with_the_tiers_in_turn(
 
 
 def test_the_overlap_is_the_justfiles_own_answer() -> None:
-    """The end-to-end tier is beside the test tier on every platform the gate runs on."""
+    """The end-to-end tier is beside the test tier everywhere but on Windows aarch64."""
     equal(
         workers.beside_tests(REPO_ROOT),
-        True,
+        not (sys.platform == "win32" and platform.machine() == "ARM64"),
         describing="whether the justfile overlaps the two tiers on this host",
     )
 

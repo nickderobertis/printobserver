@@ -71,15 +71,17 @@ tool-version TOOL:
 # coverage floors, the Windows-target lint, the workflow lint and the repository
 # checks — run whichever tier it is.
 #
-# The end-to-end tier starts beside the test tier rather than after every other
-# one: what it reads of this tree's build, its graph target builds first, so the
-# gate's two longest tiers overlap. Both are waited out whatever either answers,
-# so a run reports every failure of both, and fails if either failed. That holds
-# on Windows too, measured on one tree: the Windows x86 gate took 1,495 s with
-# the tiers overlapping against 2,710 s in turn, and the Windows aarch64 gate,
-# whose runner either tier alone nearly fills, 3,325 s against 3,360 s — so
-# overlapping is never the longer order, and where it gains nothing it costs
-# nothing either.
+# Everywhere but Windows aarch64 the end-to-end tier starts beside the test tier
+# rather than after every other one: what it reads of this tree's build, its
+# graph target builds first, so the gate's two longest tiers overlap. Both are
+# waited out whatever either answers, so a run reports every failure of both,
+# and fails if either failed. On Windows aarch64 it runs last, as the other
+# tiers do in turn: on that 4-processor runner either tier alone nearly fills
+# the host, so beside each other they only slow both down — its gate measured
+# 3,325 s and 4,195 s with them overlapping against 3,360 s in turn, and two
+# end-to-end journeys overran their deadlines beside the test tier. The Windows
+# x86 runner has the room to gain, as every other platform's has: 1,495 s and
+# 1,732 s overlapping against 2,710 s in turn.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -99,8 +101,8 @@ check tier="affected":
     exit "$status"
 
 # Whether `just check` starts the end-to-end tier beside the test tier: `true`
-# on every platform, for the reason the recipe above gives.
-E2E_BESIDE_TESTS := "true"
+# everywhere but Windows aarch64, for the reason the recipe above gives.
+E2E_BESIDE_TESTS := if os_family() != "windows" { "true" } else if arch() == "aarch64" { "false" } else { "true" }
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any
