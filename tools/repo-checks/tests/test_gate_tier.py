@@ -280,6 +280,7 @@ def test_a_release_configuration_naming_no_prefix_is_refused(tree: Callable[[], 
     ("key", "command"),
     [
         ("gate", 'just check "$(just gate-tier)"'),
+        ("gate-shard-windows-x86_64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
         ("gate-shard-windows-aarch64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
     ],
 )

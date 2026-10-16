@@ -44,12 +44,10 @@ MATRIX = """    strategy:
             runner: macos-15
 """
 
-# The gate's Windows cell, which follows the Linux ones in its own matrix; its
-# Windows aarch64 gate is sharded, and carried by the shard job instead.
-WINDOWS = """          - id: windows-x86_64
-            runner: windows-2025
-          # `windows-aarch64` is a sharded gate: `gate-shard-windows-aarch64`
-          # runs its work and `gate-windows-aarch64` reports its context.
+# What follows the macOS cell in the gate's own matrix: its two Windows gates
+# are sharded, and carried by their shard jobs instead.
+WINDOWS = """          # The two Windows gates are sharded: `gate-shard-<platform>` runs
+          # each one's work and `gate-<platform>` reports its context.
 """
 
 

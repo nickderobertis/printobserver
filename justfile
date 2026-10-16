@@ -71,17 +71,17 @@ tool-version TOOL:
 # coverage floors, the Windows-target lint, the workflow lint and the repository
 # checks — run whichever tier it is.
 #
-# Everywhere but Windows aarch64 the end-to-end tier starts beside the test tier
-# rather than after every other one: what it reads of this tree's build, its
-# graph target builds first, so the gate's two longest tiers overlap. Both are
-# waited out whatever either answers, so a run reports every failure of both,
-# and fails if either failed. On Windows aarch64 it runs last, as the other
-# tiers do in turn: on that 4-processor runner either tier alone nearly fills
-# the host, so beside each other they only slow both down — its gate measured
-# 3,325 s and 4,195 s with them overlapping against 3,360 s in turn, and two
-# end-to-end journeys overran their deadlines beside the test tier. The Windows
-# x86 runner has the room to gain, as every other platform's has: 1,495 s and
-# 1,732 s overlapping against 2,710 s in turn.
+# Off Windows the end-to-end tier starts beside the test tier rather than after
+# every other one: what it reads of this tree's build, its graph target builds
+# first, so the gate's two longest tiers overlap. Both are waited out whatever
+# either answers, so a run reports every failure of both, and fails if either
+# failed. On Windows it runs last, as the other tiers do in turn: beside each
+# other on a 4-processor Windows runner they only slow both down, and load
+# Nx's plugin workers past the time they are given to start. This draft
+# measured overlapping at 3,325 s and 4,195 s on Windows aarch64 against
+# 3,360 s in turn, and on Windows x86 three of six overlapped runs failed that
+# way. Continuous integration splits both Windows gates into shards
+# (`just check-shard`), which run their tiers in turn too.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -101,13 +101,13 @@ check tier="affected":
     exit "$status"
 
 # Whether `just check` starts the end-to-end tier beside the test tier: `true`
-# everywhere but Windows aarch64, for the reason the recipe above gives.
-E2E_BESIDE_TESTS := if os_family() != "windows" { "true" } else if arch() == "aarch64" { "false" } else { "true" }
+# everywhere but Windows, for the reason the recipe above gives.
+E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 
 # One shard (`k/n`) of the gate at a tier, for a platform whose gate is split
 # across runners: `repo_checks.gate_shards` hands each of the tiers `check`
 # invokes to exactly one shard, so the shards together run the whole gate and
-# nothing twice. `just gate-shards 2` prints the split.
+# nothing twice. `just gate-shards 3` prints the three-way split.
 check-shard tier shard:
     uv run -q python -m repo_checks.gate_shards run {{quote(tier)}} {{quote(shard)}}
 

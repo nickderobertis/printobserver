@@ -90,13 +90,25 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
         dry_run_check(tier),
         describing="the shards' union against `check`",
     )
-    end_to_end = [shard for shard in shards if any("test-e2e" in one for one in shard)]
     equal(
-        end_to_end,
-        [[f"just test-e2e {tier}"]]
+        [[one for one in shard if "test-e2e" in one] for shard in shards],
+        [[], [f"just test-e2e {tier}"]]
         if count == WHOLE_END_TO_END
-        else [[f"{END_TO_END_PART_VARIABLE}={part}/2 just test-e2e {tier}"] for part in (1, 2)],
-        describing="the shards running the end-to-end tier",
+        else [
+            [],
+            *([f"{END_TO_END_PART_VARIABLE}={part}/2 just test-e2e {tier}"] for part in (1, 2)),
+        ],
+        describing="the end-to-end tier each shard runs",
+    )
+    equal(
+        [one for one in selected if invoked(one)[0] in {"test", "coverage"}],
+        [f"just test {tier}", f"just coverage {tier}"],
+        describing="the tier coverage reads and coverage itself, in order",
+    )
+    equal(
+        [i for i, shard in enumerate(shards) for one in shard if invoked(one)[0] == "coverage"],
+        [i for i, shard in enumerate(shards) for one in shard if invoked(one)[0] == "test"],
+        describing="the shard running coverage against the one running test",
     )
 
 
@@ -167,23 +179,32 @@ EVERY_TIER = [
 
 
 @pytest.mark.parametrize(
-    ("count", "end_to_end"),
-    [(2, ["test-e2e all"]), (3, ["test-e2e all 1/2", "test-e2e all 2/2"])],
+    ("count", "reached"),
+    [
+        (2, [*EVERY_TIER, "test-e2e all"]),
+        (
+            3,
+            [
+                "test all",
+                "coverage all",
+                "test-e2e all 1/2",
+                *(one for one in EVERY_TIER if one.split()[0] not in {"test", "coverage"}),
+                "test-e2e all 2/2",
+            ],
+        ),
+    ],
 )
 def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(
-    tree: Callable[[], Tree], count: int, end_to_end: list[str]
+    tree: Callable[[], Tree], count: int, reached: list[str]
 ) -> None:
-    """The first shard runs every tier but the end-to-end one, in order; the rest run that."""
+    """Shard by shard, each runs its tiers in `gate.tiers` order, handed the tier and part."""
     copy = tree()
     copy.write("justfile", recording_justfile(copy.repo))
 
     for index in range(1, count + 1):
         equal(gate_shards_main(["--root", str(copy.root), "run", "all", f"{index}/{count}"]), 0)
 
-    equal(
-        [line.strip() for line in copy.read("reached").splitlines()],
-        [*EVERY_TIER, *end_to_end],
-    )
+    equal([line.strip() for line in copy.read("reached").splitlines()], reached)
 
 
 def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[], Tree]) -> None:
@@ -401,9 +422,9 @@ def test_a_sharded_platform_the_gate_job_also_carries_is_refused(tree: Callable[
     copy = tree()
     copy.edit(
         CI,
-        "          # `windows-aarch64` is a sharded gate",
+        "          # The two Windows gates are sharded",
         "          - id: windows-aarch64\n            runner: windows-11-arm\n"
-        "          # `windows-aarch64` is a sharded gate",
+        "          # The two Windows gates are sharded",
     )
 
     refused(sharded_jobs(copy.repo), "the unsharded job's matrix leaves a sharded platform out")

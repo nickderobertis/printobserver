@@ -354,7 +354,7 @@ records a platform the tier cannot run on, and this one a cell whose bring-up is
 still owed, so either excuses a cell of that job and a matrix carrying a cell
 either records is refused.
 
-### The six jobs that carry no platform matrix
+### The seven jobs that carry no platform matrix
 
 These run once per change rather than once per platform, and a matrix would say
 nothing about any of them. Each carries the reason it has none — the record is
@@ -366,6 +366,7 @@ what makes a job running once a decision rather than an omission.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
 - `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
 - `gate-windows-aarch64` — it is the aggregating job of the sharded `gate (windows-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-aarch64`, whose cells are on that platform's runner.
+- `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
 [//]: # (END unmatrixed-jobs)
 
@@ -1025,22 +1026,26 @@ matters is that the record spells each context the way the job actually reports
 it, because a context named here that nothing reports blocks every pull request
 forever.
 
-**One platform's gate is sharded.** `gate (windows-aarch64)` measured over the
-1,800 s each platform's required job is designed to fit, so its work runs in the
-cells of `gate-shard-windows-aarch64`, each reporting `gate-shard
-(windows-aarch64, <k>/<n>)` and running the gate tiers `just gate-shards <n>`
-hands it — every tier but the end-to-end one in the first, and that tier's
-test files in two parts across the other two — and the required context is
-reported by `gate-windows-aarch64`. That
-job `needs` the shards, runs `if: always()`, and runs nothing but `just
-shard-verdict` over the workflow's own `needs`, failing unless every shard
-succeeded. The shards together run exactly the tiers `just check` does, none
-twice, at the tier `just gate-tier` answers, so the release pull request still
-takes the sweep and coverage is held to the same floors over the code the same
-`test` tier reached. `repo_checks.gate_jobs` is the one reading of how long a
-sharded or unsharded context is waited on, and `just check-repo`'s
-`sharded-jobs` holds the workflow to this shape. No other gate and no
-integration job is sharded, because each measured within 1,800 s.
+**The two Windows gates are sharded.** On a 4-processor Windows runner the
+gate run in turn measured 2,710 s to 3,360 s, over the 1,800 s each platform's
+required job is designed to fit, and running its end-to-end and test tiers
+beside each other was longer still on Windows aarch64 and failed three of six
+runs on Windows x86 as Nx's plugin workers starved. So each Windows platform's
+work runs in the three cells of `gate-shard-<platform>`, each reporting
+`gate-shard (<platform>, <k>/3)` and running, in turn, the gate tiers `just
+gate-shards 3` hands it: the `test` and `coverage` tiers in the first, one half
+of the end-to-end tier's test files in the second, and every other tier and
+then the other half in the third. The required context is reported by
+`gate-<platform>`, which `needs` that platform's shards, runs `if: always()`,
+and runs nothing but `just shard-verdict` over the workflow's own `needs`,
+failing unless every shard succeeded. The shards together run exactly the
+tiers `just check` does, none twice and no test twice, at the tier `just
+gate-tier` answers, so the release pull request still takes the sweep and
+coverage is held to the same floors over the code the same `test` tier
+reached. `repo_checks.gate_jobs` is the one reading of how long a sharded or
+unsharded context is waited on, and `just check-repo`'s `sharded-jobs` holds
+the workflow to this shape. No other gate and no integration job is sharded,
+because each measured within 1,800 s.
 
 The record names the contexts the committed workflows report, which is not
 always what the live protection requires: a person applies that. A change that

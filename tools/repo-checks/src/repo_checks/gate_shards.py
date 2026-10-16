@@ -10,12 +10,16 @@ halves of that split, so the workflow carries no selection of its own:
   `just check` invokes — and a plan hands each of them to exactly one shard, in
   the order `gate.tiers` declares, so the shards together run what the
   unsharded gate runs and nothing twice. The end-to-end tier, the one longest
-  on its own, is apart from the rest: one shard of its own in two, and in three
-  split by test file into two parts, `test-e2e[1/2]` and `test-e2e[2/2]`, the
-  part a run collects named in `PRINTOBSERVER_E2E_PART`. The partition is
-  `END_TO_END_SECOND_PART`: a fixed set of the tier's test files, every other
-  file in the first part, so each test is collected by exactly one part. That
-  tier measures no coverage, so its split moves no coverage figure.
+  on its own, is apart from the rest. In two shards it is the second. In three
+  its test files run in two parts, `test-e2e[1/2]` and `test-e2e[2/2]`, the
+  part a run collects named in `PRINTOBSERVER_E2E_PART`: the first shard runs
+  the `test` and `coverage` tiers, which share a shard because the coverage
+  floors are read off what that `test` run measured; the second runs the
+  first part; and the third runs every other tier and then the second part,
+  whose build of the program the `build` tier has already made. The partition
+  is `END_TO_END_SECOND_PART`: a fixed set of the tier's test files, every
+  other file in the first part, so each test is collected by exactly one part.
+  That tier measures no coverage, so its split moves no coverage figure.
 * `commands TIER SHARD` prints the recipe invocations shard `SHARD` (`k/n`) of
   the gate at `TIER` runs, one a line, and runs none of them.
 * `run TIER SHARD` runs shard `SHARD` (`k/n`) of the gate at `TIER`: each of its
@@ -91,6 +95,8 @@ END_TO_END_SECOND_PART = frozenset(
 )
 #: How many parts the end-to-end tier's test files split into where they split.
 END_TO_END_PARTS = 2
+#: The tiers that share a shard because `coverage` reads what `test` measured.
+MEASURED = ("test", "coverage")
 #: The parameter a tier recipe takes its tier through.
 TIER_PARAMETER = "tier"
 #: The kinds of required job a verdict is reached for.
@@ -167,12 +173,14 @@ def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
     """
     tiers = gate_tiers(repo)
     rest = tuple(Step(tier) for tier in tiers if tier != END_TO_END)
+    first, second = (Step(END_TO_END, Shard(part, END_TO_END_PARTS)) for part in (1, 2))
     plans = {
         1: (tuple(Step(tier) for tier in tiers),),
         2: (rest, (Step(END_TO_END),)),
         3: (
-            rest,
-            *((Step(END_TO_END, Shard(part, END_TO_END_PARTS)),) for part in (1, 2)),
+            tuple(step for step in rest if step.tier in MEASURED),
+            (first,),
+            (*(step for step in rest if step.tier not in MEASURED), second),
         ),
     }
     if count not in plans:
