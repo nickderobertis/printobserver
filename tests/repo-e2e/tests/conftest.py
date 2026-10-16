@@ -81,6 +81,10 @@ def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("NX_BASE", raising=False)
     monkeypatch.delenv("NX_HEAD", raising=False)
+    # The part of this tier a sharded gate collects is read at collection, and
+    # a tier a journey drives in a copy is never one of its parts.
+    for name in gate_shards.PARTS:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(scope="session")

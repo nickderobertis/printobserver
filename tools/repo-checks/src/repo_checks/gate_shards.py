@@ -101,6 +101,9 @@ END_TO_END_SECOND_PART = frozenset(
 )
 #: How many parts the end-to-end tier's test files split into where they split.
 END_TO_END_PARTS = 2
+#: The variables a step names its part in. Each step is handed only those it
+#: names, so a tier the plan runs whole is never narrowed by one a caller left set.
+PARTS = (END_TO_END_PART_VARIABLE, PROJECTS_VARIABLE)
 #: The tiers that share a shard because `coverage` reads what `test` measured,
 #: and that a four-way split runs on each side of `SPLIT_ON`: the Rust crates on
 #: one runner, every other project on another, each side's coverage judged at
@@ -313,7 +316,10 @@ def _run(repo: Repo, tier: str, shard: Shard) -> int:
         exited = run(
             list(invocation.argv),
             cwd=repo.root,
-            env={**os.environ, **invocation.environment},
+            env={
+                **{name: value for name, value in os.environ.items() if name not in PARTS},
+                **invocation.environment,
+            },
             capture=False,
         ).returncode
         if exited != 0:

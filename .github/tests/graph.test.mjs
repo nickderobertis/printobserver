@@ -207,11 +207,21 @@ describe("the macOS job carries what the two macOS cells ran", () => {
   });
 
   test("the gate and integration matrices are every other platform the list names", () => {
-    for (const key of ["gate", "integration"]) {
-      assert.deepEqual(
-        ci.jobs[key].strategy.matrix.platform,
-        PLATFORMS.filter((platform) => platform !== MACOS),
-      );
+    const others = PLATFORMS.filter((platform) => platform !== MACOS);
+    assert.deepEqual(ci.jobs.integration.strategy.matrix.platform, others);
+    // A sharded gate's platform is carried by its shard job's cells, each on
+    // that platform's runner, rather than by the gate job's matrix.
+    const shards = Object.values(ci.jobs)
+      .filter((job) => typeof job.name === "string" && job.name.startsWith("gate-shard ("))
+      .flatMap((job) => job.strategy.matrix.platform)
+      .map(({ id, runner }) => ({ id, runner }));
+    const sharded = others.filter((platform) => shards.some(({ id }) => id === platform.id));
+    assert.deepEqual(
+      ci.jobs.gate.strategy.matrix.platform,
+      others.filter((platform) => !sharded.includes(platform)),
+    );
+    for (const cell of shards) {
+      assert.deepEqual(cell, others.find((platform) => platform.id === cell.id));
     }
   });
 });
