@@ -33,12 +33,12 @@ def _virtual_printer_module(state: Path) -> Path:
     """Where an earlier install on this host left the virtual printer's module.
 
     Windows keeps an environment's packages under `Lib`, every other host under
-    `lib/python<version>`.
+    `lib/python<version>`, the version being the one the script pins.
     """
     if sys.platform == "win32":
         site = state / "venv" / "Lib" / "site-packages"
     else:
-        site = state / "venv" / "lib" / "python3.11" / "site-packages"
+        site = state / "venv" / "lib" / f"python{octoprint_env.OCTOPRINT_PYTHON}" / "site-packages"
     return site.joinpath(*octoprint_env.VIRTUAL_PRINTER_MODULE)
 
 
@@ -166,7 +166,7 @@ def test_an_environment_without_exactly_one_virtual_printer_is_refused(
     if modules == 0:
         module.unlink()
     else:
-        second = state / "venv" / "lib" / "python3.12" / "site-packages"
+        second = state / "venv" / "a-second-environment" / "site-packages"
         second = second.joinpath(*octoprint_env.VIRTUAL_PRINTER_MODULE)
         second.parent.mkdir(parents=True)
         second.write_bytes(module.read_bytes())

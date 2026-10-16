@@ -63,6 +63,7 @@ def _bed(url: str, key: str) -> Bed:
     """
     deadline = time.monotonic() + REPORTED_S
     while True:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         status, body = api(url, "/api/printer", key)
         temperature = body.get("temperature") if isinstance(body, dict) else None
         bed = temperature.get("bed") if isinstance(temperature, dict) else None
@@ -97,7 +98,7 @@ def _raised(state: Path) -> list[str]:
 
 def test_a_bed_exactly_delta_short_of_its_target_heats_without_crashing_the_printer(
     state_dir: Callable[[str], str],
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """The heater simulation survives the state that took the tier's printer offline."""
     state = Path(state_dir("heater"))
     config = state / "instance" / "config.yaml"
@@ -116,6 +117,7 @@ def test_a_bed_exactly_delta_short_of_its_target_heats_without_crashing_the_prin
     key = key_from(key_file)
     equal(_bed(url, key).actual, AMBIENT_C, describing="the bed before it is heated")
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     equal(
         post(url, "/api/printer/bed", key, {"command": "target", "target": TARGET_C}),
         204,
@@ -126,6 +128,7 @@ def test_a_bed_exactly_delta_short_of_its_target_heats_without_crashing_the_prin
         time.sleep(1.0)
 
     equal(_raised(state), [], describing=f"tracebacks ending in {DEFECT} in the logs")
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     contains(CONNECTED, printer_state(url, key), describing="the printer after heating")
     bed = _bed(url, key)
     equal(bed.target, TARGET_C, describing="the bed target")
