@@ -19,6 +19,11 @@ is the check holding the workflow to it:
 
 The integration tier has no selector splitting it, so an integration shard job
 is refused rather than read.
+
+A job here is the mapping the YAML reader handed back, so its values are `Any`
+at that deserialization boundary, and every helper below takes it as it came:
+each narrows the one field it reads — a name to `str`, a matrix to `list`, a
+shard to `int` — before using it, and refuses or skips what does not narrow.
 """
 
 from __future__ import annotations
@@ -93,12 +98,13 @@ def sharded_platforms(repo: Repo) -> dict[str, dict[str, str]]:
 
 def _needs(job: dict[str, Any]) -> list[str]:
     """The job keys a job `needs`, in either of the shapes a workflow writes them."""
-    declared = job.get("needs")
-    if isinstance(declared, str):
-        return [declared]
-    if isinstance(declared, list):
-        return [str(one) for one in declared]
-    return []
+    match job.get("needs"):
+        case str(one):
+            return [one]
+        case list(declared):
+            return [str(one) for one in declared]
+        case _:
+            return []
 
 
 def _shard_findings(

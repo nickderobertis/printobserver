@@ -175,8 +175,9 @@ def platform_span(
 
     Raises:
         GateJobsError: Naming the kind and platform, if the job carrying the
-            required name is absent, none of its jobs has started, or its shards'
-            indices are not 1 to their count under one count.
+            required name is absent or reported twice, none of its jobs has
+            started, or its shards' indices are not 1 to their count under one
+            count.
     """
     required_name, shard_name = _FORMATS[kind]
     required = required_name.format(platform=platform)
@@ -187,6 +188,9 @@ def platform_span(
     for entry in jobs:
         name = entry.get("name")
         if name == required:
+            if aggregator is not None:
+                msg = f"{required}: reported twice, so which is its verdict is not known"
+                raise GateJobsError(msg)
             aggregator = _job(entry, kind, platform)
             continue
         matched = shard_pattern.match(name) if isinstance(name, str) else None

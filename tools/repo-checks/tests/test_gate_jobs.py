@@ -58,7 +58,11 @@ KEYS = ("gate", "integration")
 
 
 def recorded(run: int) -> list[dict[str, Any]]:
-    """The `jobs` array of one recorded jobs-API document."""
+    """The `jobs` array of one recorded jobs-API document.
+
+    `Any` because it is the forge's JSON as `json.loads` hands it back, which is
+    exactly what `platform_span` is given in use and narrows itself.
+    """
     document = json.loads((RECORDED / f"jobs-{run}-attempt-1.json").read_text(encoding="utf-8"))
     return document["jobs"]
 
@@ -221,7 +225,10 @@ def test_a_sharded_gate_missing_a_shard_is_refused_naming_it() -> None:
 
 
 def _with(run: int, name: str, **fields: object) -> list[dict[str, Any]]:
-    """One recorded document's jobs, with job `name`'s `fields` replaced."""
+    """One recorded document's jobs, with job `name`'s `fields` replaced.
+
+    As `Any`-valued as the document `recorded` reads, for the reason it gives.
+    """
     return [{**job, **fields} if job["name"] == name else job for job in recorded(run)]
 
 
@@ -266,6 +273,16 @@ def test_a_job_completed_with_no_runner_never_started() -> None:
     equal(span.jobs[0].duration_seconds, None)
     equal(span.started_at, at("2026-10-16T10:24:38"))
     equal(span.completed_seconds, 2134.0)
+
+
+def test_a_required_job_reported_twice_is_refused_naming_it() -> None:
+    """Two jobs under the required name are two verdicts, and which spans is not known."""
+    jobs = recorded(SHARDED)
+    aggregator = next(job for job in jobs if job["name"] == "gate (windows-aarch64)")
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_gate([*jobs, aggregator], "windows-aarch64")
+    contains(str(refused.value), "gate (windows-aarch64): reported twice")
 
 
 def test_a_shard_reported_twice_is_refused_naming_it() -> None:

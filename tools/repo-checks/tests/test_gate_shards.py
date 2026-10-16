@@ -166,7 +166,7 @@ def recording_justfile(repo: Repo, failing_recipe: str = "") -> str:
     return "\n".join(lines)
 
 
-EVERY_TIER = [
+ALL_BUT_END_TO_END = [
     "format-check all",
     "lint all",
     "typecheck all",
@@ -181,14 +181,14 @@ EVERY_TIER = [
 @pytest.mark.parametrize(
     ("count", "reached"),
     [
-        (2, [*EVERY_TIER, "test-e2e all"]),
+        (2, [*ALL_BUT_END_TO_END, "test-e2e all"]),
         (
             3,
             [
                 "test all",
                 "coverage all",
                 "test-e2e all 1/2",
-                *(one for one in EVERY_TIER if one.split()[0] not in {"test", "coverage"}),
+                *(one for one in ALL_BUT_END_TO_END if one.split()[0] not in {"test", "coverage"}),
                 "test-e2e all 2/2",
             ],
         ),
