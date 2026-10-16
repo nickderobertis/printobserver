@@ -19,6 +19,17 @@ TOOL_PACKAGES := "tools/repo-checks/src:tools/contract-codegen/src:tools/release
 export PATH_SEPARATOR := if os_family() == "windows" { ";" } else { ":" }
 export PYTHONPATH := replace(TOOL_PACKAGES, ":", PATH_SEPARATOR)
 
+# Nx loads its plugins in the process that runs it rather than in one worker
+# process each. A worker exits when ten seconds pass between connecting and
+# being sent its plugin to load, and a daemonless Nx host sends that from a main
+# thread it first blocks on its native process-metrics collector, whose
+# constructor reads every process on the machine. On a busy Windows runner that
+# read outlasts the ten seconds, and the tier fails before running anything.
+# This workspace declares no plugin of its own, so there is nothing for a
+# worker to isolate; every Nx a recipe starts, and every one those start,
+# inherits this.
+export NX_ISOLATE_PLUGINS := "false"
+
 PRUNE_SUPERSEDED_VERSION := "0.1.1"
 
 # Show the command surface.
