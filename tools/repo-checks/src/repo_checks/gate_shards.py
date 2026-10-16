@@ -65,11 +65,15 @@ END_TO_END = "test-e2e"
 END_TO_END_PART_VARIABLE = "PRINTOBSERVER_E2E_PART"
 #: The end-to-end tier's test files its second part collects when it is split in
 #: two; the first collects every other file, so a file nobody placed is run.
-#: Chosen to halve the tier's summed test time, and so that each of
-#: `tests/journey.py`'s xdist groups stays within one part: a group's journeys
+#: Chosen so that the shard running this part, which runs every tier but
+#: `test` and `coverage` first, ends near the shard running the first part, and
+#: so that each of `tests/journey.py`'s xdist groups stays within one part: a
+#: group's journeys
 #: share a build of the repository root that a second runner would pay for
-#: again. The first part keeps the `release-plz-drafting` group; this one takes
-#: the `repo-root-release-build` and `repo-root-debug-build` groups.
+#: again, and the two groups building the repository root's own program — the
+#: release build this part keeps and the debug build the first keeps — are in
+#: different parts, so neither part's host runs both builds beside its other
+#: journeys. The first part also keeps the `release-plz-drafting` group.
 END_TO_END_SECOND_PART = frozenset(
     {
         # repo-root-release-build
@@ -78,11 +82,6 @@ END_TO_END_SECOND_PART = frozenset(
         "test_registry_proof_journey.py",
         "test_shipped_artifacts_journey.py",
         "test_world_journey.py",
-        # repo-root-debug-build
-        "test_server_shutdown_journey.py",
-        "test_service_manager_journey.py",
-        "test_windows_lint_journey.py",
-        "test_windows_service_installer_journey.py",
         # no group
         "test_bootstrap_journey.py",
         "test_cargo_build_contract_journey.py",
