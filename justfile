@@ -595,10 +595,10 @@ pool-maintenance:
     cargo-prune-superseded --keep-within 2d target
 
 # Whether this run owes the macOS lane, as the `name=value` lines the `classify`
-# job of `ci.yml` appends to its outputs: `macos-required`, `release-only` and
-# `reason`. EVENT is the forge's event payload, BASE and HEAD the two commits
-# the pull request is diffed between. The classification itself goes to
-# standard error, for the log.
+# job of `ci.yml` appends to its outputs: `macos-required` and `reason`. EVENT
+# is the forge's event payload, BASE and HEAD the two commits the pull request
+# is diffed between. The classification itself goes to standard error as one
+# line, for the log.
 macos-classify EVENT BASE HEAD:
     @bun install --frozen-lockfile >&2
     @node .github/macos-policy.mjs classify --event {{quote(EVENT)}} --base {{quote(BASE)}} --head {{quote(HEAD)}} | node .github/macos-policy.mjs outputs -

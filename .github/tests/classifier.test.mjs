@@ -62,6 +62,42 @@ describe("release automation's own pull request", () => {
   });
 });
 
+describe("what a release pull request may carry, read semantically", () => {
+  for (const diff of ["changelog-added", "crate-path-version", "lock-qualified"]) {
+    test(`a ${diff} release is release-only`, () => {
+      const made = history(diff);
+      const result = classified(
+        "pull_request",
+        pullRequestPayload("opened", "release", "same-repository", made),
+        made,
+      );
+      assert.deepEqual(verdict(result), RELEASE_ONLY, result.reason);
+    });
+  }
+
+  for (const [diff, why] of /** @type {[string, RegExp][]} */ ([
+    ["empty", /changes nothing, which no release does/],
+    ["changelog-deleted", /deletes changelog crates\/printobserver-core\/CHANGELOG\.md/],
+    [
+      "lock-version-garbled",
+      /Cargo\.lock in a way that is not a version: printobserver-core's version is "garbled"/,
+    ],
+    ["config-garbled", /release-plz\.toml at [0-9a-f]+ is not TOML/],
+    ["config-no-prefix", /release-plz\.toml at [0-9a-f]+ names no \[workspace\] pr_branch_prefix/],
+  ])) {
+    test(`a ${diff} release owes macOS`, () => {
+      const made = history(diff);
+      const result = classified(
+        "pull_request",
+        pullRequestPayload("opened", "release", "same-repository", made),
+        made,
+      );
+      assert.deepEqual(verdict(result), OWED);
+      assert.match(result.reason, why);
+    });
+  }
+});
+
 describe("forged and mixed release pull requests", () => {
   test("a fork's branch named like release-plz's owes macOS", () => {
     const made = history("version");
@@ -220,11 +256,10 @@ describe("the command line", () => {
       input: JSON.stringify({ isReleaseOnly: true, macosRequired: false, reason: "two\nlines" }),
     });
     assert.equal(ran.status, 0);
-    assert.equal(ran.stdout, "macos-required=false\nrelease-only=true\nreason=two lines\n");
+    assert.equal(ran.stdout, "macos-required=false\nreason=two lines\n");
     assert.match(ran.stderr, /"isReleaseOnly":true/);
     assert.deepEqual(outputsOf({ isReleaseOnly: false, macosRequired: true, reason: "r" }), {
       "macos-required": "true",
-      "release-only": "false",
       reason: "r",
     });
   });
@@ -232,7 +267,10 @@ describe("the command line", () => {
   test("outputs refuses what is not a classification", () => {
     const ran = policy(["outputs", "-"], { input: JSON.stringify({ macosRequired: "yes" }) });
     assert.equal(ran.status, 1);
-    assert.match(ran.stderr, /not shaped like a classification/);
+    assert.match(
+      ran.stderr,
+      /not shaped like a classification.*hand `outputs` what `classify` printed/,
+    );
   });
 
   for (const [args, why] of /** @type {[string[], RegExp][]} */ ([

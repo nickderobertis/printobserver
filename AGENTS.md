@@ -372,35 +372,21 @@ what makes a job running once a decision rather than an omission.
 
 ### The consolidated macOS lanes
 
-The account holds a handful of macOS slots shared with other repositories, so
-one change may occupy at most one of them per workflow run, and at most two
-runs over its whole automatic life: its pull request, and the release build that
-ships it. Two jobs are the only automatic macOS jobs there are.
+The account's few macOS slots are shared with other repositories, so one change
+may occupy at most one per workflow run, and at most two runs over its
+automatic life: its pull request's `macos` job in `ci.yml`, which runs the gate
+and the integration tier in turn, and the release's macOS `artifacts` cell,
+which proves what it built before publishing. Nothing else starts macOS
+automatically; `platform-dispatch.yml` is the one manual lever, one job per
+dispatch.
 
-- **`ci.yml`'s `macos`** runs the gate and then the printer integration tier
-  for `macos-aarch64`, each lane's own step publishing its outcome, on a pull
-  request `.github/macos-policy.mjs classify` says owes it. Release
-  automation's own pull request owes none when it is version/changelog-only —
-  a same-repository branch under `release-plz.toml`'s `pr_branch_prefix` whose
-  diff, parsed, moves nothing but CHANGELOG.md files and the version fields of
-  `Cargo.toml`, `crates/*/Cargo.toml` and `Cargo.lock` — and no push owes any.
-  A pull request the classifier cannot read owes it. `gate (macos-aarch64)` and
-  `integration (macos-aarch64)` are carried from Linux by `gate-macos` and
-  `integration-macos`, which pass only for that lane's own success or for an
-  omission the classifier authorized, and say which.
-- **`release-plz.yml`'s `artifacts` cell for `macos-aarch64`** proves what it
-  built before it is published — `just prove-built-artifacts` installs and runs
-  every route and client from `dist/` and holds it to the release contract, and
-  `just prove-built-service` installs and loads the launchd service — in place
-  of the nine macOS cells `install-path.yml` ran after every release and every
-  week.
-
-`repo-policy.toml`'s `[[workflows.carried]]` records each omitted cell and the
-job that carries it, and `just check-repo` refuses one whose carrier does not
-run on that platform's runner or does not run what the cells were for.
-`platform-dispatch.yml` is the one manual diagnostic: one job on one platform
-per dispatch, `linux-x86_64` unless macOS is chosen. `.github/budgets.yaml`
-holds both bounds against the workflow graph `github-workflows:test` evaluates.
+`.github/macos-policy.mjs classify` decides whether a pull request owes the
+lane — release automation's version/changelog-only pull request does not, and
+unknown input does — and the Linux jobs carrying `gate (macos-aarch64)` and
+`integration (macos-aarch64)` report what that one job's lane did, or the
+omission the classifier authorized. `repo-policy.toml`'s `[[workflows.carried]]`
+records each omitted cell and its carrier, and `.github/budgets.yaml` holds both
+bounds against the graph `github-workflows:test` evaluates.
 
 ## The scripted OctoPrint environment
 

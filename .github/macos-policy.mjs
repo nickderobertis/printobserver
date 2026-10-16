@@ -7,8 +7,8 @@
 //       `GITHUB_EVENT_NAME`, read off the shape of the payload where unset.
 //   outputs <classification JSON path, or - for standard input>
 //       Print that classification as the `name=value` lines a step appends to
-//       `GITHUB_OUTPUT` — `macos-required`, `release-only` and `reason` — and
-//       the classification itself on standard error, for the log.
+//       `GITHUB_OUTPUT` — `macos-required` and `reason`, the two the
+//       workflow reads — and the classification, one line, on standard error.
 //   carry --lane gate|integration
 //       Judge one required macOS context from `NEEDS`, the `toJSON(needs)` the
 //       forge hands the carrier job; say why — on standard output for a pass,
@@ -80,7 +80,7 @@ function outputsCommand(args) {
     classification = JSON.parse(readFileSync(args[0] === "-" ? 0 : args[0], "utf8"));
   } catch (unreadable) {
     process.stderr.write(
-      `macos-policy: ${source} is not a classification: ${message(unreadable)}\n`,
+      `macos-policy: ${source} is not a classification: ${message(unreadable)}; hand \`outputs\` what \`classify\` printed\n`,
     );
     return 1;
   }
@@ -90,16 +90,14 @@ function outputsCommand(args) {
     typeof classification.isReleaseOnly !== "boolean" ||
     typeof classification.reason !== "string"
   ) {
-    process.stderr.write(`macos-policy: ${source} is not shaped like a classification\n`);
+    process.stderr.write(
+      `macos-policy: ${source} is not shaped like a classification ({isReleaseOnly, macosRequired, reason}); hand \`outputs\` what \`classify\` printed\n`,
+    );
     return 1;
   }
   process.stderr.write(`${JSON.stringify(classification)}\n`);
   const reason = classification.reason.replace(/[\r\n]+/g, " ");
-  process.stdout.write(
-    `macos-required=${classification.macosRequired}\n` +
-      `release-only=${classification.isReleaseOnly}\n` +
-      `reason=${reason}\n`,
-  );
+  process.stdout.write(`macos-required=${classification.macosRequired}\nreason=${reason}\n`);
   return 0;
 }
 

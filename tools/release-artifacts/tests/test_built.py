@@ -19,6 +19,7 @@ import json
 import shutil
 import struct
 import tarfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -240,6 +241,72 @@ def test_a_per_platform_package_declaring_another_platform_is_refused(
 
     contains(capsys.readouterr().err, f"{package.name} declares os", describing="the refusal")
     truth(not (tmp_path / "proof").exists(), describing="nothing was installed")
+
+
+def test_a_wheel_carrying_no_program_is_refused_naming_the_member(
+    finished: Path,
+    supervisor: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A route wheel whose script is missing is named, member and all, before any install."""
+    dist = Path(shutil.copytree(finished, tmp_path / "dist"))
+    wheel = next(path for path in dist.iterdir() if path.name.startswith("printobserver_cli-"))
+    stripped = tmp_path / wheel.name
+    with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(stripped, "w") as target:
+        for entry in source.infolist():
+            if "/scripts/" not in entry.filename:
+                target.writestr(entry, source.read(entry))
+    shutil.move(stripped, wheel)
+    capsys.readouterr()
+
+    equal(_prove(dist, tmp_path / "proof", supervisor), 1, describing="prove-built's exit")
+
+    contains(capsys.readouterr().err, f"{wheel.name} carries no ", describing="the refusal")
+
+
+def test_an_archive_whose_program_is_not_a_file_is_refused(
+    finished: Path,
+    supervisor: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A release archive carrying a directory where the program goes is no program."""
+    repo = Repo(REPO_ROOT)
+    dist = Path(shutil.copytree(finished, tmp_path / "dist"))
+    archive = dist / platforms.host(repo).asset
+    with tarfile.open(archive, "w:gz") as written:
+        directory = tarfile.TarInfo(platforms.host(repo).program)
+        directory.type = tarfile.DIRTYPE
+        written.addfile(directory)
+    capsys.readouterr()
+
+    equal(_prove(dist, tmp_path / "proof", supervisor), 1, describing="prove-built's exit")
+
+    contains(capsys.readouterr().err, "as something other than a file", describing="the refusal")
+
+
+def test_with_no_program_named_and_no_release_build_it_refuses_rather_than_building(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """What proves a finished build never compiles one: an absent release build is a refusal."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    shutil.copy2(REPO_ROOT / "AGENTS.md", root / "AGENTS.md")
+    capsys.readouterr()
+
+    equal(
+        main(["prove-built", "--root", str(root), "--dist", str(tmp_path / "dist")]),
+        1,
+        describing="prove-built's exit",
+    )
+
+    contains(
+        capsys.readouterr().err,
+        f"no release build of the program at {root / 'target' / 'release'}",
+        describing="the refusal",
+    )
+    truth(not (root / "target").exists(), describing="nothing was built")
 
 
 def test_a_checksum_file_not_vouching_for_the_archive_is_refused(

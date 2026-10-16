@@ -104,8 +104,8 @@ export function pullRequestPayload(action, branch, ownership, commits) {
 }
 
 /**
- * Every run one event starts, and the `workflow_run` events those runs start
- * in turn, each resolved against the graph.
+ * Every run one event starts, each resolved against the graph. The
+ * `workflow_run` events those runs start in turn are `scenarios`' to follow.
  *
  * @param {Map<string, any>} workflows
  * @param {import("../../lib/graph.mjs").Event} event

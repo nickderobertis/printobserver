@@ -148,6 +148,85 @@ export const DIFFS = {
   },
 };
 
+/**
+ * How a diff class shapes the base commit before the change is made on top,
+ * where the change needs something this tree does not carry.
+ */
+export const BASES = {
+  "crate-path-version": (dir) => {
+    const from = workspaceVersion();
+    rewrite(
+      dir,
+      "crates/printobserver-server/Cargo.toml",
+      (text) =>
+        text.replace(
+          "[dependencies]\n",
+          `[dependencies]\nlocal-core = { path = "../printobserver-core", version = "${from}" }\n`,
+        ) +
+        `\n[target.'cfg(unix)'.dependencies]\nlocal-types = { path = "../printobserver-types", version = "${from}" }\n`,
+    );
+  },
+  "lock-qualified": (dir) => {
+    const from = workspaceVersion();
+    rewrite(dir, "Cargo.lock", (text) =>
+      text.replace(
+        /(name = "printobserver-server"\nversion = "[^"]+"\ndependencies = \[\n(?: "[^"]+",\n)*?) "printobserver-core",/,
+        `$1 "printobserver-core ${from}",`,
+      ),
+    );
+  },
+  "config-garbled": (dir) => {
+    writeFileSync(join(dir, "release-plz.toml"), "[workspace\npr_branch_prefix = ");
+  },
+  "config-no-prefix": (dir) => {
+    writeFileSync(join(dir, "release-plz.toml"), "[workspace]\nrelease_always = true\n");
+  },
+};
+
+Object.assign(DIFFS, {
+  empty() {},
+  "changelog-added": (dir) => {
+    writeFileSync(
+      join(dir, "crates/printobserver-types/CHANGELOG.md"),
+      "# Changelog\n\n## [Unreleased]\n",
+    );
+  },
+  "changelog-deleted": (dir) => {
+    rmSync(join(dir, "crates/printobserver-core/CHANGELOG.md"));
+  },
+  "crate-path-version": (dir) => {
+    bumpVersions(dir);
+    const from = workspaceVersion();
+    rewrite(dir, "crates/printobserver-server/Cargo.toml", (text) =>
+      text.replaceAll(`version = "${from}" }`, `version = "${bumped(from)}" }`),
+    );
+  },
+  "lock-qualified": (dir) => {
+    bumpVersions(dir);
+    const from = workspaceVersion();
+    rewrite(dir, "Cargo.lock", (text) => {
+      const moved = text.replace(
+        `"printobserver-core ${from}",`,
+        `"printobserver-core ${bumped(from)}",`,
+      );
+      if (moved === text) {
+        throw new Error(
+          "the base lockfile carries no version-qualified printobserver-core reference",
+        );
+      }
+      return moved;
+    });
+  },
+  "lock-version-garbled": (dir) => {
+    bumpVersions(dir);
+    rewrite(dir, "Cargo.lock", (text) =>
+      text.replace(/(name = "printobserver-core"\nversion = ")[^"]+(")/, "$1garbled$2"),
+    );
+  },
+  "config-garbled": (dir) => bumpVersions(dir),
+  "config-no-prefix": (dir) => bumpVersions(dir),
+});
+
 function bumpVersions(dir) {
   const from = workspaceVersion();
   const to = bumped(from);
@@ -207,6 +286,7 @@ export function history(diff) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     cpSync(join(ROOT, path), join(dir, path));
   }
+  BASES[diff]?.(dir);
   git(["init", "-q", "-b", "main"], dir);
   git(["add", "-A"], dir);
   git(["commit", "-q", "-m", "base"], dir);
@@ -214,7 +294,7 @@ export function history(diff) {
   git(["checkout", "-q", "-b", "change"], dir);
   change(dir);
   git(["add", "-A"], dir);
-  git(["commit", "-q", "-m", `a ${diff} change`], dir);
+  git(["commit", "-q", "--allow-empty", "-m", `a ${diff} change`], dir);
   return { dir, base, head: git(["rev-parse", "HEAD"], dir) };
 }
 
