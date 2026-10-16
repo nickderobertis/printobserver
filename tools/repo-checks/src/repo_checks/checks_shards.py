@@ -28,7 +28,7 @@ shard to `int` — before using it, and refuses or skips what does not narrow.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeIs
 
 from repo_checks.gate_jobs import GATE_JOB, INTEGRATION_SHARD_JOB, SHARD_JOB
 from repo_checks.gate_shards import (
@@ -96,7 +96,7 @@ def sharded_platforms(repo: Repo) -> dict[str, dict[str, str]]:
     return sharded
 
 
-def _whole(value: object) -> bool:
+def _whole(value: object) -> TypeIs[int]:
     """Whether a matrix value is a whole number, YAML's `true` and `false` not among them."""
     return isinstance(value, int) and not isinstance(value, bool)
 
