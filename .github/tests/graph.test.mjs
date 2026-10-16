@@ -235,10 +235,33 @@ describe("pushes and the release", () => {
     assert.ok(publish.runner[0].startsWith("ubuntu-"));
   });
 
-  test("only the macOS cell proves what it built, before the upload", () => {
+  test("only the macOS cell of a push-cut release proves what it built, before the upload", () => {
     const job = workflows.get("release-plz.yml").jobs.artifacts;
     for (const platform of PLATFORMS) {
-      const contexts = { github: {}, inputs: null, needs: {}, vars: {}, matrix: { platform } };
+      // A dispatch builds an existing tag's tree, which may predate the recipes.
+      const dispatched = {
+        github: { event_name: "workflow_dispatch" },
+        inputs: null,
+        needs: {},
+        vars: {},
+        matrix: { platform },
+      };
+      assert.deepEqual(
+        job.steps.filter(
+          (step) =>
+            /^just prove-built-/.test(step.run ?? "") &&
+            condition(step.if, dispatched, [], platform.id),
+        ),
+        [],
+        `${platform.id} on a dispatch`,
+      );
+      const contexts = {
+        github: { event_name: "push" },
+        inputs: null,
+        needs: {},
+        vars: {},
+        matrix: { platform },
+      };
       const ran = job.steps
         .filter((step) => condition(step.if, contexts, [], `artifacts (${platform.id})`))
         .map((step) => step.run ?? step.uses);

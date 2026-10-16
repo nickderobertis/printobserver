@@ -12,8 +12,7 @@ from repo_checks.model import Repo
 
 from release_artifacts import built, reused, tracking
 from release_artifacts.arming import ArmingError, arm
-from release_artifacts.build import BuildError, build, build_all, staged_release
-from release_artifacts.build import program as release_build
+from release_artifacts.build import BuildError, build, build_all, finished_program, staged_release
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.registries import (
@@ -173,6 +172,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument(
+        "--service-root",
+        type=Path,
+        default=None,
+        help="for prove-service: the directory the service is installed beneath, rather than /",
+    )
+    parser.add_argument(
+        "--service-user",
+        default=None,
+        help="for prove-service: the user the installed service runs as",
+    )
+    parser.add_argument(
         "--binary",
         type=Path,
         default=None,
@@ -294,20 +304,29 @@ def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
 def _prove_built(repo: Repo, arguments: argparse.Namespace) -> int:
     """Prove what `build-all` wrote, before it is published: its contract, then each install.
 
-    The program is `--binary`, or the release build `build-all` carried where
-    none is named — already built, so nothing is compiled again: what is proven
-    is the files in `--dist` and the program inside them.
+    The program is `--binary`, or the release build `build-all` already left
+    where none is named; nothing is compiled. A proof that passed is one line.
     """
-    binary = arguments.binary or release_build(repo)
-    for line in built.prove_built(repo, arguments.dist, arguments.into, binary):
-        print(line)
+    binary = arguments.binary or finished_program(repo)
+    print(
+        f"prove-built: {'; '.join(built.prove_built(repo, arguments.dist, arguments.into, binary))}"
+    )
     return 0
 
 
 def _prove_service(repo: Repo, arguments: argparse.Namespace) -> int:
-    """Install the built program as the launchd service, load it, read it back, unload it."""
-    for line in built.prove_service(repo, arguments.binary or release_build(repo)):
-        print(line)
+    """Install the built program as the launchd service, load it, read it back, unload it.
+
+    `--service-root` and `--service-user` are the installer's own `--root` and
+    `--user`, for a machine that is not this host's `/`.
+    """
+    said = built.prove_service(
+        repo,
+        arguments.binary or finished_program(repo),
+        root=arguments.service_root,
+        user=arguments.service_user,
+    )
+    print(f"prove-service: {'; '.join(said)}")
     return 0
 
 

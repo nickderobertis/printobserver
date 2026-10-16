@@ -14,8 +14,11 @@ owes, and the processor a program's own header declares.
 
 from __future__ import annotations
 
+import io
+import json
 import shutil
 import struct
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -118,7 +121,9 @@ def test_a_finished_build_is_held_to_its_contract_then_installed_and_run(
 
     equal(_prove(finished, tmp_path / "proof", supervisor), 0, describing="prove-built's exit")
 
-    said = capsys.readouterr().out
+    printed = capsys.readouterr().out
+    equal(len(printed.splitlines()), 1, describing="what a passing proof prints, in lines")
+    said = printed.removeprefix("prove-built: ").replace("; ", "\n")
     version = targets.workspace(REPO_ROOT)["version"]
     family, processor = host.id.split("-", 1)
     contains(said, f"{host.id}: program ", describing="the contract's first line")
@@ -179,6 +184,62 @@ def test_a_build_missing_an_artifact_is_refused_naming_what_is_owed(
         f"pypi:printobserver-cli: {wheel.name}",
         describing="the refusal",
     )
+
+
+def test_a_program_for_another_platform_is_refused_before_anything_is_installed(
+    finished: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A cell handed another platform's program says whose it is and installs nothing."""
+    other = tmp_path / "printobserver"
+    other.write_bytes(MACHO_ARM64)
+    capsys.readouterr()
+
+    equal(_prove(finished, tmp_path / "proof", other), 1, describing="prove-built's exit")
+
+    contains(
+        capsys.readouterr().err,
+        f"is a macos aarch64 program, and this cell publishes {platforms.host(Repo(REPO_ROOT)).id}",
+        describing="the refusal",
+    )
+    truth(not (tmp_path / "proof").exists(), describing="nothing was installed")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("cpu", ["mips"]), ("os", ["aix"]), ("version", "0.0.0"), ("printobserverPlatform", "none")],
+)
+def test_a_per_platform_package_declaring_another_platform_is_refused(
+    finished: Path,
+    supervisor: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: object,
+) -> None:
+    """The package npm selects by `os` and `cpu` must declare this platform, at this version."""
+    dist = Path(shutil.copytree(finished, tmp_path / "dist"))
+    package = dist / Path(f"printobserver-cli-{platforms.host(Repo(REPO_ROOT)).npm_selector}-")
+    package = next(path for path in dist.iterdir() if path.name.startswith(package.name))
+    rewritten = tmp_path / "rewritten.tgz"
+    with tarfile.open(package, "r:gz") as source, tarfile.open(rewritten, "w:gz") as target:
+        for member in source.getmembers():
+            handle = source.extractfile(member)
+            content = handle.read() if handle is not None else b""
+            if member.name == "package/package.json":
+                manifest = json.loads(content)
+                manifest[field] = value
+                content = json.dumps(manifest).encode()
+                member.size = len(content)
+            target.addfile(member, io.BytesIO(content))
+    shutil.move(rewritten, package)
+    capsys.readouterr()
+
+    equal(_prove(dist, tmp_path / "proof", supervisor), 1, describing="prove-built's exit")
+
+    contains(capsys.readouterr().err, f"{package.name} declares os", describing="the refusal")
+    truth(not (tmp_path / "proof").exists(), describing="nothing was installed")
 
 
 def test_a_checksum_file_not_vouching_for_the_archive_is_refused(
@@ -272,6 +333,16 @@ def test_bytes_that_are_no_program_are_refused() -> None:
         processor_of(b"#!/bin/sh\n")
 
 
+@pytest.mark.parametrize(
+    "truncated",
+    [b"\x7fELF\x02\x01", MACHO_ARM64[:6], PE_ARM64[:0x3E], b"MZ" + bytes(0x3A) + b"\xff\xff"],
+)
+def test_a_header_that_ends_before_its_processor_is_refused(truncated: bytes) -> None:
+    """A truncated program is a refusal naming where it ends, not an unpacking error."""
+    with pytest.raises(InstallError, match="header ends before offset"):
+        processor_of(truncated)
+
+
 def test_the_service_proof_runs_the_launchd_command_agents_md_states() -> None:
     """The activation it runs is the install path's own, as root, naming the daemon's label."""
     words = activation(Repo(REPO_ROOT))
@@ -284,7 +355,7 @@ def test_the_service_proof_runs_the_launchd_command_agents_md_states() -> None:
 def test_the_service_proof_refuses_a_host_launchd_does_not_run(
     supervisor: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Off macOS it installs nothing and says which service manager the host runs."""
+    """Off macOS it installs nothing, and says what the host answered in launchd's place."""
     host = platforms.host(Repo(REPO_ROOT))
     if host.service_manager == "launchd":
         pytest.skip("this host is a launchd host, where the proof runs for real")
@@ -296,6 +367,6 @@ def test_the_service_proof_refuses_a_host_launchd_does_not_run(
     )
     contains(
         capsys.readouterr().err,
-        f"{host.id} runs {host.service_manager}",
+        "the installer writes launchd's property list on `Darwin` alone",
         describing="the refusal",
     )

@@ -960,6 +960,18 @@ reason = "The stand-in itself, beside the entry for the function that installs i
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RECORDED = "
+reason = "The two macOS-cell proofs are recorded rather than run here for the reason `build-artifacts` is beside them: `prove-built-artifacts` installs and runs what a release build left in `dist/`, which this journey records rather than makes, and `prove-built-service` loads a launchd daemon. Each is run for real elsewhere, across its own boundary: `tools/release-artifacts/tests/test_built.py` builds every artifact around the real program and runs `prove-built` over it, and `test_prove_service_journey.py` runs `prove-service` against the launchd stand-in with the committed installer. What this journey asks is the workflow's scheduling — that the macOS cell alone reaches the two, and before the publish."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RECORDED = "
+reason = "The interface that schedules the macOS cell's two proofs is GitHub Actions, run here under its documented rules over the committed workflow (`actions.py`); the recipes' own command lines are driven as a consumer drives them by `tools/release-artifacts/tests/test_built.py` and `test_prove_service_journey.py`. What this journey asserts of them is only what the forge decides — which cell reaches them, and that they come before the publish."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "JUST_STANDIN = "
 reason = "The other stand-in, and it is the real `just` for every recipe but the ones that reach outside this host or cost a release build: `publish-artifacts` publishes to PyPI, npm and the forge, the three `prove-registry-*` recipes read the real registries, and `build-artifacts` and `bootstrap` are a cold release build of the workspace per matrix cell. Each is recorded with the version it was handed rather than run, because what the journey asks is whether the workflow REACHED it and with which version — and `release-answer`, `release-dispatched`, `release-version` and `release-version-dispatched`, which are what the wiring under test turns on, are the real recipes over the real copy."
 
@@ -2551,3 +2563,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, body = call(record_url(record), api_key(instance), endpoint, timeout=5.0)"
 reason = "This diagnostic subprocess runs once after a state deadline has already expired. It makes three ordered reads of the fixture's own loopback OctoPrint, each with a five-second transport timeout, then prints the bodies only as redacted, bounded evidence: none feeds a product model or drives an action. Reusing the fixture's authenticated HTTP helper preserves one blocking diagnostic child rather than adding another transport and event loop to an error-reporting path. The product still reaches OctoPrint through its typed asynchronous Rust adapter. Real subprocess journeys cover the actual endpoints, missing-record recovery, output bounds and complete redaction, including overlapping secrets."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '(shims / "launchctl").write_text('
+reason = "launchd is the one boundary stood in, as `test_service_manager_journey.py` stands it in on Linux: `launchctl_standin.py` loads the property list the committed installer really wrote, starts the real `printobserver` it names and stops it on `bootout`, answering in launchd's own words; this host has no launchd, and the real one is the release's macOS cell. Everything on this side of it is real: the artifact tool's own `prove-service` command line, the committed installer, the activation command read out of AGENTS.md. The one variant refuses `print` the way launchd refuses a job it does not know, which is how the journey proves a failed read-back still unloads."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '(shims / "uname").write_text('
+reason = "`uname -s` is how both the committed installer and `prove-service` decide they are on a launchd host, so the stand-in machine answers `Darwin` there and nothing else: every other `uname` call reaches the real one. It is the same shim `test_service_manager_journey.py` uses beside the same launchctl stand-in."

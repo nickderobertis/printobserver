@@ -232,7 +232,8 @@ prove-route-npm:
 prove-route-script:
     uv run -q python -m release_artifacts prove --target release:printobserver --into dist/proof/route-script
 
-# Prove what `just build-artifacts` left in `dist/`, before release automation
+# Prove what `just build-artifacts` left in `dist/` — and the release program it
+# built, which this never builds again — before release automation
 # publishes it: those files rather than a rebuild of them. `dist/` is held to
 # the release contract — every artifact this platform owes, at the workspace's
 # version, tagged for this platform, each route carrying the one program the
@@ -241,13 +242,13 @@ prove-route-script:
 # smoke check against that program. The release workflow's macOS cell runs it;
 # what it installs goes under `.just-tmp`, never into the `dist/` it uploads.
 prove-built-artifacts:
-    uv run -q python -m release_artifacts prove-built --dist dist --into .just-tmp/built-proof
+    @uv run -q python -m release_artifacts prove-built --dist dist --into .just-tmp/built-proof
 
 # Install the built program as the launchd service with the committed installer,
 # load it with the activation command AGENTS.md states, read it back from
 # launchd and unload it. A launchd host's alone, through a password-free `sudo`.
 prove-built-service:
-    uv run -q python -m release_artifacts prove-service
+    @uv run -q python -m release_artifacts prove-service
 
 # Prove one shipped artifact against what its own registry actually serves.
 #

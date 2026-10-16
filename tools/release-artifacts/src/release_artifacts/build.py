@@ -111,6 +111,22 @@ def program(repo: Repo, given: Path | None = None) -> Path:
     return path
 
 
+def finished_program(repo: Repo) -> Path:
+    """The release program `just build-artifacts` already built on this host, never a new build.
+
+    What proves a finished build proves the program inside it, so where none was
+    built this refuses rather than compiling one.
+
+    Raises:
+        BuildError: If no release build of the program is there.
+    """
+    path = repo.root / "target" / PROFILE / platforms.host(repo).program
+    if not path.is_file():
+        msg = f"no release build of the program at {path}; `just build-artifacts` builds it"
+        raise BuildError(msg)
+    return path
+
+
 def floor(requires: str) -> str:
     """The lowest interpreter release a `>=X.Y` declaration admits, as `X.Y`.
 

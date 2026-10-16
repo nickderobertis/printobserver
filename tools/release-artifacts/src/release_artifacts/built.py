@@ -23,9 +23,12 @@ them:
 puts the built program in place as launchd's daemon, and the activation command
 `AGENTS.md` states loads it, read back from launchd and booted out again.
 
-What this cannot prove is another platform's program running, and it says so
-rather than pretending: a Linux host does not execute a Darwin binary. Every
-platform's release cell runs the same contract over its own `dist/`.
+The release workflow runs both on its macOS cell alone, where they stand in for
+the registry proofs that no longer run on macOS. What they cannot prove is
+another platform's program running, and they say so rather than pretend: a
+Linux host does not execute a Darwin binary, so what another platform's build
+owes is held at the contract — `expected` names every platform's files, and
+`processor_of` reads a program's processor without running it.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ import struct
 import tarfile
 import zipfile
 from pathlib import Path
+from typing import NamedTuple
 
 from repo_checks import install_path, platforms
 from repo_checks.model import Repo
@@ -109,25 +113,56 @@ def baseline_of(platform: platforms.Platform, binary: Path) -> tuple[int, int] |
 ELF_MACHINES = {0x3E: "x86_64", 0xB7: "aarch64"}
 MACHO_CPUS = {0x01000007: "x86_64", 0x0100000C: "aarch64"}
 PE_MACHINES = {0x8664: "x86_64", 0xAA64: "aarch64"}
+ELF_MAGIC = b"\x7fELF"
+ELF_MACHINE_AT = 18
 MACHO_MAGIC = b"\xcf\xfa\xed\xfe"
+MACHO_CPU_AT = 4
+PE_MAGIC = b"MZ"
+PE_SIGNATURE = b"PE\0\0"
 PE_HEADER_OFFSET = 0x3C
 
 
-def processor_of(program: bytes) -> tuple[str, str]:
+class Executable(NamedTuple):
+    """What a program's own header says it runs on, in a platform identifier's words."""
+
+    family: str
+    processor: str
+
+    @property
+    def platform(self) -> str:
+        """The platform identifier this executable is for, as AGENTS.md's list spells one."""
+        return f"{self.family}-{self.processor}"
+
+
+def _field(program: bytes, at: int, layout: str) -> int:
+    """One little-endian header field, or a refusal where the header ends before it.
+
+    Raises:
+        InstallError: If the program is too short to carry the field.
+    """
+    if at < 0 or len(program) < at + struct.calcsize(layout):
+        msg = f"the program's header ends before offset {at}, so no processor can be read off it"
+        raise InstallError(msg)
+    return struct.unpack_from(layout, program, at)[0]
+
+
+def processor_of(program: bytes) -> Executable:
     """The family of executable and the processor one program's own header names.
 
     Raises:
-        InstallError: If the bytes are no executable this can read a processor off.
+        InstallError: If the bytes are no executable this can read a processor
+            off, or a header ends before the field it is read from.
     """
-    if program[:4] == b"\x7fELF":
-        return "linux", ELF_MACHINES.get(struct.unpack_from("<H", program, 18)[0], "unknown")
-    if program[:4] == MACHO_MAGIC:
-        return "macos", MACHO_CPUS.get(struct.unpack_from("<I", program, 4)[0], "unknown")
-    if program[:2] == b"MZ" and len(program) > PE_HEADER_OFFSET + 4:
-        at = struct.unpack_from("<I", program, PE_HEADER_OFFSET)[0]
-        if program[at : at + 4] == b"PE\0\0":
-            machine = struct.unpack_from("<H", program, at + 4)[0]
-            return "windows", PE_MACHINES.get(machine, "unknown")
+    if program.startswith(ELF_MAGIC):
+        machine = ELF_MACHINES.get(_field(program, ELF_MACHINE_AT, "<H"), "unknown")
+        return Executable("linux", machine)
+    if program.startswith(MACHO_MAGIC):
+        return Executable("macos", MACHO_CPUS.get(_field(program, MACHO_CPU_AT, "<I"), "unknown"))
+    if program.startswith(PE_MAGIC):
+        at = _field(program, PE_HEADER_OFFSET, "<I")
+        if program[at : at + len(PE_SIGNATURE)] == PE_SIGNATURE:
+            machine = _field(program, at + len(PE_SIGNATURE), "<H")
+            return Executable("windows", PE_MACHINES.get(machine, "unknown"))
     msg = "the program carries no ELF, Mach-O or PE header to read its processor off"
     raise InstallError(msg)
 
@@ -177,15 +212,17 @@ def contract(repo: Repo, dist: Path, binary: Path) -> list[str]:
         raise InstallError(msg)
     built = binary.read_bytes()
     digest = hashlib.sha256(built).hexdigest()
-    family, processor = processor_of(built)
-    owed_family, owed_processor = platform.id.split("-", 1)
-    if (family, processor) != (owed_family, owed_processor):
+    executable = processor_of(built)
+    if executable.platform != platform.id:
         msg = (
-            f"{binary} is a {family} {processor} program, and this cell publishes "
-            f"{platform.id}'s artifacts"
+            f"{binary} is a {executable.family} {executable.processor} program, and this "
+            f"cell publishes {platform.id}'s artifacts"
         )
         raise InstallError(msg)
-    said = [f"{platform.id}: program {digest[:16]} is a {family} {processor} executable"]
+    said = [
+        f"{platform.id}: program {digest[:16]} is a {executable.family} "
+        f"{executable.processor} executable"
+    ]
 
     wheel = dist / names["pypi:printobserver-cli"][0]
     route = distribution(repo, targets.named(repo.root, "pypi:printobserver-cli"))
@@ -301,20 +338,38 @@ def label_of(words: list[str]) -> str:
     return Path(words[-1]).name.removesuffix(".plist")
 
 
-def prove_service(repo: Repo, binary: Path) -> list[str]:
+#: What `uname -s` answers on a launchd host, which is how the installer itself
+#: decides it is writing launchd's property list rather than systemd's unit.
+DARWIN = "Darwin"
+
+
+def prove_service(
+    repo: Repo, binary: Path, root: Path | None = None, user: str | None = None
+) -> list[str]:
     """Install the built program as launchd's daemon, load it, read it back, unload it.
 
-    Every command runs through a password-free `sudo`, as the hosted macOS
-    runner gives one; a `sudo` that would ask is a refusal rather than a hang.
+    On the host, every command runs through a password-free `sudo`, as the
+    hosted macOS runner gives one; a `sudo` that would ask is a refusal rather
+    than a hang. `root` and `user` are the installer's own `--root` and
+    `--user`: a machine whose `/` is `root`, owned by `user`, which is how a
+    journey drives this against a launchd stand-in with nothing installed on
+    the host — and then nothing needs root.
 
     Raises:
-        InstallError: If this host is not a launchd host, or any step fails.
+        InstallError: If this is not a launchd host, any step fails, or the
+            service could not be unloaded afterwards.
     """
-    platform = platforms.host(repo)
-    if platform.service_manager != LAUNCHD:
+    if shutil.which("uname") is None:
         msg = (
-            f"this proof installs the service under launchd, and {platform.id} runs "
-            f"{platform.service_manager}"
+            f"this host has no `uname`, so it is no launchd host: the installer writes "
+            f"launchd's property list on `{DARWIN}` alone"
+        )
+        raise InstallError(msg)
+    system = installing.ran(["uname", "-s"], cwd=repo.root, describing="`uname -s`").strip()
+    if system != DARWIN:
+        msg = (
+            f"this proof installs the service under launchd, and `uname -s` answers "
+            f"`{system}`: the installer writes launchd's property list on `{DARWIN}` alone"
         )
         raise InstallError(msg)
     words = activation(repo)
@@ -322,23 +377,31 @@ def prove_service(repo: Repo, binary: Path) -> list[str]:
         msg = f"the launchd activation command is `{shlex.join(words)}`, which runs as no root"
         raise InstallError(msg)
     label = label_of(words)
-    sudo = ["sudo", "-n"]
-    said = [
-        installing.ran(
-            [*sudo, "sh", str(repo.path("scripts/install-service.sh")), "--binary", str(binary)],
-            cwd=repo.root,
-            describing="the committed service installer",
-        ).strip()
+    sudo = [] if root is not None else ["sudo", "-n"]
+    beneath = [
+        *(["--root", str(root)] if root is not None else []),
+        *(["--user", user] if user else []),
     ]
+    installer = [*sudo, "sh", str(repo.path("scripts/install-service.sh")), "--binary", str(binary)]
+    installing.ran(
+        [*installer, *beneath], cwd=repo.root, describing="the committed service installer"
+    )
+    said = [f"{label}: installed by scripts/install-service.sh"]
     try:
         installing.ran([*sudo, *words[1:]], cwd=repo.root, describing=f"`{shlex.join(words)}`")
-        printed = installing.ran(
+        installing.ran(
             [*sudo, "launchctl", "print", f"system/{label}"],
             cwd=repo.root,
             describing=f"`launchctl print system/{label}`",
         )
-        said.append(f"{label}: loaded by `{shlex.join(words)}`; launchd prints it")
-        said.extend(line.strip() for line in printed.splitlines() if "state =" in line)
+        said.append(f"loaded by `{shlex.join(words)}` and printed by launchd")
     finally:
-        run([*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root)
+        unloaded = run([*sudo, "launchctl", "bootout", f"system/{label}"], cwd=repo.root)
+    if unloaded.returncode != 0:
+        msg = (
+            f"`launchctl bootout system/{label}` failed ({unloaded.returncode}), so the service "
+            f"this proof loaded is still loaded:\n{unloaded.stdout}{unloaded.stderr}"
+        )
+        raise InstallError(msg)
+    said.append("unloaded")
     return said

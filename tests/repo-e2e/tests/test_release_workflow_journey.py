@@ -108,13 +108,16 @@ PROVING = (
 )
 
 #: What the release's macOS build cell proves before anything is published:
-#: the built artifacts installed and run, and the launchd service loaded. Both
-#: drive a real build and a real service manager, which `test_built.py` in the
-#: artifact tool's own suite does; here the question is only where they run.
+#: the built artifacts installed and run, and the launchd service loaded. The
+#: first needs the release build this journey records rather than makes, and
+#: the second a launchd; `tools/release-artifacts/tests/test_built.py` runs the
+#: first over a real build and `test_prove_service_journey.py` the second
+#: against the launchd stand-in. Here the question is only where they run.
 PROVING_BUILT = ("prove-built-artifacts", "prove-built-service")
 
 #: The recipes the two downstream jobs run, recorded rather than run — and the
 #: six registry proofs, which would otherwise read the real registries.
+# llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
 RECORDED = ("bootstrap", "build-artifacts", "publish-artifacts", *PROVING, *PROVING_BUILT)
 
 
