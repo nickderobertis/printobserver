@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -185,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--service-timeout",
-        type=float,
+        type=_seconds,
         default=LAUNCHCTL_TIMEOUT_SECONDS,
         help="for prove-service: the seconds each launchctl command is given",
     )
@@ -306,6 +307,23 @@ def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
         return proof.exit_status
     print(prove(repo, arguments.target, arguments.into, arguments.binary))
     return 0
+
+
+def _seconds(given: str) -> float:
+    """A duration in seconds: finite and above zero, or a usage error naming what was given.
+
+    Raises:
+        argparse.ArgumentTypeError: If `given` is no such number.
+    """
+    try:
+        seconds = float(given)
+    except ValueError as unreadable:
+        msg = f"{given!r} is not a number of seconds"
+        raise argparse.ArgumentTypeError(msg) from unreadable
+    if not math.isfinite(seconds) or seconds <= 0:
+        msg = f"{given!r} is not a finite number of seconds above zero"
+        raise argparse.ArgumentTypeError(msg)
+    return seconds
 
 
 def _prove_built(repo: Repo, arguments: argparse.Namespace) -> int:

@@ -141,10 +141,10 @@ def _prove(
     )
 
 
-def _unload(scratch: Path) -> None:
+def _unload(scratch: Path) -> int:
     """Unload the job from the stand-in directly, as a proof whose unload was refused could not."""
     packages = os.pathsep.join(str(REPO_ROOT / entry) for entry in pythonpath().split(os.pathsep))
-    run(
+    return run(
         [sys.executable, str(Path(launchctl_standin.__file__)), "bootout", f"system/{LABEL}"],
         env=clean_environment(
             PYTHONPATH=packages,
@@ -153,7 +153,7 @@ def _unload(scratch: Path) -> None:
                 launchctl_standin.STATE: str(scratch / "launchd"),
             },
         ),
-    )
+    ).returncode
 
 
 def _asked(scratch: Path) -> list[list[str]]:
@@ -224,6 +224,9 @@ def test_a_load_launchd_refuses_fails_the_proof_and_still_asks_to_unload(
         [["bootout", f"system/{LABEL}"]],
         describing="what reached the stand-in: the unload, after the refused load",
     )
+    # What that unload was answered: launchd's own for a label it never loaded,
+    # which the proof reads as nothing left loaded rather than as a failure.
+    equal(_unload(tmp_path), launchctl_standin.NO_SUCH_PROCESS, describing="an unload of nothing")
 
 
 def test_an_unload_launchd_refuses_fails_a_proof_that_otherwise_passed(
@@ -329,14 +332,7 @@ def test_a_load_that_hangs_fails_the_proof_and_still_asks_to_unload(
 ) -> None:
     """A `bootstrap` that never answers is a failure at its timeout, not a proof that hangs."""
     environment = _machine(tmp_path)
-    shim = tmp_path / "bin" / "launchctl"
-    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
-    shim.write_text(
-        shim.read_text(encoding="utf-8").replace(
-            "#!/bin/sh\n", '#!/bin/sh\nif [ "$1" = bootstrap ]; then exec sleep 30; fi\n', 1
-        ),
-        encoding="utf-8",
-    )
+    _hanging(tmp_path, "bootstrap")
 
     proved = _prove(program, tmp_path, environment, extra=("--service-timeout", "2"))
 
@@ -347,3 +343,55 @@ def test_a_load_that_hangs_fails_the_proof_and_still_asks_to_unload(
         describing="the refusal",
     )
     equal(_asked(tmp_path), [["bootout", f"system/{LABEL}"]], describing="the unload after it")
+
+
+def _hanging(scratch: Path, verb: str) -> None:
+    """Make the stand-in machine's `launchctl` hang on `verb`, as a wedged launchd does."""
+    shim = scratch / "bin" / "launchctl"
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    shim.write_text(
+        shim.read_text(encoding="utf-8").replace(
+            "#!/bin/sh\n", f'#!/bin/sh\nif [ "$1" = {verb} ]; then exec sleep 30; fi\n', 1
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("refusing", [(), ("print",)])
+def test_an_unload_that_hangs_fails_the_proof_and_says_the_service_may_be_loaded(
+    program: Path, tmp_path: Path, refusing: tuple[str, ...]
+) -> None:
+    """A hung `bootout` is reported at its timeout, beside any failure that came before it."""
+    environment = _machine(tmp_path, refusing=refusing)
+    _hanging(tmp_path, "bootout")
+
+    try:
+        proved = _prove(program, tmp_path, environment, extra=("--service-timeout", "2"))
+
+        equal(proved.returncode, 1, describing="prove-service's exit")
+        contains(
+            proved.stderr,
+            f"`launchctl bootout system/{LABEL}` did not finish within 2s, so the service may "
+            f"still be loaded",
+            describing="the unload's refusal",
+        )
+        if refusing:
+            contains(
+                proved.stderr, f"`launchctl print system/{LABEL}` failed", describing="the first"
+            )
+    finally:
+        _unload(tmp_path)
+
+
+@pytest.mark.parametrize("given", ["0", "-1", "nan", "inf", "soon"])
+def test_a_timeout_that_is_no_finite_positive_duration_is_a_usage_error(
+    program: Path, tmp_path: Path, given: str
+) -> None:
+    """A deadline that could never pass, or has already, is refused before anything is installed."""
+    environment = _machine(tmp_path)
+
+    proved = _prove(program, tmp_path, environment, extra=("--service-timeout", given))
+
+    equal(proved.returncode, 2, describing="prove-service's exit")
+    contains(proved.stderr, "--service-timeout", describing="the usage error")
+    equal(_asked(tmp_path), [], describing="what reached launchd")
