@@ -60,26 +60,34 @@ describe("a macOS lane that ran", () => {
     test(`${lane} fails when its own step failed`, () => {
       const ran = carried(lane, needs({ macos: "failure", [lane]: "failure" }));
       assert.equal(ran.status, 1);
-      assert.match(ran.stdout, new RegExp(`${lane} ended failure`));
+      assert.match(ran.stderr, new RegExp(`${lane} ended failure`));
+      assert.match(
+        ran.stderr,
+        /read the `\w+` step of the `macos-aarch64 \(gate, integration\)` job/,
+      );
+      assert.equal(ran.stdout, "");
       assert.match(ran.summary, /^FAIL: /);
     });
 
     test(`${lane} fails when its own step never ran because a prerequisite failed`, () => {
       const ran = carried(lane, needs({ macos: "failure", [lane]: "skipped" }));
       assert.equal(ran.status, 1);
-      assert.match(ran.stdout, new RegExp(`${lane} ended skipped`));
+      assert.match(ran.stderr, new RegExp(`${lane} ended skipped`));
     });
 
     test(`${lane} fails when the lane was cancelled`, () => {
       const ran = carried(lane, needs({ macos: "cancelled" }));
       assert.equal(ran.status, 1);
-      assert.match(ran.stdout, /the macOS lane was cancelled/);
+      assert.match(
+        ran.stderr,
+        /the macOS lane was cancelled.*re-run the `macos-aarch64 \(gate, integration\)` job/,
+      );
     });
 
     test(`${lane} fails when the lane was owed and skipped`, () => {
       const ran = carried(lane, needs({ macos: "skipped" }));
       assert.equal(ran.status, 1);
-      assert.match(ran.stdout, /the macOS lane was skipped/);
+      assert.match(ran.stderr, /the macOS lane was skipped/);
     });
   }
 
@@ -94,7 +102,7 @@ describe("a macOS lane that ran", () => {
     given.macos.outputs = {};
     const ran = carried("gate", given);
     assert.equal(ran.status, 1);
-    assert.match(ran.stdout, /reported no outcome/);
+    assert.match(ran.stderr, /reported no outcome/);
   });
 });
 
@@ -122,7 +130,10 @@ describe("a classification that cannot be trusted", () => {
     for (const lane of ["gate", "integration"]) {
       const ran = carried(lane, needs({ classify: "failure", macos: "success" }));
       assert.equal(ran.status, 1);
-      assert.match(ran.stdout, /the classifier did not succeed \(failure\)/);
+      assert.match(
+        ran.stderr,
+        /the classifier did not succeed \(failure\).*read the `classify` job's log/,
+      );
     }
   });
 
@@ -133,7 +144,7 @@ describe("a classification that cannot be trusted", () => {
   test("an answer that is neither true nor false fails", () => {
     const ran = carried("gate", needs({ required: "", macos: "skipped" }));
     assert.equal(ran.status, 1);
-    assert.match(ran.stdout, /neither true nor false/);
+    assert.match(ran.stderr, /neither true nor false/);
   });
 
   test("results the forge did not hand over fail", () => {
@@ -144,6 +155,6 @@ describe("a classification that cannot be trusted", () => {
   test("a lane the macOS job does not carry is refused", () => {
     const ran = carried("llmlint", needs());
     assert.equal(ran.status, 1);
-    assert.match(ran.stdout, /not a lane the macOS job carries/);
+    assert.match(ran.stderr, /not a lane the macOS job carries/);
   });
 });

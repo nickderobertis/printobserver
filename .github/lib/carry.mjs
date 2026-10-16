@@ -42,22 +42,26 @@ export const REASON_OUTPUT = "reason";
  */
 export function carry(lane, needs) {
   if (!LANES.includes(lane)) {
-    return fail(`\`${lane}\` is not a lane the macOS job carries (${LANES.join(", ")})`);
+    return fail(
+      `\`${lane}\` is not a lane the macOS job carries (${LANES.join(", ")}); fix the lane ci.yml's carrier passes to \`just macos-carry\``,
+    );
   }
   const context = `${lane} (macos-aarch64)`;
   if (!isObject(needs)) {
-    return fail(`${context}: the forge handed no job results to judge`);
+    return fail(
+      `${context}: the forge handed no job results to judge; check that the carrier's NEEDS is \`toJSON(needs)\` and re-run the workflow`,
+    );
   }
   const classified = needs[CLASSIFY_JOB];
   const macos = needs[MACOS_JOB];
   if (!isObject(classified) || !isObject(macos)) {
     return fail(
-      `${context}: the results of \`${CLASSIFY_JOB}\` and \`${MACOS_JOB}\` are not both present`,
+      `${context}: the results of \`${CLASSIFY_JOB}\` and \`${MACOS_JOB}\` are not both present; the carrier must need both jobs`,
     );
   }
   if (classified.result !== "success") {
     return fail(
-      `${context}: the classifier did not succeed (${String(classified.result)}), so whether the macOS lane was owed is unknown`,
+      `${context}: the classifier did not succeed (${String(classified.result)}), so whether the macOS lane was owed is unknown; read the \`${CLASSIFY_JOB}\` job's log, fix what it names and re-run the workflow`,
     );
   }
   const outputs = isObject(classified.outputs) ? classified.outputs : {};
@@ -65,7 +69,7 @@ export function carry(lane, needs) {
   const reason = typeof outputs[REASON_OUTPUT] === "string" ? outputs[REASON_OUTPUT] : "";
   if (required !== "true" && required !== "false") {
     return fail(
-      `${context}: the classifier answered ${JSON.stringify(required)} for \`${REQUIRED_OUTPUT}\`, which is neither true nor false`,
+      `${context}: the classifier answered ${JSON.stringify(required)} for \`${REQUIRED_OUTPUT}\`, which is neither true nor false; read the \`${CLASSIFY_JOB}\` job's log and re-run the workflow`,
     );
   }
   if (required === "false" && macos.result === "skipped") {
@@ -75,7 +79,7 @@ export function carry(lane, needs) {
   }
   if (macos.result !== "success" && macos.result !== "failure") {
     return fail(
-      `${context}: the macOS lane was ${String(macos.result)}, so its ${lane} did not run to a verdict`,
+      `${context}: the macOS lane was ${String(macos.result)}, so its ${lane} did not run to a verdict; re-run the \`macos-aarch64 (gate, integration)\` job`,
     );
   }
   const laneOutputs = isObject(macos.outputs) ? macos.outputs : {};
@@ -84,7 +88,7 @@ export function carry(lane, needs) {
     return pass(`${context}: the macOS lane ran its ${lane} on macos-aarch64 and it succeeded.`);
   }
   return fail(
-    `${context}: the macOS lane's ${lane} ${outcome ? `ended ${outcome}` : "reported no outcome"} (the job ended ${String(macos.result)})`,
+    `${context}: the macOS lane's ${lane} ${outcome ? `ended ${outcome}` : "reported no outcome"} (the job ended ${String(macos.result)}); read the \`${lane}\` step of the \`macos-aarch64 (gate, integration)\` job, fix what it names and re-run that job`,
   );
 }
 

@@ -13,6 +13,9 @@
     "lint": {
       "command": "bunx biome lint .github"
     },
+    "typecheck": {
+      "command": "bun install --frozen-lockfile --cwd .github && bunx tsc -p .github/tsconfig.json"
+    },
     "test": {
       "command": "bun install --frozen-lockfile && node --test",
       "options": {

@@ -191,7 +191,10 @@ function releaseBranchPrefix(base, cwd) {
   } catch (malformed) {
     throw new Undecidable(`release-plz.toml at ${base} is not TOML: ${message(malformed)}`);
   }
-  const prefix = isObject(declared.workspace) ? declared.workspace.pr_branch_prefix : undefined;
+  const workspace = declared.workspace;
+  const prefix = isObject(workspace)
+    ? /** @type {Record<string, unknown>} */ (workspace).pr_branch_prefix
+    : undefined;
   if (typeof prefix !== "string" || !prefix) {
     throw new Undecidable(`release-plz.toml at ${base} names no [workspace] pr_branch_prefix`);
   }

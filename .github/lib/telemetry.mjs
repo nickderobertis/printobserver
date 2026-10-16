@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { isObject } from "./util.mjs";
 
 /** Where the record is written, under `.github/`. */
 export const TELEMETRY = join(".telemetry", "macos-policy.json");
@@ -17,10 +18,11 @@ export const SCHEMA = 1;
 
 /**
  * Every file the record is computed from, repository-relative and sorted: the
- * workflows, the policy and its graph, the scenarios and their event fixtures,
- * and the tree files the scenarios read (the release branch prefix, the
- * platform list the dispatch resolves against, the manifests the generated
- * histories copy).
+ * workflows; the policy, its graph and its locked dependencies; the scenarios,
+ * their event fixtures and the test that records them; and the tree files the
+ * scenarios read — the release branch prefix, the platform list and the
+ * recipe and module that resolve a dispatch's runner, and every file the
+ * generated histories copy as their base commit.
  *
  * @param {string} root the repository root
  * @returns {string[]}
@@ -29,21 +31,84 @@ export function digestFiles(root) {
   const under = (directory, pattern) =>
     readdirSync(join(root, directory), { recursive: true })
       .map(String)
-      .filter((name) => pattern.test(name))
+      .filter((name) => pattern.test(name.split("\\").join("/")))
       .map((name) => join(directory, name));
   return [
     ...under(".github/workflows", /\.ya?ml$/),
     ...under(".github/lib", /\.mjs$/),
-    ...under(".github/tests/support", /\.mjs$/),
-    ...under(".github/tests/fixtures", /\.json$/),
+    ...under(".github/tests", /^(support\/[^/]+\.mjs|fixtures\/.+\.json|lifecycle\.test\.mjs)$/),
+    ...under("crates", /^[^/]+\/Cargo\.toml$/),
     ".github/macos-policy.mjs",
+    ".github/package.json",
+    ".github/bun.lock",
     "release-plz.toml",
     "AGENTS.md",
+    "justfile",
+    "tools/repo-checks/src/repo_checks/dispatching.py",
     "Cargo.toml",
     "Cargo.lock",
+    "crates/printobserver-core/CHANGELOG.md",
+    "crates/printobserver-core/src/lib.rs",
   ]
     .map((path) => relative(root, join(root, path)).split("\\").join("/"))
     .sort();
+}
+
+/**
+ * Why a record is not one the figures can be read off, or "" where it is.
+ * Every scenario, run and job is the shape `github-workflows:test` writes,
+ * and every run's count of macOS jobs is the count of its jobs on macOS.
+ *
+ * @param {unknown} record
+ * @returns {string}
+ */
+export function invalid(record) {
+  if (!isObject(record) || record.schema !== SCHEMA || !Array.isArray(record.scenarios)) {
+    return `it is not schema ${SCHEMA} telemetry with a list of scenarios`;
+  }
+  for (const [at, scenario] of record.scenarios.entries()) {
+    const where = `scenario ${at}`;
+    if (
+      !isObject(scenario) ||
+      typeof scenario.id !== "string" ||
+      typeof scenario.event_class !== "string" ||
+      typeof scenario.manual !== "boolean" ||
+      !(scenario.lifecycle_step === null || typeof scenario.lifecycle_step === "string") ||
+      !Array.isArray(scenario.runs)
+    ) {
+      return `${where} lacks its id, event class, lifecycle step, manual flag or runs`;
+    }
+    for (const run of scenario.runs) {
+      if (
+        !isObject(run) ||
+        typeof run.workflow !== "string" ||
+        typeof run.event !== "string" ||
+        typeof run.action !== "string" ||
+        !Number.isInteger(run.macos_jobs) ||
+        run.macos_jobs < 0 ||
+        !Array.isArray(run.jobs)
+      ) {
+        return `${where} (${scenario.id}) has a run lacking its workflow, event, action, macOS count or jobs`;
+      }
+      const jobs = run.jobs.filter(
+        (job) =>
+          isObject(job) &&
+          typeof job.job === "string" &&
+          typeof job.display === "string" &&
+          typeof job.macos === "boolean" &&
+          typeof job.target === "string" &&
+          Array.isArray(job.runner) &&
+          job.runner.every((label) => typeof label === "string"),
+      );
+      if (jobs.length !== run.jobs.length) {
+        return `${where} (${scenario.id}) has a job of ${run.workflow} that is not a job row`;
+      }
+      if (jobs.filter((job) => job.macos).length !== run.macos_jobs) {
+        return `${where} (${scenario.id}) counts ${run.macos_jobs} macOS job(s) in ${run.workflow} and lists another number`;
+      }
+    }
+  }
+  return "";
 }
 
 /**

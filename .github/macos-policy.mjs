@@ -11,8 +11,9 @@
 //       the classification itself on standard error, for the log.
 //   carry --lane gate|integration
 //       Judge one required macOS context from `NEEDS`, the `toJSON(needs)` the
-//       forge hands the carrier job; say why on standard output and in the step
-//       summary, and exit 0 for a pass and 1 for a failure.
+//       forge hands the carrier job; say why — on standard output for a pass,
+//       on standard error with what to do next for a failure, and in the step
+//       summary either way — and exit 0 for a pass and 1 for a failure.
 //
 // Exit status 2 is a call this does not take, before anything is judged.
 
@@ -118,7 +119,7 @@ function carryCommand(args) {
     needs = undefined;
   }
   const verdict = carry(options["--lane"], needs);
-  process.stdout.write(`${verdict.message}\n`);
+  (verdict.ok ? process.stdout : process.stderr).write(`${verdict.message}\n`);
   const summary = process.env.GITHUB_STEP_SUMMARY;
   if (summary) {
     appendFileSync(summary, `${verdict.ok ? "PASS" : "FAIL"}: ${verdict.message}\n`);

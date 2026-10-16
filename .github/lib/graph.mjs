@@ -69,7 +69,7 @@ export function readWorkflow(directory, file) {
     file,
     directory,
     name: typeof parsed.name === "string" ? parsed.name : file,
-    on: triggersOf(parsed.on ?? parsed[true], file),
+    on: triggersOf(parsed.on, file),
     jobs: parsed.jobs,
   };
 }
@@ -296,6 +296,7 @@ function inputsOf(workflow, scenario) {
     scenario.event.name === "workflow_dispatch" && isObject(workflow.on.workflow_dispatch?.inputs)
       ? workflow.on.workflow_dispatch.inputs
       : {};
+  /** @type {Record<string, string>} */
   const inputs = {};
   for (const [name, spec] of Object.entries(declared)) {
     if (isObject(spec) && spec.default !== undefined) {

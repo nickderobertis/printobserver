@@ -280,11 +280,11 @@ describe("pushes and the release", () => {
     const justfile = readFileSync(join(ROOT, "justfile"), "utf8");
     assert.match(
       justfile,
-      /prove-built-artifacts:\n {4}uv run -q python -m release_artifacts prove-built /,
+      /prove-built-artifacts:\n {4}@?uv run -q python -m release_artifacts prove-built /,
     );
     assert.match(
       justfile,
-      /prove-built-service:\n {4}uv run -q python -m release_artifacts prove-service/,
+      /prove-built-service:\n {4}@?uv run -q python -m release_artifacts prove-service/,
     );
   });
 
@@ -414,7 +414,7 @@ describe("what the graph cannot resolve is an error, never zero", () => {
     );
   });
 
-  for (const [why, files, pattern] of [
+  for (const [why, files, pattern] of /** @type {[string, Record<string, string>, RegExp][]} */ ([
     [
       "a reusable workflow in another repository",
       { "a.yml": "on: push\njobs:\n  x:\n    uses: other/repo/.github/workflows/w.yml@v1\n" },
@@ -464,7 +464,7 @@ describe("what the graph cannot resolve is an error, never zero", () => {
       },
       /path filter/,
     ],
-  ]) {
+  ])) {
     test(why, () => {
       const loaded = graph(files);
       assert.throws(

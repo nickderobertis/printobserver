@@ -4,12 +4,12 @@
 // figures to their limits is `onebudgetspec`'s alone, through `budgets.yaml`.
 
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { check } from "@onebudgetspec/sdk";
-import { digestFiles, SCHEMA, sourceDigest, TELEMETRY } from "../lib/telemetry.mjs";
-import { GITHUB, ROOT } from "./support/histories.mjs";
+import { digestFiles, invalid, SCHEMA, sourceDigest, TELEMETRY } from "../lib/telemetry.mjs";
+import { baseFiles, GITHUB, ROOT } from "./support/histories.mjs";
 import {
   BRANCHES,
   DIFF_CLASSES,
@@ -61,6 +61,14 @@ describe("the recorded workload", () => {
     const path = join(GITHUB, TELEMETRY);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
+
+    const persisted = JSON.parse(readFileSync(path, "utf8"));
+    assert.equal(invalid(persisted), "", "the record is one the budget commands read");
+    assert.equal(persisted.source_digest, sourceDigest(ROOT));
+    assert.equal(persisted.scenarios.length, recorded.length);
+    for (const read of [...baseFiles(), "release-plz.toml", "justfile", "AGENTS.md"]) {
+      assert.ok(persisted.digest_files.includes(read), `${read} is a digested input`);
+    }
   });
 });
 

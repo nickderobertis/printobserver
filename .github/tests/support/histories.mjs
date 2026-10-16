@@ -36,7 +36,7 @@ process.on("exit", () => {
 });
 
 /** The files a history copies out of this tree as its base commit. */
-function baseFiles() {
+export function baseFiles() {
   const crates = readdirSync(join(ROOT, "crates")).map((name) => `crates/${name}/Cargo.toml`);
   return [
     "release-plz.toml",

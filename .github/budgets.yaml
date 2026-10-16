@@ -1,10 +1,10 @@
 schema_version: 1
 budgets:
-  # Why these are two budgets: the brief explicitly requests both the jobs/run
-  # and the macOS-spending runs/change bounds, and the manager approved separate
-  # budgets for these two scheduling constraints. The second is not a part of
-  # the first: a lifecycle can stay within its run count while one of its runs
-  # occupies several shared macOS slots, and the reverse.
+  # Two budgets rather than one, an approved exception: both the jobs-per-run
+  # and the macOS-spending runs-per-change bounds are explicitly requested, and
+  # separate budgets were approved for these two scheduling constraints.
+  # Neither figure is a part of the other: a change can stay within its run
+  # count while one of its runs occupies several shared macOS slots.
   - id: printobserver-macos-jobs-per-run
     description: >-
       The most macOS runner job instances any one resolved workflow run requests,

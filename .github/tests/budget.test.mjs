@@ -4,11 +4,11 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
-import { SCHEMA, sourceDigest } from "../lib/telemetry.mjs";
+import { digestFiles, SCHEMA, sourceDigest } from "../lib/telemetry.mjs";
 import { cleanEnvironment, GITHUB, ROOT } from "./support/histories.mjs";
 
 const scratch = mkdtempSync(join(tmpdir(), "macos-budget-"));
@@ -142,5 +142,65 @@ describe("a record it cannot trust", () => {
     const ran = budget("queue-minutes", record());
     assert.equal(ran.status, 2);
     assert.match(ran.stderr, /usage: macos-budget\.mjs --metric jobs-per-run\|runs-per-change/);
+  });
+});
+
+describe("the digest a record is held current by", () => {
+  test("moves when any one input it names changes", () => {
+    const copy = mkdtempSync(join(scratch, "tree-"));
+    const inputs = digestFiles(ROOT);
+    for (const path of inputs) {
+      mkdirSync(dirname(join(copy, path)), { recursive: true });
+      cpSync(join(ROOT, path), join(copy, path));
+    }
+    const recorded = sourceDigest(copy);
+    assert.equal(recorded, sourceDigest(ROOT), "a copy of the inputs digests as the tree does");
+    for (const path of inputs) {
+      const original = readFileSync(join(copy, path));
+      writeFileSync(join(copy, path), Buffer.concat([original, Buffer.from("\n")]));
+      assert.notEqual(sourceDigest(copy), recorded, `changing ${path} makes the record stale`);
+      writeFileSync(join(copy, path), original);
+    }
+  });
+
+  test("names every workflow, so a new one cannot leave a record current", () => {
+    const workflows = digestFiles(ROOT).filter((path) => path.startsWith(".github/workflows/"));
+    assert.ok(workflows.includes(".github/workflows/ci.yml"));
+    assert.ok(workflows.includes(".github/workflows/release-plz.yml"));
+    assert.ok(workflows.includes(".github/workflows/install-path.yml"));
+  });
+});
+
+describe("a record whose rows are not the rows the test writes", () => {
+  test("a run whose macOS count disagrees with its jobs is refused", () => {
+    const broken = record();
+    broken.scenarios[0].runs[0].macos_jobs = 0;
+    const ran = budget("jobs-per-run", broken);
+    assert.equal(ran.status, 1);
+    assert.match(ran.stderr, /counts 0 macOS job\(s\) in ci\.yml and lists another number/);
+  });
+
+  test("a job row missing its runner is refused", () => {
+    const broken = record();
+    delete broken.scenarios[0].runs[0].jobs[0].runner;
+    assert.match(budget("runs-per-change", broken).stderr, /is not a job row/);
+  });
+
+  test("an option given twice is a usage error, and so is a metric named like a property", () => {
+    for (const args of [
+      ["--metric", "toString"],
+      ["--metric", "jobs-per-run", "--metric", "runs-per-change"],
+    ]) {
+      const ran = spawnSync(
+        process.execPath,
+        [join(GITHUB, "macos-budget.mjs"), ...args, "--telemetry", "x.json"],
+        {
+          cwd: ROOT,
+          encoding: "utf8",
+          env: cleanEnvironment(),
+        },
+      );
+      assert.equal(ran.status, 2, args.join(" "));
+    }
   });
 });

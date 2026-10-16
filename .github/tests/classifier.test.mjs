@@ -84,13 +84,13 @@ describe("forged and mixed release pull requests", () => {
     assert.deepEqual(verdict(classified("pull_request", payload, made)), OWED);
   });
 
-  for (const [diff, why] of [
+  for (const [diff, why] of /** @type {[string, RegExp][]} */ ([
     ["source", /src\/lib\.rs, which is neither a changelog nor a version manifest/],
     ["mixed", /src\/lib\.rs/],
     ["dependency", /Cargo\.toml beyond its version fields \(workspace\.dependencies\.serde_json\)/],
     ["lockfile-source", /Cargo\.lock beyond its version fields/],
     ["version-garbled", /not a version/],
-  ]) {
+  ])) {
     test(`a release branch carrying a ${diff} change owes macOS`, () => {
       const made = history(diff);
       const result = classified(
@@ -235,7 +235,7 @@ describe("the command line", () => {
     assert.match(ran.stderr, /not shaped like a classification/);
   });
 
-  for (const [args, why] of [
+  for (const [args, why] of /** @type {[string[], RegExp][]} */ ([
     [[], /no command given/],
     [["classify", "--event", "e.json"], /missing --base, --head/],
     [
@@ -249,7 +249,7 @@ describe("the command line", () => {
     [["carry"], /missing --lane/],
     [["outputs"], /outputs takes one classification file/],
     [["deploy"], /`deploy` is not a command/],
-  ]) {
+  ])) {
     test(`refuses ${JSON.stringify(args)} with usage`, () => {
       const ran = policy(args);
       assert.equal(ran.status, 2);
