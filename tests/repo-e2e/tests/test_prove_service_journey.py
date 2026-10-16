@@ -109,7 +109,7 @@ def _machine(scratch: Path, *, refusing: tuple[str, ...] = ()) -> dict[str, str]
 
 
 def _prove(
-    program: Path, scratch: Path, environment: dict[str, str]
+    program: Path, scratch: Path, environment: dict[str, str], *, root: Path = REPO_ROOT
 ) -> subprocess.CompletedProcess[str]:
     return run(
         [
@@ -120,6 +120,8 @@ def _prove(
             "-m",
             "release_artifacts",
             "prove-service",
+            "--root",
+            str(root),
             "--binary",
             str(program),
             "--service-root",
@@ -250,3 +252,64 @@ def test_a_failed_read_back_and_a_failed_unload_are_both_reported(
         )
     finally:
         _unload(tmp_path)
+
+
+def test_a_host_whose_uname_fails_is_refused_before_anything_is_installed(
+    program: Path, tmp_path: Path
+) -> None:
+    """Which service manager this is cannot be told, so nothing is installed or loaded."""
+    environment = _machine(tmp_path)
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+    (tmp_path / "bin" / "uname").write_text("#!/bin/sh\necho 'uname: broken' >&2\nexit 1\n")
+
+    proved = _prove(program, tmp_path, environment)
+
+    equal(proved.returncode, 1, describing="prove-service's exit")
+    contains(proved.stderr, "`uname -s` failed", describing="the refusal")
+    equal(_asked(tmp_path), [], describing="what reached launchd")
+    truth(not (tmp_path / "machine" / "Library").exists(), describing="nothing installed")
+
+
+#: The launchd activation command as AGENTS.md's install path states it.
+ACTIVATION = f"sudo launchctl bootstrap system {PLIST}"
+
+
+@pytest.mark.parametrize(
+    ("stated", "naming"),
+    [
+        ("", "AGENTS.md's install path states no launchd activation command"),
+        (ACTIVATION.removeprefix("sudo "), "which runs as no root"),
+    ],
+)
+def test_an_install_path_stating_no_rooted_activation_is_refused(
+    program: Path, tmp_path: Path, stated: str, naming: str
+) -> None:
+    """The command the proof runs is the one AGENTS.md states, or the proof runs nothing."""
+    environment = _machine(tmp_path)
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    contains(text, f"```console\n{ACTIVATION}\n```\n", describing="AGENTS.md's launchd pair")
+    replacement = f"```console\n{stated}\n```\n" if stated else ""
+    (tree / "AGENTS.md").write_text(
+        text.replace(f"```console\n{ACTIVATION}\n```\n", replacement), encoding="utf-8"
+    )
+
+    proved = _prove(program, tmp_path, environment, root=tree)
+
+    equal(proved.returncode, 1, describing="prove-service's exit")
+    contains(proved.stderr, naming, describing="the refusal")
+    equal(_asked(tmp_path), [], describing="what reached launchd")
+
+
+def test_an_installer_that_fails_stops_the_proof_before_anything_is_loaded(
+    tmp_path: Path,
+) -> None:
+    """A program that is not there is the installer's refusal, and launchd is never asked."""
+    environment = _machine(tmp_path)
+
+    proved = _prove(tmp_path / "no-such-program", tmp_path, environment)
+
+    equal(proved.returncode, 1, describing="prove-service's exit")
+    contains(proved.stderr, "the committed service installer failed", describing="the refusal")
+    equal(_asked(tmp_path), [], describing="what reached launchd")

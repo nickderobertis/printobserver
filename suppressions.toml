@@ -2581,3 +2581,9 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_prove_service_journey.py"
 site = '@pytest.fixture(scope="module")'
 reason = "The build is the debug `printobserver` every `DEBUG_BUILD` journey of this project shares — `test_service_manager_journey.py`'s fixture is the same command — and `repo-e2e`'s `test-e2e` target already depends on `printobserver:build`, so on the merge path this `cargo build` finds the program built and compiles nothing. The journey lives here, rather than behind the release tooling's own edge, because the launchd stand-in it is driven against is this project's (`launchctl_standin.py`), and `repo-e2e` already depends on both projects it exercises, `printobserver` and `release-artifacts`."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '(tmp_path / "bin" / "uname").write_text('
+reason = "The same `uname` shim the stand-in machine answers `Darwin` with, made to fail instead: a host on which `uname -s` itself fails is the one case the proof must refuse before it installs anything, and no real host can be made to have a broken `uname` for one test."

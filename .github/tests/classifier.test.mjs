@@ -75,7 +75,8 @@ describe("what a release pull request may carry, read semantically", () => {
     });
   }
 
-  for (const [diff, why] of /** @type {[string, RegExp][]} */ ([
+  /** @type {[string, RegExp][]} */
+  const SEMANTIC_REFUSALS = [
     ["empty", /changes nothing, which no release does/],
     ["changelog-deleted", /deletes changelog crates\/printobserver-core\/CHANGELOG\.md/],
     [
@@ -84,7 +85,8 @@ describe("what a release pull request may carry, read semantically", () => {
     ],
     ["config-garbled", /release-plz\.toml at [0-9a-f]+ is not TOML/],
     ["config-no-prefix", /release-plz\.toml at [0-9a-f]+ names no \[workspace\] pr_branch_prefix/],
-  ])) {
+  ];
+  for (const [diff, why] of SEMANTIC_REFUSALS) {
     test(`a ${diff} release owes macOS`, () => {
       const made = history(diff);
       const result = classified(
@@ -120,13 +122,15 @@ describe("forged and mixed release pull requests", () => {
     assert.deepEqual(verdict(classified("pull_request", payload, made)), OWED);
   });
 
-  for (const [diff, why] of /** @type {[string, RegExp][]} */ ([
+  /** @type {[string, RegExp][]} */
+  const CARRIED_REFUSALS = [
     ["source", /src\/lib\.rs, which is neither a changelog nor a version manifest/],
     ["mixed", /src\/lib\.rs/],
     ["dependency", /Cargo\.toml beyond its version fields \(workspace\.dependencies\.serde_json\)/],
     ["lockfile-source", /Cargo\.lock beyond its version fields/],
     ["version-garbled", /not a version/],
-  ])) {
+  ];
+  for (const [diff, why] of CARRIED_REFUSALS) {
     test(`a release branch carrying a ${diff} change owes macOS`, () => {
       const made = history(diff);
       const result = classified(
@@ -273,7 +277,8 @@ describe("the command line", () => {
     );
   });
 
-  for (const [args, why] of /** @type {[string[], RegExp][]} */ ([
+  /** @type {[string[], RegExp][]} */
+  const USAGE_ERRORS = [
     [[], /no command given/],
     [["classify", "--event", "e.json"], /missing --base, --head/],
     [
@@ -287,7 +292,8 @@ describe("the command line", () => {
     [["carry"], /missing --lane/],
     [["outputs"], /outputs takes one classification file/],
     [["deploy"], /`deploy` is not a command/],
-  ])) {
+  ];
+  for (const [args, why] of USAGE_ERRORS) {
     test(`refuses ${JSON.stringify(args)} with usage`, () => {
       const ran = policy(args);
       assert.equal(ran.status, 2);

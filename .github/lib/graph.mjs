@@ -131,7 +131,8 @@ export function triggers(workflow, event) {
       return (
         typed(filter, event.action, ["completed", "requested"]) &&
         Array.isArray(filter.workflows) &&
-        filter.workflows.includes(String(event.payload?.workflow_run?.name ?? ""))
+        filter.workflows.includes(String(event.payload?.workflow_run?.name ?? "")) &&
+        branched(filter, String(event.payload?.workflow_run?.head_branch ?? ""), "branches")
       );
     case "release":
     case "repository_dispatch":
@@ -497,6 +498,11 @@ function cellsOf(job, where) {
       throw new Unresolved(`${where}'s matrix axis \`${name}\` is not a list`);
     }
     cells = cells.flatMap((cell) => values.map((value) => ({ ...cell, [name]: value })));
+  }
+  for (const key of ["include", "exclude"]) {
+    if (key in matrix && !(Array.isArray(matrix[key]) && matrix[key].every(isObject))) {
+      throw new Unresolved(`${where}'s matrix \`${key}\` is not a list of cells`);
+    }
   }
   const excluded = Array.isArray(matrix.exclude) ? matrix.exclude : [];
   cells = cells.filter((cell) => !excluded.some((pattern) => matches(cell, pattern)));

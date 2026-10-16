@@ -193,15 +193,21 @@ def test_a_program_for_another_platform_is_refused_before_anything_is_installed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A cell handed another platform's program says whose it is and installs nothing."""
+    host = platforms.host(Repo(REPO_ROOT)).id
+    header, family, processor = next(
+        (header, family, processor)
+        for header, family, processor in HEADERS
+        if f"{family}-{processor}" != host
+    )
     other = tmp_path / "printobserver"
-    other.write_bytes(MACHO_ARM64)
+    other.write_bytes(header)
     capsys.readouterr()
 
     equal(_prove(finished, tmp_path / "proof", other), 1, describing="prove-built's exit")
 
     contains(
         capsys.readouterr().err,
-        f"is a macos aarch64 program, and this cell publishes {platforms.host(Repo(REPO_ROOT)).id}",
+        f"is a {family} {processor} program, and this cell publishes {host}",
         describing="the refusal",
     )
     truth(not (tmp_path / "proof").exists(), describing="nothing was installed")
@@ -398,10 +404,17 @@ MACHO_ARM64 = b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C) + bytes(24)
 PE_ARM64 = b"MZ" + bytes(0x3A) + struct.pack("<I", 0x40) + b"PE\0\0" + struct.pack("<H", 0xAA64)
 
 
-@pytest.mark.parametrize(
-    ("header", "family", "processor"),
-    [(MACHO_ARM64, "macos", "aarch64"), (PE_ARM64, "windows", "aarch64")],
-)
+#: A program header for each of three platforms, so that a test can always pick
+#: one that is not this host's.
+ELF_X86_64 = b"\x7fELF" + bytes(14) + struct.pack("<H", 0x3E)
+HEADERS = [
+    (ELF_X86_64, "linux", "x86_64"),
+    (MACHO_ARM64, "macos", "aarch64"),
+    (PE_ARM64, "windows", "aarch64"),
+]
+
+
+@pytest.mark.parametrize(("header", "family", "processor"), HEADERS)
 def test_a_program_for_another_platform_is_read_off_its_own_header(
     header: bytes, family: str, processor: str
 ) -> None:

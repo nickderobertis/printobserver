@@ -172,6 +172,14 @@ describe("the digest a record is held current by", () => {
 });
 
 describe("a record whose rows are not the rows the test writes", () => {
+  test("a record of no workload is refused rather than read as zero", () => {
+    for (const scenarios of [[], record().scenarios.filter((scenario) => scenario.manual)]) {
+      const ran = budget("runs-per-change", record({ scenarios }));
+      assert.equal(ran.status, 1);
+      assert.match(ran.stderr, /records no scenario of a change's lifecycle/);
+    }
+  });
+
   test("a run whose macOS count disagrees with its jobs is refused", () => {
     const broken = record();
     broken.scenarios[0].runs[0].macos_jobs = 0;

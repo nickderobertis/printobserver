@@ -67,6 +67,14 @@ export function invalid(record) {
   if (!isObject(record) || record.schema !== SCHEMA || !Array.isArray(record.scenarios)) {
     return `it is not schema ${SCHEMA} telemetry with a list of scenarios`;
   }
+  // A record of no scenarios, or of none in the change's lifecycle, would read
+  // as zero for both figures: an absent workload rather than a measured one.
+  const lifecycle = record.scenarios.filter(
+    (scenario) => isObject(scenario) && typeof scenario.lifecycle_step === "string",
+  );
+  if (record.scenarios.length === 0 || lifecycle.length === 0) {
+    return "it records no scenario of a change's lifecycle, so it measured no workload";
+  }
   for (const [at, scenario] of record.scenarios.entries()) {
     const where = `scenario ${at}`;
     if (

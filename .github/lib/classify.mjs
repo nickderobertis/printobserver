@@ -193,7 +193,7 @@ function releaseBranchPrefix(base, cwd) {
   }
   const workspace = declared.workspace;
   const prefix = isObject(workspace)
-    ? /** @type {Record<string, unknown>} */ (workspace).pr_branch_prefix
+    ? Object.getOwnPropertyDescriptor(workspace, "pr_branch_prefix")?.value
     : undefined;
   if (typeof prefix !== "string" || !prefix) {
     throw new Undecidable(`release-plz.toml at ${base} names no [workspace] pr_branch_prefix`);

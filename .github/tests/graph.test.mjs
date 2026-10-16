@@ -432,7 +432,8 @@ describe("what the graph cannot resolve is an error, never zero", () => {
     );
   });
 
-  for (const [why, files, pattern] of /** @type {[string, Record<string, string>, RegExp][]} */ ([
+  /** @type {[string, Record<string, string>, RegExp][]} */
+  const UNRESOLVED = [
     [
       "a reusable workflow in another repository",
       { "a.yml": "on: push\njobs:\n  x:\n    uses: other/repo/.github/workflows/w.yml@v1\n" },
@@ -482,7 +483,8 @@ describe("what the graph cannot resolve is an error, never zero", () => {
       },
       /path filter/,
     ],
-  ])) {
+  ];
+  for (const [why, files, pattern] of UNRESOLVED) {
     test(why, () => {
       const loaded = graph(files);
       assert.throws(
@@ -491,6 +493,33 @@ describe("what the graph cannot resolve is an error, never zero", () => {
       );
     });
   }
+
+  test("a malformed matrix include is an error rather than an empty list", () => {
+    const loaded = graph({
+      "a.yml":
+        "on: push\njobs:\n  a:\n    strategy:\n      matrix:\n        os: [macos-15]\n        include: macos-14\n    runs-on: ubuntu-24.04\n    steps: [{run: echo}]\n",
+    });
+    assert.throws(
+      () => runsFor(loaded, push, {}),
+      (error) =>
+        error instanceof Unresolved &&
+        /matrix `include` is not a list of cells/.test(error.message),
+    );
+  });
+
+  test("a workflow_run filter on the triggering run's branch is applied", () => {
+    const loaded = graph({
+      "after.yml":
+        "on:\n  workflow_run:\n    workflows: [build]\n    types: [completed]\n    branches: [main]\njobs:\n  a:\n    runs-on: macos-15\n    steps: [{run: echo}]\n",
+    });
+    const finished = (branch) => ({
+      name: "workflow_run",
+      action: "completed",
+      payload: { workflow_run: { name: "build", head_branch: branch } },
+    });
+    assert.equal(runsFor(loaded, finished("main"), {}).length, 1);
+    assert.equal(runsFor(loaded, finished("feature"), {}).length, 0);
+  });
 
   test("an output the scenario does give is read", () => {
     const loaded = graph({
@@ -590,13 +619,15 @@ describe("the macOS job's own steps, walked as the forge runs them", () => {
     );
   }
 
-  for (const [failing, gate, integration] of /** @type {[string[], string, string][]} */ ([
+  /** @type {[string[], string, string][]} */
+  const STEP_FAILURES = [
     [[], "pass", "pass"],
     [["gate"], "fail", "pass"],
     [["bootstrap"], "fail", "fail"],
     [["octoprint-up"], "pass", "fail"],
     [["integration"], "pass", "fail"],
-  ])) {
+  ];
+  for (const [failing, gate, integration] of STEP_FAILURES) {
     const verb = (verdict) => (verdict === "pass" ? "passes" : "fails");
     test(`with ${failing.join(", ") || "nothing"} failing, the gate context ${verb(gate)} and integration ${verb(integration)}`, () => {
       const walked = walk(failing);
