@@ -413,13 +413,20 @@ def _launchctl(argv: list[str], repo: Repo, timeout: float, describing: str) -> 
     Raises:
         InstallError: If it failed or did not finish in time.
     """
+    again = "then run `just prove-built-service` again"
     try:
         result = run(argv, cwd=repo.root, timeout=timeout)
     except subprocess.TimeoutExpired as late:
-        msg = f"{describing} did not finish within {timeout:g}s"
+        msg = (
+            f"{describing} did not finish within {timeout:g}s; check `sudo launchctl list` and "
+            f"the system log for what launchd is waiting on, {again}"
+        )
         raise InstallError(msg) from late
     if result.returncode != 0:
-        msg = f"{describing} failed ({result.returncode}):\n{result.stdout}{result.stderr}"
+        msg = (
+            f"{describing} failed ({result.returncode}); fix what launchd names below, "
+            f"{again}:\n{result.stdout}{result.stderr}"
+        )
         raise InstallError(msg)
 
 
@@ -490,6 +497,10 @@ def prove_service(
     # Unloaded whatever happened above, and its own answer kept: a failure to
     # unload is reported beside the failure that came first, never instead of it.
     unload = f"`launchctl bootout system/{label}`"
+    recover = (
+        f"unload it with `sudo launchctl bootout system/{label}`, confirm `sudo launchctl print "
+        f"system/{label}` no longer finds it, then run `just prove-built-service` again"
+    )
     try:
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         unloaded = run(
@@ -499,10 +510,13 @@ def prove_service(
             ""
             if unloaded.returncode in {0, NOT_LOADED}
             else f"{unload} failed ({unloaded.returncode}), so the service this proof loaded "
-            f"may still be loaded:\n{unloaded.stdout}{unloaded.stderr}"
+            f"may still be loaded; {recover}:\n{unloaded.stdout}{unloaded.stderr}"
         )
     except subprocess.TimeoutExpired:
-        stuck = f"{unload} did not finish within {timeout:g}s, so the service may still be loaded"
+        stuck = (
+            f"{unload} did not finish within {timeout:g}s, so the service may still be "
+            f"loaded; {recover}"
+        )
     if stuck:
         if failed is not None:
             msg = f"{failed}\nand then {stuck}"
