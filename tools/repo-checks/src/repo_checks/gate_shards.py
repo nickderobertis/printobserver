@@ -96,6 +96,7 @@ END_TO_END_SECOND_PART = frozenset(
         "test_fresh_clone_journey.py",
         "test_platform_matrix_journey.py",
         "test_release_gating_journey.py",
+        "test_release_workflow_journey.py",
         "test_workflow_validation.py",
     }
 )
