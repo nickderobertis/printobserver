@@ -601,6 +601,12 @@ fn operator_cancels(world: &World, print: &str) {
 /// turn holds open the window a shell's redirection opens — the file that
 /// command answers into is there, and the command has not yet run — so the
 /// two are recorded in the order the journey asked for them.
+///
+/// The turn is let go only once the journey's wait-and-cancel has been seen
+/// at the recording proxy inside that window, which records an exchange once
+/// the server has answered it: a wait that did not wait has had its cancel
+/// recorded by then, and one that does has read a history without the
+/// adjustment in it.
 #[test]
 fn a_cancel_after_the_adjustment_waits_for_it_to_be_recorded() {
     let api = obico("200 OK");
@@ -615,14 +621,29 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
     world.wants(Reports::Paused);
     post(world, &alert(world, 4211, RUNNING_FILE, false, true));
     watching.written(&format!("fan-{print}"));
+    world.proxy.forget();
 
     std::thread::scope(|scope| {
         let cancelling = scope.spawn(|| {
             watching.adjusted(&print);
             operator_cancels(world, &print);
         });
-        // Long enough for a cancel that did not wait to have been recorded.
-        std::thread::sleep(Duration::from_secs(5));
+        let history = format!("/v1/prints/{print}/history");
+        let cancel = format!("/v1/prints/{print}/actions/cancel");
+        let reaching = || {
+            world.proxy.received().into_iter().find(|exchange| {
+                (exchange.method == "GET" && exchange.target.starts_with(&history))
+                    || (exchange.method == "POST" && exchange.target == cancel)
+            })
+        };
+        wait_for("the journey to reach the held window", PATIENCE, || {
+            reaching().is_some()
+        });
+        let reached = reaching().expect("the journey reached the held window");
+        assert!(
+            !reached.answered.contains("set_fan_percent"),
+            "the turn adjusted before it was let go: {reached:?}"
+        );
         std::fs::write(watching.directory.join("release"), b"").expect("the release is writable");
         cancelling.join().expect("the cancel is asked for");
     });
