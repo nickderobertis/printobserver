@@ -1,0 +1,27 @@
+{
+  "action": "published",
+  "release": {
+    "tag_name": "v0.4.2",
+    "name": "v0.4.2",
+    "draft": false,
+    "prerelease": false,
+    "author": {
+      "login": "nickderobertis"
+    }
+  },
+  "repository": {
+    "id": 1,
+    "name": "printobserver",
+    "full_name": "nickderobertis/printobserver",
+    "fork": false,
+    "owner": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "nickderobertis",
+    "type": "User"
+  }
+}

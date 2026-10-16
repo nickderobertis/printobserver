@@ -62,14 +62,18 @@ def test_every_gate_target_is_reached_by_the_check_recipe(project: str, target: 
     """A target the gate never reaches is a target that gates nothing."""
     parsed = recipes((REPO_ROOT / "justfile").read_text(encoding="utf-8"))
     invoked = [line.split()[1] for line in parsed["check"].body if line.split()[:1] == ["just"]]
+    # One recipe may fan out over more than one target — `just test` runs the
+    # budgets its tests record beside them — so the target is looked for among
+    # every target each fan-out names.
     fanned_out = [
-        line[len(GATE_TIER_RUNNER) :].split()[1:]
+        name
         for line in parsed[target].body
         if line.startswith(GATE_TIER_RUNNER)
+        for name in line[len(GATE_TIER_RUNNER) :].split()[1:]
     ]
 
     contains(invoked, target, describing="the recipes `just check` invokes")
-    contains(fanned_out, [target], describing=f"the Nx targets `just {target}` fans out over")
+    contains(fanned_out, target, describing=f"the Nx targets `just {target}` fans out over")
 
 
 def test_the_committed_project_passes_every_python_target(

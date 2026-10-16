@@ -1,0 +1,58 @@
+{
+  "action": "opened",
+  "number": 241,
+  "pull_request": {
+    "number": 241,
+    "title": "chore: release v0.4.2",
+    "draft": false,
+    "user": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "head": {
+      "ref": "release-plz-2026-10-16T08-00-00Z",
+      "sha": "HEAD_SHA",
+      "repo": {
+        "id": 1,
+        "name": "printobserver",
+        "full_name": "nickderobertis/printobserver",
+        "fork": false,
+        "owner": {
+          "login": "nickderobertis",
+          "type": "User"
+        },
+        "default_branch": "main"
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "BASE_SHA",
+      "repo": {
+        "id": 1,
+        "name": "printobserver",
+        "full_name": "nickderobertis/printobserver",
+        "fork": false,
+        "owner": {
+          "login": "nickderobertis",
+          "type": "User"
+        },
+        "default_branch": "main"
+      }
+    }
+  },
+  "repository": {
+    "id": 1,
+    "name": "printobserver",
+    "full_name": "nickderobertis/printobserver",
+    "fork": false,
+    "owner": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "nickderobertis",
+    "type": "User"
+  }
+}

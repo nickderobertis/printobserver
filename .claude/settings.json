@@ -31,6 +31,8 @@
       "Bash(uv:*)",
       "Bash(bun:*)",
       "Bash(bunx:*)",
+      "Bash(node .github/macos-policy.mjs:*)",
+      "Bash(node --test)",
       "Bash(llmlint:*)",
       "Bash(release-plz:*)",
       "Bash(./scripts/setup-llmlint.sh)",

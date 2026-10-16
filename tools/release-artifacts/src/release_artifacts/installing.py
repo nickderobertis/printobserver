@@ -897,6 +897,11 @@ def _prove_route(repo: Repo, taken: Installed) -> str:
     return f"{version}\n{taken.target}: {TOOLCHAIN_REPORT.format(', '.join(reached) or 'none')}"
 
 
+#: Under the name `release_artifacts.built` proves a route installed from a
+#: finished build by: the same proof, whatever built what was installed.
+prove_route = _prove_route
+
+
 def smoke_check(repo: Repo, taken: Installed) -> list[str]:
     """The command that runs one installed client's own smoke check where it was installed.
 

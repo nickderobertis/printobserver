@@ -111,6 +111,22 @@ def program(repo: Repo, given: Path | None = None) -> Path:
     return path
 
 
+def finished_program(repo: Repo) -> Path:
+    """The release program `just build-artifacts` already built on this host, never a new build.
+
+    What proves a finished build proves the program inside it, so where none was
+    built this refuses rather than compiling one.
+
+    Raises:
+        BuildError: If no release build of the program is there.
+    """
+    path = repo.root / "target" / PROFILE / platforms.host(repo).program
+    if not path.is_file():
+        msg = f"no release build of the program at {path}; `just build-artifacts` builds it"
+        raise BuildError(msg)
+    return path
+
+
 def floor(requires: str) -> str:
     """The lowest interpreter release a `>=X.Y` declaration admits, as `X.Y`.
 
@@ -240,6 +256,14 @@ def _node(repo: Repo, target: targets.Target, name: str = "") -> packages.NodePa
         license=inherited["license"],
         repository=inherited["repository"],
     )
+
+
+#: The two descriptions every artifact's file name is composed from, under the
+#: names what proves a finished build reads them by: `release_artifacts.built`
+#: names the files a cell owes from these, so a builder renaming an artifact
+#: renames what is expected of it.
+distribution = _distribution
+node_package = _node
 
 
 def python_client(repo: Repo, target: targets.Target, into: Path) -> Built:

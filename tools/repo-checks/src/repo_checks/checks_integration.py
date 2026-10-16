@@ -32,7 +32,7 @@ import json
 import re
 from typing import Any
 
-from repo_checks.model import Repo
+from repo_checks.model import Repo, policy_table
 from repo_checks.parsing import (
     MarkerBlockMissingError,
     jobs_of,
@@ -188,11 +188,24 @@ def _cells_not_running_yet(repo: Repo, job_name: str) -> dict[str, str]:
 def _integration_job(
     repo: Repo, bring_up: str
 ) -> tuple[str, str, dict[str, Any], dict[str, Any]] | None:
-    """The committed job that brings the environment up, if there is one."""
+    """The committed job that brings the environment up, if there is one.
+
+    A job `repo-policy.toml` records as carrying a platform cell of it — the
+    one macOS job that runs the gate and this tier in turn — is not that job:
+    the `platforms` check holds a carrier to what it carries.
+    """
+    declared = policy_table(repo, "workflows").get("carried", [])
+    carriers = {
+        str(entry.get("carrier", ""))
+        for entry in (declared if isinstance(declared, list) else [])
+        if isinstance(entry, dict)
+    }
     for path in repo.workflow_paths:
         workflow = load_workflow(path)
         for job_name, job in jobs_of(workflow).items():
-            if f"just {bring_up}" in run_commands(job):
+            if f"{path.name}:{job_name}" in carriers:
+                continue
+            if any(command.split()[:2] == ["just", bring_up] for command in run_commands(job)):
                 return path.name, job_name, job, workflow
     return None
 

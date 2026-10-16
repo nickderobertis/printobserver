@@ -387,18 +387,116 @@ def route_commands(repo: Repo) -> frozenset[str]:
     )
 
 
+#: The policy table recording a platform cell one consolidated job carries for
+#: several platform-dependent jobs, so that each of those may omit it.
+CARRIED = "carried"
+
+
+def _carrier_runs_on(job: dict[str, Any], platform: Platform) -> bool:
+    """Whether a job runs on one platform: by its own runner, or by a matrix cell naming it."""
+    if job.get("runs-on") == platform.runner:
+        return True
+    if not isinstance(job.get("strategy", {}), dict):
+        return False
+    return any(
+        str(entry.get("id", "")) == platform.id and entry.get("runner") == platform.runner
+        for entry in _matrix_platforms(job) or []
+    )
+
+
+def _carried(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
+    """Each cell `repo-policy.toml` records as carried by one consolidated job, and why.
+
+    A carried cell is not a cell that does not run: it runs, inside another job
+    — the one macOS job a pull request occupies runs the gate and the printer
+    integration tier in turn, and the release's macOS build cell proves its own
+    artifacts in place of the registry proofs — and the job it is carried for
+    omits it so that one change does not occupy several of the few shared
+    macOS slots. So a record is admitted only where its carrier verifiably
+    carries it: a job of the named workflow, on that platform's runner, running
+    every command the record says the carried cells were for.
+    """
+    declared = policy_table(repo, "workflows").get(CARRIED, [])
+    if not isinstance(declared, list):
+        return {}, [f"`repo-policy.toml`'s `workflows.{CARRIED}` is not a list of tables"]
+    platforms = {platform.id: platform for platform in platforms_of(repo)}
+    workflows = _workflows(repo)
+    carried: dict[tuple[str, str], str] = {}
+    findings: list[str] = []
+    for entry in declared:
+        where = f"`repo-policy.toml`'s `workflows.{CARRIED}` entry {entry!r}"
+        if not isinstance(entry, dict):
+            findings.append(f"{where} is not a table")
+            continue
+        platform_id, carrier, reason = (
+            entry.get("platform"),
+            entry.get("carrier"),
+            entry.get("reason"),
+        )
+        jobs, runs = entry.get("jobs"), entry.get("runs")
+        if not (
+            isinstance(platform_id, str)
+            and isinstance(carrier, str)
+            and isinstance(reason, str)
+            and reason.strip()
+            and isinstance(jobs, list)
+            and jobs
+            and all(isinstance(job, str) for job in jobs)
+            and isinstance(runs, list)
+            and runs
+            and all(isinstance(command, str) for command in runs)
+        ):
+            findings.append(
+                f"{where} does not name a `platform`, a `carrier` (`<workflow>:<job>`), the "
+                f"`jobs` it carries, the `runs` they were for and a non-empty `reason`"
+            )
+            continue
+        platform = platforms.get(platform_id)
+        file_name, _, job_name = carrier.partition(":")
+        job = jobs_of(workflows.get(file_name, {})).get(job_name)
+        if platform is None:
+            findings.append(f"{where} names `{platform_id}`, which AGENTS.md's list does not")
+            continue
+        if not isinstance(job, dict):
+            findings.append(f"{where} names carrier `{carrier}`, which no workflow declares")
+            continue
+        if not _carrier_runs_on(job, platform):
+            findings.append(
+                f"{where}: carrier `{carrier}` does not run on `{platform.runner}`, the "
+                f"runner AGENTS.md declares for `{platform.id}`"
+            )
+            continue
+        commands = run_commands(job)
+        missing = [
+            command
+            for command in runs
+            if not any(ran.split()[: len(command.split())] == command.split() for ran in commands)
+        ]
+        if missing:
+            findings.append(
+                f"{where}: carrier `{carrier}` does not run "
+                f"{', '.join(f'`{command}`' for command in missing)}, so it does not carry "
+                f"what the cells it stands in for ran"
+            )
+            continue
+        for carried_job in jobs:
+            carried[platform_id, carried_job] = f"carried by `{carrier}`: {reason.strip()}"
+    return carried, findings
+
+
 def _exclusions(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
     """Each cell `AGENTS.md` records as not running, and why it does not.
 
     The second of the two levers a platform is brought up in stages by. A cell
     named here is one a platform-dependent job's matrix may omit; one that is
-    not is a cell the job owes, whatever the list says.
+    not is a cell the job owes, whatever the list says. A cell
+    `repo-policy.toml` records as carried by a consolidated job is admitted the
+    same way, with the record's own reason.
 
     Raises:
         MarkerBlockMissingError: If `AGENTS.md` carries no such block.
     """
-    excluded: dict[tuple[str, str], str] = {}
-    findings: list[str] = []
+    excluded, findings = _carried(repo)
     for line in marker_block(repo.agents_md, EXCLUSIONS_BLOCK):
         if not line.startswith("- "):
             continue
@@ -1041,7 +1139,7 @@ def _reporting_findings(
 
 
 def _job_service_pairs(
-    repo: Repo, path: ip.InstallPath, job: dict[str, Any]
+    repo: Repo, path: ip.InstallPath, job: dict[str, Any], job_name: str = ""
 ) -> tuple[tuple[str, ...], ...]:
     """The pairs of commands after the routes an install job owes, one per service manager.
 
@@ -1054,7 +1152,9 @@ def _job_service_pairs(
 
     `job` is the mapping the YAML reader handed back, so its values are `Any` at
     that deserialization boundary; the one thing read out of it here is its
-    platform matrix, whose cells `_matrix_platforms` narrows.
+    platform matrix, whose cells `_matrix_platforms` narrows. A cell the job's
+    matrix omits because a consolidated job carries it still runs this job's
+    own steps when it is dispatched there, so it owes that platform's pair too.
     """
     entries = _matrix_platforms(job) or []
     named = {str(entry["id"]) for entry in entries if "id" in entry}
@@ -1062,6 +1162,9 @@ def _job_service_pairs(
         declared = platforms_of(repo)
     except MarkerBlockMissingError:
         return tuple(path.service_commands.values())
+    if named and job_name:
+        carried, _ = _carried(repo)
+        named |= {platform for platform, carried_job in carried if carried_job == job_name}
     managers: list[str] = []
     for platform in declared:
         if named and platform.id not in named:
@@ -1103,7 +1206,7 @@ def _install_job_findings(
         findings.extend(_reporting_findings(repo, file_name, job_name, job))
         positions: list[int] = []
         omitted: list[str] = []
-        for pair in _job_service_pairs(repo, path, job):
+        for pair in _job_service_pairs(repo, path, job, job_name):
             placed = [commands.index(c) if c in commands else -1 for c in pair]
             positions.extend(placed)
             omitted.extend(

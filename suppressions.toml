@@ -960,6 +960,18 @@ reason = "The stand-in itself, beside the entry for the function that installs i
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RECORDED = "
+reason = "The two macOS-cell proofs are recorded rather than run here for the reason `build-artifacts` is beside them: `prove-built-artifacts` installs and runs what a release build left in `dist/`, which this journey records rather than makes, and `prove-built-service` loads a launchd daemon. Each is run for real elsewhere, across its own boundary: `tools/release-artifacts/tests/test_built.py` builds every artifact around the real program and runs `prove-built` over it, and `test_prove_service_journey.py` runs `prove-service` against the launchd stand-in with the committed installer. What this journey asks is the workflow's scheduling — that the macOS cell alone reaches the two, and before the publish."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+site = "RECORDED = "
+reason = "The interface that schedules the macOS cell's two proofs is GitHub Actions, run here under its documented rules over the committed workflow (`actions.py`); the recipes' own command lines are driven as a consumer drives them by `tools/release-artifacts/tests/test_built.py` and `test_prove_service_journey.py`. What this journey asserts of them is only what the forge decides — which cell reaches them, and that they come before the publish."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "JUST_STANDIN = "
 reason = "The other stand-in, and it is the real `just` for every recipe but the ones that reach outside this host or cost a release build: `publish-artifacts` publishes to PyPI, npm and the forge, the three `prove-registry-*` recipes read the real registries, and `build-artifacts` and `bootstrap` are a cold release build of the workspace per matrix cell. Each is recorded with the version it was handed rather than run, because what the journey asks is whether the workflow REACHED it and with which version — and `release-answer`, `release-dispatched`, `release-version` and `release-version-dispatched`, which are what the wiring under test turns on, are the real recipes over the real copy."
 
@@ -2551,3 +2563,66 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, body = call(record_url(record), api_key(instance), endpoint, timeout=5.0)"
 reason = "This diagnostic subprocess runs once after a state deadline has already expired. It makes three ordered reads of the fixture's own loopback OctoPrint, each with a five-second transport timeout, then prints the bodies only as redacted, bounded evidence: none feeds a product model or drives an action. Reusing the fixture's authenticated HTTP helper preserves one blocking diagnostic child rather than adding another transport and event loop to an error-reporting path. The product still reaches OctoPrint through its typed asynchronous Rust adapter. Real subprocess journeys cover the actual endpoints, missing-record recovery, output bounds and complete redaction, including overlapping secrets."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '(shims / "launchctl").write_text('
+reason = "launchd is the one boundary stood in, as `test_service_manager_journey.py` stands it in on Linux: `launchctl_standin.py` loads the property list the committed installer really wrote, starts the real `printobserver` it names and stops it on `bootout`, answering in launchd's own words; this host has no launchd, and the real one is the release's macOS cell. Everything on this side of it is real: the artifact tool's own `prove-service` command line, the committed installer, the activation command read out of AGENTS.md. The one variant refuses `print` the way launchd refuses a job it does not know, which is how the journey proves a failed read-back still unloads."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '(shims / "uname").write_text('
+reason = "`uname -s` is how both the committed installer and `prove-service` decide they are on a launchd host, so the stand-in machine answers `Darwin` there and nothing else: every other `uname` call reaches the real one. It is the same shim `test_service_manager_journey.py` uses beside the same launchctl stand-in."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '@pytest.fixture(scope="module")'
+reason = "The build is the debug `printobserver` every `DEBUG_BUILD` journey of this project shares — `test_service_manager_journey.py`'s fixture is the same command — and `repo-e2e`'s `test-e2e` target already depends on `printobserver:build`, so on the merge path this `cargo build` finds the program built and compiles nothing. The journey lives here, rather than behind the release tooling's own edge, because the launchd stand-in it is driven against is this project's (`launchctl_standin.py`), and `repo-e2e` already depends on both projects it exercises, `printobserver` and `release-artifacts`."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = '(tmp_path / "bin" / "uname").write_text('
+reason = "The same `uname` shim the stand-in machine answers `Darwin` with, made to fail instead: a host on which `uname -s` itself fails is the one case the proof must refuse before it installs anything, and no real host can be made to have a broken `uname` for one test."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_prove_service_journey.py"
+site = "shim.write_text("
+reason = "The launchctl stand-in's own shim, made to hang on `bootstrap` the way a wedged launchd does: no real launchd can be made to hang for one test, and what is under test is the proof's own timeout and the unload it still attempts, both driven through its real command line."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/built.py"
+site = "def _launchctl("
+reason = "A release-time proof that runs four `launchctl` commands one after another, each depending on the one before, from a command line that exits when they are done: there is nothing to overlap and no caller to keep responsive, so an async client would add an event loop and change nothing the proof observes. `launchctl` is a program rather than an API, and the boundary is typed where it is crossed — each call's argv is composed from the activation command `activation` has already held to its one shape, and every outcome, a timeout included, comes back as an `InstallError` naming the command. `test_service_manager_journey.py` drives the same launchd boundary through the same synchronous calls under its own entry for this rule."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/built.py"
+site = "unloaded = run("
+reason = "A release-time proof that runs four `launchctl` commands one after another, each depending on the one before, from a command line that exits when they are done: there is nothing to overlap and no caller to keep responsive, so an async client would add an event loop and change nothing the proof observes. `launchctl` is a program rather than an API, and the boundary is typed where it is crossed — each call's argv is composed from the activation command `activation` has already held to its one shape, and every outcome, a timeout included, comes back as an `InstallError` naming the command. `test_service_manager_journey.py` drives the same launchd boundary through the same synchronous calls under its own entry for this rule."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/lib/graph.mjs"
+site = "export function triggers("
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/lib/graph.mjs"
+site = "function cellsOf("
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/lib/graph.mjs"
+site = "export function condition("
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+

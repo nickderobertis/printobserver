@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from pathlib import Path
 
 from repo_checks.model import Repo
 
-from release_artifacts import reused, tracking
+from release_artifacts import built, reused, tracking
 from release_artifacts.arming import ArmingError, arm
-from release_artifacts.build import BuildError, build, build_all, staged_release
+from release_artifacts.build import BuildError, build, build_all, finished_program, staged_release
+from release_artifacts.built import LAUNCHCTL_TIMEOUT_SECONDS
 from release_artifacts.installing import InstallError, prove
 from release_artifacts.publishing import PublishError, publish
 from release_artifacts.registries import (
@@ -43,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
             "build-all",
             "stage-release",
             "prove",
+            "prove-built",
+            "prove-service",
             "publish",
             "world",
             "release-program",
@@ -162,7 +166,30 @@ def main(argv: list[str] | None = None) -> int:
         help="a release workflow job and the result the forge reports it as",
     )
     parser.add_argument("--into", type=Path, default=Path("dist"))
+    parser.add_argument(
+        "--dist",
+        type=Path,
+        default=Path("dist"),
+        help="what `build-all` wrote, which prove-built holds to the release contract and installs",
+    )
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--service-root",
+        type=Path,
+        default=None,
+        help="for prove-service: the directory the service is installed beneath, rather than /",
+    )
+    parser.add_argument(
+        "--service-user",
+        default=None,
+        help="for prove-service: the user the installed service runs as",
+    )
+    parser.add_argument(
+        "--service-timeout",
+        type=_seconds,
+        default=LAUNCHCTL_TIMEOUT_SECONDS,
+        help="for prove-service: the seconds each launchctl command is given",
+    )
     parser.add_argument(
         "--binary",
         type=Path,
@@ -174,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     # directories of its own, and a relative path handed to one of those would
     # name a different place in each.
     arguments.into = arguments.into.resolve()
+    arguments.dist = arguments.dist.resolve()
     if arguments.binary is not None:
         arguments.binary = arguments.binary.resolve()
     repo = Repo(arguments.root)
@@ -210,6 +238,10 @@ def main(argv: list[str] | None = None) -> int:
                 return _publish(repo, arguments)
             case "prove":
                 return _prove(repo, arguments)
+            case "prove-built":
+                return _prove_built(repo, arguments)
+            case "prove-service":
+                return _prove_service(repo, arguments)
             case "build-all":
                 for built in build_all(repo, arguments.into, arguments.binary):
                     for path in built.paths:
@@ -274,6 +306,53 @@ def _prove(repo: Repo, arguments: argparse.Namespace) -> int:
         print(proof.report, file=sys.stdout if proof.exit_status == 0 else sys.stderr)
         return proof.exit_status
     print(prove(repo, arguments.target, arguments.into, arguments.binary))
+    return 0
+
+
+def _seconds(given: str) -> float:
+    """A duration in seconds: finite and above zero, or a usage error naming what was given.
+
+    Raises:
+        argparse.ArgumentTypeError: If `given` is no such number.
+    """
+    try:
+        seconds = float(given)
+    except ValueError as unreadable:
+        msg = f"{given!r} is not a number of seconds"
+        raise argparse.ArgumentTypeError(msg) from unreadable
+    if not math.isfinite(seconds) or seconds <= 0:
+        msg = f"{given!r} is not a finite number of seconds above zero"
+        raise argparse.ArgumentTypeError(msg)
+    return seconds
+
+
+def _prove_built(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Prove what `build-all` wrote, before it is published: its contract, then each install.
+
+    The program is `--binary`, or the release build `build-all` already left
+    where none is named; nothing is compiled. A proof that passed is one line.
+    """
+    binary = arguments.binary or finished_program(repo)
+    print(
+        f"prove-built: {'; '.join(built.prove_built(repo, arguments.dist, arguments.into, binary))}"
+    )
+    return 0
+
+
+def _prove_service(repo: Repo, arguments: argparse.Namespace) -> int:
+    """Install the built program as the launchd service, load it, read it back, unload it.
+
+    `--service-root` and `--service-user` are the installer's own `--root` and
+    `--user`, for a machine that is not this host's `/`.
+    """
+    said = built.prove_service(
+        repo,
+        arguments.binary or finished_program(repo),
+        root=arguments.service_root,
+        user=arguments.service_user,
+        timeout=arguments.service_timeout,
+    )
+    print(f"prove-service: {'; '.join(said)}")
     return 0
 
 

@@ -13,6 +13,16 @@
 # narrowed independently of that list.
 # Which jobs carry one at all is `repo-policy.toml`'s
 # `workflows.platform_dependent_kinds`.
+#
+# macOS is the one exception, and it is a consolidation rather than a
+# narrowing: the account's few macOS slots are shared with other repositories,
+# so the gate's and the integration tier's `macos-aarch64` cells run as ONE job,
+# `macos`, that runs both recipes in turn, and only on a pull request the
+# classifier (`.github/macos-policy.mjs`) says owes it. Two Linux jobs carry the
+# required contexts `gate (macos-aarch64)` and `integration (macos-aarch64)`,
+# each reporting exactly what that one job's own step for its lane did.
+# `repo-policy.toml`'s `[[workflows.carried]]` records the two cells as carried,
+# and AGENTS.md's "The consolidated macOS lanes" says why.
 
 name: ci
 
@@ -36,6 +46,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether this run owes the macOS lane: an ordinary pull request does, and
+  # release automation's own version/changelog-only pull request and every push
+  # do not. Unknown is never omission — a pull request it cannot read owes it.
+  classify:
+    name: classify
+    runs-on: ubuntu-24.04
+    outputs:
+      macos-required: ${{ steps.classify.outputs.macos-required }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The classifier diffs the pull request against its merge base and
+          # reads release-plz.toml off the base, neither of which a shallow
+          # checkout carries.
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+      - uses: oven-sh/setup-bun@v2
+      - id: classify
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: just macos-classify "$GITHUB_EVENT_PATH" "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+
   gate:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
@@ -47,6 +81,7 @@ jobs:
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
+    # `macos-aarch64` is the `macos` job's below, under the same context.
     name: gate (${{ matrix.platform.id }})
     strategy:
       fail-fast: false
@@ -56,8 +91,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -112,7 +145,8 @@ jobs:
     # its own rather than one of `just check`'s tiers because it installs
     # OctoPrint, starts it and waits a print out — but it runs on every change,
     # on every platform AGENTS.md's supported-platform list names for which its
-    # "Virtual printer availability" block records no exclusion.
+    # "Virtual printer availability" block records no exclusion — `macos-aarch64`
+    # in the `macos` job below rather than in a cell of its own.
     strategy:
       fail-fast: false
       matrix:
@@ -121,8 +155,6 @@ jobs:
             runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          - id: macos-aarch64
-            runner: macos-15
           - id: windows-x86_64
             runner: windows-2025
           - id: windows-aarch64
@@ -164,6 +196,103 @@ jobs:
         run: just octoprint-down
       - if: always()
         run: just runner-temp cleanup
+
+  # The gate and the printer integration tier for `macos-aarch64`, in one job:
+  # one shared macOS slot for a pull request rather than two. Each lane's own
+  # step publishes its outcome, and the integration lane runs whatever the gate
+  # answered, so each required context below reports its own lane's verdict.
+  macos:
+    name: macos-aarch64 (gate, integration)
+    needs: classify
+    # On a pull request the classifier could not answer, the lane runs anyway:
+    # unknown is never omission. No other event runs it.
+    if: >-
+      !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
+      (github.event_name == 'pull_request' && needs.classify.result != 'success'))
+    runs-on: macos-15
+    env:
+      PRINTOBSERVER_PLATFORM: macos-aarch64
+      # As in the gate's own cells: on the merge path a service-manager case
+      # whose prerequisite is missing fails rather than skipping.
+      PRINTOBSERVER_SERVICE_JOURNEY: required
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      gate: ${{ steps.gate.outcome }}
+      integration: ${{ steps.integration.outcome }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: nrwl/nx-set-shas@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
+      - id: bootstrap
+        run: just bootstrap
+      # The gate lane: the same recipe, at the same tier, as every gate cell.
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - id: gate
+        run: just check "$(just gate-tier)"
+      # The integration lane, after the gate whatever it answered: a failed gate
+      # is that lane's verdict, not this one's.
+      - id: release-program
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: just release-program-key >> "$GITHUB_OUTPUT"
+      - if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        uses: actions/cache@v4
+        with:
+          path: .release-program
+          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
+      - id: release-program-built
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: just release-program
+      - id: octoprint-up
+        if: ${{ !cancelled() && steps.release-program-built.outcome == 'success' }}
+        run: just octoprint-up
+      - id: integration
+        if: ${{ !cancelled() && steps.octoprint-up.outcome == 'success' }}
+        run: just test-integration
+      - if: always()
+        run: just octoprint-down
+      - if: always()
+        run: just runner-temp cleanup
+
+  # The two required macOS contexts, carried from Linux: each passes only when
+  # the `macos` job ran and its own lane's step succeeded, or when the
+  # classifier answered that this run owes no macOS lane and none ran — and
+  # says which, so a pass never claims macOS tests that did not run.
+  gate-macos:
+    name: gate (macos-aarch64)
+    needs: [classify, macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - run: just macos-carry gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+
+  integration-macos:
+    name: integration (macos-aarch64)
+    needs: [classify, macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - run: just macos-carry integration
+        env:
+          NEEDS: ${{ toJSON(needs) }}
 
   llmlint:
     name: llmlint

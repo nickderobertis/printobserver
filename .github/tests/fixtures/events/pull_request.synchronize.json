@@ -1,0 +1,60 @@
+{
+  "action": "synchronize",
+  "number": 240,
+  "pull_request": {
+    "number": 240,
+    "title": "feat: a change",
+    "draft": false,
+    "user": {
+      "login": "contributor",
+      "type": "User"
+    },
+    "head": {
+      "ref": "feature/a-change",
+      "sha": "HEAD_SHA",
+      "repo": {
+        "id": 1,
+        "name": "printobserver",
+        "full_name": "nickderobertis/printobserver",
+        "fork": false,
+        "owner": {
+          "login": "nickderobertis",
+          "type": "User"
+        },
+        "default_branch": "main"
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "BASE_SHA",
+      "repo": {
+        "id": 1,
+        "name": "printobserver",
+        "full_name": "nickderobertis/printobserver",
+        "fork": false,
+        "owner": {
+          "login": "nickderobertis",
+          "type": "User"
+        },
+        "default_branch": "main"
+      }
+    }
+  },
+  "repository": {
+    "id": 1,
+    "name": "printobserver",
+    "full_name": "nickderobertis/printobserver",
+    "fork": false,
+    "owner": {
+      "login": "nickderobertis",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "contributor",
+    "type": "User"
+  },
+  "before": "BEFORE_SHA",
+  "after": "HEAD_SHA"
+}

@@ -13,11 +13,22 @@
         "typescript": "^5.9.3",
       },
     },
+    ".github": {
+      "name": "printobserver-github-workflows",
+      "dependencies": {
+        "@actions/expressions": "0.3.61",
+        "@onebudgetspec/sdk": "0.1.5",
+        "smol-toml": "1.6.1",
+        "yaml": "2.9.0",
+      },
+    },
     "npm/printobserver-sdk": {
       "name": "@printobserver/sdk",
     },
   },
   "packages": {
+    "@actions/expressions": ["@actions/expressions@0.3.61", "", {}, "sha512-Ig+tXELvTjlqxQAWBQnLNn2dPpNraLMdSnT+vDzDPmJtbNUhIAH/Z9kVT8pZ8UtJi9vUGs8hwHE8JFJmbOnLEA=="],
+
     "@biomejs/biome": ["@biomejs/biome@2.5.12", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.12", "@biomejs/cli-darwin-x64": "2.5.12", "@biomejs/cli-linux-arm64": "2.5.12", "@biomejs/cli-linux-arm64-musl": "2.5.12", "@biomejs/cli-linux-x64": "2.5.12", "@biomejs/cli-linux-x64-musl": "2.5.12", "@biomejs/cli-win32-arm64": "2.5.12", "@biomejs/cli-win32-x64": "2.5.12" }, "bin": { "biome": "bin/biome" } }, "sha512-Lw4VHZRebrReBBnlHa12JQjnIBm3JJAA55PDB9LbBVBF0q4RYphm6KfmIjqtPhf61MxZ5Q9KoK8R8x+7per5Aw=="],
 
     "@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.5.12", "", { "os": "darwin", "cpu": "arm64" }, "sha512-lCRY1rwgNeWNgTr4DI/u6ZwXTRwRLHAvbaio1YLLGS+4r1nhvB2ssyPqIpfUSmRveNfv0fn/N58C7CAdK2XVrg=="],
@@ -79,6 +90,8 @@
     "@onebudgetspec/cli-win32-arm64": ["@onebudgetspec/cli-win32-arm64@0.1.3", "", { "os": "win32", "cpu": "arm64" }, "sha512-waRrYrt9Memj2LMTRQqLAecxh+5Qy4GAJEfjIBfeaey3cVuOghPYxcNQoTpfklLKK/NA1j+bbuqhBDX19aN7tA=="],
 
     "@onebudgetspec/cli-win32-x64": ["@onebudgetspec/cli-win32-x64@0.1.3", "", { "os": "win32", "cpu": "x64" }, "sha512-eOW/fz30SZqJfR0281VD5o832ijdjKzDeTxjAIQmfXHJnJPTBarfYBQr/7U/Z8AR+q6PyDmNnJ9ckuIGnIBU/w=="],
+
+    "@onebudgetspec/sdk": ["@onebudgetspec/sdk@0.1.5", "", { "optionalDependencies": { "@onebudgetspec/cli": "0.1.5" } }, "sha512-toA72Z35BdRryOxFx9SF1adI5TBU2fY9Z4ISEbS93wtXx67IaXHBP6qcBB2I2zBijwfwu+cbktVmq4aqrV5E7w=="],
 
     "@printobserver/sdk": ["@printobserver/sdk@workspace:npm/printobserver-sdk"],
 
@@ -254,6 +267,8 @@
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 
+    "printobserver-github-workflows": ["printobserver-github-workflows@workspace:.github"],
+
     "proxy-from-env": ["proxy-from-env@2.1.0", "", {}, "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA=="],
 
     "readable-stream": ["readable-stream@3.6.2", "", { "dependencies": { "inherits": "^2.0.3", "string_decoder": "^1.1.1", "util-deprecate": "^1.0.1" } }, "sha512-9u/sniCrY3D5WdsERHzHE4G2YCXqoG5FTHUiCC4SIbr6XcLZBY05ya9EKjYek9O5xOAwjGq+1JdGBAS7Q9ScoA=="],
@@ -311,5 +326,19 @@
     "yargs": ["yargs@17.7.2", "", { "dependencies": { "cliui": "^8.0.1", "escalade": "^3.1.1", "get-caller-file": "^2.0.5", "require-directory": "^2.1.1", "string-width": "^4.2.3", "y18n": "^5.0.5", "yargs-parser": "^21.1.1" } }, "sha512-7dSzzRQ++CKnNI/krKnYRV7JKKPUXMEh61soaHKg9mrWEhzFWhFnxPxGl+69cD1Ou63C13NUPCnmIcrvqCuM6w=="],
 
     "yargs-parser": ["yargs-parser@21.1.1", "", {}, "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli": ["@onebudgetspec/cli@0.1.5", "", { "optionalDependencies": { "@onebudgetspec/cli-darwin-arm64": "0.1.5", "@onebudgetspec/cli-darwin-x64": "0.1.5", "@onebudgetspec/cli-linux-arm64": "0.1.5", "@onebudgetspec/cli-linux-x64": "0.1.5", "@onebudgetspec/cli-win32-arm64": "0.1.5", "@onebudgetspec/cli-win32-x64": "0.1.5" }, "bin": { "onebudgetspec": "bin/onebudgetspec.js" } }, "sha512-wbK98cY7yl0BCL57JCXQcleuajCqyAnSdKpaC2Vx9RW9hoNnmuz6qdYHdEnUjtvLygtj9ehvQx8YW5TxQhUG8Q=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli/@onebudgetspec/cli-darwin-arm64": ["@onebudgetspec/cli-darwin-arm64@0.1.5", "", { "os": "darwin", "cpu": "arm64" }, "sha512-CUh2ML7tq0PekDsnE0iV3BHhnmLKLXPEMafYXor4yV6NxVnh/HxlFQuoLyPTKmCaWgkkbtdFtu9KD29RZGCyIg=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli/@onebudgetspec/cli-darwin-x64": ["@onebudgetspec/cli-darwin-x64@0.1.5", "", { "os": "darwin", "cpu": "x64" }, "sha512-1oSfEL0cdXHyIcMCWPiazqvDtoaTCfdcXc7IRbTiCZHHvvZcp6qrkqKMSG8KoO7Ql29fPXZOWKCvqQDAWGR/Mg=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli/@onebudgetspec/cli-linux-arm64": ["@onebudgetspec/cli-linux-arm64@0.1.5", "", { "os": "linux", "cpu": "arm64" }, "sha512-9iLFbj9SA7uTIIzVNId+HMS2KCmbTTCmXItioBvdLVxxWAp6LnJn66Qol5oIPuIa42IH0xGpRnpVo6o+pek8HQ=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli/@onebudgetspec/cli-linux-x64": ["@onebudgetspec/cli-linux-x64@0.1.5", "", { "os": "linux", "cpu": "x64" }, "sha512-5KDzTmxfiWLV59GKtYTuyV4Psc5Ioqqwa4DWtglYvhkv/U4y1uk6lbCWBy5GSYyEndPqJNowLJboMu1OhfxAkQ=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli/@onebudgetspec/cli-win32-arm64": ["@onebudgetspec/cli-win32-arm64@0.1.5", "", { "os": "win32", "cpu": "arm64" }, "sha512-UltK6kofxXPCTZ84M20YFMXZ/DxvzBYoCR4tgvp7CDGBQANQ1wq+hFL8w2wJczDApwLxobilnG9E6rW2o1y3vg=="],
+
+    "@onebudgetspec/sdk/@onebudgetspec/cli/@onebudgetspec/cli-win32-x64": ["@onebudgetspec/cli-win32-x64@0.1.5", "", { "os": "win32", "cpu": "x64" }, "sha512-7JqBsIu/UYxJJrrXBAF8zrxLq3uG+oFtQEkm6cjbTsRGYpJzgFj5KntJvpNWTnUysgGYix8H4VZJYRRrUnPD2A=="],
   }
 }
