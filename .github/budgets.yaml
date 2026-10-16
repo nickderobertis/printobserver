@@ -1,10 +1,5 @@
 schema_version: 1
 budgets:
-  # Two budgets rather than one, an approved exception: both the jobs-per-run
-  # and the macOS-spending runs-per-change bounds are explicitly requested, and
-  # separate budgets were approved for these two scheduling constraints.
-  # Neither figure is a part of the other: a change can stay within its run
-  # count while one of its runs occupies several shared macOS slots.
   - id: printobserver-macos-jobs-per-run
     description: >-
       The most macOS runner job instances any one resolved workflow run requests,
@@ -12,8 +7,11 @@ budgets:
       one change meets and the one manual diagnostic dispatch. Inner measure,
       because one run can occupy several of the five shared macOS slots even
       when the change's count of macOS-spending runs stays within its bound.
-      Read off the telemetry `github-workflows:test` records from the committed
-      workflow graph.
+      A budget of its own beside printobserver-macos-runs-per-change by an
+      approved exception: both bounds are explicitly requested, and separate
+      budgets were approved for these two scheduling constraints. Read off the
+      telemetry `github-workflows:test` records from the committed workflow
+      graph.
     labels: [telemetry]
     measure: reported
     command:
@@ -33,8 +31,11 @@ budgets:
       whole automatic life — its pull request, its merge, the release pull
       request and its merge, the release build, the downstream install-path
       proofs and the weekly schedules — with manual diagnostics outside it.
-      Read off the telemetry `github-workflows:test` records from the committed
-      workflow graph.
+      A budget of its own beside printobserver-macos-jobs-per-run by the same
+      approved exception: both bounds are explicitly requested, and separate
+      budgets were approved for these two scheduling constraints. Read off the
+      telemetry `github-workflows:test` records from the committed workflow
+      graph.
     labels: [telemetry]
     measure: reported
     command:

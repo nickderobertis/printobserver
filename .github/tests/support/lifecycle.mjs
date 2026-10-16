@@ -107,7 +107,7 @@ export function pullRequestPayload(action, branch, ownership, commits) {
  * Every run one event starts, each resolved against the graph. The
  * `workflow_run` events those runs start in turn are `scenarios`' to follow.
  *
- * @param {Map<string, any>} workflows
+ * @param {Map<string, import("../../lib/graph.mjs").Workflow>} workflows
  * @param {import("../../lib/graph.mjs").Event} event
  * @param {Record<string, Record<string, Record<string, string>>>} outputs by workflow file, then job
  * @returns {{file: string, run: import("../../lib/graph.mjs").PlannedRun}[]}
@@ -150,7 +150,7 @@ export function completed(name, triggeredBy, head) {
 }
 
 /**
- * @param {Map<string, any>} workflows
+ * @param {Map<string, import("../../lib/graph.mjs").Workflow>} workflows
  * @param {string} file
  * @param {import("../../lib/graph.mjs").PlannedRun} run
  * @returns {import("../../lib/telemetry.mjs").RunRow}

@@ -18,6 +18,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { data, Evaluator, Lexer, Parser } from "@actions/expressions";
 import { truthy } from "@actions/expressions/result";
+
+/** @typedef {import("@actions/expressions/funcs/info").FunctionDefinition} FunctionDefinition */
 import { parse as parseYaml } from "yaml";
 import { isMacosLabel, isObject } from "./util.mjs";
 
@@ -638,7 +640,7 @@ export function condition(declared, contexts, results, where) {
 
 /**
  * @param {() => boolean} answer
- * @returns {{name: string, minArgs: number, maxArgs: number, call: () => any}}
+ * @returns {FunctionDefinition}
  */
 function status(answer) {
   return { name: "", minArgs: 0, maxArgs: 0, call: () => new data.BooleanData(answer()) };
@@ -664,7 +666,7 @@ export function template(text, contexts, where) {
 }
 
 /**
- * @param {any} value
+ * @param {data.ExpressionData} value
  * @returns {unknown}
  */
 function plain(value) {
@@ -677,8 +679,8 @@ function plain(value) {
  * @param {string} expression
  * @param {Record<string, any>} contexts
  * @param {string} where
- * @param {Map<string, any>} [functions]
- * @returns {any}
+ * @param {Map<string, FunctionDefinition>} [functions]
+ * @returns {data.ExpressionData}
  */
 function evaluate(expression, contexts, where, functions = new Map()) {
   const lexed = new Lexer(expression).lex();
@@ -691,7 +693,11 @@ function evaluate(expression, contexts, where, functions = new Map()) {
   }
   const named = new Map([...functions].map(([name, fn]) => [name, { ...fn, name }]));
   try {
-    return new Evaluator(parsed, dictionary(contexts, "", true), named).evaluate();
+    const top = dictionary(contexts, "", true);
+    if (!(top instanceof data.Dictionary)) {
+      throw new Unresolved(`${where}: the contexts are not a mapping`);
+    }
+    return new Evaluator(parsed, top, named).evaluate();
   } catch (failed) {
     if (failed instanceof Unresolved) {
       throw new Unresolved(
@@ -733,11 +739,13 @@ class StrictDictionary extends data.Dictionary {
 
 /**
  * Plain JSON as the library's data, strict where the forge's context is closed.
+ * `value` is whatever the scenario and the YAML reader handed over, which is
+ * the one deserialization boundary this narrows.
  *
- * @param {any} value
+ * @param {unknown} value
  * @param {string} path
  * @param {boolean} top
- * @returns {any}
+ * @returns {data.ExpressionData}
  */
 function dictionary(value, path, top = false) {
   if (isObject(value)) {

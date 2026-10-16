@@ -20,9 +20,9 @@ export const SCHEMA = 1;
  * Every file the record is computed from, repository-relative and sorted: the
  * workflows; the policy, its graph and its locked dependencies; the scenarios,
  * their event fixtures and the test that records them; and the tree files the
- * scenarios read — the release branch prefix, the platform list and the
- * recipe and module that resolve a dispatch's runner, and every file the
- * generated histories copy as their base commit.
+ * scenarios read — the release branch prefix, the platform list, the recipe,
+ * the policy and the `repo_checks` package that resolve a dispatch's runner,
+ * and every file the generated histories copy as their base commit.
  *
  * @param {string} root the repository root
  * @returns {string[]}
@@ -45,7 +45,8 @@ export function digestFiles(root) {
     "release-plz.toml",
     "AGENTS.md",
     "justfile",
-    "tools/repo-checks/src/repo_checks/dispatching.py",
+    "repo-policy.toml",
+    ...under("tools/repo-checks/src/repo_checks", /^[^/]+\.py$/),
     "Cargo.toml",
     "Cargo.lock",
     "crates/printobserver-core/CHANGELOG.md",
