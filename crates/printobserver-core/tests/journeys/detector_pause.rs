@@ -148,6 +148,43 @@ fn the_grace_runs_from_the_last_adjustment() {
     });
 }
 
+/// The grace is time passing rather than the wall clock moving: a host whose
+/// time synchronisation steps the wall clock forward under the grace does not
+/// cut it short.
+#[test]
+fn a_wall_clock_stepped_forward_does_not_shorten_the_grace() {
+    let world = World::new();
+    let (print, _) = paused_by_the_detector(&world);
+    world.journal.clear();
+
+    let _ = world.request(print, fan_up()).expect("recorded");
+    world.clock.step_wall(2);
+    world.clock.advance(19);
+    let_the_driver_sweep();
+    assert_eq!(world.journal.position(&Call::Resume), None, "resumed early");
+
+    world.clock.advance(2);
+    world.wait_until("the resume", || {
+        world.journal.position(&Call::Resume).is_some()
+    });
+}
+
+/// Nor does a step back draw it out: twenty seconds after the adjustment the
+/// print resumes, wherever the wall clock was put meanwhile.
+#[test]
+fn a_wall_clock_stepped_back_does_not_draw_out_the_grace() {
+    let world = World::new();
+    let (print, _) = paused_by_the_detector(&world);
+    world.journal.clear();
+
+    let _ = world.request(print, fan_up()).expect("recorded");
+    world.clock.step_wall(-30);
+    world.clock.advance(21);
+    world.wait_until("the resume", || {
+        world.journal.position(&Call::Resume).is_some()
+    });
+}
+
 /// With no adjustment the detector's pause holds, however long it stands.
 #[test]
 fn without_an_adjustment_the_detectors_pause_holds() {

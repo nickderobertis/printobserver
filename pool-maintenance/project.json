@@ -1,0 +1,32 @@
+{
+  "name": "pool-maintenance",
+  "root": "pool-maintenance",
+  "projectType": "library",
+  "tags": [
+    "lang:python",
+    "type:tooling"
+  ],
+  "targets": {
+    "lint": {
+      "command": "uv run -q ruff check pool-maintenance && uv run -q shellcheck pool-maintenance/measure.sh"
+    },
+    "test": {
+      "command": "uv run -q pytest pool-maintenance/test_measure.py"
+    },
+    "budgets-host": {
+      "command": "bunx onebudgetspec check pool-maintenance/budgets.yaml --label host"
+    },
+    "format-check": {
+      "command": "uv run -q ruff format --check pool-maintenance"
+    },
+    "typecheck": {
+      "command": "uv run -q ty check --extra-search-path pool-maintenance pool-maintenance && uv run -q ty check --python-platform win32 --extra-search-path pool-maintenance pool-maintenance"
+    },
+    "format": {
+      "command": "uv run -q ruff format pool-maintenance"
+    }
+  },
+  "implicitDependencies": [
+    "repo-checks"
+  ]
+}
