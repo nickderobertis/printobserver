@@ -1,0 +1,29 @@
+{
+  "name": "github-workflows",
+  "root": ".github",
+  "projectType": "library",
+  "tags": ["lang:javascript", "type:tooling"],
+  "targets": {
+    "format": {
+      "command": "bunx biome format --write .github"
+    },
+    "format-check": {
+      "command": "bunx biome format .github"
+    },
+    "lint": {
+      "command": "bunx biome lint .github"
+    },
+    "test": {
+      "command": "bun install --frozen-lockfile && node --test",
+      "options": {
+        "cwd": ".github"
+      },
+      "outputs": ["{projectRoot}/.telemetry"]
+    },
+    "budgets": {
+      "command": "node .github/node_modules/@onebudgetspec/cli/bin/onebudgetspec.js check .github/budgets.yaml",
+      "dependsOn": ["test"],
+      "cache": false
+    }
+  }
+}

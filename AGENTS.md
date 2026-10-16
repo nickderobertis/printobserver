@@ -354,7 +354,7 @@ records a platform the tier cannot run on, and this one a cell whose bring-up is
 still owed, so either excuses a cell of that job and a matrix carrying a cell
 either records is refused.
 
-### The five jobs that carry no platform matrix
+### The jobs that carry no platform matrix
 
 These run once per change rather than once per platform, and a matrix would say
 nothing about any of them. Each carries the reason it has none — the record is
@@ -366,7 +366,41 @@ what makes a job running once a decision rather than an omission.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
 - `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
+- `gate-macos` — it carries one required context, `gate (macos-aarch64)`, from Linux: it reads the one `macos` job's result and its gate lane's outcome, so what it judges is that job's macOS run rather than this host, and a second cell would judge the same result twice.
+- `integration-macos` — it carries one required context, `integration (macos-aarch64)`, from Linux: it reads the one `macos` job's result and its integration lane's outcome, so what it judges is that job's macOS run rather than this host, and a second cell would judge the same result twice.
 [//]: # (END unmatrixed-jobs)
+
+### The consolidated macOS lanes
+
+The account holds a handful of macOS slots shared with other repositories, so
+one change may occupy at most one of them per workflow run, and at most two
+runs over its whole automatic life: its pull request, and the release build that
+ships it. Two jobs are the only automatic macOS jobs there are.
+
+- **`ci.yml`'s `macos`** runs the gate and then the printer integration tier
+  for `macos-aarch64`, each lane's own step publishing its outcome, on a pull
+  request `.github/macos-policy.mjs classify` says owes it. Release
+  automation's own pull request owes none when it is version/changelog-only —
+  a same-repository branch under `release-plz.toml`'s `pr_branch_prefix` whose
+  diff, parsed, moves nothing but CHANGELOG.md files and the version fields of
+  `Cargo.toml`, `crates/*/Cargo.toml` and `Cargo.lock` — and no push owes any.
+  A pull request the classifier cannot read owes it. `gate (macos-aarch64)` and
+  `integration (macos-aarch64)` are carried from Linux by `gate-macos` and
+  `integration-macos`, which pass only for that lane's own success or for an
+  omission the classifier authorized, and say which.
+- **`release-plz.yml`'s `artifacts` cell for `macos-aarch64`** proves what it
+  built before it is published — `just prove-built-artifacts` installs and runs
+  every route and client from `dist/` and holds it to the release contract, and
+  `just prove-built-service` installs and loads the launchd service — in place
+  of the nine macOS cells `install-path.yml` ran after every release and every
+  week.
+
+`repo-policy.toml`'s `[[workflows.carried]]` records each omitted cell and the
+job that carries it, and `just check-repo` refuses one whose carrier does not
+run on that platform's runner or does not run what the cells were for.
+`platform-dispatch.yml` is the one manual diagnostic: one job on one platform
+per dispatch, `linux-x86_64` unless macOS is chosen. `.github/budgets.yaml`
+holds both bounds against the workflow graph `github-workflows:test` evaluates.
 
 ## The scripted OctoPrint environment
 

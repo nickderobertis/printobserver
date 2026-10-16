@@ -150,12 +150,15 @@ typecheck tier="affected":
     just node-modules
     uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} typecheck
 
-# Run the tier's projects' tests, recording coverage as they run.
+# Run the tier's projects' tests, recording coverage as they run, and the
+# budgets those tests record the figures of: `github-workflows`' two macOS
+# scheduling bounds, read off the telemetry its own test target writes, so they
+# run wherever a change reaches the workflows or their policy and nowhere else.
 test tier="affected":
     just node-modules
     cargo llvm-cov clean --workspace
     uv run -q coverage erase
-    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} test
+    uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} test budgets
 
 # Fail the build below the coverage floors `repo-policy.toml` records: over every
 # project for `all`, and over the projects whose tests the `affected` tier ran,
@@ -589,6 +592,21 @@ install-pool-maintenance:
 # `.cargo/config.toml` resolves every workspace's build output to root `target/`.
 pool-maintenance:
     cargo-prune-superseded --keep-within 2d target
+
+# Whether this run owes the macOS lane, as the `name=value` lines the `classify`
+# job of `ci.yml` appends to its outputs: `macos-required`, `release-only` and
+# `reason`. EVENT is the forge's event payload, BASE and HEAD the two commits
+# the pull request is diffed between. The classification itself goes to
+# standard error, for the log.
+macos-classify EVENT BASE HEAD:
+    @bun install --frozen-lockfile --cwd .github >&2
+    @node .github/macos-policy.mjs classify --event {{quote(EVENT)}} --base {{quote(BASE)}} --head {{quote(HEAD)}} | node .github/macos-policy.mjs outputs -
+
+# One required macOS context's verdict, carried on Linux from `NEEDS`, the
+# `toJSON(needs)` the forge hands the carrier job: LANE is `gate` or
+# `integration`.
+macos-carry LANE:
+    @node .github/macos-policy.mjs carry --lane {{quote(LANE)}}
 
 # Expensive host measurements, selected explicitly and after the release-PR gate.
 budgets:

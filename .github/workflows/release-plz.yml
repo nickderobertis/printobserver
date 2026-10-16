@@ -233,6 +233,15 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just bootstrap
       - run: just build-artifacts
+      # The macOS cell is the one macOS job a release runs, so it proves what it
+      # built before anything is published, in place of the registry proofs and
+      # route installs `install-path.yml` no longer runs on macOS: `dist/` held to
+      # the release contract and each route and client installed from it and
+      # run, then the built program installed as launchd's service and loaded.
+      - if: matrix.platform.id == 'macos-aarch64'
+        run: just prove-built-artifacts
+      - if: matrix.platform.id == 'macos-aarch64'
+        run: just prove-built-service
       - uses: actions/upload-artifact@v4
         with:
           name: artifacts-${{ matrix.platform.id }}

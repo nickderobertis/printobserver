@@ -344,8 +344,16 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
                 describing=f"{context.file}'s pull_request activity types",
             )
         job = jobs_of(workflow)[context.job]
-        equal(job.get("needs"), None, describing=f"what `{context.job}` waits on")
         condition = job.get("if")
+        if job.get("needs") is not None:
+            # A carrier of a consolidated lane waits on that lane, and reports
+            # whatever it ended as: `always()` is what no result can skip.
+            equal(
+                condition,
+                "always()",
+                describing=f"`{context.job}`'s condition, waiting on {job.get('needs')}",
+            )
+            continue
         truth(
             condition in (None, "github.event_name == 'pull_request'"),
             describing=f"`{context.job}`'s condition, {condition!r}, holding on a pull request",

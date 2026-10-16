@@ -119,8 +119,12 @@ def test_the_integration_job_is_required_once_per_platform_under_its_id_alone(
     until somebody edits the protection. So the committed job interpolates the
     platform id into its own name, and the record names exactly those contexts.
     """
+    # The macOS context is carried from Linux by `integration-macos`, under the
+    # same platform-qualified name the matrix cell reported before it.
     reported = sorted(
-        context.name for context in status_contexts(committed) if context.job == "integration"
+        context.name
+        for context in status_contexts(committed)
+        if context.job in {"integration", "integration-macos"}
     )
     required = sorted(name for name in _required(committed) if name.startswith("integration"))
     platform_qualified = [
@@ -185,7 +189,6 @@ def test_unqualifying_a_matrix_job_has_github_append_the_whole_cell(
         [
             "integration (linux-aarch64, ubuntu-24.04-arm)",
             "integration (linux-x86_64, ubuntu-24.04)",
-            "integration (macos-aarch64, macos-15)",
             "integration (windows-aarch64, windows-11-arm)",
             "integration (windows-x86_64, windows-2025)",
         ],

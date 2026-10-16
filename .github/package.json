@@ -1,0 +1,12 @@
+{
+  "name": "printobserver-github-workflows",
+  "private": true,
+  "type": "module",
+  "description": "The macOS runner policy: the release-only classifier, the required-check carriers, and the workflow-graph contract behind two scheduling budgets.",
+  "dependencies": {
+    "@actions/expressions": "0.3.61",
+    "@onebudgetspec/sdk": "0.1.5",
+    "smol-toml": "1.6.1",
+    "yaml": "2.9.1"
+  }
+}
