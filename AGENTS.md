@@ -365,6 +365,8 @@ what makes a job running once a decision rather than an omission.
 - `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
 - `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
+- `gate-windows-aarch64` — it is the aggregating job of the sharded `gate (windows-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-aarch64`, whose cells are on that platform's runner.
+- `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
 - `gate-macos` — it carries one required context, `gate (macos-aarch64)`, from Linux: it reads the one `macos` job's result and its gate lane's outcome, so what it judges is that job's macOS run rather than this host, and a second cell would judge the same result twice.
 - `integration-macos` — it carries one required context, `integration (macos-aarch64)`, from Linux: it reads the one `macos` job's result and its integration lane's outcome, so what it judges is that job's macOS run rather than this host, and a second cell would judge the same result twice.
@@ -1039,10 +1041,26 @@ qualify it instead, appending the cell's whole matrix entry — which puts the
 runner in the context beside the platform, so moving a platform to a newer
 runner image would rename a required check and block every pull request until
 somebody edited the protection. Do not unqualify either name: that is a rename,
-and it strands the five contexts the record below names for that job. What
+and it strands the contexts the record below names for that job. What
 matters is that the record spells each context the way the job actually reports
 it, because a context named here that nothing reports blocks every pull request
 forever.
+
+**The two Windows gates are sharded.** A 4-processor Windows runner cannot
+run the whole gate in 1,800 s with its tiers in turn, and running the
+end-to-end and test tiers beside each other there starves Nx's plugin workers.
+So each Windows platform's work runs in the cells of `gate-shard-<platform>`,
+reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
+`just gate-shards <n>` hands it; and `gate-<platform>` reports the required
+context, failing unless every shard in its `needs` succeeded. Three things
+must stay true and `just check-repo`'s `sharded-jobs` holds the workflow to
+them: the shards together run every tier `just check` runs, no Nx task twice
+and no test twice, at the tier `just gate-tier` answers; `coverage` runs beside
+the `test` run it reads, each side of the split judged at its own ecosystem's
+floor; and the aggregator runs `if: always()` and nothing but `just
+shard-verdict` over the workflow's own `needs`.
+`repo_checks.gate_jobs` is the one reading of how long a sharded or unsharded
+context is waited on.
 
 The record names the contexts the committed workflows report, which is not
 always what the live protection requires: a person applies that. A change that

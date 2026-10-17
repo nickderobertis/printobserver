@@ -12,6 +12,8 @@ from typing import Any
 from repo_checks import install_path as ip
 from repo_checks.checks_release import Workflow
 from repo_checks.checks_service import installers
+from repo_checks.checks_shards import is_shard_job, sharded_platforms
+from repo_checks.gate_shards import SHARD_RECIPE
 from repo_checks.model import (
     PolicyValueError,
     Repo,
@@ -68,7 +70,8 @@ def _workflows(repo: Repo) -> dict[str, dict[str, Any]]:
 
 def _matrix_platforms(job: dict[str, Any]) -> list[dict[str, Any]] | None:
     """The `platform` matrix a job declares, if it declares one."""
-    matrix = (job.get("strategy") or {}).get("matrix")
+    strategy = job.get("strategy")
+    matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
     if not isinstance(matrix, dict):
         return None
     entries = matrix.get("platform")
@@ -151,8 +154,10 @@ def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
 
 
 def _runs_check(commands: list[str]) -> bool:
-    """Whether a job runs the gate recipe, at whichever tier it names."""
-    return any(command.split()[:2] == ["just", "check"] for command in commands)
+    """Whether a job runs the gate recipe, or one shard of it, at whichever tier it names."""
+    return any(
+        command.split()[:2] in (["just", "check"], ["just", SHARD_RECIPE]) for command in commands
+    )
 
 
 def _job_kind(
@@ -624,6 +629,7 @@ def platforms(repo: Repo) -> list[str]:
     bring_up = _bring_up_command(repo)
     artifact = artifact_commands(repo)
     routed = route_commands(repo)
+    sharded = sharded_platforms(repo)
     job_names: set[str] = set()
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
@@ -668,11 +674,16 @@ def platforms(repo: Repo) -> list[str]:
                 if "id" not in cell.fields
             )
             ids = [cell.fields["id"] for cell in cells if "id" in cell.fields]
+            # A shard job's cells are one platform's shards, held by the
+            # `sharded-jobs` check; the gate job carries every other platform.
+            shard = is_shard_job(job)
+            carried = ids if shard else [*ids, *sharded.get(file_name, {})]
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}` in more "
                 f"than one cell: the second is a check run repeating the first under the "
                 f"same name"
                 for found in sorted(repeated(ids))
+                if not shard
             )
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, "
@@ -697,7 +708,7 @@ def platforms(repo: Repo) -> list[str]:
                 f"{file_name}: job `{job_name}`'s matrix omits platform `{missing}`, "
                 f"which AGENTS.md's supported-platform list names and no exclusion records"
                 for missing in wanted
-                if missing not in ids and (missing, job_name) not in excluded
+                if not shard and missing not in carried and (missing, job_name) not in excluded
             )
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix runs `{cell.fields['id']}` on "
@@ -1018,54 +1029,57 @@ def continuous_integration(repo: Repo) -> list[str]:
     declared_recipes = set(parse_recipes(repo.justfile))
     findings: list[str] = []
 
-    gate: tuple[str, str, dict[str, Any]] | None = None
+    gates: list[tuple[str, str, dict[str, Any]]] = []
     llmlint: tuple[str, str, dict[str, Any]] | None = None
     install: list[tuple[str, str, dict[str, Any]]] = []
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
             kind = _job_kind(job, path, bring_up, artifact)
             if kind == JobKind.GATE:
-                gate = (file_name, job_name, job)
+                gates.append((file_name, job_name, job))
             elif kind == JobKind.LLMLINT:
                 llmlint = (file_name, job_name, job)
             elif kind == JobKind.INSTALL:
                 install.append((file_name, job_name, job))
 
-    if gate is None:
+    # A shard of a sharded gate is a gate job too, held to every rule below;
+    # the complete gate is the job running `just check` itself.
+    if not any(
+        any(command.split()[:2] == ["just", "check"] for command in run_commands(job))
+        for _, _, job in gates
+    ):
         return [
             "the committed configuration declares no complete-gate job "
             "(a job whose steps run both `just bootstrap` and `just check`)"
         ]
-    gate_commands = run_commands(gate[2])
-    for command in gate_commands:
-        words = command.split()
-        if words[:1] != ["just"] or len(words) < 2:
+    for file_name, job_name, job in gates:
+        gate_commands = run_commands(job)
+        for command in gate_commands:
+            words = command.split()
+            if words[:1] != ["just"] or len(words) < 2:
+                findings.append(
+                    f"{file_name}: the gate job runs `{command}`, which is not one of this "
+                    f"repository's recipes"
+                )
+            elif words[1] not in declared_recipes:
+                findings.append(
+                    f"{file_name}: the gate job runs `just {words[1]}`, which the recipe set "
+                    f"does not declare"
+                )
+        if "just bootstrap" not in gate_commands:
+            findings.append(f"{file_name}: the gate job does not run `just bootstrap`")
+        if (llmlint is not None and llmlint[:2] == (file_name, job_name)) or any(
+            command.startswith("just lint-llm") for command in gate_commands
+        ):
             findings.append(
-                f"{gate[0]}: the gate job runs `{command}`, which is not one of this "
-                f"repository's recipes"
+                f"{file_name}: the judged-lint tier is a step of the gate job `{job_name}` "
+                f"rather than a job of its own"
             )
-        elif words[1] not in declared_recipes:
-            findings.append(
-                f"{gate[0]}: the gate job runs `just {words[1]}`, which the recipe set "
-                f"does not declare"
-            )
-    if "just bootstrap" not in gate_commands:
-        findings.append(f"{gate[0]}: the gate job does not run `just bootstrap`")
 
     if llmlint is None:
         findings.append(
             "the committed configuration declares no judged-lint job "
             "(a job whose steps run `just lint-llm-diff`)"
-        )
-    elif llmlint[1] == gate[1] and llmlint[0] == gate[0]:
-        findings.append(
-            f"{gate[0]}: the judged-lint tier is a step of the gate job `{gate[1]}` "
-            f"rather than a job of its own"
-        )
-    if any(command.startswith("just lint-llm") for command in gate_commands):
-        findings.append(
-            f"{gate[0]}: the judged-lint tier is a step of the gate job `{gate[1]}` "
-            f"rather than a job of its own"
         )
 
     findings.extend(_install_job_findings(repo, path, install))
