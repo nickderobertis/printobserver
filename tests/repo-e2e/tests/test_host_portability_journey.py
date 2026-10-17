@@ -38,6 +38,11 @@ def test_a_checkout_under_windows_line_ending_default_carries_no_carriage_return
     """
     source = copy_tracked(tmp_path / "source")
     _git(["init", "-q", "-b", "main"], source)
+    # Quiescent, as `GateCopy` makes its copies and for the same reason: the
+    # clone below copies `.git/objects` as a directory, and the commit must not
+    # have started a detached repack that is emptying it meanwhile.
+    _git(["config", "maintenance.auto", "false"], source)
+    _git(["config", "gc.auto", "0"], source)
     _git(["add", "-A"], source)
     _git(
         ["-c", "user.name=journey", "-c", "user.email=journey@invalid", "commit", "-q", "-m", "t"],
