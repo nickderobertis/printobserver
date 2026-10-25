@@ -42,6 +42,13 @@ dev = [
     "jsonschema>=4.25",
     "skilltest-pytest>=0.12.0",
     "skilltest-sdk>=0.12.0",
+    # onevcs's own reader of `release-targets.toml`, which `just check-repo`'s
+    # `release-declaration` runs over the committed declaration so that a
+    # consumer waiting on a release here can read it. Held at one release by
+    # this lock, like every other tool this group carries; onevcs publishes no
+    # build for Windows on ARM, so that one platform is marked off and the check
+    # says it read nothing there.
+    "onevcs-cli==0.56.11; sys_platform != 'win32' or (platform_machine != 'ARM64' and platform_machine != 'aarch64')",
 ]
 # zig, as the cross C compiler `just lint`'s Windows-target pass hands cargo on a
 # Unix host. Its own group rather than `dev` so hosts that never run that pass —

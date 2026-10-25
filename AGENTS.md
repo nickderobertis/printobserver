@@ -1199,7 +1199,34 @@ runs after a release publishes is where it is first proven against GitHub.
 `just check-repo`'s `release-gating` and `release-dispatch` hold the workflows
 to both shapes.
 
-`release-targets.toml` declares what this repository publishes.
+**`release-targets.toml` is the producer declaration `onevcs` reads**, in the
+schema onevcs's `docs/contract.md` fixes, and that reader refuses any key the
+schema does not declare. So add no key of this repository's own there: a fact
+only this repository's tooling reads goes in `repo-policy.toml`'s
+`[release.targets]`, keyed by the target's `id`, beside each target's `route`
+and `built_by`. A target's `name` is what consumers and a host's release rules
+call it by — `github-release` above all, which a consumer installing from the
+forge waits on — so renaming one is a change to every consumer naming it.
+
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] The task adding the probe requires the root to say what it answers per registry, its three outcomes and the recipe that runs it; `tools/repo-checks/AGENTS.md` keeps only why. suppressions.toml has the full reason. -->
+**The declaration's `probe` is `tools/repo-checks/src/repo_checks/release-probe.sh`.**
+`onevcs` runs it with one target's `id` as its argument, from the repository
+root with `PATH` and `HOME` alone. Its three outcomes: **released**, one version
+line and exit 0; **no release**, nothing and exit 0; **not answered**, a
+non-zero exit with the reason on stderr. No release is crates.io's null
+`max_stable_version`, a 404 from PyPI or from npm, or github.com redirecting
+`releases/latest` to the bare releases page. Released is that field, PyPI's
+`info.version`, npm's `latest` dist-tag — scoped names included — or the tag
+that redirect names, without its `v`, once that release carries `SHA256SUMS`.
+A server error, an unreadable body, a release still lacking `SHA256SUMS` and an
+`id` no `[[target]]` declares are not answered.
+
+`just probe-registries` runs it over every declared target against the real
+registries and fails on any not answered. `just prove-registry-script` calls
+it, so it runs with the scheduled registry install-path proof, `just
+test-install-proof`, and nowhere in the gate.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
+
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.

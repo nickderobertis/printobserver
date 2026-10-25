@@ -303,7 +303,17 @@ prove-registry-npm:
     @uv run -q python -m release_artifacts prove --registry --target npm:printobserver-cli --into dist/proof/registry-npm
 
 prove-registry-script:
+    @just probe-registries
     @uv run -q python -m release_artifacts prove --registry --target release:printobserver --into dist/proof/registry-script
+
+# Every target `release-targets.toml` declares, asked of its real registry
+# through the committed probe, failing on any it cannot answer for — each must
+# answer a version or no release, never not answered: the reconciliation of the
+# probe's reading of crates.io, PyPI, npm and GitHub against the producers
+# themselves. `prove-registry-script` calls it, so it runs
+# wherever the registry install-path proof runs and nowhere in the gate.
+probe-registries:
+    @uv run -q python -m repo_checks probe-registries
 
 prove-registry-client-rust:
     @uv run -q python -m release_artifacts prove --registry --target crate:printobserver-sdk --into dist/proof/registry-client-rust

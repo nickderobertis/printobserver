@@ -491,11 +491,34 @@ def test_the_declaration_is_read_rather_than_repeated(repo: Repo, tmp_path: Path
     broken = tmp_path / "broken"
     broken.mkdir()
     (broken / "release-targets.toml").write_text(
-        'schema_version = 2\n\n[[target]]\nid = "nameless"\n', encoding="utf-8"
+        'schema_version = 3\n\n[[target]]\nid = "nameless"\n', encoding="utf-8"
     )
 
     with pytest.raises(TargetError, match="<registry>:<name>"):
         targets.declared(broken)
+
+
+def test_a_target_whose_assembling_tool_nothing_records_is_refused(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """A builder reads `built_by` from `[release.targets]`, so a target absent there is refused.
+
+    The declaration is `onevcs`'s schema and carries no `built_by`; a target the
+    policy table says nothing about is one no builder can tell is its own, and
+    building it as somebody else's would publish it twice or not at all.
+    """
+    drifted = tmp_path / "drifted"
+    drifted.mkdir()
+    shutil.copy2(repo.root / "release-targets.toml", drifted / "release-targets.toml")
+    policy = (repo.root / "repo-policy.toml").read_text(encoding="utf-8")
+    recorded = '"pypi:printobserver-sdk" = { built_by = "release-artifacts" }\n'
+    contains(policy, recorded, describing="the committed `[release.targets]`")
+    (drifted / "repo-policy.toml").write_text(policy.replace(recorded, ""), encoding="utf-8")
+
+    with pytest.raises(TargetError, match="records nothing for it") as refused:
+        targets.declared(drifted)
+
+    contains(str(refused.value), "pypi:printobserver-sdk", describing="what it refused")
 
 
 def test_a_workspace_declaring_no_version_is_refused(tmp_path: Path) -> None:
@@ -555,7 +578,7 @@ def test_a_client_carrying_no_marker_is_refused_rather_than_declared_typed(
 ) -> None:
     """The classifier is only a claim the marker it names backs."""
     copy = tmp_path / "unmarked"
-    for name in ("Cargo.toml", "release-targets.toml"):
+    for name in ("Cargo.toml", "release-targets.toml", "repo-policy.toml"):
         (copy / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(repo.path(name), copy / name)
     sources = "python/printobserver-sdk/src"

@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks import release_declaration
 from repo_checks.checks_release import Workflow
 from repo_checks.checks_service import installers
 from repo_checks.checks_shards import is_shard_job, sharded_platforms
@@ -387,8 +388,8 @@ def route_commands(repo: Repo) -> frozenset[str]:
     return frozenset(
         f"just {recipe}"
         for target in _shipped(repo)
-        if str(target.get("route", "")).strip()
-        for recipe in proven.get(str(target.get("id", "")), ())
+        if target.route
+        for recipe in proven.get(target.id, ())
     )
 
 
@@ -1478,17 +1479,15 @@ def workflow_policy(repo: Repo) -> list[str]:
     return findings
 
 
-#: What `release-targets.toml` says of a target release automation assembles
+#: What `[release.targets]` says of a target release automation assembles
 #: rather than publishes straight from the workspace.
 ASSEMBLED = "release-artifacts"
 
 
-def _shipped(repo: Repo) -> list[dict[str, Any]]:
+def _shipped(repo: Repo) -> list[release_declaration.Target]:
     """Every artifact this repository ships beside the crates it publishes."""
     return [
-        target
-        for target in repo.read_toml("release-targets.toml").get("target", [])
-        if str(target.get("built_by", "")).strip() == ASSEMBLED
+        target for target in release_declaration.joined(repo.root) if target.built_by == ASSEMBLED
     ]
 
 
@@ -1571,16 +1570,12 @@ def artifact_jobs(repo: Repo) -> list[str]:
                 if recipe.startswith(PROVE_PREFIX):
                     jobs[recipe] = (file_name, job_name, job)
 
-    routed = {
-        str(target.get("route", "")).strip(): str(target.get("id", ""))
-        for target in _shipped(repo)
-        if str(target.get("route", "")).strip()
-    }
+    routed = {target.route: target.id for target in _shipped(repo) if target.route}
     for target in _shipped(repo):
-        identifier = str(target.get("id", ""))
+        identifier = target.id
         # A route is taken only on the platforms the install path targets, which
         # is the first lever; a cell the exclusions block records is the second.
-        wanted = targeted if str(target.get("route", "")).strip() else everywhere
+        wanted = targeted if target.route else everywhere
         recipes = proven_by.get(identifier, ())
         built_here = [recipe for recipe in recipes if not from_registry(repo, recipe)]
         served = [recipe for recipe in recipes if from_registry(repo, recipe)]

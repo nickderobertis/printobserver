@@ -290,6 +290,30 @@ file = "CLAUDE.md"
 site = "On Windows the service's virtual account"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "**The declaration's `probe` is"
+reason = "The task that added the release probe requires the root `AGENTS.md` to document it: what it answers for each registry, its three outcomes, how it is run and the recipe the scheduled install proof calls to run it against the real registries; a dispatch that kept that account in `tools/repo-checks/AGENTS.md` alone was refused for it. The probe is this repository's producer contract with `onevcs`, read by consumers outside this repository, so the root states what it answers and the nested file keeps only why each rule is drawn where it is."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "**The declaration's `probe` is"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "**The declaration's `probe` is"
+reason = "The task that added the release probe requires the root `AGENTS.md` to state what it answers for each registry, its three outcomes, how it is run and the recipe that runs it against the real registries, and a dispatch that left that to the probe's header and `tools/repo-checks/AGENTS.md` was refused for it. A consumer outside this repository reads that account as this producer's contract with `onevcs`, without reading the script or the justfile, so stating it here is the requirement rather than repetition; the nested file keeps only the rationale, and the probe's journey holds the script to every outcome stated."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "**The declaration's `probe` is"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]
@@ -659,6 +683,18 @@ reason = "The sample is the one source in this repository of what `release-plz r
 
 [[suppression]]
 rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "_stand_in(probe, \"mktemp\""
+reason = "What stands in is the host's `mktemp`, failing, and not the layer under test: the probe is the real committed script, run exactly as onevcs runs it. A real `mktemp` cannot be made to fail for it, because onevcs hands the probe `PATH` and `HOME` alone, so `mktemp` writes under the system temporary directory whatever a test sets, and filling that directory would break every other process on the host. The branch it reaches — a probe with nowhere to read a body into answers nothing — is the refusal a full disk produces, and this is the one way to produce it here."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "_stand_in(probe, \"curl\""
+reason = "What stands in is a broken host `curl`, and not the layer under test: the probe is the real committed script, and every other case drives it through the real `curl` against real HTTP. A real `curl` that exits 0 always writes a three-digit `%{http_code}`, so the refusal of a status that is not one — the probe's guard against a `curl` it cannot trust — is reachable only through a `curl` that does not behave like one, which is what this case puts on `PATH`."
+
+[[suppression]]
+rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "llmlint: ignore[e2e_not_mocked]"
 reason = "What stands in is crates.io, and for the one reason the install proof's `standin.py` stands the package registries in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — a registry carrying no entry for a crate this tree publishes — is one the real registry stops being in the moment the release goes out. Everything else is real: the real `release-plz` program, its real computation, the real copy of the tree, the real tag, and the sparse-index protocol cargo itself speaks to the stand-in over HTTP. The layer under test is the drafting tool over this tree's versions, and it is not what is substituted."
@@ -794,6 +830,12 @@ rule = "live_tier_compiles_and_requires_credential"
 file = ".github/workflows/install-path.yml"
 site = "prove-registry-client-node:"
 reason = "The same tier and the same reason as the jobs above it: the JavaScript registry is read anonymously because that is how an application's own `npm install` reads it."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "def test_a_registry_that_never_answers_is_given_up_on_within_the_bound"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the probe's one request is bounded by curl's own `--max-time 25` with no retry, and the only way to prove a stalled registry is given up on inside that bound is to stall one for it. It holds one xdist worker for that time and nothing else."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -2656,3 +2698,44 @@ file = ".github/lib/graph.mjs"
 site = "export function condition("
 reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
 
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release-probe.sh"
+site = "crate:*)"
+reason = "The contract restated here is crates.io's crate document at `/api/v1/crates/<name>`, 404 for an unknown crate, and `crate.max_stable_version` (null when nothing stable is served). The reconciliation of this restated contract with the producer is `just probe-registries` (`repo_checks.release_probes`): the committed probe, run as onevcs runs it, against the real registry for every declared target, failing on any target that is not answered or answers something other than one version. It runs on the registry install-path proof's schedule and after every release, rather than in the gate, because it reads a public registry over the network, which no tier of the deterministic gate may do; the probe's journey in the gate drives every status and body shape against doubles at the HTTP boundary. A producer that moves its answer makes the probe answer \"not answered\" rather than a wrong version, and a consumer holds on that rather than proceeding."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release-probe.sh"
+site = "pypi:*)"
+reason = "The contract restated here is PyPI's project JSON at `/pypi/<name>/json`, 404 for an unknown project, and `info.version`. The reconciliation of this restated contract with the producer is `just probe-registries` (`repo_checks.release_probes`): the committed probe, run as onevcs runs it, against the real registry for every declared target, failing on any target that is not answered or answers something other than one version. It runs on the registry install-path proof's schedule and after every release, rather than in the gate, because it reads a public registry over the network, which no tier of the deterministic gate may do; the probe's journey in the gate drives every status and body shape against doubles at the HTTP boundary. A producer that moves its answer makes the probe answer \"not answered\" rather than a wrong version, and a consumer holds on that rather than proceeding."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release-probe.sh"
+site = "npm:*)"
+reason = "The contract restated here is npm's `latest` document at `/<name>/latest` with a scoped name as `@scope%2fname`, 404 for an unknown package, and its top-level `version`. The reconciliation of this restated contract with the producer is `just probe-registries` (`repo_checks.release_probes`): the committed probe, run as onevcs runs it, against the real registry for every declared target, failing on any target that is not answered or answers something other than one version. It runs on the registry install-path proof's schedule and after every release, rather than in the gate, because it reads a public registry over the network, which no tier of the deterministic gate may do; the probe's journey in the gate drives every status and body shape against doubles at the HTTP boundary. A producer that moves its answer makes the probe answer \"not answered\" rather than a wrong version, and a consumer holds on that rather than proceeding."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release-probe.sh"
+site = "release:*)"
+reason = "The contract restated here is github.com's redirect of `releases/latest` to `releases/tag/v<version>`, or to the bare releases page when nothing is released, and the release download of `SHA256SUMS` answering a redirect when that asset is there and 404 when it is not. The REST API is deliberately not read: a held probe is polled every sixty seconds, and the unauthenticated REST limit is sixty an hour for the whole host. The reconciliation of this restated contract with the producer is `just probe-registries` (`repo_checks.release_probes`): the committed probe, run as onevcs runs it, against the real registry for every declared target, failing on any target that is not answered or answers something other than one version. It runs on the registry install-path proof's schedule and after every release, rather than in the gate, because it reads a public registry over the network, which no tier of the deterministic gate may do; the probe's journey in the gate drives every status and body shape against doubles at the HTTP boundary. A producer that moves its answer makes the probe answer \"not answered\" rather than a wrong version, and a consumer holds on that rather than proceeding."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "def test_the_probe_reads_the_release_the_install_script_installs_from"
+reason = "This test is a drift gate between two committed scripts, not a behavioural test of either: it holds the forge account and checksum file the probe waits on to the ones `scripts/install.sh` installs from, and the declared release target to that script's repository. No invocation of either script can show that two constants in two files agree, because the probe's journey runs it against an HTTP double whose owner and asset name the test itself chooses. Every behavioural answer of the probe, the GitHub Release's included, is driven through the committed script elsewhere in this module."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release_probes.py"
+site = "#: How long one run of the probe is given"
+reason = "This restates onevcs's probe contract (docs/contract.md, \"What a probe prints\"): a probe is given sixty seconds to answer. It cannot be reconciled by running the probe through onevcs instead, because onevcs runs a declared probe only for a repository registered with its host (`onevcs release discover` refuses an unregistered path), and the scheduled install proof that calls `just probe-registries` runs on a hosted runner with no onevcs host state. The pinned onevcs reader in `just check-repo`'s `release-declaration` reconciles the declaration itself; the bound and environment here only make this reconciliation ask the probe no more generously than onevcs would, so a drift would make it stricter or looser than a consumer's engine, never let a wrong answer through to a consumer."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release_probes.py"
+site = "def _environment() -> dict[str, str]:"
+reason = "This restates onevcs's probe contract (docs/contract.md, \"What a probe prints\"): a probe is spawned with `PATH` and `HOME` alone and no credential. It cannot be reconciled by running the probe through onevcs instead, because onevcs runs a declared probe only for a repository registered with its host (`onevcs release discover` refuses an unregistered path), and the scheduled install proof that calls `just probe-registries` runs on a hosted runner with no onevcs host state. The pinned onevcs reader in `just check-repo`'s `release-declaration` reconciles the declaration itself; the bound and environment here only make this reconciliation ask the probe no more generously than onevcs would, so a drift would make it stricter or looser than a consumer's engine, never let a wrong answer through to a consumer."

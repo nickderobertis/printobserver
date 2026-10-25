@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import re
+import sys
+import sysconfig
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from repo_checks import install_path as ip
+from repo_checks import release_declaration
 from repo_checks.model import (
     UNCOMMITTED_DIRECTORIES,
     PolicyValueError,
@@ -17,6 +21,7 @@ from repo_checks.model import (
     toolchain_tools,
 )
 from repo_checks.parsing import jobs_of, load_workflow, programs_in, run_commands, steps_of
+from repo_checks.shell import run
 
 MANIFEST_NAMES = ("Cargo.toml", "pyproject.toml", "package.json")
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
@@ -84,13 +89,12 @@ REGISTRIES = ("crate", "pypi", "npm", "release")
 
 def release_targets(repo: Repo) -> list[str]:
     """The declaration covers every publishable crate and every end-user route."""
-    declaration = repo.read_toml("release-targets.toml")
-    targets = declaration.get("target", [])
-    findings: list[str] = []
+    targets = release_declaration.joined(repo.root)
+    findings: list[str] = release_declaration.drift(repo.root)
 
     declared_crates: set[str] = set()
     for target in targets:
-        identifier = str(target.get("id", ""))
+        identifier = target.id
         registry, _, name = identifier.partition(":")
         if registry not in REGISTRIES:
             findings.append(
@@ -100,14 +104,14 @@ def release_targets(repo: Repo) -> list[str]:
             )
             continue
         if registry != "crate":
-            if not str(target.get("description", "")).strip():
+            if not target.what:
                 findings.append(
-                    f"release-targets.toml declares `{identifier}` with no description, "
-                    f"so its own registry would show none"
+                    f"release-targets.toml declares `{identifier}` with no description "
+                    f"(`what`), so its own registry would show none"
                 )
             continue
         declared_crates.add(name)
-        manifest = target.get("manifest", "")
+        manifest = target.manifest
         if not repo.exists(manifest):
             findings.append(f"release-targets.toml points `{identifier}` at a missing {manifest}")
 
@@ -141,7 +145,146 @@ def release_targets(repo: Repo) -> list[str]:
     return findings
 
 
-def _route_findings(repo: Repo, targets: list[dict[str, Any]]) -> list[str]:
+#: The distribution `uv.lock` holds onevcs's declaration reader at.
+ONEVCS_DISTRIBUTION = "onevcs-cli"
+
+
+class Locked(NamedTuple):
+    """One distribution as `uv.lock` holds it."""
+
+    version: str
+    #: The URL of every wheel the lock records for that release.
+    wheels: tuple[str, ...]
+
+
+def _locked_onevcs(repo: Repo) -> Locked:
+    """The release `uv.lock` holds onevcs at, or an empty version where it holds none."""
+    lock = repo.read_toml("uv.lock")
+    for package in lock.get("package", []):
+        if isinstance(package, dict) and package.get("name") == ONEVCS_DISTRIBUTION:
+            wheels = tuple(
+                str(wheel.get("url", ""))
+                for wheel in package.get("wheels", [])
+                if isinstance(wheel, dict)
+            )
+            return Locked(str(package.get("version", "")), wheels)
+    return Locked("", ())
+
+
+def _locked_for_this_host(repo: Repo, wheels: tuple[str, ...]) -> bool:
+    """Whether one of the locked wheels is this host's platform's build."""
+    from repo_checks.platforms import host
+
+    naming = host(repo).naming
+    return any(
+        tag.startswith(naming.wheel_family) and tag.endswith(f"_{naming.wheel_machine}")
+        for url in wheels
+        for tag in Path(url).stem.rsplit("-", 1)[-1].split(".")
+    )
+
+
+def onevcs_builds_for_this_host(repo: Repo) -> bool:
+    """Whether the onevcs release `uv.lock` holds publishes a build for this host's platform."""
+    return _locked_for_this_host(repo, _locked_onevcs(repo).wheels)
+
+
+def _listed(answer: str) -> list[str] | None:
+    """The target ids a `release declaration --json` answer lists, or `None` if it is not one.
+
+    The answer is another program's output, so its shape is checked rather than
+    assumed: an object whose `target` is a list of objects each carrying a
+    string `id`.
+    """
+    try:
+        read = json.loads(answer)
+    except json.JSONDecodeError:
+        return None
+    targets = read.get("target") if isinstance(read, dict) else None
+    if not isinstance(targets, list):
+        return None
+    ids = [target.get("id") if isinstance(target, dict) else None for target in targets]
+    if not all(isinstance(identifier, str) for identifier in ids):
+        return None
+    return [str(identifier) for identifier in ids]
+
+
+def release_declaration_readable(repo: Repo) -> list[str]:
+    """The reader `onevcs` ships reads `release-targets.toml` with no refusal.
+
+    That file is the producer declaration a consumer waiting on a release here
+    reads, through `onevcs release declaration`, and that reader refuses a key
+    its schema does not declare and a target missing a field it requires. So
+    the reader itself is what this runs — the one `uv.lock` holds, from this
+    interpreter's own environment rather than whichever `onevcs` is first on
+    PATH — rather than a second copy of its schema written here.
+
+    onevcs publishes no build for some platform this repository supports
+    (Windows on ARM, today), and the lock marks that platform off. On a host
+    whose platform the locked release has no wheel for, this reads nothing and
+    reports nothing; every other platform's gate runs it.
+    """
+    version, wheels = _locked_onevcs(repo)
+    if not version:
+        return [
+            f"uv.lock holds no `{ONEVCS_DISTRIBUTION}`, so nothing can run onevcs's reader "
+            f"over release-targets.toml: add it to pyproject.toml's dev group"
+        ]
+    reader = Path(sysconfig.get_path("scripts")) / (
+        "onevcs.exe" if sys.platform == "win32" else "onevcs"
+    )
+    if not reader.is_file():
+        if not _locked_for_this_host(repo, wheels):
+            return []
+        return [
+            f"onevcs {version}, which uv.lock holds, is not installed in this environment at "
+            f"{reader}: run `uv sync`"
+        ]
+    said = run(
+        [str(reader), "release", "declaration", str(repo.root), "--json"],
+        cwd=repo.root,
+        timeout=60,
+    )
+    declared = [target.id for target in release_declaration.joined(repo.root)]
+    return read_by_onevcs(
+        Answer(version, said.returncode, said.stdout or "", said.stderr or ""), declared
+    )
+
+
+class Answer(NamedTuple):
+    """What one run of onevcs's declaration reader left, and the release that ran."""
+
+    version: str
+    code: int
+    stdout: str
+    stderr: str
+
+
+def read_by_onevcs(answer: Answer, declared: Sequence[str]) -> list[str]:
+    """What onevcs's reading of the declaration says is wrong, beside the ids `declared`.
+
+    Judging the answer is apart from running the reader so that every gate leg
+    holds the judgement, the one whose platform onevcs publishes no build for
+    included.
+    """
+    version = answer.version
+    if answer.code != 0:
+        refusal = " ".join((answer.stderr or answer.stdout).split())
+        return [f"onevcs {version} refuses release-targets.toml: {refusal}"]
+    listed = _listed(answer.stdout)
+    if listed is None:
+        return [
+            f"onevcs {version} answered release-targets.toml with no reading of its targets "
+            f"this check can compare: {answer.stdout[:200]!r}"
+        ]
+    if listed != list(declared):
+        return [
+            f"onevcs {version} reads release-targets.toml as declaring {', '.join(listed)}, "
+            f"and this repository's own reader as {', '.join(declared)}"
+        ]
+    return []
+
+
+def _route_findings(repo: Repo, targets: list[release_declaration.Target]) -> list[str]:
     """Every route the install path names has a target, under that route's own name.
 
     `AGENTS.md`'s "The end-user install path" is the authoritative source of
@@ -153,9 +296,8 @@ def _route_findings(repo: Repo, targets: list[dict[str, Any]]) -> list[str]:
     findings: list[str] = []
     backing: dict[str, list[str]] = {}
     for target in targets:
-        route = str(target.get("route", "")).strip()
-        if route:
-            backing.setdefault(route, []).append(str(target.get("id", "")))
+        if target.route:
+            backing.setdefault(target.route, []).append(target.id)
 
     stated = {route.heading for route in path.routes}
     findings.extend(
@@ -532,7 +674,7 @@ def _coverage_findings(repo: Repo) -> list[str]:
                 publishing.append(f"{path.name}: `{job_name}`")
 
     findings: list[str] = []
-    declared = repo.read_toml("release-targets.toml").get("target", [])
+    declared = release_declaration.joined(repo.root)
     if not publishing:
         findings.append(
             f"no committed step publishes anything: release automation runs neither "
@@ -579,11 +721,7 @@ def _coverage_findings(repo: Repo) -> list[str]:
     )
 
     path = ip.parse(repo.agents_md)
-    routed = {
-        str(target.get("route", "")).strip()
-        for target in declared
-        if str(target.get("route", "")).strip()
-    }
+    routed = {target.route for target in declared if target.route}
     findings.extend(
         f"AGENTS.md's `{ip.SECTION_HEADING}` names route `{route.heading}`, for which "
         f"release automation declares no build at all"

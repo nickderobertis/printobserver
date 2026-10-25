@@ -5,25 +5,32 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+from collections.abc import Callable, Sequence
 
 import pytest
 from closures import closure
 from repo_checks.checks_release import (
+    Answer,
     _publishable_crates,
+    onevcs_builds_for_this_host,
+    read_by_onevcs,
     release_automation,
+    release_declaration_readable,
     release_dispatch,
     release_gating,
     release_targets,
     release_tracking,
 )
-from repo_checks.expect import accepted, contains, equal, refused
+from repo_checks.expect import accepted, contains, equal, refused, refused_naming
 from repo_checks.model import Repo
-from treecopy import Tree
+from repo_checks.release_declaration import drift, joined
+from treecopy import REPO_ROOT, Tree
 
 #: The files the checks this module drives read; see `closures`.
 CLOSURE = closure(
     "release-automation",
+    "release-declaration",
     "release-dispatch",
     "release-gating",
     "release-targets",
@@ -32,6 +39,24 @@ CLOSURE = closure(
 
 RELEASE = ".github/workflows/release-plz.yml"
 TARGETS = "release-targets.toml"
+POLICY = "repo-policy.toml"
+#: The table `[release.targets]` opens with, which a recorded fact is added under.
+FACTS = "[release.targets]\n"
+
+
+def _without_target(declaration: str, identifier: str) -> str:
+    """The declaration with the one `[[target]]` table declaring `identifier` removed."""
+    head, *tables = declaration.split("[[target]]\n")
+    kept = [table for table in tables if f'id = "{identifier}"\n' not in table]
+    if len(kept) != len(tables) - 1:
+        msg = f"{TARGETS} declares no single `{identifier}`; the fixture is stale"
+        raise AssertionError(msg)
+    return "[[target]]\n".join([head, *kept])
+
+
+def _record(tree: Tree, line: str) -> None:
+    """Add one entry to `repo-policy.toml`'s `[release.targets]`."""
+    tree.edit(POLICY, FACTS, f"{FACTS}{line}\n")
 
 
 def test_the_committed_declaration_is_accepted(committed: Repo) -> None:
@@ -49,12 +74,8 @@ def test_a_declaration_omitting_a_publishable_crate_is_refused(
 ) -> None:
     """A crate nobody declared is a crate consumers cannot name."""
     broken = tree()
-    broken.edit(
-        TARGETS,
-        '[[target]]\nid = "crate:printobserver-obico"\n'
-        'manifest = "crates/printobserver-obico/Cargo.toml"\n',
-        "",
-    )
+    broken.write(TARGETS, _without_target(broken.read(TARGETS), "crate:printobserver-obico"))
+    broken.edit(POLICY, '"crate:printobserver-obico" = { built_by = "release-plz" }\n', "")
 
     findings = release_targets(broken.repo)
 
@@ -71,6 +92,7 @@ def test_a_declaration_naming_an_unbacked_target_is_refused(
         broken.read(TARGETS) + '\n[[target]]\nid = "crate:printobserver-ghost"\n'
         'manifest = "crates/printobserver-types/Cargo.toml"\n',
     )
+    _record(broken, '"crate:printobserver-ghost" = { built_by = "release-plz" }')
 
     findings = release_targets(broken.repo)
 
@@ -85,12 +107,265 @@ def test_a_target_of_a_registry_nothing_publishes_to_is_refused(
     broken.write(
         TARGETS,
         broken.read(TARGETS)
-        + '\n[[target]]\nid = "conda:printobserver"\ndescription = "Somewhere else."\n',
+        + '\n[[target]]\nid = "conda:printobserver"\nwhat = "Somewhere else."\n',
     )
+    _record(broken, '"conda:printobserver" = { built_by = "release-artifacts" }')
 
     findings = release_targets(broken.repo)
 
     refused(findings, "conda")
+
+
+def test_a_non_crate_target_with_no_description_is_refused(tree: Callable[[], Tree]) -> None:
+    """A wheel or package built with no `what` is one its registry describes as nothing."""
+    broken = tree()
+    broken.edit(
+        TARGETS,
+        'what = "Typed Python client for the printobserver server\'s HTTP surface."',
+        'what = ""',
+    )
+
+    refused_naming(release_targets(broken.repo), "pypi:printobserver-sdk", "no description")
+
+
+def test_a_route_the_install_path_does_not_state_is_refused(tree: Callable[[], Tree]) -> None:
+    """A route recorded under a heading AGENTS.md never gives is a route to nowhere."""
+    broken = tree()
+    broken.edit(POLICY, "Route 2 — the JavaScript package registry", "Route 2 — a registry")
+
+    findings = release_targets(broken.repo)
+
+    refused_naming(findings, "Route 2 — a registry", "does not state")
+    refused_naming(findings, "Route 2 — the JavaScript package registry", "declares no target")
+
+
+def test_a_route_backed_by_two_targets_is_refused(tree: Callable[[], Tree]) -> None:
+    """A route is one artifact, so a second target behind it is an ambiguity."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"pypi:printobserver-sdk" = { built_by = "release-artifacts" }',
+        '"pypi:printobserver-sdk" = { built_by = "release-artifacts", '
+        'route = "Route 1 — the Python package registry" }',
+    )
+
+    refused_naming(release_targets(broken.repo), "backed by 2 targets", "a route is one artifact")
+
+
+def test_a_declared_target_with_no_recorded_facts_is_refused(tree: Callable[[], Tree]) -> None:
+    """A target nothing says which tool assembles is one no builder knows is its own."""
+    broken = tree()
+    broken.edit(POLICY, '"npm:@printobserver/sdk" = { built_by = "release-artifacts" }\n', "")
+
+    refused_naming(release_targets(broken.repo), "npm:@printobserver/sdk", "records nothing")
+
+
+def test_recorded_facts_about_an_undeclared_target_are_refused(tree: Callable[[], Tree]) -> None:
+    """A fact about an artifact the declaration does not name has drifted from it."""
+    broken = tree()
+    broken.write(TARGETS, _without_target(broken.read(TARGETS), "npm:@printobserver/sdk"))
+
+    refused_naming(release_targets(broken.repo), "npm:@printobserver/sdk", "does not declare")
+
+
+def test_recorded_facts_naming_no_assembling_tool_are_refused(tree: Callable[[], Tree]) -> None:
+    """An entry with no `built_by` says nothing about who builds the target."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"crate:printobserver-core" = { built_by = "release-plz" }',
+        '"crate:printobserver-core" = {}',
+    )
+
+    refused_naming(release_targets(broken.repo), "crate:printobserver-core", "no `built_by`")
+
+
+@pytest.mark.parametrize(
+    ("fact", "naming"),
+    [
+        ('{ built_by = "cargo" }', "no `built_by`, or one naming no tool"),
+        ('{ built_by = "release-artifacts", route = 3 }', "a `route` that is not a route"),
+        ('{ built_by = "release-artifacts", routes = "Route 1" }', "the key `routes`"),
+    ],
+    ids=["unknown-tool", "route-not-text", "unknown-key"],
+)
+def test_a_malformed_recorded_fact_is_refused(
+    tree: Callable[[], Tree], fact: str, naming: str
+) -> None:
+    """A fact a reader would silently read as absent is a finding rather than a blank."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"pypi:printobserver-sdk" = { built_by = "release-artifacts" }',
+        f'"pypi:printobserver-sdk" = {fact}',
+    )
+
+    refused_naming(release_targets(broken.repo), "pypi:printobserver-sdk", naming)
+
+
+def test_a_declaration_whose_targets_are_not_tables_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A target list the reader would narrow to nothing is a finding, not an empty list."""
+    broken = tree()
+    broken.write(TARGETS, 'schema_version = 3\ntarget = ["crate:printobserver"]\n')
+
+    refused_naming(release_targets(broken.repo), "[[target]] 1", "is not a table")
+
+
+def test_a_recorded_fact_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """A fact given as a bare string would be dropped, and the target read as unrecorded."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"crate:printobserver-core" = { built_by = "release-plz" }',
+        '"crate:printobserver-core" = "release-plz"',
+    )
+
+    refused_naming(release_targets(broken.repo), "crate:printobserver-core", "not a table")
+
+
+def test_a_declaration_whose_target_is_one_value_is_refused(tree: Callable[[], Tree]) -> None:
+    """`target` given as a string rather than an array of tables declares no target at all."""
+    broken = tree()
+    broken.write(TARGETS, 'schema_version = 3\ntarget = "crate:printobserver"\n')
+
+    refused(release_targets(broken.repo), "declares no `[[target]]` table")
+
+
+def test_a_facts_table_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """`[release.targets]` as one value records no target's facts, and says so once."""
+    broken = tree()
+    head, _, rest = broken.read(POLICY).partition(FACTS)
+    _, _, after = rest.partition("\n[")
+    broken.write(POLICY, f'{head}targets = "every target"\n\n[{after}')
+
+    refused(release_targets(broken.repo), "`[release.targets]` is not a table")
+
+
+def test_a_tree_with_no_policy_reports_every_declared_target_unrecorded(
+    tree: Callable[[], Tree],
+) -> None:
+    """With nowhere the moved facts could be, each declared target is reported by its id."""
+    broken = tree()
+    broken.remove(POLICY)
+
+    findings = drift(broken.root)
+
+    for target in joined(broken.root):
+        refused_naming(findings, f"`{target.id}`", "records nothing for it")
+
+
+#: Where onevcs publishes no build (Windows on ARM, today) its reader is not
+#: installed and the check reads nothing, so a refusal is proven on every other leg.
+ONEVCS_RUNS_HERE = pytest.mark.skipif(
+    not onevcs_builds_for_this_host(Repo(REPO_ROOT)),
+    reason="the locked onevcs publishes no build for this host's platform",
+)
+
+
+@ONEVCS_RUNS_HERE
+def test_onevcs_reads_the_committed_declaration(committed: Repo) -> None:
+    """The reader a consumer waiting on a release runs reads this file with no refusal."""
+    accepted(release_declaration_readable(committed))
+
+
+def test_a_lock_holding_no_onevcs_is_refused(tree: Callable[[], Tree]) -> None:
+    """Without the reader held at a release, nothing in the gate reads the file as onevcs does."""
+    broken = tree()
+    broken.write("uv.lock", broken.read("uv.lock").replace('name = "onevcs-cli"', 'name = "x"'))
+
+    refused_naming(release_declaration_readable(broken.repo), "holds no `onevcs-cli`")
+
+
+@ONEVCS_RUNS_HERE
+def test_a_declaration_carrying_a_key_onevcs_refuses_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A key the producer schema does not declare is one onevcs refuses the whole file for."""
+    broken = tree()
+    broken.edit(
+        TARGETS,
+        'name = "pypi-cli"\n',
+        'name = "pypi-cli"\nroute = "Route 1 — the Python package registry"\n',
+    )
+
+    refused_naming(
+        release_declaration_readable(broken.repo), "refuses release-targets.toml", '"route"'
+    )
+
+
+@ONEVCS_RUNS_HERE
+def test_a_declaration_with_a_target_missing_its_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Every target needs the short name a consumer's plan calls it by."""
+    broken = tree()
+    broken.edit(TARGETS, 'name = "github-release"\n', "")
+
+    refused_naming(
+        release_declaration_readable(broken.repo),
+        "refuses release-targets.toml",
+        "missing field `name`",
+    )
+
+
+@pytest.mark.skipif(
+    onevcs_builds_for_this_host(Repo(REPO_ROOT)),
+    reason="the locked onevcs publishes a build for this host's platform",
+)
+def test_a_host_onevcs_publishes_no_build_for_reads_nothing(tree: Callable[[], Tree]) -> None:
+    """With no reader to run here, the check says nothing rather than refusing every tree."""
+    broken = tree()
+    broken.edit(TARGETS, 'name = "github-release"\n', "")
+
+    accepted(release_declaration_readable(broken.repo))
+
+
+#: The ids the committed declaration declares, in order, as this repository reads them.
+DECLARED = [target.id for target in joined(REPO_ROOT)]
+
+
+def _reading(ids: Sequence[str]) -> str:
+    """A `release declaration --json` answer listing `ids`, in the shape onevcs prints."""
+    return json.dumps({"schema_version": 3, "target": [{"id": each} for each in ids]})
+
+
+def test_onevcs_listing_the_declared_targets_is_accepted() -> None:
+    """Every leg holds the judgement, the one onevcs ships no reader for included."""
+    accepted(read_by_onevcs(Answer("0.9.0", 0, _reading(DECLARED), ""), DECLARED))
+
+
+def test_onevcs_refusing_the_declaration_is_refused_in_its_own_words() -> None:
+    """A reader that exits non-zero refused the file, and the finding carries why."""
+    refusal = "error: release-targets.toml: unknown field `route`\n  at target 13"
+
+    refused_naming(
+        read_by_onevcs(Answer("0.9.0", 2, "", refusal), DECLARED),
+        "onevcs 0.9.0 refuses release-targets.toml",
+        "unknown field `route` at target 13",
+    )
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["not json", "[]", json.dumps({"target": {}}), json.dumps({"target": [{"name": "crate"}]})],
+    ids=["text", "list", "table", "no-id"],
+)
+def test_an_answer_naming_no_target_ids_is_refused(answer: str) -> None:
+    """Another program's output is read by its shape, and one with no ids reads as nothing."""
+    refused(read_by_onevcs(Answer("0.9.0", 0, answer, ""), DECLARED), "no reading of its targets")
+
+
+def test_onevcs_reading_other_targets_than_this_repository_is_refused() -> None:
+    """The two readers of one file disagreeing on what it declares is drift between them."""
+    read = DECLARED[:-1]
+
+    refused_naming(
+        read_by_onevcs(Answer("0.9.0", 0, _reading(read), ""), DECLARED),
+        "reads release-targets.toml as declaring",
+        f"this repository's own reader as {', '.join(DECLARED)}",
+    )
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(

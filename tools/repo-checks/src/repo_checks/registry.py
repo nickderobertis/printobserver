@@ -95,6 +95,7 @@ CHECKS: dict[str, Check] = {
     "response-shapes": checks_clients.response_shapes,
     "journey-completeness": checks_journeys.journey_completeness,
     "release-targets": checks_release.release_targets,
+    "release-declaration": checks_release.release_declaration_readable,
     "release-automation": checks_release.release_automation,
     "release-gating": checks_release.release_gating,
     "release-dispatch": checks_release.release_dispatch,
