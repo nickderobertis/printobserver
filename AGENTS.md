@@ -1207,9 +1207,36 @@ only this repository's tooling reads goes in `repo-policy.toml`'s
 and `built_by`. A target's `name` is what consumers and a host's release rules
 call it by — `github-release` above all, which a consumer installing from the
 forge waits on — so renaming one is a change to every consumer naming it.
-The declaration's `probe`, and its reconciliation against the real registries,
-are `tools/repo-checks`' own, and `tools/repo-checks/AGENTS.md` holds the rules
-both are written to.
+
+**The declaration's `probe` is `tools/repo-checks/src/repo_checks/release-probe.sh`.**
+`onevcs` runs it with one target's `id` as its one argument, as a direct
+subprocess from the repository root with `PATH` and `HOME` alone and no
+credential, and reads one of three outcomes: **released** is one version line
+and exit 0, **no release** is nothing and exit 0, and **not answered** is a
+non-zero exit with the reason on stderr. What it reads per registry:
+
+- crates.io, for a `crate:` target: the crate's `max_stable_version`, null
+  being no release.
+- PyPI, for a `pypi:` target: the project's `info.version`, a 404 being no
+  release.
+- npm, for an `npm:` target, scoped names included: the `latest` dist-tag, a
+  404 being no release.
+- The GitHub Release, for `release:printobserver`: where
+  `https://github.com/nickderobertis/printobserver/releases/latest` redirects,
+  never the REST API. A tag is answered without its `v`, the bare releases page
+  is no release, and a release not yet carrying `SHA256SUMS` is not answered.
+
+A server error, a body it cannot read, and an `id` no `[[target]]` declares are
+not answered on every registry.
+`tests/repo-e2e/tests/test_release_probe_journey.py` drives the committed
+script against those registries doubled at their HTTP boundary. `just
+probe-registries` runs it over every declared target against the real
+registries and fails on any target not answered; `just prove-registry-script`
+calls it, so it runs wherever the registry install-path proof runs — `just
+test-install-proof` and its schedule — and nowhere in the gate. A proof pointed
+at stand-in registries by `PRINTOBSERVER_PROOF_REGISTRIES` asks the real ones
+nothing. Why each of those rules is drawn where it is is
+`tools/repo-checks/AGENTS.md`'s.
 
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
