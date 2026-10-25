@@ -455,6 +455,20 @@ def test_a_crate_document_with_no_version_list_is_refused(
     contains(str(refused.value), "with a `versions` list in it", describing="what it said")
 
 
+def _policy(repo: Repo, tree: Path, fact: str, without: str = "") -> None:
+    """`repo-policy.toml` in `tree`, with one `[release.targets]` entry added or removed.
+
+    That table is where a target's route and the tool assembling it are
+    recorded, so a tree whose declaration gains or loses a target carries the
+    matching entry rather than one the declaration disagrees with.
+    """
+    policy = (repo.root / "repo-policy.toml").read_text(encoding="utf-8")
+    policy = policy.replace("[release.targets]\n", f"[release.targets]\n{fact}", 1)
+    if without:
+        policy = policy.replace(without, "", 1)
+    (tree / "repo-policy.toml").write_text(policy, encoding="utf-8")
+
+
 def test_the_clients_taken_are_exactly_the_clients_declared(repo: Repo) -> None:
     """The committed tree's own two copies agree."""
     equal(
@@ -475,9 +489,10 @@ def test_a_client_declared_that_nothing_here_takes_is_refused(repo: Repo, tmp_pa
     declaration = (repo.root / "release-targets.toml").read_text(encoding="utf-8")
     (tree / "release-targets.toml").write_text(
         declaration + '\n[[target]]\nid = "gem:printobserver-sdk"\n'
-        'description = "A fourth client."\nbuilt_by = "release-artifacts"\n',
+        'name = "gem-sdk"\nwhat = "A fourth client."\n',
         encoding="utf-8",
     )
+    _policy(repo, tree, '"gem:printobserver-sdk" = { built_by = "release-artifacts" }\n')
 
     with pytest.raises(RegistryError) as refused:
         clients(Repo(tree))
@@ -495,6 +510,9 @@ def test_a_client_taken_here_that_nothing_declares_is_refused(repo: Repo, tmp_pa
     end = declaration.index("[[target]]", start + 1)
     (tree / "release-targets.toml").write_text(
         declaration[:start] + declaration[end:], encoding="utf-8"
+    )
+    _policy(
+        repo, tree, "", without='"npm:@printobserver/sdk" = { built_by = "release-artifacts" }\n'
     )
 
     with pytest.raises(RegistryError) as refused:

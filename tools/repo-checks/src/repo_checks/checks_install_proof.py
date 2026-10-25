@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks import release_declaration
 from repo_checks.checks_ci import proving
 from repo_checks.checks_obico import SCHEDULE_PREFIX, SCHEDULE_SHAPE, crons_of, triggers_of
 from repo_checks.model import Repo
@@ -201,9 +202,7 @@ def _proof_recipes(repo: Repo, policy: Declared) -> dict[str, str]:
 def _routed(repo: Repo) -> dict[str, str]:
     """The target behind each route the install-path section states."""
     return {
-        str(target.get("route", "")).strip(): str(target.get("id", ""))
-        for target in repo.read_toml("release-targets.toml").get("target", [])
-        if str(target.get("route", "")).strip()
+        target.route: target.id for target in release_declaration.joined(repo.root) if target.route
     }
 
 
@@ -211,11 +210,7 @@ def _clients(repo: Repo) -> list[str]:
     """Every client `release-targets.toml` declares: assembled here, backing no route."""
     from repo_checks.checks_ci import _shipped
 
-    return [
-        str(target.get("id", ""))
-        for target in _shipped(repo)
-        if not str(target.get("route", "")).strip()
-    ]
+    return [target.id for target in _shipped(repo) if not target.route]
 
 
 def _invocations(body: tuple[str, ...]) -> set[str]:

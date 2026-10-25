@@ -1,8 +1,10 @@
 """What this repository publishes, read from its own release declaration.
 
-`release-targets.toml` is the one place a target is named. Nothing here
-restates a name, a registry or a route: a builder that carried its own list
-would be a second answer to the question that file exists to answer.
+`release-targets.toml` is the one place a target is named, and
+`repo-policy.toml`'s `[release.targets]` the one place its route and the tool
+assembling it are; `repo_checks.release_declaration` joins the two. Nothing
+here restates a name, a registry or a route: a builder that carried its own
+list would be a second answer to the question those files exist to answer.
 """
 
 from __future__ import annotations
@@ -11,8 +13,10 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from repo_checks import release_declaration
+
 #: The file the declaration lives in.
-DECLARATION = "release-targets.toml"
+DECLARATION = release_declaration.DECLARATION
 
 
 class TargetError(ValueError):
@@ -25,7 +29,8 @@ class Target:
 
     #: `<registry>:<name>`, where the name is exactly what that registry serves.
     id: str
-    #: What it is, in one line, as its own registry shows it.
+    #: What it is, in one line, as its own registry shows it: the declaration's
+    #: `what`.
     description: str
     #: The heading of the install-path route it backs, for a target that backs
     #: one. Empty for a client library, which is a dependency rather than a
@@ -53,13 +58,13 @@ def declared(root: Path) -> list[Target]:
 
     Raises:
         TargetError: If a declared target carries no identifier of the form
-            every consumer reads.
+            every consumer reads, or the declaration and `[release.targets]`
+            disagree about which targets there are — a target nothing says
+            which tool assembles is one no builder can tell is its own.
     """
-    with (root / DECLARATION).open("rb") as handle:
-        declaration = tomllib.load(handle)
     targets: list[Target] = []
-    for entry in declaration.get("target", []):
-        identifier = str(entry.get("id", ""))
+    for entry in release_declaration.joined(root):
+        identifier = entry.id
         if ":" not in identifier:
             msg = (
                 f"{DECLARATION} declares `{identifier or 'a nameless target'}`, which is "
@@ -69,12 +74,15 @@ def declared(root: Path) -> list[Target]:
         targets.append(
             Target(
                 id=identifier,
-                description=str(entry.get("description", "")).strip(),
-                route=str(entry.get("route", "")).strip(),
-                manifest=str(entry.get("manifest", "")).strip(),
-                built_by=str(entry.get("built_by", "release-plz")).strip(),
+                description=entry.what,
+                route=entry.route,
+                manifest=entry.manifest,
+                built_by=entry.built_by,
             )
         )
+    drift = release_declaration.drift(root)
+    if drift:
+        raise TargetError("; ".join(drift))
     return targets
 
 

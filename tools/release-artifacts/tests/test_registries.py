@@ -522,11 +522,20 @@ def test_nothing_here_asks_a_registry_no_artifact_is_taken_from(repo: Repo) -> N
     contains(str(refused.value), "knows how to ask", describing="what it said")
 
 
-def _declaring(root: Path, tree: Path, extra: str = "") -> Repo:
-    """A tree whose `release-targets.toml` is this one's, plus whatever a case adds."""
+def _declaring(root: Path, tree: Path, extra: str = "", facts: str = "") -> Repo:
+    """A tree whose declaration and `[release.targets]` are this one's, plus a case's own.
+
+    `extra` is appended to `release-targets.toml`, and `facts` is one entry
+    added to `repo-policy.toml`'s `[release.targets]`, which is where a target's
+    route and the tool assembling it are recorded.
+    """
     tree.mkdir(parents=True, exist_ok=True)
     declaration = (root / "release-targets.toml").read_text(encoding="utf-8")
     (tree / "release-targets.toml").write_text(declaration + extra, encoding="utf-8")
+    policy = (root / "repo-policy.toml").read_text(encoding="utf-8")
+    if facts:
+        policy = policy.replace("[release.targets]\n", f"[release.targets]\n{facts}\n", 1)
+    (tree / "repo-policy.toml").write_text(policy, encoding="utf-8")
     return Repo(tree)
 
 
@@ -541,9 +550,9 @@ def test_a_route_declared_that_nothing_here_takes_is_refused(repo: Repo, tmp_pat
     declaring = _declaring(
         repo.root,
         tmp_path / "fourth",
-        '\n[[target]]\nid = "brew:printobserver"\nregistry = "brew"\n'
-        'name = "printobserver"\ndescription = "A fourth route."\n'
-        'built_by = "release-artifacts"\nroute = "Route 4 — a channel nobody takes"\n',
+        '\n[[target]]\nid = "brew:printobserver"\nname = "brew"\nwhat = "A fourth route."\n',
+        '"brew:printobserver" = { built_by = "release-artifacts", '
+        'route = "Route 4 — a channel nobody takes" }',
     )
 
     with pytest.raises(RegistryError) as refused:
@@ -556,10 +565,10 @@ def test_a_route_declared_that_nothing_here_takes_is_refused(repo: Repo, tmp_pat
 def test_a_route_taken_here_that_nothing_declares_is_refused(repo: Repo, tmp_path: Path) -> None:
     """And the other direction: an entry beside a route nobody publishes is dead."""
     declaring = _declaring(repo.root, tmp_path / "unrouted")
-    stripped = declaring.root / "release-targets.toml"
+    stripped = declaring.root / "repo-policy.toml"
     stripped.write_text(
         stripped.read_text(encoding="utf-8").replace(
-            'route = "Route 2 — the JavaScript package registry"', ""
+            ', route = "Route 2 — the JavaScript package registry"', ""
         ),
         encoding="utf-8",
     )

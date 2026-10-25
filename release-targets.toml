@@ -1,14 +1,23 @@
 # What this repository publishes, and the name each registry serves it under.
 #
-# A consumer that has to wait for a change to land here needs one thing only
-# this repository can say: the registry-qualified identifier of every artifact
-# it publishes. Every id below is `<registry>:<name>`, and `<name>` is exactly
-# what that registry serves.
+# This is the PRODUCER DECLARATION `onevcs` reads, at the path and in the schema
+# its own `docs/contract.md` fixes ("The producer declaration"). A consumer that
+# has to wait for a change to land here reads it across repositories it does not
+# own, so the schema is `onevcs`'s rather than this repository's, and that
+# reader refuses a key it does not declare. `just check-repo`'s
+# `release-declaration` runs that reader, at the release `uv.lock` holds it at,
+# over this file.
+#
+# Every id below is `<registry>:<name>`, and `<name>` is exactly what that
+# registry serves. Each target's `name` is the short name a consumer's plan and
+# a host's release rules call it by, so renaming one is a change to every
+# consumer naming it: `github-release` in particular is what a consumer
+# installing the program from the forge's release waits on.
 #
 # A target is a CONSUMABLE artifact — one a dependent names in order to depend
-# on it. `just check-repo` derives the publishable-crate set from the committed
-# workspace rather than from this file and fails on a name that is in one and
-# not the other, in either direction.
+# on it — and the tables are in publication order. `just check-repo` derives the
+# publishable-crate set from the committed workspace rather than from this file
+# and fails on a name that is in one and not the other, in either direction.
 #
 # NO manifest in this tree carries a version, and that is what makes every id
 # below automatic: release automation writes the number into the workspace, and
@@ -17,78 +26,119 @@
 # step, which is the thing Conventional-Commit-driven releasing exists to
 # remove — and `just check-repo` refuses one.
 #
-# A target that backs one of the three END-USER ROUTES names that route by the
-# heading `AGENTS.md`'s "The end-user install path" gives it. `just check-repo`
-# reads the two beside each other and refuses a tree in which they disagree, or
-# in which a route that section names has no target behind it.
+# `what` is the one sentence a target's own registry shows as its description:
+# `tools/release-artifacts` writes it into every wheel and package it builds.
 #
-# `built_by` says which tool assembles a target. `release-plz` publishes every
-# crate straight from the workspace; `release-artifacts` assembles the six this
-# repository ships beside them — the three clients a dependent takes as a
-# dependency, and the three routes an end user gets the program by.
+# Two facts this repository's tooling reads about a target have no place in
+# that schema, so they live in `repo-policy.toml`'s `[release.targets]`, keyed
+# by the id below: the END-USER ROUTE a target backs, by the heading `AGENTS.md`'s
+# "The end-user install path" gives it, and `built_by`, which tool assembles it.
+# `repo_checks.release_declaration` joins the two back together for every
+# reader, and `just check-repo`'s `release-targets` refuses a target one of the
+# two names and the other does not.
+#
+# `probe` is the script that answers what a registry serves now for one id
+# below, under the probe contract in `onevcs`'s `docs/contract.md` ("What a
+# probe prints"): `scripts/release-probe.sh`, whose own header says how it reads
+# each registry.
 
-schema_version = 2
+schema_version = 3
+probe = "scripts/release-probe.sh"
 
 # The shared domain vocabulary. Every other crate depends on it.
 [[target]]
 id = "crate:printobserver-types"
+name = "crate-types"
+what = "Shared domain types for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-types/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-types/Cargo.toml"
 
 # The printer port.
 [[target]]
 id = "crate:printobserver-printer-api"
+name = "crate-printer-api"
+what = "The printer port for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-printer-api/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-printer-api/Cargo.toml"
 
 # The vision port.
 [[target]]
 id = "crate:printobserver-vision-api"
+name = "crate-vision-api"
+what = "The vision port for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-vision-api/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-vision-api/Cargo.toml"
 
 # The supervisor port.
 [[target]]
 id = "crate:printobserver-supervisor-api"
+name = "crate-supervisor-api"
+what = "The supervisor port for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-supervisor-api/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-supervisor-api/Cargo.toml"
 
 # The OctoPrint adapter behind the printer port.
 [[target]]
 id = "crate:printobserver-octoprint"
+name = "crate-octoprint"
+what = "OctoPrint adapter for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-octoprint/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-octoprint/Cargo.toml"
 
 # The Obico adapter behind the vision port.
 [[target]]
 id = "crate:printobserver-obico"
+name = "crate-obico"
+what = "Obico adapter for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-obico/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-obico/Cargo.toml"
 
 # The oneharness adapter behind the supervisor port.
 [[target]]
 id = "crate:printobserver-oneharness"
+name = "crate-oneharness"
+what = "oneharness adapter for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-oneharness/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-oneharness/Cargo.toml"
 
 # The SQLite adapter behind the store port.
 [[target]]
 id = "crate:printobserver-store-sqlite"
+name = "crate-store-sqlite"
+what = "SQLite store adapter for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-store-sqlite/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-store-sqlite/Cargo.toml"
 
 # The supervision logic.
 [[target]]
 id = "crate:printobserver-core"
+name = "crate-core"
+what = "Supervision logic for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-core/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-core/Cargo.toml"
 
 # The long-running service and its composition root.
 [[target]]
 id = "crate:printobserver-server"
+name = "crate-server"
+what = "The printobserver server."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-server/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-server/Cargo.toml"
 
 # The Rust client of the server's HTTP surface.
 [[target]]
 id = "crate:printobserver-sdk"
+name = "crate-sdk"
+what = "Rust client for the printobserver server."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-sdk/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-sdk/Cargo.toml"
-description = "Rust client for the printobserver server."
-built_by = "release-artifacts"
 
 # The `printobserver` command itself.
 [[target]]
 id = "crate:printobserver"
+name = "crate"
+what = "The printobserver command-line program."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver/Cargo.toml"
 
 # The Python client of the server's HTTP surface. A dependency an application
@@ -96,23 +146,25 @@ manifest = "crates/printobserver/Cargo.toml"
 # same description the server's own routes are folded out of.
 [[target]]
 id = "pypi:printobserver-sdk"
-built_by = "release-artifacts"
-description = "Typed Python client for the printobserver server's HTTP surface."
+name = "pypi-sdk"
+what = "Typed Python client for the printobserver server's HTTP surface."
+published_by = ".github/workflows/release-plz.yml — the publish job's `just publish-artifacts`, under this id's name and the workspace Cargo.toml's version."
 
 # The Node client of the same surface, on the same terms.
 [[target]]
 id = "npm:@printobserver/sdk"
-built_by = "release-artifacts"
-description = "Typed Node client for the printobserver server's HTTP surface."
+name = "npm-sdk"
+what = "Typed Node client for the printobserver server's HTTP surface."
+published_by = ".github/workflows/release-plz.yml — the publish job's `just publish-artifacts`, under this id's name and the workspace Cargo.toml's version."
 
 # Route 1 of the end-user install path: a CLI-capable distribution published as
 # per-platform wheels, each carrying the `printobserver` program already built
 # for its platform. The name is the one that section states.
 [[target]]
 id = "pypi:printobserver-cli"
-built_by = "release-artifacts"
-route = "Route 1 — the Python package registry"
-description = "The printobserver command, already built for your platform."
+name = "pypi-cli"
+what = "The printobserver command, already built for your platform."
+published_by = ".github/workflows/release-plz.yml — the publish job's `just publish-artifacts`, under this id's name and the workspace Cargo.toml's version."
 
 # Route 2: the CLI-capable distribution of the JavaScript registry, under the
 # same distribution name and installing the same command. A launcher declaring
@@ -120,15 +172,15 @@ description = "The printobserver command, already built for your platform."
 # per-platform package the caller's own install resolves.
 [[target]]
 id = "npm:printobserver-cli"
-built_by = "release-artifacts"
-route = "Route 2 — the JavaScript package registry"
-description = "The printobserver command, already built for your platform."
+name = "npm-cli"
+what = "The printobserver command, already built for your platform."
+published_by = ".github/workflows/release-plz.yml — the publish job's `just publish-artifacts`, under this id's name and the workspace Cargo.toml's version."
 
 # Route 3: the per-platform release artifacts `scripts/install.sh` downloads,
 # with the checksum file it verifies them against before anything reaches a
-# path.
+# path. Its tag is `v<version>`, created by the `printobserver` crate's release.
 [[target]]
 id = "release:printobserver"
-built_by = "release-artifacts"
-route = "Route 3 — the bundled install script"
-description = "The printobserver command, already built for your platform."
+name = "github-release"
+what = "The printobserver command, already built for your platform."
+published_by = ".github/workflows/release-plz.yml — the publish job's `just publish-artifacts`, onto the v<version> GitHub Release the release job's `release-plz release` cuts from the workspace Cargo.toml's version."

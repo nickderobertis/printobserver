@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from repo_checks import install_path as ip
+from repo_checks import release_declaration
 from repo_checks.model import (
     UNCOMMITTED_DIRECTORIES,
     PolicyValueError,
@@ -84,13 +85,12 @@ REGISTRIES = ("crate", "pypi", "npm", "release")
 
 def release_targets(repo: Repo) -> list[str]:
     """The declaration covers every publishable crate and every end-user route."""
-    declaration = repo.read_toml("release-targets.toml")
-    targets = declaration.get("target", [])
-    findings: list[str] = []
+    targets = release_declaration.joined(repo.root)
+    findings: list[str] = release_declaration.drift(repo.root)
 
     declared_crates: set[str] = set()
     for target in targets:
-        identifier = str(target.get("id", ""))
+        identifier = target.id
         registry, _, name = identifier.partition(":")
         if registry not in REGISTRIES:
             findings.append(
@@ -100,14 +100,14 @@ def release_targets(repo: Repo) -> list[str]:
             )
             continue
         if registry != "crate":
-            if not str(target.get("description", "")).strip():
+            if not target.what:
                 findings.append(
-                    f"release-targets.toml declares `{identifier}` with no description, "
-                    f"so its own registry would show none"
+                    f"release-targets.toml declares `{identifier}` with no description "
+                    f"(`what`), so its own registry would show none"
                 )
             continue
         declared_crates.add(name)
-        manifest = target.get("manifest", "")
+        manifest = target.manifest
         if not repo.exists(manifest):
             findings.append(f"release-targets.toml points `{identifier}` at a missing {manifest}")
 
@@ -141,7 +141,7 @@ def release_targets(repo: Repo) -> list[str]:
     return findings
 
 
-def _route_findings(repo: Repo, targets: list[dict[str, Any]]) -> list[str]:
+def _route_findings(repo: Repo, targets: list[release_declaration.Target]) -> list[str]:
     """Every route the install path names has a target, under that route's own name.
 
     `AGENTS.md`'s "The end-user install path" is the authoritative source of
@@ -153,9 +153,8 @@ def _route_findings(repo: Repo, targets: list[dict[str, Any]]) -> list[str]:
     findings: list[str] = []
     backing: dict[str, list[str]] = {}
     for target in targets:
-        route = str(target.get("route", "")).strip()
-        if route:
-            backing.setdefault(route, []).append(str(target.get("id", "")))
+        if target.route:
+            backing.setdefault(target.route, []).append(target.id)
 
     stated = {route.heading for route in path.routes}
     findings.extend(
@@ -532,7 +531,7 @@ def _coverage_findings(repo: Repo) -> list[str]:
                 publishing.append(f"{path.name}: `{job_name}`")
 
     findings: list[str] = []
-    declared = repo.read_toml("release-targets.toml").get("target", [])
+    declared = release_declaration.joined(repo.root)
     if not publishing:
         findings.append(
             f"no committed step publishes anything: release automation runs neither "
@@ -579,11 +578,7 @@ def _coverage_findings(repo: Repo) -> list[str]:
     )
 
     path = ip.parse(repo.agents_md)
-    routed = {
-        str(target.get("route", "")).strip()
-        for target in declared
-        if str(target.get("route", "")).strip()
-    }
+    routed = {target.route for target in declared if target.route}
     findings.extend(
         f"AGENTS.md's `{ip.SECTION_HEADING}` names route `{route.heading}`, for which "
         f"release automation declares no build at all"

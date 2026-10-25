@@ -673,6 +673,41 @@ publish_version_source = "tools/release-artifacts/src/release_artifacts/publishi
 broken_recipe = "release-broken"
 mended_recipe = "release-mended"
 
+# What this repository's own tooling reads about each target
+# `release-targets.toml` declares and that `onevcs`'s producer schema has no
+# place for, keyed by the target's `id`. That file is read by `onevcs`, which
+# refuses a key its schema does not declare, so these two facts live here and
+# `repo_checks.release_declaration` joins them back to it.
+#
+# `built_by` says which tool assembles a target. `release-plz` publishes every
+# crate straight from the workspace; `release-artifacts` assembles the six this
+# repository ships beside them — the three clients a dependent takes as a
+# dependency, and the three routes an end user gets the program by. `route`
+# names the end-user route a target backs, by the heading `AGENTS.md`'s "The end-
+# user install path" gives it; a target backing none carries no `route`.
+#
+# The two files name one set of targets: `just check-repo`'s `release-targets`
+# refuses an id one of them names and the other does not, and one here with no
+# `built_by`.
+[release.targets]
+"crate:printobserver-types" = { built_by = "release-plz" }
+"crate:printobserver-printer-api" = { built_by = "release-plz" }
+"crate:printobserver-vision-api" = { built_by = "release-plz" }
+"crate:printobserver-supervisor-api" = { built_by = "release-plz" }
+"crate:printobserver-octoprint" = { built_by = "release-plz" }
+"crate:printobserver-obico" = { built_by = "release-plz" }
+"crate:printobserver-oneharness" = { built_by = "release-plz" }
+"crate:printobserver-store-sqlite" = { built_by = "release-plz" }
+"crate:printobserver-core" = { built_by = "release-plz" }
+"crate:printobserver-server" = { built_by = "release-plz" }
+"crate:printobserver-sdk" = { built_by = "release-artifacts" }
+"crate:printobserver" = { built_by = "release-plz" }
+"pypi:printobserver-sdk" = { built_by = "release-artifacts" }
+"npm:@printobserver/sdk" = { built_by = "release-artifacts" }
+"pypi:printobserver-cli" = { built_by = "release-artifacts", route = "Route 1 — the Python package registry" }
+"npm:printobserver-cli" = { built_by = "release-artifacts", route = "Route 2 — the JavaScript package registry" }
+"release:printobserver" = { built_by = "release-artifacts", route = "Route 3 — the bundled install script" }
+
 [manifests]
 # The only manifests permitted to carry a version field, because release
 # automation writes every one of them. A version anywhere else is one a person

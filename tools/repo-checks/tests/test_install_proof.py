@@ -606,7 +606,7 @@ def test_a_tier_recipe_the_recipe_set_does_not_declare_is_refused(
 def test_a_route_with_no_target_behind_it_is_refused(tree: Callable[[], Tree]) -> None:
     """A route with no declared target names no registry to prove it against."""
     broken = tree()
-    broken.edit("release-targets.toml", 'route = "Route 2 — the JavaScript package registry"\n', "")
+    broken.edit("repo-policy.toml", ', route = "Route 2 — the JavaScript package registry"', "")
 
     refused(install_proof(broken.repo), "declares no target behind it")
 

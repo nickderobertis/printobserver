@@ -17,7 +17,7 @@ from repo_checks.checks_release import (
     release_targets,
     release_tracking,
 )
-from repo_checks.expect import accepted, contains, equal, refused
+from repo_checks.expect import accepted, contains, equal, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -32,6 +32,24 @@ CLOSURE = closure(
 
 RELEASE = ".github/workflows/release-plz.yml"
 TARGETS = "release-targets.toml"
+POLICY = "repo-policy.toml"
+#: The table `[release.targets]` opens with, which a recorded fact is added under.
+FACTS = "[release.targets]\n"
+
+
+def _without_target(declaration: str, identifier: str) -> str:
+    """The declaration with the one `[[target]]` table declaring `identifier` removed."""
+    head, *tables = declaration.split("[[target]]\n")
+    kept = [table for table in tables if f'id = "{identifier}"\n' not in table]
+    if len(kept) != len(tables) - 1:
+        msg = f"{TARGETS} declares no single `{identifier}`; the fixture is stale"
+        raise AssertionError(msg)
+    return "[[target]]\n".join([head, *kept])
+
+
+def _record(tree: Tree, line: str) -> None:
+    """Add one entry to `repo-policy.toml`'s `[release.targets]`."""
+    tree.edit(POLICY, FACTS, f"{FACTS}{line}\n")
 
 
 def test_the_committed_declaration_is_accepted(committed: Repo) -> None:
@@ -49,12 +67,8 @@ def test_a_declaration_omitting_a_publishable_crate_is_refused(
 ) -> None:
     """A crate nobody declared is a crate consumers cannot name."""
     broken = tree()
-    broken.edit(
-        TARGETS,
-        '[[target]]\nid = "crate:printobserver-obico"\n'
-        'manifest = "crates/printobserver-obico/Cargo.toml"\n',
-        "",
-    )
+    broken.write(TARGETS, _without_target(broken.read(TARGETS), "crate:printobserver-obico"))
+    broken.edit(POLICY, '"crate:printobserver-obico" = { built_by = "release-plz" }\n', "")
 
     findings = release_targets(broken.repo)
 
@@ -71,6 +85,7 @@ def test_a_declaration_naming_an_unbacked_target_is_refused(
         broken.read(TARGETS) + '\n[[target]]\nid = "crate:printobserver-ghost"\n'
         'manifest = "crates/printobserver-types/Cargo.toml"\n',
     )
+    _record(broken, '"crate:printobserver-ghost" = { built_by = "release-plz" }')
 
     findings = release_targets(broken.repo)
 
@@ -85,12 +100,77 @@ def test_a_target_of_a_registry_nothing_publishes_to_is_refused(
     broken.write(
         TARGETS,
         broken.read(TARGETS)
-        + '\n[[target]]\nid = "conda:printobserver"\ndescription = "Somewhere else."\n',
+        + '\n[[target]]\nid = "conda:printobserver"\nwhat = "Somewhere else."\n',
     )
+    _record(broken, '"conda:printobserver" = { built_by = "release-artifacts" }')
 
     findings = release_targets(broken.repo)
 
     refused(findings, "conda")
+
+
+def test_a_non_crate_target_with_no_description_is_refused(tree: Callable[[], Tree]) -> None:
+    """A wheel or package built with no `what` is one its registry describes as nothing."""
+    broken = tree()
+    broken.edit(
+        TARGETS,
+        'what = "Typed Python client for the printobserver server\'s HTTP surface."',
+        'what = ""',
+    )
+
+    refused_naming(release_targets(broken.repo), "pypi:printobserver-sdk", "no description")
+
+
+def test_a_route_the_install_path_does_not_state_is_refused(tree: Callable[[], Tree]) -> None:
+    """A route recorded under a heading AGENTS.md never gives is a route to nowhere."""
+    broken = tree()
+    broken.edit(POLICY, "Route 2 — the JavaScript package registry", "Route 2 — a registry")
+
+    findings = release_targets(broken.repo)
+
+    refused_naming(findings, "Route 2 — a registry", "does not state")
+    refused_naming(findings, "Route 2 — the JavaScript package registry", "declares no target")
+
+
+def test_a_route_backed_by_two_targets_is_refused(tree: Callable[[], Tree]) -> None:
+    """A route is one artifact, so a second target behind it is an ambiguity."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"pypi:printobserver-sdk" = { built_by = "release-artifacts" }',
+        '"pypi:printobserver-sdk" = { built_by = "release-artifacts", '
+        'route = "Route 1 — the Python package registry" }',
+    )
+
+    refused_naming(release_targets(broken.repo), "backed by 2 targets", "a route is one artifact")
+
+
+def test_a_declared_target_with_no_recorded_facts_is_refused(tree: Callable[[], Tree]) -> None:
+    """A target nothing says which tool assembles is one no builder knows is its own."""
+    broken = tree()
+    broken.edit(POLICY, '"npm:@printobserver/sdk" = { built_by = "release-artifacts" }\n', "")
+
+    refused_naming(release_targets(broken.repo), "npm:@printobserver/sdk", "records nothing")
+
+
+def test_recorded_facts_about_an_undeclared_target_are_refused(tree: Callable[[], Tree]) -> None:
+    """A fact about an artifact the declaration does not name has drifted from it."""
+    broken = tree()
+    broken.write(TARGETS, _without_target(broken.read(TARGETS), "npm:@printobserver/sdk"))
+
+    refused_naming(release_targets(broken.repo), "npm:@printobserver/sdk", "does not declare")
+
+
+def test_recorded_facts_naming_no_assembling_tool_are_refused(tree: Callable[[], Tree]) -> None:
+    """An entry with no `built_by` says nothing about who builds the target."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"crate:printobserver-core" = { built_by = "release-plz" }',
+        '"crate:printobserver-core" = {}',
+    )
+
+    refused_naming(release_targets(broken.repo), "crate:printobserver-core", "no `built_by`")
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(
