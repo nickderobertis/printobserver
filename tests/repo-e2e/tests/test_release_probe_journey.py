@@ -582,23 +582,43 @@ def test_a_registry_nobody_can_reach_is_not_answered(tmp_path: Path) -> None:
     _not_answered(unreachable("pypi:printobserver-cli"), "so no registry answered")
 
 
-def test_a_host_without_curl_is_not_answered(tmp_path: Path) -> None:
-    """The probe names the program it is missing rather than failing inside a pipeline."""
-    curl_less = Probe(Registries(), _search_path(tmp_path / "bin", None), _home(tmp_path))
-
-    _not_answered(curl_less("pypi:printobserver-cli"), "curl is not on PATH")
-
-
-def test_a_host_without_python3_is_not_answered(probe: Probe, tmp_path: Path) -> None:
-    """The JSON parser is a program of its own, named before any registry is read."""
-    python_less = Probe(
+@pytest.mark.parametrize("missing", ["curl", *[p for p in PROGRAMS if p not in ("bash", "env")]])
+def test_a_host_missing_a_program_the_probe_runs_is_not_answered(
+    probe: Probe, tmp_path: Path, missing: str
+) -> None:
+    """The probe names the program it is missing before any registry is read."""
+    port = None if missing == "curl" else 1
+    without = Probe(
         probe.registries,
-        _search_path(tmp_path / "python-less", 1, ("bash", "env", "mktemp", "rm")),
+        _search_path(tmp_path / "without", port, tuple(p for p in PROGRAMS if p != missing)),
         probe.home,
     )
 
-    _not_answered(python_less("pypi:printobserver-cli"), "python3 is not on PATH")
+    _not_answered(without("pypi:printobserver-cli"), f"{missing} is not on PATH")
     equal(probe.registries.asked, [], describing="what the probe asked any registry")
+
+
+def _stand_in(probe: Probe, program: str, body: str) -> None:
+    """Put a program of `body` ahead of the real one on the probe's PATH."""
+    stand_in = Path(probe.path) / program
+    stand_in.unlink(missing_ok=True)
+    stand_in.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
+    stand_in.chmod(0o755)
+
+
+def test_a_temporary_file_the_probe_cannot_create_is_not_answered(probe: Probe) -> None:
+    """Without a file to read the body into, nothing is read and nothing is answered."""
+    _stand_in(probe, "mktemp", "echo 'mktemp: No space left on device' >&2; exit 1")
+
+    _not_answered(probe("pypi:printobserver-cli"), "mktemp could not create a file")
+    equal(probe.registries.asked, [], describing="what the probe asked any registry")
+
+
+def test_a_curl_reporting_no_http_status_is_not_answered(probe: Probe) -> None:
+    """A curl that exits 0 without a three-digit status has not said what a registry did."""
+    _stand_in(probe, "curl", "printf '\\nnot-a-status'")
+
+    _not_answered(probe("pypi:printobserver-cli"), "rather than an HTTP status")
 
 
 @pytest.mark.parametrize(
