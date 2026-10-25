@@ -20,7 +20,7 @@
 #
 # What each registry is asked, and why that one:
 #
-#   * crate:   crates.io's crate document, `max_stable_version` — what `cargo
+#   * crate:   crates.io's crate document, `crate.max_stable_version` — what `cargo
 #              add` resolves, yanked versions and prereleases already excluded.
 #   * pypi:    PyPI's project JSON, `info.version` — what `pip install` resolves.
 #   * npm:     the `latest` dist-tag's own document — what `npm install`
@@ -49,10 +49,12 @@
 # committed file cannot drift apart. What is strict here is the identifier,
 # which this script turns into a URL, and what it answers.
 #
-# A registry's body is read as untrusted: it is answered from only when it is
-# one whole JSON object (so a truncated body is refused) naming the key asked
-# for exactly once, and the value answered must be a semantic version, which is
-# what the caller compares it as.
+# A registry's body is read as untrusted: it is parsed whole, as strict JSON, by
+# the standard library of `python3`, and answered from only at the registry's
+# own path to its version — crates.io's `crate.max_stable_version`, PyPI's
+# `info.version`, npm's top-level `version` — so a truncated or malformed body,
+# or a version that sits anywhere else in it, is not answered. The value
+# answered must be a semantic version, which is what the caller compares it as.
 #
 # What it may assume, and nothing beyond it: it is spawned as a direct
 # subprocess from the repository root, with an environment carrying only PATH
@@ -60,7 +62,7 @@
 # so an unauthenticated read is all it needs. `curl -q` follows from the same
 # rule — a ~/.curlrc is the caller's configuration and not this probe's.
 #
-# `curl` and `grep` are the whole of what it runs beyond bash's own builtins.
+# `curl` and `python3` are the whole of what it runs beyond bash's own builtins.
 # Each request is bounded by --max-time 25 and a GitHub answer takes two, well
 # inside the sixty seconds the contract allows. There is no retry: a transient
 # failure is "not answered", which the caller re-asks later.
@@ -102,7 +104,7 @@ if [ $# -ne 1 ]; then
 fi
 identifier="$1"
 
-for tool in curl grep; do
+for tool in curl python3; do
     command -v "$tool" >/dev/null 2>&1 || refuse \
         "$tool is not on PATH, so no registry can be read" \
         "install $tool, or put it on the PATH this probe is spawned with"
@@ -222,28 +224,56 @@ fetch() {
     esac
 }
 
-# The one value the fetched body gives for a key, in FIELD: a string's
-# contents, or `null`. Answered only from a body that is one whole JSON object —
-# its first character `{` and its last `}`, so a body cut off mid-transfer is
-# refused however much of it arrived — and that names the key exactly once.
-# Matched as `,"key":` or `{"key":`, so a longer key ending in the one asked
-# for — PyPI's `python_version`, npm's `_npmVersion` — cannot answer for it.
-# Returns 1 for anything else: a document that is not the shape this reads.
+# The parse of a registry's body, as a program for `python3 -I`: its
+# arguments are the path of keys to one field, and the body arrives on stdin.
+# The whole document is parsed as strict JSON — UTF-8, no trailing text, no
+# NaN or Infinity, and no object naming one key twice, since a duplicate is a
+# document two readers can read two ways — and the field is selected at that
+# path alone. It prints `string <value>` or `null`, and exits 1 for a document
+# that does not parse or holds no single-line string or null at that path.
+readonly READ_FIELD='
+import json, sys
+
+def unique(pairs):
+    keys = [key for key, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("an object names one key twice")
+    return dict(pairs)
+
+def refuse_constant(name):
+    raise ValueError(name)
+
+try:
+    node = json.loads(
+        sys.stdin.buffer.read().decode("utf-8"),
+        object_pairs_hook=unique,
+        parse_constant=refuse_constant,
+    )
+except (ValueError, RecursionError):
+    sys.exit(1)
+for key in sys.argv[1:]:
+    if not isinstance(node, dict) or key not in node:
+        sys.exit(1)
+    node = node[key]
+if node is None:
+    print("null")
+elif isinstance(node, str) and "\n" not in node and "\r" not in node:
+    print("string " + node)
+else:
+    sys.exit(1)
+'
+
+# The one value the fetched body holds at the path of keys given, in FIELD: a
+# string's contents, or `null`. Returns 1 for a body that is not one valid JSON
+# document holding a string or null at exactly that path.
 FIELD=""
 json_field() {
-    local whole matches count
-    whole="$(trim "$BODY")"
-    case "$whole" in
-    "{"*"}") ;;
+    local read
+    read="$(printf '%s' "$BODY" | python3 -I -c "$READ_FIELD" "$@")" || return 1
+    case "$read" in
+    null) FIELD=null ;;
+    "string "*) FIELD="${read#string }" ;;
     *) return 1 ;;
-    esac
-    matches="$(printf '%s' "$whole" | grep -oE "[,{]\"$1\":(\"[^\"]*\"|null)")" || return 1
-    count="$(printf '%s\n' "$matches" | grep -c .)" || return 1
-    [ "$count" -eq 1 ] || return 1
-    FIELD="${matches#*\":}"
-    case "$FIELD" in
-    null) ;;
-    *) FIELD="${FIELD#\"}" && FIELD="${FIELD%\"}" ;;
     esac
 }
 
@@ -276,7 +306,7 @@ crate:*)
     404) exit 0 ;;
     *) unreadable "crates.io" ;;
     esac
-    json_field max_stable_version || unread_body "crates.io" "max_stable_version"
+    json_field crate max_stable_version || unread_body "crates.io" "crate.max_stable_version"
     # Every version yanked or a prerelease: the registry serves nothing.
     [ "$FIELD" = null ] && exit 0
     answer "$FIELD"
@@ -288,7 +318,7 @@ pypi:*)
     404) exit 0 ;;
     *) unreadable "PyPI" ;;
     esac
-    json_field version || unread_body "PyPI" "info.version"
+    json_field info version || unread_body "PyPI" "info.version"
     answer "$FIELD"
     ;;
 npm:*)

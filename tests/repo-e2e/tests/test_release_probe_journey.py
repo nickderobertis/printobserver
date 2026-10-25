@@ -55,7 +55,7 @@ ORIGINS = ("crates.io", "pypi.org", "registry.npmjs.org", "github.com")
 RELEASES = "/nickderobertis/printobserver/releases"
 
 #: The programs the probe runs, besides the `curl` each case is handed.
-PROGRAMS = ("bash", "env", "grep")
+PROGRAMS = ("bash", "env", "python3")
 
 
 class Said(NamedTuple):
@@ -109,10 +109,10 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def _search_path(bin_dir: Path, port: int | None) -> str:
-    """A PATH of the probe's own programs, and a `curl` reaching `port` or none at all."""
+def _search_path(bin_dir: Path, port: int | None, programs: tuple[str, ...] = PROGRAMS) -> str:
+    """A PATH of `programs`, and a `curl` reaching `port` or none at all."""
     bin_dir.mkdir()
-    for program in PROGRAMS:
+    for program in programs:
         found = shutil.which(program)
         truth(found, describing=f"`{program}` on this host, for the probe to run")
         (bin_dir / program).symlink_to(str(found))
@@ -246,14 +246,11 @@ def test_a_crate_serving_nothing_is_no_release(probe: Probe, answer: Answer) -> 
     ("answer", "naming"),
     [
         (Answer(500, "oops"), "crates.io answered 500"),
-        (Answer(200, "<html>maintenance</html>"), "without one readable max_stable_version"),
-        (
-            Answer(200, '{"crate":{"max_stable_version":"0.4.3"},"x":{"max_stable_version":null}}'),
-            "without one readable max_stable_version",
-        ),
+        (Answer(200, "<html>maintenance</html>"), "without one readable crate.max_stable_version"),
+        (Answer(200, '{"crate":{"max_stable_version":4}}'), "without one readable crate."),
         (Answer(200, '{"crate":{"max_stable_version":"1..2"}}'), "not a semantic version"),
     ],
-    ids=["server-error", "not-json", "named-twice", "not-a-version"],
+    ids=["server-error", "not-json", "not-a-string", "not-a-version"],
 )
 def test_a_crate_answer_the_probe_cannot_read_is_not_answered(
     probe: Probe, answer: Answer, naming: str
@@ -303,6 +300,124 @@ def test_a_pypi_answer_the_probe_cannot_read_is_not_answered(
     _not_answered(probe("pypi:printobserver-cli"), naming)
 
 
+@pytest.mark.parametrize(
+    ("identifier", "path", "body"),
+    [
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            '{\n  "info": {\n    "name": "printobserver-cli",\n    "version": "0.4.3"\n  }\n}\n',
+        ),
+        (
+            "npm:@printobserver/sdk",
+            "/registry.npmjs.org/@printobserver%2fsdk/latest",
+            '{ "name" : "@printobserver/sdk" , "version" : "0.4.3" }',
+        ),
+        (
+            "crate:printobserver",
+            "/crates.io/api/v1/crates/printobserver",
+            '{"crate": {"id": "printobserver", "max_stable_version": "0.4.3"}}',
+        ),
+    ],
+    ids=["pypi", "npm", "crate"],
+)
+def test_a_whitespace_formatted_document_answers_its_version(
+    probe: Probe, identifier: str, path: str, body: str
+) -> None:
+    """JSON may put whitespace between its tokens, and the version is read through it."""
+    probe.answers(path, Answer(200, body))
+
+    _released(probe(identifier), "0.4.3")
+
+
+@pytest.mark.parametrize(
+    ("identifier", "path", "body"),
+    [
+        (
+            "crate:printobserver",
+            "/crates.io/api/v1/crates/printobserver",
+            '{"crate":{"max_stable_version":"0.4.3"},"x":{"max_stable_version":"9.9.9"}}',
+        ),
+        (
+            "npm:@printobserver/sdk",
+            "/registry.npmjs.org/@printobserver%2fsdk/latest",
+            '{"version":"0.4.3","deps":{"version":"9.9.9"}}',
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            '{"vulnerabilities":[{"version":"9.9.9"}],"info":{"version":"0.4.3"}}',
+        ),
+    ],
+    ids=["crate", "npm", "pypi"],
+)
+def test_the_version_is_read_at_the_registrys_own_path_alone(
+    probe: Probe, identifier: str, path: str, body: str
+) -> None:
+    """A `version` elsewhere in the document neither answers for it nor hides it."""
+    probe.answers(path, Answer(200, body))
+
+    _released(probe(identifier), "0.4.3")
+
+
+@pytest.mark.parametrize(
+    ("identifier", "path", "body"),
+    [
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            '{"info":broken,"version":"9.9.9"}',
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            '{"info":{"name":"printobserver-cli"},"vulnerabilities":[{"version":"9.9.9"}]}',
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            '{"info":{"version":"9.9.9"},"info":{"version":"0.4.3"}}',
+        ),
+        (
+            "npm:@printobserver/sdk",
+            "/registry.npmjs.org/@printobserver%2fsdk/latest",
+            '{"name":"@printobserver/sdk","dist":{"version":"9.9.9"}}',
+        ),
+        (
+            "npm:@printobserver/sdk",
+            "/registry.npmjs.org/@printobserver%2fsdk/latest",
+            '{"version":"0.4.3",}',
+        ),
+        (
+            "crate:printobserver",
+            "/crates.io/api/v1/crates/printobserver",
+            '{"crate":{"id":"printobserver"},"versions":[{"max_stable_version":"9.9.9"}]}',
+        ),
+        (
+            "crate:printobserver",
+            "/crates.io/api/v1/crates/printobserver",
+            '{"crate":{"max_stable_version":"0.4.3"}} trailing',
+        ),
+    ],
+    ids=[
+        "pypi-malformed",
+        "pypi-wrong-path",
+        "pypi-duplicate-key",
+        "npm-wrong-path",
+        "npm-trailing-comma",
+        "crate-wrong-path",
+        "crate-trailing-garbage",
+    ],
+)
+def test_a_malformed_or_wrong_path_document_is_not_answered(
+    probe: Probe, identifier: str, path: str, body: str
+) -> None:
+    """Only a whole, valid document's field at the registry's own path is a version."""
+    probe.answers(path, Answer(200, body))
+
+    _not_answered(probe(identifier), "without one readable")
+
+
 def test_a_released_scoped_package_answers_its_latest_dist_tag(probe: Probe) -> None:
     """A scoped name is asked for as one path segment, `@scope%2fname`."""
     probe.answers(
@@ -330,12 +445,9 @@ def test_a_scoped_package_npm_does_not_know_is_no_release(probe: Probe) -> None:
     [
         (Answer(502, "bad gateway"), "npm answered 502"),
         (Answer(200, '{"name":"@printobserver/sdk"}'), "without one readable version"),
-        (
-            Answer(200, '{"version":"0.4.3","deps":{"version":"9.9.9"}}'),
-            "without one readable version",
-        ),
+        (Answer(200, '{"version":["0.4.3"]}'), "without one readable version"),
     ],
-    ids=["server-error", "no-version", "two-versions"],
+    ids=["server-error", "no-version", "not-a-string"],
 )
 def test_an_npm_answer_the_probe_cannot_read_is_not_answered(
     probe: Probe, answer: Answer, naming: str
@@ -459,6 +571,18 @@ def test_a_host_without_curl_is_not_answered(tmp_path: Path) -> None:
     curl_less = Probe(Registries(), _search_path(tmp_path / "bin", None), _home(tmp_path))
 
     _not_answered(curl_less("pypi:printobserver-cli"), "curl is not on PATH")
+
+
+def test_a_host_without_python3_is_not_answered(probe: Probe, tmp_path: Path) -> None:
+    """The JSON parser is a program of its own, named before any registry is read."""
+    python_less = Probe(
+        probe.registries,
+        _search_path(tmp_path / "python-less", 1, ("bash", "env")),
+        probe.home,
+    )
+
+    _not_answered(python_less("pypi:printobserver-cli"), "python3 is not on PATH")
+    equal(probe.registries.asked, [], describing="what the probe asked any registry")
 
 
 @pytest.mark.parametrize(
