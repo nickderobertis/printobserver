@@ -149,17 +149,19 @@ def probe_registries(repo: Repo) -> int:
     # held to one line on a pass, so this adds none to it.
     if os.environ.get(STANDING_IN, "").strip():
         return 0
-    if sys.platform == "win32":
+    # A declaration this repository's own reader refuses, or one declaring
+    # nothing, would reconcile nothing and pass; both are failures instead, on
+    # every host, because reading the declaration needs no probe.
+    findings = release_declaration.drift(repo.root)
+    if sys.platform == "win32" and not findings:
         print(
             "probe-registries: not run on Windows: the probe is a bash script a Unix host "
             "spawns directly, and the Unix cells of this run ask the same registries",
             file=sys.stderr,
         )
         return 0
-    # A declaration this repository's own reader refuses, or one declaring
-    # nothing, would reconcile nothing and pass; both are failures instead.
-    findings = release_declaration.drift(repo.root)
-    for target in release_declaration.joined(repo.root):
+    targets = [] if sys.platform == "win32" else release_declaration.joined(repo.root)
+    for target in targets:
         asked = _ask(repo, probe, target)
         answered = _answered(asked)
         if answered is None:

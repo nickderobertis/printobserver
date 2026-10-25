@@ -850,14 +850,15 @@ def test_a_probe_that_cannot_reach_its_repository_root_is_not_answered(
     # One shell enters the probe's own directory while the root can still be
     # passed through, takes the root's search permission, and starts the probe
     # by a relative path, which needs nothing of the root; reaching the root
-    # from there is what the probe then cannot do.
+    # from there is what the probe then cannot do. BSD `chmod` stops reading options at the
+    # mode, so a `--` after it names a file; the root is absolute and passed bare.
     try:
         result = run(
             [
                 "bash",
                 "-c",
-                'cd -- "$1" && "$2" 600 -- "$3" && { ./release-probe.sh "$4"; status=$?; '
-                '"$2" 755 -- "$3"; exit "$status"; }',
+                'cd -- "$1" && "$2" 600 "$3" && { ./release-probe.sh "$4"; status=$?; '
+                '"$2" 755 "$3"; exit "$status"; }',
                 "lock",
                 str(script.parent),
                 str(chmod),

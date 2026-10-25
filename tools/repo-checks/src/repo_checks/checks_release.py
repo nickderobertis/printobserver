@@ -183,6 +183,11 @@ def _locked_for_this_host(repo: Repo, wheels: tuple[str, ...]) -> bool:
     )
 
 
+def onevcs_builds_for_this_host(repo: Repo) -> bool:
+    """Whether the onevcs release `uv.lock` holds publishes a build for this host's platform."""
+    return _locked_for_this_host(repo, _locked_onevcs(repo).wheels)
+
+
 def _listed(answer: str) -> list[str] | None:
     """The target ids a `release declaration --json` answer lists, or `None` if it is not one.
 

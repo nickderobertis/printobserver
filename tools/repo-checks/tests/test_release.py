@@ -11,6 +11,7 @@ import pytest
 from closures import closure
 from repo_checks.checks_release import (
     _publishable_crates,
+    onevcs_builds_for_this_host,
     release_automation,
     release_declaration_readable,
     release_dispatch,
@@ -20,7 +21,7 @@ from repo_checks.checks_release import (
 )
 from repo_checks.expect import accepted, contains, equal, refused, refused_naming
 from repo_checks.model import Repo
-from treecopy import Tree
+from treecopy import REPO_ROOT, Tree
 
 #: The files the checks this module drives read; see `closures`.
 CLOSURE = closure(
@@ -220,6 +221,15 @@ def test_a_recorded_fact_that_is_not_a_table_is_refused(tree: Callable[[], Tree]
     refused_naming(release_targets(broken.repo), "crate:printobserver-core", "not a table")
 
 
+#: Where onevcs publishes no build (Windows on ARM, today) its reader is not
+#: installed and the check reads nothing, so a refusal is proven on every other leg.
+ONEVCS_RUNS_HERE = pytest.mark.skipif(
+    not onevcs_builds_for_this_host(Repo(REPO_ROOT)),
+    reason="the locked onevcs publishes no build for this host's platform",
+)
+
+
+@ONEVCS_RUNS_HERE
 def test_onevcs_reads_the_committed_declaration(committed: Repo) -> None:
     """The reader a consumer waiting on a release runs reads this file with no refusal."""
     accepted(release_declaration_readable(committed))
@@ -233,6 +243,7 @@ def test_a_lock_holding_no_onevcs_is_refused(tree: Callable[[], Tree]) -> None:
     refused_naming(release_declaration_readable(broken.repo), "holds no `onevcs-cli`")
 
 
+@ONEVCS_RUNS_HERE
 def test_a_declaration_carrying_a_key_onevcs_refuses_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
@@ -249,6 +260,7 @@ def test_a_declaration_carrying_a_key_onevcs_refuses_is_refused(
     )
 
 
+@ONEVCS_RUNS_HERE
 def test_a_declaration_with_a_target_missing_its_name_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
@@ -261,6 +273,18 @@ def test_a_declaration_with_a_target_missing_its_name_is_refused(
         "refuses release-targets.toml",
         "missing field `name`",
     )
+
+
+@pytest.mark.skipif(
+    onevcs_builds_for_this_host(Repo(REPO_ROOT)),
+    reason="the locked onevcs publishes a build for this host's platform",
+)
+def test_a_host_onevcs_publishes_no_build_for_reads_nothing(tree: Callable[[], Tree]) -> None:
+    """With no reader to run here, the check says nothing rather than refusing every tree."""
+    broken = tree()
+    broken.edit(TARGETS, 'name = "github-release"\n', "")
+
+    accepted(release_declaration_readable(broken.repo))
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(
