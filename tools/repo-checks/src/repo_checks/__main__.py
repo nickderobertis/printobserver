@@ -17,6 +17,7 @@ from repo_checks import (
     gh_release,
     powershell_release,
     release_plz_release,
+    release_probes,
     windows_lint,
 )
 from repo_checks.checks_integration import integration_tier
@@ -60,6 +61,7 @@ COMMANDS = (
     "coverage",
     "lint-windows-target",
     "docs-schemas-write",
+    "probe-registries",
 )
 
 # The checks that read a base revision as well as the tree: what a change adds,
@@ -166,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"coverage: refused: {error}", file=sys.stderr)
                 return gate_tier.REFUSED
             return commands.coverage(repo, measured)
+        case "probe-registries":
+            return release_probes.probe_registries(repo)
         case "lint-windows-target":
             return windows_lint.lint_windows_target(repo)
         case "pr-title":

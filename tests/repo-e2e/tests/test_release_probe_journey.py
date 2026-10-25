@@ -36,8 +36,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
-from journey import REPO_ROOT
+from journey import REPO_ROOT, pythonpath
 from repo_checks.expect import absent, contains, equal, passing, truth
+from repo_checks.release_declaration import joined
 from repo_checks.shell import run
 
 pytestmark = pytest.mark.skipif(
@@ -862,3 +863,79 @@ def test_a_probe_that_cannot_reach_its_repository_root_is_not_answered(
 
     _not_answered(said, "cannot reach the repository root")
     equal(probe.registries.asked, [], describing="what the probe asked any registry")
+
+
+def _registry_path(identifier: str) -> str:
+    """Where the doubled registry is asked about `identifier`, as the probe asks it."""
+    registry, _, name = identifier.partition(":")
+    return {
+        "crate": f"/crates.io/api/v1/crates/{name}",
+        "pypi": f"/pypi.org/pypi/{name}/json",
+        "npm": f"/registry.npmjs.org/{name.replace('/', '%2f')}/latest",
+    }[registry]
+
+
+def _every_target_released(probe: Probe, version: str) -> None:
+    """Make every declared target's registry serve `version`."""
+    for target in joined(REPO_ROOT):
+        if target.id.startswith("release:"):
+            _latest(probe, f"https://github.com{RELEASES}/tag/v{version}")
+            _checksums(probe, f"v{version}", Answer(302, "", "https://assets.example/SHA256SUMS"))
+            continue
+        body = {
+            "crate": {"crate": {"max_stable_version": version}},
+            "pypi": {"info": {"version": version}},
+            "npm": {"version": version},
+        }[target.registry]
+        probe.answers(_registry_path(target.id), Answer(200, json.dumps(body, indent=2)))
+
+
+def _probe_registries(probe: Probe) -> Said:
+    """`just probe-registries`'s own command, with the doubled registries on its PATH."""
+    result = run(
+        [sys.executable, "-m", "repo_checks", "probe-registries"],
+        cwd=REPO_ROOT,
+        env={"PATH": probe.path, "HOME": str(probe.home), "PYTHONPATH": pythonpath()},
+        timeout=600,
+    )
+    return Said(result.returncode, result.stdout, result.stderr)
+
+
+def test_every_declared_target_answering_a_version_passes_the_registry_reconciliation(
+    probe: Probe,
+) -> None:
+    """One line per target names what its registry serves, and the run passes."""
+    _every_target_released(probe, "0.4.3")
+
+    said = _probe_registries(probe)
+
+    equal(said.code, 0, describing=f"the reconciliation's exit ({said.stderr!r})")
+    equal(
+        said.stdout.splitlines(),
+        [f"{target.name} {target.id} 0.4.3" for target in joined(REPO_ROOT)],
+        describing="what the reconciliation says each registry serves",
+    )
+
+
+def test_a_target_the_probe_misreads_or_cannot_read_fails_the_registry_reconciliation(
+    probe: Probe,
+) -> None:
+    """Every target is published, so "no release" and "not answered" both fail the run."""
+    _every_target_released(probe, "0.4.3")
+    probe.answers(_registry_path("pypi:printobserver-cli"), Answer(404, "{}"))
+    probe.answers(_registry_path("npm:@printobserver/sdk"), Answer(500, "unicorn"))
+
+    said = _probe_registries(probe)
+
+    equal(said.code, 1, describing=f"the reconciliation's exit ({said.stderr!r})")
+    contains(
+        said.stderr,
+        "pypi:printobserver-cli: the probe answered no release",
+        describing="what the reconciliation said",
+    )
+    contains(
+        said.stderr,
+        "npm:@printobserver/sdk: the probe did not answer: release-probe.sh: npm answered 500",
+        describing="what the reconciliation said",
+    )
+    contains(said.stdout, "crate crate:printobserver 0.4.3", describing="the targets it read")
