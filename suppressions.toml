@@ -659,6 +659,18 @@ reason = "The sample is the one source in this repository of what `release-plz r
 
 [[suppression]]
 rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "_stand_in(probe, \"mktemp\""
+reason = "What stands in is the host's `mktemp`, failing, and not the layer under test: the probe is the real committed script, run exactly as onevcs runs it. A real `mktemp` cannot be made to fail for it, because onevcs hands the probe `PATH` and `HOME` alone, so `mktemp` writes under the system temporary directory whatever a test sets, and filling that directory would break every other process on the host. The branch it reaches — a probe with nowhere to read a body into answers nothing — is the refusal a full disk produces, and this is the one way to produce it here."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "_stand_in(probe, \"curl\""
+reason = "What stands in is a broken host `curl`, and not the layer under test: the probe is the real committed script, and every other case drives it through the real `curl` against real HTTP. A real `curl` that exits 0 always writes a three-digit `%{http_code}`, so the refusal of a status that is not one — the probe's guard against a `curl` it cannot trust — is reachable only through a `curl` that does not behave like one, which is what this case puts on `PATH`."
+
+[[suppression]]
+rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_release_path_journey.py"
 site = "llmlint: ignore[e2e_not_mocked]"
 reason = "What stands in is crates.io, and for the one reason the install proof's `standin.py` stands the package registries in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — a registry carrying no entry for a crate this tree publishes — is one the real registry stops being in the moment the release goes out. Everything else is real: the real `release-plz` program, its real computation, the real copy of the tree, the real tag, and the sparse-index protocol cargo itself speaks to the stand-in over HTTP. The layer under test is the drafting tool over this tree's versions, and it is not what is substituted."

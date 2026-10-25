@@ -608,6 +608,7 @@ def _stand_in(probe: Probe, program: str, body: str) -> None:
 
 def test_a_temporary_file_the_probe_cannot_create_is_not_answered(probe: Probe) -> None:
     """Without a file to read the body into, nothing is read and nothing is answered."""
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     _stand_in(probe, "mktemp", "echo 'mktemp: No space left on device' >&2; exit 1")
 
     _not_answered(probe("pypi:printobserver-cli"), "mktemp could not create a file")
@@ -616,6 +617,7 @@ def test_a_temporary_file_the_probe_cannot_create_is_not_answered(probe: Probe) 
 
 def test_a_curl_reporting_no_http_status_is_not_answered(probe: Probe) -> None:
     """A curl that exits 0 without a three-digit status has not said what a registry did."""
+    # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
     _stand_in(probe, "curl", "printf '\\nnot-a-status'")
 
     _not_answered(probe("pypi:printobserver-cli"), "rather than an HTTP status")
