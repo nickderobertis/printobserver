@@ -5,13 +5,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+from collections.abc import Callable, Sequence
 
 import pytest
 from closures import closure
 from repo_checks.checks_release import (
+    Answer,
     _publishable_crates,
     onevcs_builds_for_this_host,
+    read_by_onevcs,
     release_automation,
     release_declaration_readable,
     release_dispatch,
@@ -21,6 +24,7 @@ from repo_checks.checks_release import (
 )
 from repo_checks.expect import accepted, contains, equal, refused, refused_naming
 from repo_checks.model import Repo
+from repo_checks.release_declaration import drift, joined
 from treecopy import REPO_ROOT, Tree
 
 #: The files the checks this module drives read; see `closures`.
@@ -221,6 +225,37 @@ def test_a_recorded_fact_that_is_not_a_table_is_refused(tree: Callable[[], Tree]
     refused_naming(release_targets(broken.repo), "crate:printobserver-core", "not a table")
 
 
+def test_a_declaration_whose_target_is_one_value_is_refused(tree: Callable[[], Tree]) -> None:
+    """`target` given as a string rather than an array of tables declares no target at all."""
+    broken = tree()
+    broken.write(TARGETS, 'schema_version = 3\ntarget = "crate:printobserver"\n')
+
+    refused(release_targets(broken.repo), "declares no `[[target]]` table")
+
+
+def test_a_facts_table_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """`[release.targets]` as one value records no target's facts, and says so once."""
+    broken = tree()
+    head, _, rest = broken.read(POLICY).partition(FACTS)
+    _, _, after = rest.partition("\n[")
+    broken.write(POLICY, f'{head}targets = "every target"\n\n[{after}')
+
+    refused(release_targets(broken.repo), "`[release.targets]` is not a table")
+
+
+def test_a_tree_with_no_policy_reports_every_declared_target_unrecorded(
+    tree: Callable[[], Tree],
+) -> None:
+    """With nowhere the moved facts could be, each declared target is reported by its id."""
+    broken = tree()
+    broken.remove(POLICY)
+
+    findings = drift(broken.root)
+
+    for target in joined(broken.root):
+        refused_naming(findings, f"`{target.id}`", "records nothing for it")
+
+
 #: Where onevcs publishes no build (Windows on ARM, today) its reader is not
 #: installed and the check reads nothing, so a refusal is proven on every other leg.
 ONEVCS_RUNS_HERE = pytest.mark.skipif(
@@ -285,6 +320,52 @@ def test_a_host_onevcs_publishes_no_build_for_reads_nothing(tree: Callable[[], T
     broken.edit(TARGETS, 'name = "github-release"\n', "")
 
     accepted(release_declaration_readable(broken.repo))
+
+
+#: The ids the committed declaration declares, in order, as this repository reads them.
+DECLARED = [target.id for target in joined(REPO_ROOT)]
+
+
+def _reading(ids: Sequence[str]) -> str:
+    """A `release declaration --json` answer listing `ids`, in the shape onevcs prints."""
+    return json.dumps({"schema_version": 3, "target": [{"id": each} for each in ids]})
+
+
+def test_onevcs_listing_the_declared_targets_is_accepted() -> None:
+    """Every leg holds the judgement, the one onevcs ships no reader for included."""
+    accepted(read_by_onevcs(Answer("0.9.0", 0, _reading(DECLARED), ""), DECLARED))
+
+
+def test_onevcs_refusing_the_declaration_is_refused_in_its_own_words() -> None:
+    """A reader that exits non-zero refused the file, and the finding carries why."""
+    refusal = "error: release-targets.toml: unknown field `route`\n  at target 13"
+
+    refused_naming(
+        read_by_onevcs(Answer("0.9.0", 2, "", refusal), DECLARED),
+        "onevcs 0.9.0 refuses release-targets.toml",
+        "unknown field `route` at target 13",
+    )
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["not json", "[]", json.dumps({"target": {}}), json.dumps({"target": [{"name": "crate"}]})],
+    ids=["text", "list", "table", "no-id"],
+)
+def test_an_answer_naming_no_target_ids_is_refused(answer: str) -> None:
+    """Another program's output is read by its shape, and one with no ids reads as nothing."""
+    refused(read_by_onevcs(Answer("0.9.0", 0, answer, ""), DECLARED), "no reading of its targets")
+
+
+def test_onevcs_reading_other_targets_than_this_repository_is_refused() -> None:
+    """The two readers of one file disagreeing on what it declares is drift between them."""
+    read = DECLARED[:-1]
+
+    refused_naming(
+        read_by_onevcs(Answer("0.9.0", 0, _reading(read), ""), DECLARED),
+        "reads release-targets.toml as declaring",
+        f"this repository's own reader as {', '.join(DECLARED)}",
+    )
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(

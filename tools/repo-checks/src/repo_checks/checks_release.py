@@ -7,7 +7,7 @@ import re
 import sys
 import sysconfig
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -244,17 +244,39 @@ def release_declaration_readable(repo: Repo) -> list[str]:
         cwd=repo.root,
         timeout=60,
     )
-    if said.returncode != 0:
-        refusal = " ".join((said.stderr or said.stdout).split())
+    declared = [target.id for target in release_declaration.joined(repo.root)]
+    return read_by_onevcs(
+        Answer(version, said.returncode, said.stdout or "", said.stderr or ""), declared
+    )
+
+
+class Answer(NamedTuple):
+    """What one run of onevcs's declaration reader left, and the release that ran."""
+
+    version: str
+    code: int
+    stdout: str
+    stderr: str
+
+
+def read_by_onevcs(answer: Answer, declared: Sequence[str]) -> list[str]:
+    """What onevcs's reading of the declaration says is wrong, beside the ids `declared`.
+
+    Judging the answer is apart from running the reader so that every gate leg
+    holds the judgement, the one whose platform onevcs publishes no build for
+    included.
+    """
+    version = answer.version
+    if answer.code != 0:
+        refusal = " ".join((answer.stderr or answer.stdout).split())
         return [f"onevcs {version} refuses release-targets.toml: {refusal}"]
-    listed = _listed(said.stdout)
+    listed = _listed(answer.stdout)
     if listed is None:
         return [
             f"onevcs {version} answered release-targets.toml with no reading of its targets "
-            f"this check can compare: {said.stdout[:200]!r}"
+            f"this check can compare: {answer.stdout[:200]!r}"
         ]
-    declared = [target.id for target in release_declaration.joined(repo.root)]
-    if listed != declared:
+    if listed != list(declared):
         return [
             f"onevcs {version} reads release-targets.toml as declaring {', '.join(listed)}, "
             f"and this repository's own reader as {', '.join(declared)}"
