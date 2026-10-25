@@ -175,6 +175,29 @@ def test_recorded_facts_naming_no_assembling_tool_are_refused(tree: Callable[[],
     refused_naming(release_targets(broken.repo), "crate:printobserver-core", "no `built_by`")
 
 
+@pytest.mark.parametrize(
+    ("fact", "naming"),
+    [
+        ('{ built_by = "cargo" }', "no `built_by`, or one naming no tool"),
+        ('{ built_by = "release-artifacts", route = 3 }', "a `route` that is not a route"),
+        ('{ built_by = "release-artifacts", routes = "Route 1" }', "the key `routes`"),
+    ],
+    ids=["unknown-tool", "route-not-text", "unknown-key"],
+)
+def test_a_malformed_recorded_fact_is_refused(
+    tree: Callable[[], Tree], fact: str, naming: str
+) -> None:
+    """A fact a reader would silently read as absent is a finding rather than a blank."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"pypi:printobserver-sdk" = { built_by = "release-artifacts" }',
+        f'"pypi:printobserver-sdk" = {fact}',
+    )
+
+    refused_naming(release_targets(broken.repo), "pypi:printobserver-sdk", naming)
+
+
 def test_onevcs_reads_the_committed_declaration(committed: Repo) -> None:
     """The reader a consumer waiting on a release runs reads this file with no refusal."""
     accepted(release_declaration_readable(committed))

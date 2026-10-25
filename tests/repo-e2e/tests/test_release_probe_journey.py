@@ -27,6 +27,7 @@ import socket
 import sys
 import sysconfig
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -54,6 +55,10 @@ ORIGINS = ("crates.io", "pypi.org", "registry.npmjs.org", "github.com")
 #: Where the GitHub Release of `release:printobserver` lives.
 RELEASES = "/nickderobertis/printobserver/releases"
 
+#: Longer than the probe's own bound on one request, so a stalled answer is
+#: one the probe has to give up on.
+STALL_SECONDS = 60
+
 #: The programs the probe runs, besides the `curl` each case is handed.
 PROGRAMS = ("bash", "env", "python3")
 
@@ -73,6 +78,10 @@ class Answer:
     status: int
     body: str = ""
     location: str = ""
+    #: Bytes sent instead of `body`, for a body that is not UTF-8 at all.
+    raw: bytes = b""
+    #: Hold the answer until the case ends, as a registry that never answers.
+    stall: bool = False
 
 
 @dataclass
@@ -81,6 +90,8 @@ class Registries:
 
     answers: dict[str, Answer] = field(default_factory=dict)
     asked: list[str] = field(default_factory=list)
+    #: Set when the case ends, which releases every stalled answer.
+    ended: threading.Event = field(default_factory=threading.Event)
 
 
 def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
@@ -88,7 +99,10 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
         def _answer(self, *, with_body: bool) -> None:
             registries.asked.append(f"{self.command} {self.path}")
             answer = registries.answers.get(self.path, Answer(404, '{"errors":"Not Found"}'))
-            body = answer.body.encode("utf-8")
+            if answer.stall:
+                registries.ended.wait(STALL_SECONDS)
+                return
+            body = answer.raw or answer.body.encode("utf-8")
             self.send_response(answer.status)
             if answer.location:
                 self.send_header("Location", answer.location)
@@ -151,12 +165,11 @@ class Probe:
     path: str
     home: Path
 
-    def __call__(self, *arguments: str, script: Path = PROBE) -> Said:
-        """Run the probe with `arguments`, from the root of the tree `script` is in."""
-        root = script.parents[4]
+    def __call__(self, *arguments: str, script: Path = PROBE, cwd: Path | None = None) -> Said:
+        """Run the probe with `arguments`, from the root of `script`'s tree unless told."""
         result = run(
             [str(script), *arguments],
-            cwd=root,
+            cwd=cwd or script.parents[4],
             env={"PATH": self.path, "HOME": str(self.home)},
             timeout=90,
         )
@@ -178,12 +191,14 @@ def probe(tmp_path: Path) -> Iterator[Probe]:
     """The probe, on a PATH whose `curl` reaches the doubled registries and nothing else."""
     registries = Registries()
     server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(registries))
+    server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     path = _search_path(tmp_path / "bin", server.server_address[1])
     try:
         yield Probe(registries, path, _home(tmp_path))
     finally:
+        registries.ended.set()
         server.shutdown()
         server.server_close()
 
@@ -652,4 +667,119 @@ def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
         (REPO_ROOT / "release-targets.toml").read_text(encoding="utf-8"),
         f'id = "release:{_assigned("scripts/install.sh", "REPOSITORY")}"\n',
         describing="the release target, named for the repository the install script reads",
+    )
+
+
+@pytest.mark.parametrize(
+    ("identifier", "path", "answer", "naming"),
+    [
+        (
+            "crate:printobserver",
+            "/crates.io/api/v1/crates/printobserver",
+            Answer(200, '{"crate":{"max_stable_version":"null"}}'),
+            "not a semantic version",
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, '{"info":{"version":null}}'),
+            "without one readable info.version",
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, '{"info":{"version":"0.4.3","size":NaN}}'),
+            "without one readable info.version",
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, raw=b'{"info":{"version":"0.4.3","name":"\xff"}}'),
+            "without one readable info.version",
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, '{"info":{"version":"0.4.3"},"x":' + "[" * 100_000 + "]" * 100_000 + "}"),
+            "without one readable info.version",
+        ),
+        (
+            "npm:@printobserver/sdk",
+            "/registry.npmjs.org/@printobserver%2fsdk/latest",
+            Answer(200, '{"version":"0.4.3\\n9.9.9"}'),
+            "without one readable version",
+        ),
+        (
+            "npm:@printobserver/sdk",
+            "/registry.npmjs.org/@printobserver%2fsdk/latest",
+            Answer(200, '{"version":"1.2.3-01"}'),
+            "not a semantic version",
+        ),
+    ],
+    ids=[
+        "crate-string-null",
+        "pypi-null-version",
+        "non-finite-constant",
+        "not-utf-8",
+        "nested-past-the-parser",
+        "multi-line-string",
+        "leading-zero-prerelease",
+    ],
+)
+def test_a_body_strict_json_or_semver_refuses_is_not_answered(
+    probe: Probe, identifier: str, path: str, answer: Answer, naming: str
+) -> None:
+    """The string "null" is not JSON's null, and what strict JSON refuses answers nothing."""
+    probe.answers(path, answer)
+
+    _not_answered(probe(identifier), naming)
+
+
+def test_a_prerelease_with_build_metadata_is_a_version(probe: Probe) -> None:
+    """A full semantic version, prerelease and build metadata included, is answered whole."""
+    probe.answers(
+        "/registry.npmjs.org/printobserver-cli/latest",
+        Answer(200, '{"version":"0.5.0-rc.1+build.7"}'),
+    )
+
+    _released(probe("npm:printobserver-cli"), "0.5.0-rc.1+build.7")
+
+
+def test_the_probe_answers_about_its_own_repository_from_any_directory(
+    probe: Probe, tmp_path: Path
+) -> None:
+    """It finds the declaration from its own path, not from where it was started."""
+    probe.answers(
+        "/pypi.org/pypi/printobserver-cli/json", Answer(200, '{"info":{"version":"0.4.3"}}')
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    _released(probe("pypi:printobserver-cli", cwd=elsewhere), "0.4.3")
+
+
+def test_the_callers_curl_configuration_is_not_read(probe: Probe) -> None:
+    """A `~/.curlrc` sending every request to a dead proxy changes nothing the probe asks."""
+    (probe.home / ".curlrc").write_text('proxy = "http://127.0.0.1:1"\n', encoding="utf-8")
+    probe.answers(
+        "/pypi.org/pypi/printobserver-cli/json", Answer(200, '{"info":{"version":"0.4.3"}}')
+    )
+
+    _released(probe("pypi:printobserver-cli"), "0.4.3")
+
+
+def test_a_registry_that_never_answers_is_given_up_on_within_the_bound(probe: Probe) -> None:
+    """One request, bounded by curl's own `--max-time`, well inside the contract's sixty."""
+    probe.answers("/pypi.org/pypi/printobserver-cli/json", Answer(200, stall=True))
+
+    started = time.monotonic()
+    said = probe("pypi:printobserver-cli")
+    took = time.monotonic() - started
+
+    _not_answered(said, "curl exited 28")
+    truth(took < STALL_SECONDS - 5, describing=f"a probe that gave up in {took:.0f}s")
+    equal(
+        probe.registries.asked,
+        ["GET /pypi.org/pypi/printobserver-cli/json"],
+        describing="what the probe asked: once, and no retry",
     )

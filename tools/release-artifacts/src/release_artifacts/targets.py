@@ -77,7 +77,7 @@ def declared(root: Path) -> list[Target]:
                 description=entry.what,
                 route=entry.route,
                 manifest=entry.manifest,
-                built_by=entry.built_by,
+                built_by=entry.built_by.value if entry.built_by else "",
             )
         )
     drift = release_declaration.drift(root)

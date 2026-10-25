@@ -263,23 +263,27 @@ else:
     sys.exit(1)
 '
 
-# The one value the fetched body holds at the path of keys given, in FIELD: a
-# string's contents, or `null`. Returns 1 for a body that is not one valid JSON
-# document holding a string or null at exactly that path.
+# The one value the fetched body holds at the path of keys given: its JSON type
+# in KIND, `string` or `null`, and a string's contents in FIELD — two variables,
+# so the string "null" is never read as JSON's null. Returns 1 for a body that
+# is not one valid JSON document holding a string or null at exactly that path.
+KIND=""
 FIELD=""
 json_field() {
     local read
     read="$(printf '%s' "$BODY" | python3 -I -c "$READ_FIELD" "$@")" || return 1
     case "$read" in
-    null) FIELD=null ;;
-    "string "*) FIELD="${read#string }" ;;
+    null) KIND=null && FIELD="" ;;
+    "string "*) KIND=string && FIELD="${read#string }" ;;
     *) return 1 ;;
     esac
 }
 
-# A semantic version — what the caller compares an answer as, so anything else
-# would be a release it cannot order.
-readonly SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+# A semantic version (semver.org 2.0.0) — what the caller compares an answer
+# as, so anything else would be a release it cannot order. A prerelease
+# identifier is numeric with no leading zero, or alphanumeric.
+readonly SEMVER_IDENTIFIER='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+readonly SEMVER="^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-${SEMVER_IDENTIFIER}(\\.${SEMVER_IDENTIFIER})*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?\$"
 
 # The answer, held closed on its way out: what a caller reads on stdout is read
 # as a released version, so anything that is not one is not answered at all.
@@ -308,7 +312,7 @@ crate:*)
     esac
     json_field crate max_stable_version || unread_body "crates.io" "crate.max_stable_version"
     # Every version yanked or a prerelease: the registry serves nothing.
-    [ "$FIELD" = null ] && exit 0
+    [ "$KIND" = null ] && exit 0
     answer "$FIELD"
     ;;
 pypi:*)
@@ -318,7 +322,7 @@ pypi:*)
     404) exit 0 ;;
     *) unreadable "PyPI" ;;
     esac
-    json_field info version || unread_body "PyPI" "info.version"
+    json_field info version && [ "$KIND" = string ] || unread_body "PyPI" "info.version"
     answer "$FIELD"
     ;;
 npm:*)
@@ -328,7 +332,7 @@ npm:*)
     404) exit 0 ;;
     *) unreadable "npm" ;;
     esac
-    json_field version || unread_body "npm" "version"
+    json_field version && [ "$KIND" = string ] || unread_body "npm" "version"
     answer "$FIELD"
     ;;
 release:*)
