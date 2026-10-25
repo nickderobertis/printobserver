@@ -53,7 +53,7 @@ def semver(script: str) -> re.Pattern[str]:
     return re.compile(expanded.replace("\\\\", "\\").replace("\\$", "$"))
 
 
-@cache
+@cache  # pragma: unreached on win32 - Windows spawns no probe
 def _committed_semver() -> re.Pattern[str]:
     return semver(COMMITTED_PROBE.read_text(encoding="utf-8"))
 
@@ -74,7 +74,7 @@ def _probe(repo: Repo) -> Path | None:
 
 
 # llmlint: ignore-block[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-def _environment() -> dict[str, str]:
+def _environment() -> dict[str, str]:  # pragma: unreached on win32 - Windows spawns no probe
     """What onevcs hands a probe: `PATH` and `HOME`, and nothing else."""
     return {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
 
@@ -82,7 +82,9 @@ def _environment() -> dict[str, str]:
 # llmlint: ignore-end[contracts_have_one_source_or_a_drift_gate]
 
 
-def _ask(repo: Repo, probe: Path, target: release_declaration.Target) -> Asked:
+def _ask(  # pragma: unreached on win32 - Windows spawns no probe
+    repo: Repo, probe: Path, target: release_declaration.Target
+) -> Asked:
     said = run(
         [str(probe), target.id],
         cwd=repo.root,
@@ -100,7 +102,7 @@ STANDING_IN = "PRINTOBSERVER_PROOF_REGISTRIES"
 NO_RELEASE = "no-release"
 
 
-def _answered(asked: Asked) -> str | None:
+def _answered(asked: Asked) -> str | None:  # pragma: unreached on win32 - Windows spawns no probe
     """The version or `NO_RELEASE` one answer gave, or `None` where it gave neither."""
     match asked:
         case Asked(code=0, stdout=""):
@@ -113,7 +115,7 @@ def _answered(asked: Asked) -> str | None:
             return None
 
 
-def _finding(asked: Asked) -> str:
+def _finding(asked: Asked) -> str:  # pragma: unreached on win32 - Windows spawns no probe
     """What is wrong with an answer that was neither a version nor no release."""
     identifier = asked.target.id
     match asked:
@@ -122,9 +124,24 @@ def _finding(asked: Asked) -> str:
                 f"{identifier}: the probe answered {answer!r}, which is not one line holding "
                 f"one semantic version"
             )
-        case Asked(code=code, stderr=said):
-            reason = " ".join(said.split()) or f"exit {code} and nothing said"
+        case _:
+            reason = " ".join(asked.stderr.split()) or f"exit {asked.code} and nothing said"
             return f"{identifier}: the probe did not answer: {reason}"
+
+
+def _asked_all(
+    repo: Repo, probe: Path
+) -> list[str]:  # pragma: unreached on win32 - Windows spawns no probe
+    """Run the probe for every declared target, printing each answer; the findings it left."""
+    findings: list[str] = []
+    for target in release_declaration.joined(repo.root):
+        asked = _ask(repo, probe, target)
+        answered = _answered(asked)
+        if answered is None:
+            findings.append(_finding(asked))
+        else:
+            print(f"{target.name} {target.id} {answered}")
+    return findings
 
 
 def probe_registries(repo: Repo) -> int:
@@ -153,21 +170,14 @@ def probe_registries(repo: Repo) -> int:
     # nothing, would reconcile nothing and pass; both are failures instead, on
     # every host, because reading the declaration needs no probe.
     findings = release_declaration.drift(repo.root)
-    if sys.platform == "win32" and not findings:
+    if sys.platform != "win32":
+        findings += _asked_all(repo, probe)  # pragma: unreached on win32 - Windows spawns no probe
+    elif not findings:
         print(
             "probe-registries: not run on Windows: the probe is a bash script a Unix host "
             "spawns directly, and the Unix cells of this run ask the same registries",
             file=sys.stderr,
         )
-        return 0
-    targets = [] if sys.platform == "win32" else release_declaration.joined(repo.root)
-    for target in targets:
-        asked = _ask(repo, probe, target)
-        answered = _answered(asked)
-        if answered is None:
-            findings.append(_finding(asked))
-        else:
-            print(f"{target.name} {target.id} {answered}")
     for finding in findings:
         print(f"probe-registries: {finding}", file=sys.stderr)
     return 1 if findings else 0
