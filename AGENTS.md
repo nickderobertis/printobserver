@@ -1199,7 +1199,27 @@ runs after a release publishes is where it is first proven against GitHub.
 `just check-repo`'s `release-gating` and `release-dispatch` hold the workflows
 to both shapes.
 
-`release-targets.toml` declares what this repository publishes.
+**`release-targets.toml` is the producer declaration `onevcs` reads**, in the
+schema onevcs's `docs/contract.md` fixes: one `[[target]]` per artifact this
+repository publishes, in publication order, each with its `id`, short `name`,
+one-sentence `what` and `published_by`. A consumer waiting on a release reads
+it, and a host's release rules name a target by its `name` — `github-release`
+is the one a consumer installing from the forge waits on, so a rename is a
+change to every consumer naming it. That reader refuses any key its schema does
+not declare, so the two facts this repository's tooling also needs live in
+`repo-policy.toml`'s `[release.targets]`, keyed by `id`: the install-path
+`route` a target backs and `built_by`, the tool that assembles it.
+`repo_checks.release_declaration` joins them back for every reader, `what` is
+the description each registry shows, and `just check-repo`'s `release-targets`
+refuses a target one home names and the other does not. Its
+`release-declaration` runs the onevcs reader `uv.lock` holds over the committed
+file, on every platform that release has a build for. The declaration's
+`probe`, `scripts/release-probe.sh`, answers what each registry serves now for
+one declared `id` — a version, nothing for no release, or a non-zero exit for
+not answered. The GitHub Release is read off the `releases/latest` redirect
+rather than the rate-limited REST API, and is not answered until that release
+carries `SHA256SUMS`.
+
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
 anywhere else is one a person would have to hand-maintain.
