@@ -29,8 +29,10 @@ from repo_checks import release_declaration
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
+# llmlint: ignore-block[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 #: How long one run of the probe is given: onevcs's own bound on a probe.
 PROBE_TIMEOUT_SECONDS = 60
+# llmlint: ignore-end[contracts_have_one_source_or_a_drift_gate]
 
 #: The committed probe, whose own grammar of a semantic version is the one
 #: this reconciliation holds an answer to, so the two cannot disagree.
@@ -71,9 +73,13 @@ def _probe(repo: Repo) -> Path | None:
     return repo.path(named) if isinstance(named, str) and named.strip() else None
 
 
+# llmlint: ignore-block[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def _environment() -> dict[str, str]:
     """What onevcs hands a probe: `PATH` and `HOME`, and nothing else."""
     return {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", str(Path.home()))}
+
+
+# llmlint: ignore-end[contracts_have_one_source_or_a_drift_gate]
 
 
 def _ask(repo: Repo, probe: Path, target: release_declaration.Target) -> Asked:

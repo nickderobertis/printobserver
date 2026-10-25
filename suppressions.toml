@@ -2703,3 +2703,15 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_release_probe_journey.py"
 site = "def test_the_probe_reads_the_release_the_install_script_installs_from"
 reason = "This test is a drift gate between two committed scripts, not a behavioural test of either: it holds the forge account and checksum file the probe waits on to the ones `scripts/install.sh` installs from, and the declared release target to that script's repository. No invocation of either script can show that two constants in two files agree, because the probe's journey runs it against an HTTP double whose owner and asset name the test itself chooses. Every behavioural answer of the probe, the GitHub Release's included, is driven through the committed script elsewhere in this module."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release_probes.py"
+site = "#: How long one run of the probe is given"
+reason = "This restates onevcs's probe contract (docs/contract.md, \"What a probe prints\"): a probe is given sixty seconds to answer. It cannot be reconciled by running the probe through onevcs instead, because onevcs runs a declared probe only for a repository registered with its host (`onevcs release discover` refuses an unregistered path), and the scheduled install proof that calls `just probe-registries` runs on a hosted runner with no onevcs host state. The pinned onevcs reader in `just check-repo`'s `release-declaration` reconciles the declaration itself; the bound and environment here only make this reconciliation ask the probe no more generously than onevcs would, so a drift would make it stricter or looser than a consumer's engine, never let a wrong answer through to a consumer."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tools/repo-checks/src/repo_checks/release_probes.py"
+site = "def _environment() -> dict[str, str]:"
+reason = "This restates onevcs's probe contract (docs/contract.md, \"What a probe prints\"): a probe is spawned with `PATH` and `HOME` alone and no credential. It cannot be reconciled by running the probe through onevcs instead, because onevcs runs a declared probe only for a repository registered with its host (`onevcs release discover` refuses an unregistered path), and the scheduled install proof that calls `just probe-registries` runs on a hosted runner with no onevcs host state. The pinned onevcs reader in `just check-repo`'s `release-declaration` reconciles the declaration itself; the bound and environment here only make this reconciliation ask the probe no more generously than onevcs would, so a drift would make it stricter or looser than a consumer's engine, never let a wrong answer through to a consumer."
