@@ -797,6 +797,12 @@ reason = "The same tier and the same reason as the jobs above it: the JavaScript
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_release_probe_journey.py"
+site = "def test_a_registry_that_never_answers_is_given_up_on_within_the_bound"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the probe's one request is bounded by curl's own `--max-time 25` with no retry, and the only way to prove a stalled registry is given up on inside that bound is to stall one for it. It holds one xdist worker for that time and nothing else."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/release-artifacts/tests/test_registries.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same placement as the directive above it, and the same reason: this suite is where its neighbours are. There is also no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program this project does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."

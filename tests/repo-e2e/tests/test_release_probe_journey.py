@@ -21,6 +21,7 @@ there.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import socket
@@ -60,7 +61,7 @@ RELEASES = "/nickderobertis/printobserver/releases"
 STALL_SECONDS = 60
 
 #: The programs the probe runs, besides the `curl` each case is handed.
-PROGRAMS = ("bash", "env", "python3")
+PROGRAMS = ("bash", "env", "python3", "mktemp", "rm")
 
 
 class Said(NamedTuple):
@@ -481,7 +482,7 @@ def _checksums(probe: Probe, tag: str, answer: Answer) -> None:
     probe.answers(f"/github.com{RELEASES}/download/{tag}/SHA256SUMS", answer)
 
 
-@pytest.mark.parametrize("status", [301, 302, 307])
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
 @pytest.mark.parametrize(
     "checksums",
     [Answer(302, "", "https://release-assets.githubusercontent.com/SHA256SUMS"), Answer(200)],
@@ -592,7 +593,7 @@ def test_a_host_without_python3_is_not_answered(probe: Probe, tmp_path: Path) ->
     """The JSON parser is a program of its own, named before any registry is read."""
     python_less = Probe(
         probe.registries,
-        _search_path(tmp_path / "python-less", 1, ("bash", "env")),
+        _search_path(tmp_path / "python-less", 1, ("bash", "env", "mktemp", "rm")),
         probe.home,
     )
 
@@ -715,6 +716,18 @@ def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
             Answer(200, '{"version":"1.2.3-01"}'),
             "not a semantic version",
         ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, raw=b'{"info":{"version":"0.4.3"}}\x00'),
+            "without one readable info.version",
+        ),
+        (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, '{"info":{"version":"0.4.\\u00003"}}'),
+            "without one readable info.version",
+        ),
     ],
     ids=[
         "crate-string-null",
@@ -724,6 +737,8 @@ def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
         "nested-past-the-parser",
         "multi-line-string",
         "leading-zero-prerelease",
+        "nul-byte-in-body",
+        "nul-character-in-version",
     ],
 )
 def test_a_body_strict_json_or_semver_refuses_is_not_answered(
@@ -768,6 +783,7 @@ def test_the_callers_curl_configuration_is_not_read(probe: Probe) -> None:
     _released(probe("pypi:printobserver-cli"), "0.4.3")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_registry_that_never_answers_is_given_up_on_within_the_bound(probe: Probe) -> None:
     """One request, bounded by curl's own `--max-time`, well inside the contract's sixty."""
     probe.answers("/pypi.org/pypi/printobserver-cli/json", Answer(200, stall=True))
@@ -783,3 +799,44 @@ def test_a_registry_that_never_answers_is_given_up_on_within_the_bound(probe: Pr
         ["GET /pypi.org/pypi/printobserver-cli/json"],
         describing="what the probe asked: once, and no retry",
     )
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32" and os.geteuid() == 0,
+    reason="root reaches a directory whatever its permissions say",
+)
+def test_a_probe_that_cannot_reach_its_repository_root_is_not_answered(
+    probe: Probe, tmp_path: Path
+) -> None:
+    """It answers about the repository it is in, so a root it cannot enter answers nothing."""
+    script = _tree(tmp_path, (REPO_ROOT / "release-targets.toml").read_text(encoding="utf-8"))
+    root = script.parents[4]
+    chmod = shutil.which("chmod")
+    truth(chmod, describing="`chmod` on this host, to take the root's search permission")
+    # One shell enters the probe's own directory while the root can still be
+    # passed through, takes the root's search permission, and starts the probe
+    # by a relative path, which needs nothing of the root; reaching the root
+    # from there is what the probe then cannot do.
+    try:
+        result = run(
+            [
+                "bash",
+                "-c",
+                'cd -- "$1" && "$2" 600 -- "$3" && { ./release-probe.sh "$4"; status=$?; '
+                '"$2" 755 -- "$3"; exit "$status"; }',
+                "lock",
+                str(script.parent),
+                str(chmod),
+                str(root),
+                "pypi:printobserver-cli",
+            ],
+            cwd=tmp_path,
+            env={"PATH": probe.path, "HOME": str(probe.home)},
+            timeout=90,
+        )
+    finally:
+        root.chmod(0o755)
+    said = Said(result.returncode, result.stdout, result.stderr)
+
+    _not_answered(said, "cannot reach the repository root")
+    equal(probe.registries.asked, [], describing="what the probe asked any registry")

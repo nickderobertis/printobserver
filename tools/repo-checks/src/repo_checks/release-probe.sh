@@ -62,7 +62,8 @@
 # so an unauthenticated read is all it needs. `curl -q` follows from the same
 # rule — a ~/.curlrc is the caller's configuration and not this probe's.
 #
-# `curl` and `python3` are the whole of what it runs beyond bash's own builtins.
+# `curl` and `python3`, with `mktemp` and `rm` for the one file it writes, are
+# the whole of what it runs beyond bash's own builtins.
 # Each request is bounded by --max-time 25 and a GitHub answer takes two, well
 # inside the sixty seconds the contract allows. There is no retry: a transient
 # failure is "not answered", which the caller re-asks later.
@@ -104,7 +105,7 @@ if [ $# -ne 1 ]; then
 fi
 identifier="$1"
 
-for tool in curl python3; do
+for tool in curl python3 mktemp rm; do
     command -v "$tool" >/dev/null 2>&1 || refuse \
         "$tool is not on PATH, so no registry can be read" \
         "install $tool, or put it on the PATH this probe is spawned with"
@@ -202,16 +203,24 @@ if [ "$matched" -ne 0 ]; then
 fi
 name="${identifier#*:}"
 
-# One registry read: the body, then its HTTP status, in BODY and STATUS. Extra
-# curl options go before the URL; with `-o /dev/null`, BODY is instead what the
-# write-out format in REPORT says, which is how a redirect is read unfollowed.
+# Where a registry's body is written, byte for byte. A file rather than a
+# variable: bash drops every NUL byte a command substitution carries, which
+# could turn a malformed body into a valid one before the parser read it.
+BODY_FILE="$(mktemp)" || refuse "mktemp could not create a file to read a registry's body into" \
+    "free space in, or permission on, the temporary directory, and re-ask"
+trap 'rm -f -- "$BODY_FILE"' EXIT
+
+# One registry read: the body into BODY_FILE, its HTTP status into STATUS, and
+# what the write-out format in REPORT says into BODY — which is how a redirect
+# is read unfollowed. Extra curl options go before the URL.
 BODY=""
 STATUS=""
 REPORT=""
 fetch() {
     local url="${*: -1}" out rc=0
     out="$(curl -q -sS --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
-        -A "$USER_AGENT" -w "$REPORT"'\n%{http_code}' "${@:1:$#-1}" -- "$url")" || rc=$?
+        -A "$USER_AGENT" -o "$BODY_FILE" -w "$REPORT"'\n%{http_code}' \
+        "${@:1:$#-1}" -- "$url")" || rc=$?
     if [ "$rc" -ne 0 ]; then
         refuse "curl exited $rc reading $url, so no registry answered (its diagnostic is above)" \
             "re-ask once the registry is reachable; nothing about a release has been established"
@@ -225,12 +234,13 @@ fetch() {
 }
 
 # The parse of a registry's body, as a program for `python3 -I`: its
-# arguments are the path of keys to one field, and the body arrives on stdin.
+# arguments are the file holding the body, then the path of keys to one field.
 # The whole document is parsed as strict JSON — UTF-8, no trailing text, no
 # NaN or Infinity, and no object naming one key twice, since a duplicate is a
 # document two readers can read two ways — and the field is selected at that
 # path alone. It prints `string <value>` or `null`, and exits 1 for a document
-# that does not parse or holds no single-line string or null at that path.
+# that does not parse or holds no string or null at that path — or a string
+# carrying a control character, which a shell would mangle on its way out.
 readonly READ_FIELD='
 import json, sys
 
@@ -245,19 +255,19 @@ def refuse_constant(name):
 
 try:
     node = json.loads(
-        sys.stdin.buffer.read().decode("utf-8"),
+        open(sys.argv[1], "rb").read().decode("utf-8"),
         object_pairs_hook=unique,
         parse_constant=refuse_constant,
     )
 except (ValueError, RecursionError):
     sys.exit(1)
-for key in sys.argv[1:]:
+for key in sys.argv[2:]:
     if not isinstance(node, dict) or key not in node:
         sys.exit(1)
     node = node[key]
 if node is None:
     print("null")
-elif isinstance(node, str) and "\n" not in node and "\r" not in node:
+elif isinstance(node, str) and not any(ord(c) < 32 or ord(c) == 127 for c in node):
     print("string " + node)
 else:
     sys.exit(1)
@@ -271,7 +281,7 @@ KIND=""
 FIELD=""
 json_field() {
     local read
-    read="$(printf '%s' "$BODY" | python3 -I -c "$READ_FIELD" "$@")" || return 1
+    read="$(python3 -I -c "$READ_FIELD" "$BODY_FILE" "$@")" || return 1
     case "$read" in
     null) KIND=null && FIELD="" ;;
     "string "*) KIND=string && FIELD="${read#string }" ;;
@@ -339,7 +349,7 @@ release:*)
     releases="https://github.com/$GITHUB_OWNER/$name/releases"
     # Not followed: where github.com sends the request is the answer.
     REPORT='%{redirect_url}'
-    fetch -o /dev/null "$releases/latest"
+    fetch "$releases/latest"
     REPORT=""
     case "$STATUS" in
     301 | 302 | 303 | 307 | 308) ;;
@@ -356,7 +366,7 @@ release:*)
         "GitHub's latest release of $identifier is tagged '$tag', which is not v<version>" "$RE_ASK"
     # The checksum file is a release asset; github.com answers its download
     # with a redirect to the asset store when it is there, and 404 when not.
-    fetch -I -o /dev/null "$releases/download/$tag/$CHECKSUMS"
+    fetch -I "$releases/download/$tag/$CHECKSUMS"
     case "$STATUS" in
     200 | 302) ;;
     404) refuse "GitHub's release $tag of $identifier carries no $CHECKSUMS yet, so scripts/install.sh would refuse every artifact in it" \
