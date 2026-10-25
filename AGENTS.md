@@ -1211,25 +1211,13 @@ forge waits on — so renaming one is a change to every consumer naming it.
 and refuses what it refuses, and `release-targets` refuses a target one of the
 two homes names and the other does not.
 
-**The declaration's `probe` is `tools/repo-checks/src/repo_checks/release-probe.sh`**,
-under onevcs's "What a probe prints". onevcs spawns it from the repository root
-with one target `id`, an environment of `PATH` and `HOME` alone, and no
-credential. It has three answers: one version line and exit 0 for **released**;
-nothing and exit 0 for **no release**; a non-zero exit with the reason on stderr
-for **not answered**. It reads crates.io's `crate.max_stable_version` (null is no
-release), PyPI's `info.version` and npm's `latest` dist-tag, scoped names
-included (a 404 from either is no release), and, for `release:printobserver`, the
-redirect `releases/latest` answers on github.com, never the REST API, whose
-unauthenticated limit a 60-second poll would exhaust. It answers that tag without
-its `v`, no release for a redirect to the bare releases page, and not answered
-until the release carries the `SHA256SUMS` `scripts/install.sh` verifies against.
-A server error, an unreadable body, a non-semantic version and an `id` no
-`[[target]]` declares are all not answered.
-`tests/repo-e2e/tests/test_release_probe_journey.py` drives every answer against
-registries doubled at HTTP. `just probe-registries` runs the probe over every
-declared target against the real registries and fails unless each answers a
-version, since every target is published. `just prove-registry-script` calls it,
-so it runs wherever `just test-install-proof` does and never in the gate.
+**The declaration's `probe` is what a consumer waits on**, so its three answers —
+a version, nothing for no release, and a non-zero exit for not answered — must
+never blur: a registry it could not read is not answered, never no release.
+`just probe-registries` asks the real registries through it for every declared
+target, and `just test-install-proof` calls it, so it runs on that proof's
+schedule and never in the gate. `tools/repo-checks/AGENTS.md` holds the rules the
+probe is written to.
 
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
