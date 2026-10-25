@@ -30,10 +30,11 @@ A consumer installs the program from that release, and `scripts/install.sh`
 refuses every artifact it cannot verify against that file, so until it is there
 the answer is not answered.
 
-## Its readings are reconciled against the real registries
+## Its readings are reconciled against the real registries, off the gate
 
-The journey proves the script against registries doubled at HTTP, which cannot
-notice a producer changing its answer. `just probe-registries` is the
-reconciliation: it passes when every declared target answers a version or no
-release, and fails naming each one that is not answered or answers something
-that is not one version.
+The journey's doubled registries cannot notice a producer changing its answer,
+so `just probe-registries` asks the real ones, from the scheduled install proof
+because no gate tier may read the network. No release passes it, because a
+target declared before its first publication honestly answers that; only not
+answered, or an answer that is not one version, fails it, because either is a
+registry the probe can no longer read.

@@ -1207,17 +1207,9 @@ only this repository's tooling reads goes in `repo-policy.toml`'s
 and `built_by`. A target's `name` is what consumers and a host's release rules
 call it by — `github-release` above all, which a consumer installing from the
 forge waits on — so renaming one is a change to every consumer naming it.
-`just check-repo`'s `release-declaration` runs onevcs's own reader over the file
-and refuses what it refuses, and `release-targets` refuses a target one of the
-two homes names and the other does not.
-
-**The declaration's `probe` is what a consumer waits on**, so its three answers —
-a version, nothing for no release, and a non-zero exit for not answered — must
-never blur: a registry it could not read is not answered, never no release.
-`just probe-registries` asks the real registries through it for every declared
-target, and `just test-install-proof` calls it, so it runs on that proof's
-schedule and never in the gate. `tools/repo-checks/AGENTS.md` holds the rules the
-probe is written to.
+The declaration's `probe`, and its reconciliation against the real registries,
+are `tools/repo-checks`' own, and `tools/repo-checks/AGENTS.md` holds the rules
+both are written to.
 
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
