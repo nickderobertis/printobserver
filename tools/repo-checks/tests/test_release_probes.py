@@ -2,9 +2,10 @@
 
 Its journey against doubled registries is the end-to-end tier's, in
 `tests/repo-e2e/tests/test_release_probe_journey.py`. What is here is what that
-journey cannot reach: a declaration naming no probe, a probe answering
-something that is not a version, and the Windows cells of the scheduled proof,
-which this suite runs on and that journey does not.
+journey cannot reach: a declaration naming no probe, a probe answering no
+release for every target, a probe answering something that is not a version,
+and the Windows cells of the scheduled proof, which this suite runs on and that
+journey does not.
 """
 
 from __future__ import annotations
@@ -98,6 +99,25 @@ def test_a_probe_answering_something_other_than_one_version_fails(
     for target in joined(root):
         contains(err, f"{target.id}: the probe answered", describing="what it said")
     contains(err, "not one line holding one semantic version", describing="what it said")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in probe is a bash script")
+def test_a_probe_answering_no_release_for_every_target_passes(tmp_path: Path) -> None:
+    """Exit 0 with nothing printed is no release, an answer a consumer acts on, so it passes."""
+    committed = (ROOT / "release-targets.toml").read_text(encoding="utf-8")
+    root = _tree(tmp_path, committed.replace(PROBE_LINE, 'probe = "probe.sh"\n'))
+    stand_in = root / "probe.sh"
+    stand_in.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    stand_in.chmod(0o755)
+
+    code, out, err = _reconcile(root)
+
+    equal((code, err), (0, ""), describing="the reconciliation's exit and findings")
+    equal(
+        out.splitlines(),
+        [f"{target.name} {target.id} no-release" for target in joined(root)],
+        describing="what it says each registry serves",
+    )
 
 
 def test_a_declaration_declaring_no_target_fails_rather_than_passing_empty(

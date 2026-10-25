@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
-from journey import REPO_ROOT, pythonpath
+from journey import REPO_ROOT, clean_environment, plain
 from repo_checks.expect import absent, contains, equal, passing, truth
 from repo_checks.release_declaration import joined
 from repo_checks.shell import run
@@ -895,51 +895,78 @@ def _every_target_released(probe: Probe, version: str) -> None:
 
 
 def _probe_registries(probe: Probe) -> Said:
-    """`just probe-registries`'s own command, with the doubled registries on its PATH."""
+    """`just probe-registries` itself, with the doubled registries' `curl` first on PATH.
+
+    The recipe runs under the caller's environment, so `just` and `uv` resolve
+    from the host's PATH while every registry read the probe makes goes through
+    the `curl` that reaches the doubles and refuses any origin it does not double.
+    """
     result = run(
-        [sys.executable, "-m", "repo_checks", "probe-registries"],
+        ["just", "probe-registries"],
         cwd=REPO_ROOT,
-        env={"PATH": probe.path, "HOME": str(probe.home), "PYTHONPATH": pythonpath()},
+        env=clean_environment(PATH=os.pathsep.join([probe.path, os.environ.get("PATH", "")])),
         timeout=600,
     )
-    return Said(result.returncode, result.stdout, result.stderr)
+    return Said(result.returncode, plain(result.stdout), plain(result.stderr))
 
 
-def test_every_declared_target_answering_a_version_passes_the_registry_reconciliation(
+#: The targets the mixed cases answer "no release" for: one per kind of
+#: registry answer that means it — crates.io's null, a 404 from PyPI and from
+#: npm, and GitHub's redirect to the bare releases page.
+UNRELEASED = (
+    "crate:printobserver-sdk",
+    "pypi:printobserver-sdk",
+    "npm:@printobserver/sdk",
+    "release:printobserver",
+)
+
+
+def _some_targets_unreleased(probe: Probe) -> None:
+    """Every target released at 0.4.3, except the `UNRELEASED` ones, which serve nothing."""
+    _every_target_released(probe, "0.4.3")
+    probe.answers(
+        _registry_path("crate:printobserver-sdk"),
+        Answer(200, json.dumps({"crate": {"max_stable_version": None}})),
+    )
+    probe.answers(_registry_path("pypi:printobserver-sdk"), Answer(404, "{}"))
+    probe.answers(_registry_path("npm:@printobserver/sdk"), Answer(404, "{}"))
+    _latest(probe, f"https://github.com{RELEASES}")
+
+
+def test_released_and_unreleased_targets_together_pass_the_registry_reconciliation(
     probe: Probe,
 ) -> None:
-    """One line per target names what its registry serves, and the run passes."""
-    _every_target_released(probe, "0.4.3")
+    """A version and "no release" are both answers, so a mix of them passes the recipe."""
+    _some_targets_unreleased(probe)
 
     said = _probe_registries(probe)
 
-    equal(said.code, 0, describing=f"the reconciliation's exit ({said.stderr!r})")
+    equal(said.code, 0, describing=f"the recipe's exit ({said.stderr!r})")
     equal(
         said.stdout.splitlines(),
-        [f"{target.name} {target.id} 0.4.3" for target in joined(REPO_ROOT)],
-        describing="what the reconciliation says each registry serves",
+        [
+            f"{target.name} {target.id} {'no-release' if target.id in UNRELEASED else '0.4.3'}"
+            for target in joined(REPO_ROOT)
+        ],
+        describing="what the recipe says each registry serves",
     )
 
 
-def test_a_target_the_probe_misreads_or_cannot_read_fails_the_registry_reconciliation(
+def test_a_target_the_probe_cannot_read_fails_the_registry_reconciliation(
     probe: Probe,
 ) -> None:
-    """Every target is published, so "no release" and "not answered" both fail the run."""
-    _every_target_released(probe, "0.4.3")
-    probe.answers(_registry_path("pypi:printobserver-cli"), Answer(404, "{}"))
-    probe.answers(_registry_path("npm:@printobserver/sdk"), Answer(500, "unicorn"))
+    """One target not answered fails the recipe, naming it, beside answers that pass."""
+    _some_targets_unreleased(probe)
+    probe.answers(_registry_path("pypi:printobserver-cli"), Answer(500, "unicorn"))
 
     said = _probe_registries(probe)
 
-    equal(said.code, 1, describing=f"the reconciliation's exit ({said.stderr!r})")
+    equal(said.code != 0, True, describing=f"whether the recipe failed ({said.stderr!r})")
     contains(
         said.stderr,
-        "pypi:printobserver-cli: the probe answered no release",
-        describing="what the reconciliation said",
+        "pypi:printobserver-cli: the probe did not answer: release-probe.sh: PyPI answered 500",
+        describing="what the recipe said",
     )
-    contains(
-        said.stderr,
-        "npm:@printobserver/sdk: the probe did not answer: release-probe.sh: npm answered 500",
-        describing="what the reconciliation said",
-    )
+    absent(said.stderr, "pypi:printobserver-sdk", describing="a no-release target's findings")
     contains(said.stdout, "crate crate:printobserver 0.4.3", describing="the targets it read")
+    contains(said.stdout, "pypi-sdk pypi:printobserver-sdk no-release", describing="the same")

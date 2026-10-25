@@ -5,10 +5,11 @@ PyPI's project JSON, npm's `latest` document and github.com's release
 redirects — and its journey proves it against doubles of them. Those doubles
 cannot notice a producer changing its answer, so this is the reconciliation:
 the committed probe, run the way onevcs runs it, over every target the
-declaration names, against the real registries. Every one of them is
-published, so each must answer a version; a target answering "no release" is
-a probe misreading a registry, and one answering nothing is a registry it can no
-longer read.
+declaration names, against the real registries. Each must answer one of the
+two answers a consumer acts on — a version, or no release, which a target the
+declaration names before its first publication honestly answers — and one that
+is not answered, or answers something that is not one version, is a registry
+the probe can no longer read.
 
 `just probe-registries` runs it, and the registry install-path proof's script
 route calls that recipe, so it runs on that proof's schedule and after every
@@ -85,19 +86,27 @@ def _ask(repo: Repo, probe: Path, target: release_declaration.Target) -> Asked:
     return Asked(target, said.returncode, said.stdout or "", said.stderr or "")
 
 
-def _finding(asked: Asked) -> str | None:
-    """What is wrong with one answer, or `None` for a version."""
-    identifier = asked.target.id
+#: What a reconciled target answered when its registry serves nothing yet.
+NO_RELEASE = "no-release"
+
+
+def _answered(asked: Asked) -> str | None:
+    """The version or `NO_RELEASE` one answer gave, or `None` where it gave neither."""
     match asked:
+        case Asked(code=0, stdout=""):
+            return NO_RELEASE
         case Asked(code=0, stdout=answer) if _committed_semver().fullmatch(
             answer.removesuffix("\n")
         ):
+            return answer.strip()
+        case _:
             return None
-        case Asked(code=0, stdout=""):
-            return (
-                f"{identifier}: the probe answered no release, and this repository publishes "
-                f"it: the probe is misreading what its registry serves"
-            )
+
+
+def _finding(asked: Asked) -> str:
+    """What is wrong with an answer that was neither a version nor no release."""
+    identifier = asked.target.id
+    match asked:
         case Asked(code=0, stdout=answer):
             return (
                 f"{identifier}: the probe answered {answer!r}, which is not one line holding "
@@ -109,10 +118,11 @@ def _finding(asked: Asked) -> str | None:
 
 
 def probe_registries(repo: Repo) -> int:
-    """Ask the real registries for every declared target; fail unless each answers a version.
+    """Ask the real registries for every declared target; fail on any not answered.
 
-    One line per target on stdout, `<name> <id> <version>`, so a reader of a
-    scheduled run sees what each registry serves; every finding on stderr.
+    One line per target on stdout, `<name> <id> <version>` or `<name> <id>
+    no-release`, so a reader of a scheduled run sees what each registry serves;
+    every finding on stderr.
     """
     probe = _probe(repo)
     if probe is None:
@@ -134,11 +144,11 @@ def probe_registries(repo: Repo) -> int:
     findings = release_declaration.drift(repo.root)
     for target in release_declaration.joined(repo.root):
         asked = _ask(repo, probe, target)
-        finding = _finding(asked)
-        if finding is None:
-            print(f"{target.name} {target.id} {asked.stdout.strip()}")
+        answered = _answered(asked)
+        if answered is None:
+            findings.append(_finding(asked))
         else:
-            findings.append(finding)
+            print(f"{target.name} {target.id} {answered}")
     for finding in findings:
         print(f"probe-registries: {finding}", file=sys.stderr)
     return 1 if findings else 0

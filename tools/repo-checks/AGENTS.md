@@ -34,5 +34,6 @@ the answer is not answered.
 
 The journey proves the script against registries doubled at HTTP, which cannot
 notice a producer changing its answer. `just probe-registries` is the
-reconciliation: every declared target is published, so it fails unless each
-answers a version.
+reconciliation: it passes when every declared target answers a version or no
+release, and fails naming each one that is not answered or answers something
+that is not one version.
