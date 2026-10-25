@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
+import sys
+import sysconfig
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -18,6 +21,7 @@ from repo_checks.model import (
     toolchain_tools,
 )
 from repo_checks.parsing import jobs_of, load_workflow, programs_in, run_commands, steps_of
+from repo_checks.shell import run
 
 MANIFEST_NAMES = ("Cargo.toml", "pyproject.toml", "package.json")
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
@@ -139,6 +143,89 @@ def release_targets(repo: Repo) -> list[str]:
     findings.extend(_route_findings(repo, targets))
     findings.extend(_conventional_commit_findings(repo))
     return findings
+
+
+#: The distribution `uv.lock` holds onevcs's declaration reader at.
+ONEVCS_DISTRIBUTION = "onevcs-cli"
+
+
+def _locked_onevcs(repo: Repo) -> tuple[str, list[str]]:
+    """The release `uv.lock` holds onevcs at, and the wheels it records for it."""
+    lock = repo.read_toml("uv.lock")
+    for package in lock.get("package", []):
+        if isinstance(package, dict) and package.get("name") == ONEVCS_DISTRIBUTION:
+            wheels = [
+                str(wheel.get("url", ""))
+                for wheel in package.get("wheels", [])
+                if isinstance(wheel, dict)
+            ]
+            return str(package.get("version", "")), wheels
+    return "", []
+
+
+def _locked_for_this_host(repo: Repo, wheels: list[str]) -> bool:
+    """Whether one of the locked wheels is this host's platform's build."""
+    from repo_checks.platforms import host
+
+    naming = host(repo).naming
+    return any(
+        tag.startswith(naming.wheel_family) and tag.endswith(f"_{naming.wheel_machine}")
+        for url in wheels
+        for tag in Path(url).stem.rsplit("-", 1)[-1].split(".")
+    )
+
+
+def release_declaration_readable(repo: Repo) -> list[str]:
+    """The reader `onevcs` ships reads `release-targets.toml` with no refusal.
+
+    That file is the producer declaration a consumer waiting on a release here
+    reads, through `onevcs release declaration`, and that reader refuses a key
+    its schema does not declare and a target missing a field it requires. So
+    the reader itself is what this runs — the one `uv.lock` holds, from this
+    interpreter's own environment rather than whichever `onevcs` is first on
+    PATH — rather than a second copy of its schema written here.
+
+    onevcs publishes no build for some platform this repository supports
+    (Windows on ARM, today), and the lock marks that platform off. On a host
+    whose platform the locked release has no wheel for, this reads nothing and
+    reports nothing; every other platform's gate runs it.
+    """
+    version, wheels = _locked_onevcs(repo)
+    if not version:
+        return [
+            f"uv.lock holds no `{ONEVCS_DISTRIBUTION}`, so nothing can run onevcs's reader "
+            f"over release-targets.toml: add it to pyproject.toml's dev group"
+        ]
+    reader = Path(sysconfig.get_path("scripts")) / (
+        "onevcs.exe" if sys.platform == "win32" else "onevcs"
+    )
+    if not reader.is_file():
+        if not _locked_for_this_host(repo, wheels):
+            return []
+        return [
+            f"onevcs {version}, which uv.lock holds, is not installed in this environment at "
+            f"{reader}: run `uv sync`"
+        ]
+    said = run(
+        [str(reader), "release", "declaration", str(repo.root), "--json"],
+        cwd=repo.root,
+        timeout=60,
+    )
+    if said.returncode != 0:
+        refusal = " ".join((said.stderr or said.stdout).split())
+        return [f"onevcs {version} refuses release-targets.toml: {refusal}"]
+    try:
+        read = json.loads(said.stdout)
+    except json.JSONDecodeError:
+        return [f"onevcs {version} answered release-targets.toml with no JSON reading of it"]
+    listed = [str(target.get("id", "")) for target in read.get("target", [])]
+    declared = [target.id for target in release_declaration.joined(repo.root)]
+    if listed != declared:
+        return [
+            f"onevcs {version} reads release-targets.toml as declaring {', '.join(listed)}, "
+            f"and this repository's own reader as {', '.join(declared)}"
+        ]
+    return []
 
 
 def _route_findings(repo: Repo, targets: list[release_declaration.Target]) -> list[str]:

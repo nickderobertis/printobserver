@@ -12,6 +12,7 @@ from closures import closure
 from repo_checks.checks_release import (
     _publishable_crates,
     release_automation,
+    release_declaration_readable,
     release_dispatch,
     release_gating,
     release_targets,
@@ -24,6 +25,7 @@ from treecopy import Tree
 #: The files the checks this module drives read; see `closures`.
 CLOSURE = closure(
     "release-automation",
+    "release-declaration",
     "release-dispatch",
     "release-gating",
     "release-targets",
@@ -171,6 +173,41 @@ def test_recorded_facts_naming_no_assembling_tool_are_refused(tree: Callable[[],
     )
 
     refused_naming(release_targets(broken.repo), "crate:printobserver-core", "no `built_by`")
+
+
+def test_onevcs_reads_the_committed_declaration(committed: Repo) -> None:
+    """The reader a consumer waiting on a release runs reads this file with no refusal."""
+    accepted(release_declaration_readable(committed))
+
+
+def test_a_declaration_carrying_a_key_onevcs_refuses_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A key the producer schema does not declare is one onevcs refuses the whole file for."""
+    broken = tree()
+    broken.edit(
+        TARGETS,
+        'name = "pypi-cli"\n',
+        'name = "pypi-cli"\nroute = "Route 1 — the Python package registry"\n',
+    )
+
+    refused_naming(
+        release_declaration_readable(broken.repo), "refuses release-targets.toml", '"route"'
+    )
+
+
+def test_a_declaration_with_a_target_missing_its_name_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Every target needs the short name a consumer's plan calls it by."""
+    broken = tree()
+    broken.edit(TARGETS, 'name = "github-release"\n', "")
+
+    refused_naming(
+        release_declaration_readable(broken.repo),
+        "refuses release-targets.toml",
+        "missing field `name`",
+    )
 
 
 def test_automation_that_is_not_conventional_commit_driven_is_refused(

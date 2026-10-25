@@ -110,6 +110,7 @@ CHECKS: dict[str, Closure] = {
             POLICY,
         )
     ),
+    "release-declaration": Closure((RELEASE_TARGETS, POLICY, AGENTS, "uv.lock")),
     "release-automation": Closure((WORKFLOWS, AGENTS, RELEASE_TARGETS, POLICY)),
     "release-gating": Closure((WORKFLOWS, JUSTFILE, POLICY, RELEASE_SOURCES)),
     "release-dispatch": Closure((WORKFLOWS, JUSTFILE, POLICY, RELEASE_SOURCES)),
