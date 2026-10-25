@@ -11,6 +11,7 @@ journey does not.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from typing import NamedTuple
@@ -18,7 +19,7 @@ from typing import NamedTuple
 import pytest
 from repo_checks.expect import contains, equal
 from repo_checks.release_declaration import joined
-from repo_checks.release_probes import COMMITTED_PROBE, semver
+from repo_checks.release_probes import COMMITTED_PROBE, STANDING_IN, semver
 from repo_checks.shell import run
 
 #: This repository's root, which every case reads its committed files from.
@@ -163,13 +164,25 @@ def test_a_proof_pointed_at_stand_in_registries_asks_the_real_ones_nothing(
     stand_in.write_text(f"#!/usr/bin/env bash\ntouch '{asked}'\nexit 3\n", encoding="utf-8")
     stand_in.chmod(0o755)
 
-    pointed = _reconcile(root, PRINTOBSERVER_PROOF_REGISTRIES="http://127.0.0.1:9")
+    pointed = _reconcile(root, **{STANDING_IN: "http://127.0.0.1:9"})
     equal(tuple(pointed), (0, "", ""), describing="the reconciliation beside stand-ins")
     equal(asked.exists(), False, describing="whether the probe was run")
 
-    code, _, err = _reconcile(root, PRINTOBSERVER_PROOF_REGISTRIES="")
+    code, _, err = _reconcile(root, **{STANDING_IN: ""})
     equal(code, 1, describing=f"the same reconciliation with no stand-in named ({err!r})")
     equal(asked.exists(), True, describing="whether the probe was run")
+
+
+def test_the_stand_in_variable_is_the_one_the_registry_proof_reads() -> None:
+    """The variable the reconciliation stands aside for is the proof's own, by its declaration."""
+    registries = ROOT / "tools/release-artifacts/src/release_artifacts/registries.py"
+    declared = re.findall(
+        r'^PRINTOBSERVER_PROOF_REGISTRIES = "([^"]+)"$',
+        registries.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+
+    equal(declared, [STANDING_IN], describing=f"what {registries.name} declares")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the omission is Windows' alone")

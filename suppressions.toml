@@ -290,6 +290,18 @@ file = "CLAUDE.md"
 site = "On Windows the service's virtual account"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "**The declaration's `probe` is"
+reason = "The task that added the release probe requires the root `AGENTS.md` to document it: what it answers for each registry, its three outcomes, how it is run and the recipe the scheduled install proof calls to run it against the real registries; a dispatch that kept that account in `tools/repo-checks/AGENTS.md` alone was refused for it. The probe is this repository's producer contract with `onevcs`, read by consumers outside this repository, so the root states what it answers and the nested file keeps only why each rule is drawn where it is."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "**The declaration's `probe` is"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]

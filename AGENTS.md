@@ -1208,35 +1208,24 @@ and `built_by`. A target's `name` is what consumers and a host's release rules
 call it by — `github-release` above all, which a consumer installing from the
 forge waits on — so renaming one is a change to every consumer naming it.
 
+<!-- llmlint: ignore-block[instruction_layer_localized] The task adding the probe requires the root to say what it answers per registry, its three outcomes and the recipe that runs it; `tools/repo-checks/AGENTS.md` keeps only why. suppressions.toml has the full reason. -->
 **The declaration's `probe` is `tools/repo-checks/src/repo_checks/release-probe.sh`.**
-`onevcs` runs it with one target's `id` as its one argument, as a direct
-subprocess from the repository root with `PATH` and `HOME` alone and no
-credential, and reads one of three outcomes: **released** is one version line
-and exit 0, **no release** is nothing and exit 0, and **not answered** is a
-non-zero exit with the reason on stderr. What it reads per registry:
+`onevcs` runs it with one target's `id` as its argument, from the repository
+root with `PATH` and `HOME` alone. Its three outcomes: **released**, one version
+line and exit 0; **no release**, nothing and exit 0; **not answered**, a
+non-zero exit with the reason on stderr. No release is crates.io's null
+`max_stable_version`, a 404 from PyPI or from npm, or github.com redirecting
+`releases/latest` to the bare releases page. Released is that field, PyPI's
+`info.version`, npm's `latest` dist-tag — scoped names included — or the tag
+that redirect names, without its `v`, once that release carries `SHA256SUMS`.
+A server error, an unreadable body, a release still lacking `SHA256SUMS` and an
+`id` no `[[target]]` declares are not answered.
 
-- crates.io, for a `crate:` target: the crate's `max_stable_version`, null
-  being no release.
-- PyPI, for a `pypi:` target: the project's `info.version`, a 404 being no
-  release.
-- npm, for an `npm:` target, scoped names included: the `latest` dist-tag, a
-  404 being no release.
-- The GitHub Release, for `release:printobserver`: where
-  `https://github.com/nickderobertis/printobserver/releases/latest` redirects,
-  never the REST API. A tag is answered without its `v`, the bare releases page
-  is no release, and a release not yet carrying `SHA256SUMS` is not answered.
-
-A server error, a body it cannot read, and an `id` no `[[target]]` declares are
-not answered on every registry.
-`tests/repo-e2e/tests/test_release_probe_journey.py` drives the committed
-script against those registries doubled at their HTTP boundary. `just
-probe-registries` runs it over every declared target against the real
-registries and fails on any target not answered; `just prove-registry-script`
-calls it, so it runs wherever the registry install-path proof runs — `just
-test-install-proof` and its schedule — and nowhere in the gate. A proof pointed
-at stand-in registries by `PRINTOBSERVER_PROOF_REGISTRIES` asks the real ones
-nothing. Why each of those rules is drawn where it is is
-`tools/repo-checks/AGENTS.md`'s.
+`just probe-registries` runs it over every declared target against the real
+registries and fails on any not answered. `just prove-registry-script` calls
+it, so it runs with the scheduled registry install-path proof, `just
+test-install-proof`, and nowhere in the gate.
+<!-- llmlint: ignore-end[instruction_layer_localized] -->
 
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
