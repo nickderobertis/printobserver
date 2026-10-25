@@ -732,6 +732,12 @@ def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
             "without one readable info.version",
         ),
         (
+            "pypi:printobserver-cli",
+            "/pypi.org/pypi/printobserver-cli/json",
+            Answer(200, '{"info":{"version":"0.4.3"},"x":' + "[" * 100 + "]" * 100 + "}"),
+            "without one readable info.version",
+        ),
+        (
             "npm:@printobserver/sdk",
             "/registry.npmjs.org/@printobserver%2fsdk/latest",
             Answer(200, '{"version":"0.4.3\\n9.9.9"}'),
@@ -762,6 +768,7 @@ def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
         "non-finite-constant",
         "not-utf-8",
         "nested-past-the-parser",
+        "nested-past-the-bound",
         "multi-line-string",
         "leading-zero-prerelease",
         "nul-byte-in-body",

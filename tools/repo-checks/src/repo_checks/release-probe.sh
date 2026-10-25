@@ -240,7 +240,9 @@ fetch() {
 # document two readers can read two ways — and the field is selected at that
 # path alone. It prints `string <value>` or `null`, and exits 1 for a document
 # that does not parse or holds no string or null at that path — or a string
-# carrying a control character, which a shell would mangle on its way out.
+# carrying a control character, which a shell would mangle on its way out — or
+# one nested deeper than `MAX_DEPTH`: how deep the parser itself reaches before
+# refusing depends on the interpreter's stack, so the bound is stated here.
 readonly READ_FIELD='
 import json, sys
 
@@ -261,6 +263,16 @@ try:
     )
 except (ValueError, RecursionError):
     sys.exit(1)
+MAX_DEPTH = 64
+level = [(node, 1)]
+while level:
+    value, depth = level.pop()
+    if depth > MAX_DEPTH:
+        sys.exit(1)
+    if isinstance(value, dict):
+        level.extend((child, depth + 1) for child in value.values())
+    elif isinstance(value, list):
+        level.extend((child, depth + 1) for child in value)
 for key in sys.argv[2:]:
     if not isinstance(node, dict) or key not in node:
         sys.exit(1)

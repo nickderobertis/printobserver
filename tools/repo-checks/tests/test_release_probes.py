@@ -46,12 +46,12 @@ class Reconciled(NamedTuple):
     err: str
 
 
-def _reconcile(root: Path) -> Reconciled:
-    """Run the command over the tree at `root`."""
+def _reconcile(root: Path, **environment: str) -> Reconciled:
+    """Run the command over the tree at `root`, with `environment` added to the caller's."""
     result = run(
         [sys.executable, "-m", "repo_checks", "probe-registries", "--root", str(root)],
         cwd=root,
-        env={**os.environ, "PYTHONPATH": _tool_packages()},
+        env={**os.environ, "PYTHONPATH": _tool_packages(), **environment},
         timeout=120,
     )
     return Reconciled(result.returncode, result.stdout or "", result.stderr or "")
@@ -149,6 +149,27 @@ def test_a_probe_failing_without_a_word_is_reported_by_its_exit(tmp_path: Path) 
         "release:printobserver: the probe did not answer: exit 3 and nothing said",
         describing="what it said",
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in probe is a bash script")
+def test_a_proof_pointed_at_stand_in_registries_asks_the_real_ones_nothing(
+    tmp_path: Path,
+) -> None:
+    """The gate's proofs over doubled registries never reach the live ones through the probe."""
+    committed = (ROOT / "release-targets.toml").read_text(encoding="utf-8")
+    root = _tree(tmp_path, committed.replace(PROBE_LINE, 'probe = "probe.sh"\n'))
+    asked = root / "asked"
+    stand_in = root / "probe.sh"
+    stand_in.write_text(f"#!/usr/bin/env bash\ntouch '{asked}'\nexit 3\n", encoding="utf-8")
+    stand_in.chmod(0o755)
+
+    pointed = _reconcile(root, PRINTOBSERVER_PROOF_REGISTRIES="http://127.0.0.1:9")
+    equal(tuple(pointed), (0, "", ""), describing="the reconciliation beside stand-ins")
+    equal(asked.exists(), False, describing="whether the probe was run")
+
+    code, _, err = _reconcile(root, PRINTOBSERVER_PROOF_REGISTRIES="")
+    equal(code, 1, describing=f"the same reconciliation with no stand-in named ({err!r})")
+    equal(asked.exists(), True, describing="whether the probe was run")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the omission is Windows' alone")

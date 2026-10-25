@@ -92,6 +92,10 @@ def _ask(repo: Repo, probe: Path, target: release_declaration.Target) -> Asked:
     return Asked(target, said.returncode, said.stdout or "", said.stderr or "")
 
 
+#: What points the registry install-path proof at stand-in registries rather
+#: than the real ones: `release_artifacts.registries`' own variable.
+STANDING_IN = "PRINTOBSERVER_PROOF_REGISTRIES"
+
 #: What a reconciled target answered when its registry serves nothing yet.
 NO_RELEASE = "no-release"
 
@@ -128,7 +132,8 @@ def probe_registries(repo: Repo) -> int:
 
     One line per target on stdout, `<name> <id> <version>` or `<name> <id>
     no-release`, so a reader of a scheduled run sees what each registry serves;
-    every finding on stderr.
+    every finding on stderr. A run whose proof is pointed at stand-in
+    registries asks nothing and says nothing.
     """
     probe = _probe(repo)
     if probe is None:
@@ -138,6 +143,12 @@ def probe_registries(repo: Repo) -> int:
             file=sys.stderr,
         )
         return 1
+    # A proof pointed at stand-in registries is the gate's own journey over
+    # doubles, and the probe reaches only the real registries: asking them there
+    # would put the live state of five producers into the gate. That proof is
+    # held to one line on a pass, so this adds none to it.
+    if os.environ.get(STANDING_IN, "").strip():
+        return 0
     if sys.platform == "win32":
         print(
             "probe-registries: not run on Windows: the probe is a bash script a Unix host "
