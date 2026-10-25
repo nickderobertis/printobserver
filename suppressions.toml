@@ -302,6 +302,18 @@ file = "CLAUDE.md"
 site = "**The declaration's `probe` is"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "**The declaration's `probe` is"
+reason = "The task that added the release probe requires the root `AGENTS.md` to state what it answers for each registry, its three outcomes, how it is run and the recipe that runs it against the real registries, and a dispatch that left that to the probe's header and `tools/repo-checks/AGENTS.md` was refused for it. A consumer outside this repository reads that account as this producer's contract with `onevcs`, without reading the script or the justfile, so stating it here is the requirement rather than repetition; the nested file keeps only the rationale, and the probe's journey holds the script to every outcome stated."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "**The declaration's `probe` is"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
 # --- the single subprocess site ---------------------------------------------
 
 [[suppression]]

@@ -1208,7 +1208,7 @@ and `built_by`. A target's `name` is what consumers and a host's release rules
 call it by — `github-release` above all, which a consumer installing from the
 forge waits on — so renaming one is a change to every consumer naming it.
 
-<!-- llmlint: ignore-block[instruction_layer_localized] The task adding the probe requires the root to say what it answers per registry, its three outcomes and the recipe that runs it; `tools/repo-checks/AGENTS.md` keeps only why. suppressions.toml has the full reason. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] The task adding the probe requires the root to say what it answers per registry, its three outcomes and the recipe that runs it; `tools/repo-checks/AGENTS.md` keeps only why. suppressions.toml has the full reason. -->
 **The declaration's `probe` is `tools/repo-checks/src/repo_checks/release-probe.sh`.**
 `onevcs` runs it with one target's `id` as its argument, from the repository
 root with `PATH` and `HOME` alone. Its three outcomes: **released**, one version
@@ -1225,7 +1225,7 @@ A server error, an unreadable body, a release still lacking `SHA256SUMS` and an
 registries and fails on any not answered. `just prove-registry-script` calls
 it, so it runs with the scheduled registry install-path proof, `just
 test-install-proof`, and nowhere in the gate.
-<!-- llmlint: ignore-end[instruction_layer_localized] -->
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version
