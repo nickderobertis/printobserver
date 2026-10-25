@@ -128,11 +128,38 @@ def joined(root: Path) -> list[Target]:
     return targets
 
 
+def _shape(root: Path) -> list[str]:
+    """What is wrong with the shape of either table, which the narrowing above would drop."""
+    findings: list[str] = []
+    entries = _load(root / DECLARATION).get("target", [])
+    if not isinstance(entries, list) or not entries:
+        findings.append(f"{DECLARATION} declares no `[[target]]` table")
+    else:
+        findings.extend(
+            f"{DECLARATION}'s [[target]] {position} is not a table"
+            for position, entry in enumerate(entries, start=1)
+            if not isinstance(entry, dict)
+        )
+    if (root / POLICY).is_file():
+        release = _load(root / POLICY).get("release", {})
+        table = release.get("targets", {}) if isinstance(release, dict) else None
+        if not isinstance(table, dict):
+            findings.append(f"{POLICY}'s `[{FACTS}]` is not a table")
+        else:
+            findings.extend(
+                f"{POLICY}'s `[{FACTS}]` gives `{key}` {value!r}, which is not a table"
+                for key, value in table.items()
+                if not isinstance(value, dict)
+            )
+    return findings
+
+
 def drift(root: Path) -> list[str]:
-    """Where the declaration and `[release.targets]` disagree about which targets exist."""
+    """Where the two files disagree about which targets exist, or are not the shape read."""
     declared = [_text(entry, "id") for entry in _entries(root)]
     moved = facts(root)
-    findings = [
+    findings = _shape(root)
+    findings += [
         f"{DECLARATION} declares `{identifier}`, and {POLICY}'s `[{FACTS}]` records "
         f"nothing for it: which tool assembles it, and which route it backs, are said nowhere"
         for identifier in declared

@@ -198,6 +198,28 @@ def test_a_malformed_recorded_fact_is_refused(
     refused_naming(release_targets(broken.repo), "pypi:printobserver-sdk", naming)
 
 
+def test_a_declaration_whose_targets_are_not_tables_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A target list the reader would narrow to nothing is a finding, not an empty list."""
+    broken = tree()
+    broken.write(TARGETS, 'schema_version = 3\ntarget = ["crate:printobserver"]\n')
+
+    refused_naming(release_targets(broken.repo), "[[target]] 1", "is not a table")
+
+
+def test_a_recorded_fact_that_is_not_a_table_is_refused(tree: Callable[[], Tree]) -> None:
+    """A fact given as a bare string would be dropped, and the target read as unrecorded."""
+    broken = tree()
+    broken.edit(
+        POLICY,
+        '"crate:printobserver-core" = { built_by = "release-plz" }',
+        '"crate:printobserver-core" = "release-plz"',
+    )
+
+    refused_naming(release_targets(broken.repo), "crate:printobserver-core", "not a table")
+
+
 def test_onevcs_reads_the_committed_declaration(committed: Repo) -> None:
     """The reader a consumer waiting on a release runs reads this file with no refusal."""
     accepted(release_declaration_readable(committed))

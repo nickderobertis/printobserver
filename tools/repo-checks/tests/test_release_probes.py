@@ -90,6 +90,37 @@ def test_a_probe_answering_something_other_than_one_version_fails(
     contains(err, "not one line holding one semantic version", describing="what it said")
 
 
+def test_a_declaration_declaring_no_target_fails_rather_than_passing_empty(
+    tmp_path: Path,
+) -> None:
+    """Reconciling nothing would pass vacuously, so a declaration with no target fails."""
+    root = _tree(tmp_path, f"schema_version = 3\n{PROBE_LINE}")
+
+    code, out, err = _reconcile(root)
+
+    equal((code, out), (1, ""), describing=f"the reconciliation's answer ({err!r})")
+    contains(err, "declares no `[[target]]` table", describing="what it said")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in probe is a bash script")
+def test_a_probe_failing_without_a_word_is_reported_by_its_exit(tmp_path: Path) -> None:
+    """A probe that says nothing on its way out is still named, with the status it left."""
+    committed = (ROOT / "release-targets.toml").read_text(encoding="utf-8")
+    root = _tree(tmp_path, committed.replace(PROBE_LINE, 'probe = "probe.sh"\n'))
+    stand_in = root / "probe.sh"
+    stand_in.write_text("#!/usr/bin/env bash\nexit 3\n", encoding="utf-8")
+    stand_in.chmod(0o755)
+
+    code, out, err = _reconcile(root)
+
+    equal((code, out), (1, ""), describing=f"the reconciliation's answer ({err!r})")
+    contains(
+        err,
+        "release:printobserver: the probe did not answer: exit 3 and nothing said",
+        describing="what it said",
+    )
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="the omission is Windows' alone")
 def test_a_windows_cell_says_it_asks_nothing_and_passes() -> None:
     """The scheduled proof's Windows cells cannot spawn the probe, and say so."""

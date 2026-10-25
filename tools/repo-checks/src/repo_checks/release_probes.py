@@ -71,20 +71,22 @@ def _ask(repo: Repo, probe: Path, target: release_declaration.Target) -> Asked:
 def _finding(asked: Asked) -> str | None:
     """What is wrong with one answer, or `None` for a version."""
     identifier = asked.target.id
-    if asked.code == 0 and SEMVER.fullmatch(asked.stdout.removesuffix("\n")):
-        return None
-    if asked.code == 0 and asked.stdout:
-        return (
-            f"{identifier}: the probe answered {asked.stdout!r}, which is not one line holding "
-            f"one semantic version"
-        )
-    if asked.code == 0:
-        return (
-            f"{identifier}: the probe answered no release, and this repository publishes it: "
-            f"the probe is misreading what its registry serves"
-        )
-    reason = " ".join(asked.stderr.split()) or f"exit {asked.code} and nothing said"
-    return f"{identifier}: the probe did not answer: {reason}"
+    match asked:
+        case Asked(code=0, stdout=answer) if SEMVER.fullmatch(answer.removesuffix("\n")):
+            return None
+        case Asked(code=0, stdout=""):
+            return (
+                f"{identifier}: the probe answered no release, and this repository publishes "
+                f"it: the probe is misreading what its registry serves"
+            )
+        case Asked(code=0, stdout=answer):
+            return (
+                f"{identifier}: the probe answered {answer!r}, which is not one line holding "
+                f"one semantic version"
+            )
+        case Asked(code=code, stderr=said):
+            reason = " ".join(said.split()) or f"exit {code} and nothing said"
+            return f"{identifier}: the probe did not answer: {reason}"
 
 
 def probe_registries(repo: Repo) -> int:
@@ -108,7 +110,9 @@ def probe_registries(repo: Repo) -> int:
             file=sys.stderr,
         )
         return 0
-    findings: list[str] = []
+    # A declaration this repository's own reader refuses, or one declaring
+    # nothing, would reconcile nothing and pass; both are failures instead.
+    findings = release_declaration.drift(repo.root)
     for target in release_declaration.joined(repo.root):
         asked = _ask(repo, probe, target)
         finding = _finding(asked)
