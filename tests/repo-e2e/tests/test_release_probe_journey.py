@@ -675,6 +675,7 @@ def _assigned(script: str, name: str) -> str:
     return found[0]
 
 
+# llmlint: ignore-block[tests_mirror_real_usage] suppressions.toml has the reason.
 def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
     """The owner and checksum file are the install script's, so the two cannot drift."""
     equal(
@@ -692,6 +693,9 @@ def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
         f'id = "release:{_assigned("scripts/install.sh", "REPOSITORY")}"\n',
         describing="the release target, named for the repository the install script reads",
     )
+
+
+# llmlint: ignore-end[tests_mirror_real_usage]
 
 
 @pytest.mark.parametrize(
