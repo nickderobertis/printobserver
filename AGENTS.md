@@ -1207,10 +1207,6 @@ only this repository's tooling reads goes in `repo-policy.toml`'s
 and `built_by`. A target's `name` is what consumers and a host's release rules
 call it by — `github-release` above all, which a consumer installing from the
 forge waits on — so renaming one is a change to every consumer naming it.
-Its `probe` restates four registries' answers, so `just probe-registries` asks
-the real ones for every declared target and fails unless each answers a
-version; `prove-registry-script` calls it, so it runs wherever the registry
-install-path proof runs.
 
 `repo-policy.toml`'s `manifests.automation_owned` is the only set of manifests
 permitted to carry a version field, and `just check-repo` enforces it: a version

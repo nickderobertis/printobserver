@@ -18,6 +18,7 @@ release. It reads the real registries, so it is no tier of the gate.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from typing import NamedTuple
@@ -28,6 +29,13 @@ from repo_checks.shell import run
 
 #: How long one run of the probe is given: onevcs's own bound on a probe.
 PROBE_TIMEOUT_SECONDS = 60
+
+#: A semantic version (semver.org 2.0.0), the one answer a released target has.
+_IDENTIFIER = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+SEMVER = re.compile(
+    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    rf"(?:-{_IDENTIFIER}(?:\.{_IDENTIFIER})*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
 
 
 class Asked(NamedTuple):
@@ -63,8 +71,13 @@ def _ask(repo: Repo, probe: Path, target: release_declaration.Target) -> Asked:
 def _finding(asked: Asked) -> str | None:
     """What is wrong with one answer, or `None` for a version."""
     identifier = asked.target.id
-    if asked.code == 0 and asked.stdout.strip():
+    if asked.code == 0 and SEMVER.fullmatch(asked.stdout.removesuffix("\n")):
         return None
+    if asked.code == 0 and asked.stdout:
+        return (
+            f"{identifier}: the probe answered {asked.stdout!r}, which is not one line holding "
+            f"one semantic version"
+        )
     if asked.code == 0:
         return (
             f"{identifier}: the probe answered no release, and this repository publishes it: "
@@ -80,13 +93,6 @@ def probe_registries(repo: Repo) -> int:
     One line per target on stdout, `<name> <id> <version>`, so a reader of a
     scheduled run sees what each registry serves; every finding on stderr.
     """
-    if sys.platform == "win32":
-        print(
-            "probe-registries: not run on Windows: the probe is a bash script a Unix host "
-            "spawns directly, and the Unix cells of this run ask the same registries",
-            file=sys.stderr,
-        )
-        return 0
     probe = _probe(repo)
     if probe is None:
         print(
@@ -95,6 +101,13 @@ def probe_registries(repo: Repo) -> int:
             file=sys.stderr,
         )
         return 1
+    if sys.platform == "win32":
+        print(
+            "probe-registries: not run on Windows: the probe is a bash script a Unix host "
+            "spawns directly, and the Unix cells of this run ask the same registries",
+            file=sys.stderr,
+        )
+        return 0
     findings: list[str] = []
     for target in release_declaration.joined(repo.root):
         asked = _ask(repo, probe, target)
