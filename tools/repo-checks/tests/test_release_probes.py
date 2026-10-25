@@ -12,10 +12,12 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from repo_checks.expect import contains, equal
 from repo_checks.release_declaration import joined
+from repo_checks.release_probes import COMMITTED_PROBE, semver
 from repo_checks.shell import run
 
 #: This repository's root, which every case reads its committed files from.
@@ -35,15 +37,23 @@ def _tool_packages() -> str:
     raise AssertionError(message)
 
 
-def _reconcile(root: Path) -> tuple[int, str, str]:
-    """Run the command over the tree at `root`: its exit status, stdout and stderr."""
+class Reconciled(NamedTuple):
+    """What one run of the command left: its exit status, stdout and stderr."""
+
+    code: int
+    out: str
+    err: str
+
+
+def _reconcile(root: Path) -> Reconciled:
+    """Run the command over the tree at `root`."""
     result = run(
         [sys.executable, "-m", "repo_checks", "probe-registries", "--root", str(root)],
         cwd=root,
         env={**os.environ, "PYTHONPATH": _tool_packages()},
         timeout=120,
     )
-    return result.returncode, result.stdout or "", result.stderr or ""
+    return Reconciled(result.returncode, result.stdout or "", result.stderr or "")
 
 
 def _tree(tmp_path: Path, declaration: str) -> Path:
@@ -128,3 +138,52 @@ def test_a_windows_cell_says_it_asks_nothing_and_passes() -> None:
 
     equal((code, out), (0, ""), describing=f"the reconciliation's answer ({err!r})")
     contains(err, "not run on Windows", describing="what it said")
+
+
+#: Answers on both sides of the grammar's edges, each held the same by bash and by Python.
+VERSIONS = [
+    "0.4.3",
+    "10.20.30",
+    "1.0.0-rc.1",
+    "1.0.0-0.3.7",
+    "1.0.0-x-y.7z.92",
+    "1.0.0-rc.1+build.5",
+    "1.0.0+20260101",
+    "01.0.0",
+    "1.0",
+    "v1.0.0",
+    "1.0.0-01",
+    "1.0.0-",
+    "1.0.0+",
+    "1.0.0-rc..1",
+    "1.0.0 ",
+    "",
+]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the probe's grammar is bash's to evaluate")
+@pytest.mark.parametrize("version", VERSIONS)
+def test_the_reconciliation_reads_a_version_exactly_as_the_probe_does(version: str) -> None:
+    """The grammar is the probe's own, so bash and this reconciliation agree on every answer."""
+    assignments = "\n".join(
+        line
+        for line in COMMITTED_PROBE.read_text(encoding="utf-8").splitlines()
+        if line.startswith("readonly SEMVER")
+    )
+    by_bash = run(
+        ["bash", "-c", f'{assignments}\n[[ "$1" =~ $SEMVER ]]', "bash", version], timeout=30
+    )
+
+    equal(
+        semver(COMMITTED_PROBE.read_text(encoding="utf-8")).fullmatch(version) is not None,
+        by_bash.returncode == 0,
+        describing=f"whether {version!r} is a version",
+    )
+
+
+def test_a_probe_that_states_no_grammar_is_refused_by_name() -> None:
+    """A probe whose `SEMVER` moved leaves nothing to read an answer by, and says so."""
+    with pytest.raises(ValueError, match="readonly SEMVER") as refused:
+        semver("#!/usr/bin/env bash\necho 0.1.0\n")
+
+    contains(str(refused.value), COMMITTED_PROBE.name, describing="the refusal")

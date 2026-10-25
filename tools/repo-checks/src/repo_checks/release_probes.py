@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from functools import cache
 from pathlib import Path
 from typing import NamedTuple
 
@@ -30,12 +31,28 @@ from repo_checks.shell import run
 #: How long one run of the probe is given: onevcs's own bound on a probe.
 PROBE_TIMEOUT_SECONDS = 60
 
-#: A semantic version (semver.org 2.0.0), the one answer a released target has.
-_IDENTIFIER = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
-SEMVER = re.compile(
-    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-    rf"(?:-{_IDENTIFIER}(?:\.{_IDENTIFIER})*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-)
+#: The committed probe, whose own grammar of a semantic version is the one
+#: this reconciliation holds an answer to, so the two cannot disagree.
+COMMITTED_PROBE = Path(__file__).with_name("release-probe.sh")
+
+
+def semver(script: str) -> re.Pattern[str]:
+    """The probe's `SEMVER`, expanded the way bash expands those two assignments."""
+    identifier = re.search(r"^readonly SEMVER_IDENTIFIER='([^']*)'$", script, re.MULTILINE)
+    pattern = re.search(r'^readonly SEMVER="([^"]*)"$', script, re.MULTILINE)
+    if identifier is None or pattern is None:
+        message = (
+            f"{COMMITTED_PROBE.name} assigns no `readonly SEMVER_IDENTIFIER='...'` and "
+            f'`readonly SEMVER="..."`, which is the grammar a released version is read by'
+        )
+        raise ValueError(message)
+    expanded = pattern[1].replace("${SEMVER_IDENTIFIER}", identifier[1])
+    return re.compile(expanded.replace("\\\\", "\\").replace("\\$", "$"))
+
+
+@cache
+def _committed_semver() -> re.Pattern[str]:
+    return semver(COMMITTED_PROBE.read_text(encoding="utf-8"))
 
 
 class Asked(NamedTuple):
@@ -72,7 +89,9 @@ def _finding(asked: Asked) -> str | None:
     """What is wrong with one answer, or `None` for a version."""
     identifier = asked.target.id
     match asked:
-        case Asked(code=0, stdout=answer) if SEMVER.fullmatch(answer.removesuffix("\n")):
+        case Asked(code=0, stdout=answer) if _committed_semver().fullmatch(
+            answer.removesuffix("\n")
+        ):
             return None
         case Asked(code=0, stdout=""):
             return (

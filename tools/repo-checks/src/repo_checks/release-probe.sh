@@ -313,6 +313,7 @@ unread_body() {
 }
 
 case "$identifier" in
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 crate:*)
     fetch "https://crates.io/api/v1/crates/$name"
     case "$STATUS" in
@@ -325,6 +326,7 @@ crate:*)
     [ "$KIND" = null ] && exit 0
     answer "$FIELD"
     ;;
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 pypi:*)
     fetch "https://pypi.org/pypi/$name/json"
     case "$STATUS" in
@@ -335,6 +337,7 @@ pypi:*)
     json_field info version && [ "$KIND" = string ] || unread_body "PyPI" "info.version"
     answer "$FIELD"
     ;;
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 npm:*)
     fetch "https://registry.npmjs.org/${name/\//%2f}/latest"
     case "$STATUS" in
@@ -345,6 +348,7 @@ npm:*)
     json_field version && [ "$KIND" = string ] || unread_body "npm" "version"
     answer "$FIELD"
     ;;
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 release:*)
     releases="https://github.com/$GITHUB_OWNER/$name/releases"
     # Not followed: where github.com sends the request is the answer.
