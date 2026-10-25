@@ -39,11 +39,10 @@
 #
 # `probe` is the script that answers what a registry serves now for one id
 # below, under the probe contract in `onevcs`'s `docs/contract.md` ("What a
-# probe prints"): `scripts/release-probe.sh`, whose own header says how it reads
-# each registry.
+# probe prints"). Its own header says how it reads each registry.
 
 schema_version = 3
-probe = "scripts/release-probe.sh"
+probe = "tools/repo-checks/src/repo_checks/release-probe.sh"
 
 # The shared domain vocabulary. Every other crate depends on it.
 [[target]]

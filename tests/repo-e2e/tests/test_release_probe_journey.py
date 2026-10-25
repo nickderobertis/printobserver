@@ -9,7 +9,8 @@ answers each the way that registry answers: crates.io's crate document, PyPI's
 project JSON, npm's `latest` document and github.com's unfollowed redirects. The
 probe reaches it through the real `curl`, by way of a `curl` earlier on `PATH`
 that rewrites each registry's `https://` origin to that server and refuses any
-other origin, so no case reaches the network and every status, body and
+other origin. `PATH` holds that and the three programs the probe runs, and
+nothing else, so no case reaches the network and every status, body and
 `Location` the probe reads crossed a real HTTP connection.
 
 Not run on Windows: the probe is a bash script spawned directly, which is a
@@ -19,31 +20,50 @@ there.
 
 from __future__ import annotations
 
+import json
+import re
 import shutil
+import socket
 import sys
+import sysconfig
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from journey import REPO_ROOT
-from repo_checks.expect import contains, equal, truth
+from repo_checks.expect import absent, contains, equal, passing, truth
 from repo_checks.shell import run
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="the probe is a bash script a Unix host spawns directly"
 )
 
-#: The committed probe, as the declaration names it.
-PROBE = REPO_ROOT / "scripts" / "release-probe.sh"
+#: Where the declaration says the probe is, relative to the repository root.
+PROBE_PATH = "tools/repo-checks/src/repo_checks/release-probe.sh"
+
+#: The committed probe.
+PROBE = REPO_ROOT / PROBE_PATH
 
 #: The registries the probe reads, by the origin it reads each at.
 ORIGINS = ("crates.io", "pypi.org", "registry.npmjs.org", "github.com")
 
 #: Where the GitHub Release of `release:printobserver` lives.
 RELEASES = "/nickderobertis/printobserver/releases"
+
+#: The programs the probe runs, besides the `curl` each case is handed.
+PROGRAMS = ("bash", "env", "grep")
+
+
+class Said(NamedTuple):
+    """What one run of the probe said."""
+
+    code: int
+    stdout: str
+    stderr: str
 
 
 @dataclass
@@ -89,6 +109,40 @@ def _handler(registries: Registries) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def _search_path(bin_dir: Path, port: int | None) -> str:
+    """A PATH of the probe's own programs, and a `curl` reaching `port` or none at all."""
+    bin_dir.mkdir()
+    for program in PROGRAMS:
+        found = shutil.which(program)
+        truth(found, describing=f"`{program}` on this host, for the probe to run")
+        (bin_dir / program).symlink_to(str(found))
+    if port is not None:
+        real = shutil.which("curl")
+        truth(real, describing="a curl on this host for the probe to read registries with")
+        doubled = f"http://127.0.0.1:{port}"
+        arms = "\n".join(
+            f'    https://{origin}/*) arg="{doubled}/{origin}/${{arg#https://{origin}/}}" ;;'
+            for origin in ORIGINS
+        )
+        shim = bin_dir / "curl"
+        shim.write_text(
+            "#!/usr/bin/env bash\n"
+            "# The real curl, with each registry's origin rewritten to the doubled one.\n"
+            "args=()\n"
+            'for arg in "$@"; do\n'
+            '    case "$arg" in\n'
+            f"{arms}\n"
+            '    https://* | http://*) echo "curl: no registry is doubled at $arg" >&2; exit 7 ;;\n'
+            "    esac\n"
+            '    args+=("$arg")\n'
+            "done\n"
+            f'exec {real} "${{args[@]}}"\n',
+            encoding="utf-8",
+        )
+        shim.chmod(0o755)
+    return str(bin_dir)
+
+
 @dataclass(frozen=True)
 class Probe:
     """The committed probe, with the doubled registries in front of it."""
@@ -97,19 +151,26 @@ class Probe:
     path: str
     home: Path
 
-    def __call__(self, identifier: str) -> tuple[int, str, str]:
-        """Run the probe for one identifier: its exit status, stdout and stderr."""
+    def __call__(self, *arguments: str, script: Path = PROBE) -> Said:
+        """Run the probe with `arguments`, from the root of the tree `script` is in."""
+        root = script.parents[4]
         result = run(
-            [str(PROBE), identifier],
-            cwd=REPO_ROOT,
+            [str(script), *arguments],
+            cwd=root,
             env={"PATH": self.path, "HOME": str(self.home)},
             timeout=90,
         )
-        return result.returncode, result.stdout, result.stderr
+        return Said(result.returncode, result.stdout, result.stderr)
 
     def answers(self, path: str, answer: Answer) -> None:
         """Make the doubled registry answer `path` (origin first) with `answer`."""
         self.registries.answers[path] = answer
+
+
+def _home(tmp_path: Path) -> Path:
+    home = tmp_path / "home"
+    home.mkdir()
+    return home
 
 
 @pytest.fixture
@@ -119,65 +180,41 @@ def probe(tmp_path: Path) -> Iterator[Probe]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(registries))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    real = shutil.which("curl")
-    truth(real, describing="a curl on this host's PATH for the probe to read registries with")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    port = server.server_address[1]
-    doubled = f"http://127.0.0.1:{port}"
-    arms = "\n".join(
-        f'    https://{origin}/*) arg="{doubled}/{origin}/${{arg#https://{origin}/}}" ;;'
-        for origin in ORIGINS
-    )
-    shim = bin_dir / "curl"
-    shim.write_text(
-        "#!/usr/bin/env bash\n"
-        "# The real curl, with each registry's origin rewritten to the doubled one.\n"
-        "args=()\n"
-        'for arg in "$@"; do\n'
-        '    case "$arg" in\n'
-        f"{arms}\n"
-        '    https://* | http://*) echo "curl: no registry is doubled at $arg" >&2; exit 7 ;;\n'
-        "    esac\n"
-        '    args+=("$arg")\n'
-        "done\n"
-        f'exec {real} "${{args[@]}}"\n',
-        encoding="utf-8",
-    )
-    shim.chmod(0o755)
-    host_path = [
-        entry
-        for entry in (Path(shutil.which(tool) or "").parent for tool in ("bash", "grep", "env"))
-        if str(entry) != "."
-    ]
-    path = ":".join(dict.fromkeys([str(bin_dir), *map(str, host_path)]))
-    home = tmp_path / "home"
-    home.mkdir()
+    path = _search_path(tmp_path / "bin", server.server_address[1])
     try:
-        yield Probe(registries, path, home)
+        yield Probe(registries, path, _home(tmp_path))
     finally:
         server.shutdown()
         server.server_close()
 
 
-def _released(said: tuple[int, str, str], version: str) -> None:
-    code, out, err = said
-    equal((code, out), (0, f"{version}\n"), describing=f"the probe's answer (stderr: {err!r})")
+def _released(said: Said, version: str) -> None:
+    equal(
+        (said.code, said.stdout),
+        (0, f"{version}\n"),
+        describing=f"the probe's answer (stderr: {said.stderr!r})",
+    )
 
 
-def _no_release(said: tuple[int, str, str]) -> None:
-    code, out, err = said
-    equal((code, out), (0, ""), describing=f"the probe's answer (stderr: {err!r})")
+def _no_release(said: Said) -> None:
+    equal((said.code, said.stdout), (0, ""), describing=f"the probe's answer ({said.stderr!r})")
 
 
-def _not_answered(said: tuple[int, str, str], naming: str) -> None:
-    code, out, err = said
-    truth(code != 0, describing=f"a non-zero exit, not {code} (stdout: {out!r})")
-    equal(out, "", describing="stdout of a probe that did not answer")
-    contains(err, naming, describing="why the probe did not answer")
+def _not_answered(said: Said, naming: str) -> None:
+    truth(said.code != 0, describing=f"a non-zero exit, not {said.code} ({said.stdout!r})")
+    equal(said.stdout, "", describing="stdout of a probe that did not answer")
+    contains(said.stderr, naming, describing="why the probe did not answer")
 
 
-# crates.io
+def _tree(tmp_path: Path, declaration: str | None) -> Path:
+    """The committed probe in a tree of its own, beside `declaration` or none at all."""
+    root = tmp_path / "tree"
+    script = root / PROBE_PATH
+    script.parent.mkdir(parents=True)
+    shutil.copy2(PROBE, script)
+    if declaration is not None:
+        (root / "release-targets.toml").write_text(declaration, encoding="utf-8")
+    return script
 
 
 def test_a_released_crate_answers_its_max_stable_version(probe: Probe) -> None:
@@ -190,31 +227,41 @@ def test_a_released_crate_answers_its_max_stable_version(probe: Probe) -> None:
     _released(probe("crate:printobserver"), "0.4.3")
 
 
-def test_a_crate_with_no_stable_version_is_no_release(probe: Probe) -> None:
-    """crates.io's null `max_stable_version` serves nothing."""
-    probe.answers(
-        "/crates.io/api/v1/crates/printobserver-types",
+@pytest.mark.parametrize(
+    "answer",
+    [
         Answer(200, '{"crate":{"id":"printobserver-types","max_stable_version":null}}'),
-    )
+        Answer(404, '{"errors":[{"detail":"crate `printobserver-types` does not exist"}]}'),
+    ],
+    ids=["null-max-stable-version", "unknown-crate"],
+)
+def test_a_crate_serving_nothing_is_no_release(probe: Probe, answer: Answer) -> None:
+    """A null `max_stable_version` and a 404 both say crates.io serves nothing."""
+    probe.answers("/crates.io/api/v1/crates/printobserver-types", answer)
 
     _no_release(probe("crate:printobserver-types"))
 
 
-def test_a_crates_server_error_is_not_answered(probe: Probe) -> None:
-    """A 500 says nothing about what is released."""
-    probe.answers("/crates.io/api/v1/crates/printobserver", Answer(500, "oops"))
+@pytest.mark.parametrize(
+    ("answer", "naming"),
+    [
+        (Answer(500, "oops"), "crates.io answered 500"),
+        (Answer(200, "<html>maintenance</html>"), "without one readable max_stable_version"),
+        (
+            Answer(200, '{"crate":{"max_stable_version":"0.4.3"},"x":{"max_stable_version":null}}'),
+            "without one readable max_stable_version",
+        ),
+        (Answer(200, '{"crate":{"max_stable_version":"1..2"}}'), "not a semantic version"),
+    ],
+    ids=["server-error", "not-json", "named-twice", "not-a-version"],
+)
+def test_a_crate_answer_the_probe_cannot_read_is_not_answered(
+    probe: Probe, answer: Answer, naming: str
+) -> None:
+    """A server error, a body that is not one crate document, or a non-version."""
+    probe.answers("/crates.io/api/v1/crates/printobserver", answer)
 
-    _not_answered(probe("crate:printobserver"), "crates.io answered 500")
-
-
-def test_an_unreadable_crate_document_is_not_answered(probe: Probe) -> None:
-    """A 200 whose body carries no version is a document the probe cannot read."""
-    probe.answers("/crates.io/api/v1/crates/printobserver", Answer(200, "<html>maintenance</html>"))
-
-    _not_answered(probe("crate:printobserver"), "without one readable max_stable_version")
-
-
-# PyPI
+    _not_answered(probe("crate:printobserver"), naming)
 
 
 def test_a_released_distribution_answers_its_info_version(probe: Probe) -> None:
@@ -224,7 +271,7 @@ def test_a_released_distribution_answers_its_info_version(probe: Probe) -> None:
         Answer(
             200,
             '{"info":{"name":"printobserver-cli","version":"0.4.3"},'
-            '"urls":[{"python_version":"py3"}]}',
+            '"urls":[{"python_version":"py3"}]}\n',
         ),
     )
 
@@ -238,21 +285,22 @@ def test_a_distribution_pypi_does_not_know_is_no_release(probe: Probe) -> None:
     _no_release(probe("pypi:printobserver-sdk"))
 
 
-def test_a_pypi_server_error_is_not_answered(probe: Probe) -> None:
-    """A 503 is a registry that did not say."""
-    probe.answers("/pypi.org/pypi/printobserver-cli/json", Answer(503, "busy"))
+@pytest.mark.parametrize(
+    ("answer", "naming"),
+    [
+        (Answer(503, "busy"), "PyPI answered 503"),
+        (Answer(200, '{"info":{"version":"0.4.3"'), "without one readable info.version"),
+        (Answer(200, '{"info":{"version":""}}'), "not a semantic version"),
+    ],
+    ids=["server-error", "truncated", "empty-version"],
+)
+def test_a_pypi_answer_the_probe_cannot_read_is_not_answered(
+    probe: Probe, answer: Answer, naming: str
+) -> None:
+    """A truncated body is refused even though the field it carries is whole."""
+    probe.answers("/pypi.org/pypi/printobserver-cli/json", answer)
 
-    _not_answered(probe("pypi:printobserver-cli"), "PyPI answered 503")
-
-
-def test_an_unreadable_pypi_document_is_not_answered(probe: Probe) -> None:
-    """A truncated body names no version, so nothing is established."""
-    probe.answers("/pypi.org/pypi/printobserver-cli/json", Answer(200, '{"info":{"name":'))
-
-    _not_answered(probe("pypi:printobserver-cli"), "without one readable info.version")
-
-
-# npm, scoped
+    _not_answered(probe("pypi:printobserver-cli"), naming)
 
 
 def test_a_released_scoped_package_answers_its_latest_dist_tag(probe: Probe) -> None:
@@ -263,9 +311,9 @@ def test_a_released_scoped_package_answers_its_latest_dist_tag(probe: Probe) -> 
     )
 
     _released(probe("npm:@printobserver/sdk"), "0.4.3")
-    contains(
+    equal(
         probe.registries.asked,
-        "GET /registry.npmjs.org/@printobserver%2fsdk/latest",
+        ["GET /registry.npmjs.org/@printobserver%2fsdk/latest"],
         describing="what the probe asked npm",
     )
 
@@ -277,37 +325,47 @@ def test_a_scoped_package_npm_does_not_know_is_no_release(probe: Probe) -> None:
     _no_release(probe("npm:@printobserver/sdk"))
 
 
-def test_an_npm_server_error_is_not_answered(probe: Probe) -> None:
-    """A 502 is a registry that did not say."""
-    probe.answers("/registry.npmjs.org/@printobserver%2fsdk/latest", Answer(502, "bad gateway"))
+@pytest.mark.parametrize(
+    ("answer", "naming"),
+    [
+        (Answer(502, "bad gateway"), "npm answered 502"),
+        (Answer(200, '{"name":"@printobserver/sdk"}'), "without one readable version"),
+        (
+            Answer(200, '{"version":"0.4.3","deps":{"version":"9.9.9"}}'),
+            "without one readable version",
+        ),
+    ],
+    ids=["server-error", "no-version", "two-versions"],
+)
+def test_an_npm_answer_the_probe_cannot_read_is_not_answered(
+    probe: Probe, answer: Answer, naming: str
+) -> None:
+    """A document naming no version, or two, is not the shape the probe reads."""
+    probe.answers("/registry.npmjs.org/@printobserver%2fsdk/latest", answer)
 
-    _not_answered(probe("npm:@printobserver/sdk"), "npm answered 502")
-
-
-def test_an_unreadable_npm_document_is_not_answered(probe: Probe) -> None:
-    """Two different versions in one document is not a shape the probe reads."""
-    probe.answers(
-        "/registry.npmjs.org/printobserver-cli/latest",
-        Answer(200, '{"version":"0.4.3","deps":{"version":"9.9.9"}}'),
-    )
-
-    _not_answered(probe("npm:printobserver-cli"), "without one readable version")
-
-
-# The GitHub Release
+    _not_answered(probe("npm:@printobserver/sdk"), naming)
 
 
 def _latest(probe: Probe, location: str, status: int = 302) -> None:
     probe.answers(f"/github.com{RELEASES}/latest", Answer(status, "", location))
 
 
-def test_a_release_carrying_its_checksums_answers_its_tag_without_the_v(probe: Probe) -> None:
+def _checksums(probe: Probe, tag: str, answer: Answer) -> None:
+    probe.answers(f"/github.com{RELEASES}/download/{tag}/SHA256SUMS", answer)
+
+
+@pytest.mark.parametrize("status", [301, 302, 307])
+@pytest.mark.parametrize(
+    "checksums",
+    [Answer(302, "", "https://release-assets.githubusercontent.com/SHA256SUMS"), Answer(200)],
+    ids=["asset-redirect", "asset-served"],
+)
+def test_a_release_carrying_its_checksums_answers_its_tag_without_the_v(
+    probe: Probe, status: int, checksums: Answer
+) -> None:
     """The redirect names the tag; the checksum file being there makes it installable."""
-    _latest(probe, f"https://github.com{RELEASES}/tag/v0.4.3")
-    probe.answers(
-        f"/github.com{RELEASES}/download/v0.4.3/SHA256SUMS",
-        Answer(302, "", "https://release-assets.githubusercontent.com/SHA256SUMS"),
-    )
+    _latest(probe, f"https://github.com{RELEASES}/tag/v0.4.3", status)
+    _checksums(probe, "v0.4.3", checksums)
 
     _released(probe("release:printobserver"), "0.4.3")
     equal(
@@ -320,9 +378,10 @@ def test_a_release_carrying_its_checksums_answers_its_tag_without_the_v(probe: P
     )
 
 
-def test_a_repository_with_no_release_is_no_release(probe: Probe) -> None:
+@pytest.mark.parametrize("page", [RELEASES, f"{RELEASES}/"], ids=["bare", "trailing-slash"])
+def test_a_repository_with_no_release_is_no_release(probe: Probe, page: str) -> None:
     """github.com sends `releases/latest` to the bare releases page when there is none."""
-    _latest(probe, f"https://github.com{RELEASES}")
+    _latest(probe, f"https://github.com{page}")
 
     _no_release(probe("release:printobserver"))
 
@@ -330,26 +389,43 @@ def test_a_repository_with_no_release_is_no_release(probe: Probe) -> None:
 def test_a_release_whose_checksums_are_not_up_yet_is_not_answered(probe: Probe) -> None:
     """A release without `SHA256SUMS` is one `scripts/install.sh` refuses, so not yet."""
     _latest(probe, f"https://github.com{RELEASES}/tag/v0.4.4")
-    probe.answers(f"/github.com{RELEASES}/download/v0.4.4/SHA256SUMS", Answer(404, "Not Found"))
+    _checksums(probe, "v0.4.4", Answer(404, "Not Found"))
 
     _not_answered(probe("release:printobserver"), "carries no SHA256SUMS yet")
 
 
-def test_a_github_server_error_is_not_answered(probe: Probe) -> None:
-    """A 500 on `releases/latest` says nothing about a release."""
-    probe.answers(f"/github.com{RELEASES}/latest", Answer(500, "unicorn"))
+@pytest.mark.parametrize(
+    ("latest", "checksums", "naming"),
+    [
+        (Answer(500, "unicorn"), None, "GitHub answered 500"),
+        (Answer(404, "Not Found"), None, "GitHub answered 404"),
+        (
+            Answer(302, "", "https://github.com/login?return_to=releases"),
+            None,
+            "neither a release tag nor the releases page",
+        ),
+        (
+            Answer(302, "", f"https://github.com{RELEASES}/tag/vnext"),
+            None,
+            "which is not v<version>",
+        ),
+        (
+            Answer(302, "", f"https://github.com{RELEASES}/tag/v0.4.3"),
+            Answer(500, "unicorn"),
+            "GitHub's SHA256SUMS download answered 500",
+        ),
+    ],
+    ids=["server-error", "unknown-repository", "elsewhere", "not-a-version-tag", "asset-error"],
+)
+def test_a_github_answer_the_probe_cannot_read_is_not_answered(
+    probe: Probe, latest: Answer, checksums: Answer | None, naming: str
+) -> None:
+    """A 404 here is an unknown repository rather than no release: that is the redirect."""
+    probe.answers(f"/github.com{RELEASES}/latest", latest)
+    if checksums is not None:
+        _checksums(probe, "v0.4.3", checksums)
 
-    _not_answered(probe("release:printobserver"), "GitHub answered 500")
-
-
-def test_a_redirect_to_somewhere_else_is_not_answered(probe: Probe) -> None:
-    """A redirect the probe cannot read as a tag or the releases page is not an answer."""
-    _latest(probe, "https://github.com/login?return_to=releases")
-
-    _not_answered(probe("release:printobserver"), "neither a release tag nor the releases page")
-
-
-# The identifier
+    _not_answered(probe("release:printobserver"), naming)
 
 
 def test_an_identifier_the_declaration_does_not_declare_is_not_answered(probe: Probe) -> None:
@@ -358,3 +434,98 @@ def test_an_identifier_the_declaration_does_not_declare_is_not_answered(probe: P
         probe("crate:printobserver-store-api"), "is not a release target this repository declares"
     )
     equal(probe.registries.asked, [], describing="what the probe asked any registry")
+
+
+def test_a_probe_asked_about_nothing_or_two_things_is_a_usage_error(probe: Probe) -> None:
+    """One identifier per run, and the usage error is its own exit status."""
+    for arguments in ((), ("crate:printobserver", "pypi:printobserver-cli")):
+        said = probe(*arguments)
+        equal(said.code, 2, describing=f"the exit status for {len(arguments)} identifiers")
+        contains(said.stderr, "takes exactly one", describing="what the probe said")
+
+
+def test_a_registry_nobody_can_reach_is_not_answered(tmp_path: Path) -> None:
+    """A connection refused is curl's failure, which says nothing about a release."""
+    with socket.socket() as closed:
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+    unreachable = Probe(Registries(), _search_path(tmp_path / "bin", port), _home(tmp_path))
+
+    _not_answered(unreachable("pypi:printobserver-cli"), "so no registry answered")
+
+
+def test_a_host_without_curl_is_not_answered(tmp_path: Path) -> None:
+    """The probe names the program it is missing rather than failing inside a pipeline."""
+    curl_less = Probe(Registries(), _search_path(tmp_path / "bin", None), _home(tmp_path))
+
+    _not_answered(curl_less("pypi:printobserver-cli"), "curl is not on PATH")
+
+
+@pytest.mark.parametrize(
+    ("declaration", "naming"),
+    [
+        (None, "is missing or unreadable"),
+        ("schema_version = 3\n", "declares no release target at all"),
+        ('[[target]]\nid = "conda:printobserver"\n', "names no registry this probe reads"),
+        ('[[target]]\nid = "crate:-printobserver"\n', "is not one a registry serves"),
+        ('[[target]]\nid = "npm:@/sdk"\n', "scoped name is not one npm serves"),
+        ("[[target]]\nid = 'crate:printobserver'\n", "which is not a quoted string"),
+    ],
+    ids=["no-declaration", "no-targets", "unknown-registry", "bad-name", "bad-scope", "unquoted"],
+)
+def test_a_declaration_the_probe_cannot_hold_to_its_identifiers_is_not_answered(
+    probe: Probe, tmp_path: Path, declaration: str | None, naming: str
+) -> None:
+    """The probe reads the declaration beside it in full before it asks any registry."""
+    script = _tree(tmp_path, declaration)
+
+    _not_answered(probe("crate:printobserver", script=script), naming)
+    equal(probe.registries.asked, [], describing="what the probe asked any registry")
+
+
+def test_the_probe_recognises_every_target_onevcs_reads_in_the_committed_declaration(
+    probe: Probe,
+) -> None:
+    """The probe's line reading of the file and onevcs's TOML reading list one set of ids.
+
+    Every registry answers 404 here, so a recognised id is no release (or, for
+    the forge, a repository nothing answers for) — and never the refusal an id
+    the probe does not find in the declaration gets.
+    """
+    reader = Path(sysconfig.get_path("scripts")) / "onevcs"
+    read = run([str(reader), "release", "declaration", str(REPO_ROOT), "--json"], cwd=REPO_ROOT)
+    passing(read, describing="onevcs reading the committed declaration")
+    listed = [str(target["id"]) for target in json.loads(read.stdout)["target"]]
+    truth(listed, describing="the targets onevcs reads in the committed declaration")
+    for identifier in listed:
+        said = probe(identifier)
+        absent(said.stderr, "is not a release target", describing=f"the probe on {identifier}")
+        if not identifier.startswith("release:"):
+            _no_release(said)
+
+
+def _assigned(script: str, name: str) -> str:
+    """The value `script` assigns `name`, as `name="value"` or `readonly name="value"`."""
+    text = (REPO_ROOT / script).read_text(encoding="utf-8")
+    found = re.findall(rf'^(?:readonly )?{name}="([^"]*)"$', text, flags=re.MULTILINE)
+    equal(len(found), 1, describing=f"how many times {script} assigns {name}")
+    return found[0]
+
+
+def test_the_probe_reads_the_release_the_install_script_installs_from() -> None:
+    """The owner and checksum file are the install script's, so the two cannot drift."""
+    equal(
+        _assigned(PROBE_PATH, "GITHUB_OWNER"),
+        _assigned("scripts/install.sh", "OWNER"),
+        describing="the forge account the probe and the install script read",
+    )
+    equal(
+        _assigned(PROBE_PATH, "CHECKSUMS"),
+        _assigned("scripts/install.sh", "CHECKSUMS"),
+        describing="the checksum file the probe waits for and the install script verifies",
+    )
+    contains(
+        (REPO_ROOT / "release-targets.toml").read_text(encoding="utf-8"),
+        f'id = "release:{_assigned("scripts/install.sh", "REPOSITORY")}"\n',
+        describing="the release target, named for the repository the install script reads",
+    )

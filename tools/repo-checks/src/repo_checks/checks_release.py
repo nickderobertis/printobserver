@@ -9,7 +9,7 @@ import sysconfig
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from repo_checks import install_path as ip
 from repo_checks import release_declaration
@@ -149,21 +149,29 @@ def release_targets(repo: Repo) -> list[str]:
 ONEVCS_DISTRIBUTION = "onevcs-cli"
 
 
-def _locked_onevcs(repo: Repo) -> tuple[str, list[str]]:
-    """The release `uv.lock` holds onevcs at, and the wheels it records for it."""
+class Locked(NamedTuple):
+    """One distribution as `uv.lock` holds it."""
+
+    version: str
+    #: The URL of every wheel the lock records for that release.
+    wheels: tuple[str, ...]
+
+
+def _locked_onevcs(repo: Repo) -> Locked:
+    """The release `uv.lock` holds onevcs at, or an empty version where it holds none."""
     lock = repo.read_toml("uv.lock")
     for package in lock.get("package", []):
         if isinstance(package, dict) and package.get("name") == ONEVCS_DISTRIBUTION:
-            wheels = [
+            wheels = tuple(
                 str(wheel.get("url", ""))
                 for wheel in package.get("wheels", [])
                 if isinstance(wheel, dict)
-            ]
-            return str(package.get("version", "")), wheels
-    return "", []
+            )
+            return Locked(str(package.get("version", "")), wheels)
+    return Locked("", ())
 
 
-def _locked_for_this_host(repo: Repo, wheels: list[str]) -> bool:
+def _locked_for_this_host(repo: Repo, wheels: tuple[str, ...]) -> bool:
     """Whether one of the locked wheels is this host's platform's build."""
     from repo_checks.platforms import host
 
@@ -173,6 +181,26 @@ def _locked_for_this_host(repo: Repo, wheels: list[str]) -> bool:
         for url in wheels
         for tag in Path(url).stem.rsplit("-", 1)[-1].split(".")
     )
+
+
+def _listed(answer: str) -> list[str] | None:
+    """The target ids a `release declaration --json` answer lists, or `None` if it is not one.
+
+    The answer is another program's output, so its shape is checked rather than
+    assumed: an object whose `target` is a list of objects each carrying a
+    string `id`.
+    """
+    try:
+        read = json.loads(answer)
+    except json.JSONDecodeError:
+        return None
+    targets = read.get("target") if isinstance(read, dict) else None
+    if not isinstance(targets, list):
+        return None
+    ids = [target.get("id") if isinstance(target, dict) else None for target in targets]
+    if not all(isinstance(identifier, str) for identifier in ids):
+        return None
+    return [str(identifier) for identifier in ids]
 
 
 def release_declaration_readable(repo: Repo) -> list[str]:
@@ -214,11 +242,12 @@ def release_declaration_readable(repo: Repo) -> list[str]:
     if said.returncode != 0:
         refusal = " ".join((said.stderr or said.stdout).split())
         return [f"onevcs {version} refuses release-targets.toml: {refusal}"]
-    try:
-        read = json.loads(said.stdout)
-    except json.JSONDecodeError:
-        return [f"onevcs {version} answered release-targets.toml with no JSON reading of it"]
-    listed = [str(target.get("id", "")) for target in read.get("target", [])]
+    listed = _listed(said.stdout)
+    if listed is None:
+        return [
+            f"onevcs {version} answered release-targets.toml with no reading of its targets "
+            f"this check can compare: {said.stdout[:200]!r}"
+        ]
     declared = [target.id for target in release_declaration.joined(repo.root)]
     if listed != declared:
         return [

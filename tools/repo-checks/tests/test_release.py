@@ -180,6 +180,14 @@ def test_onevcs_reads_the_committed_declaration(committed: Repo) -> None:
     accepted(release_declaration_readable(committed))
 
 
+def test_a_lock_holding_no_onevcs_is_refused(tree: Callable[[], Tree]) -> None:
+    """Without the reader held at a release, nothing in the gate reads the file as onevcs does."""
+    broken = tree()
+    broken.write("uv.lock", broken.read("uv.lock").replace('name = "onevcs-cli"', 'name = "x"'))
+
+    refused_naming(release_declaration_readable(broken.repo), "holds no `onevcs-cli`")
+
+
 def test_a_declaration_carrying_a_key_onevcs_refuses_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

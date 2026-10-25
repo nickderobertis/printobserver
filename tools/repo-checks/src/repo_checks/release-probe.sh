@@ -38,13 +38,21 @@
 #
 # The targets it answers for are the ones the `[[target]]` tables of
 # release-targets.toml declare; anything else is not answered. It resolves that
-# file from its own location rather than from `$PWD`, because a probe answering
+# file from its own location — four directories up, at the repository root —
+# rather than from `$PWD`, because a probe answering
 # about whatever repository it happened to be started in answers about the wrong
 # artifact. It reads the declaration line by line rather than parsing TOML,
 # because bash has no TOML reader and the shape it needs is one key in one kind
 # of table; what the document *is* is held by onevcs's own reader, which `just
-# check-repo`'s `release-declaration` runs over it. What is strict here is the
-# identifier, because that is the one value this script turns into a URL.
+# check-repo`'s `release-declaration` runs over it, and the probe's journey
+# asks this script about every id that reader lists, so the two readings of the
+# committed file cannot drift apart. What is strict here is the identifier,
+# which this script turns into a URL, and what it answers.
+#
+# A registry's body is read as untrusted: it is answered from only when it is
+# one whole JSON object (so a truncated body is refused) naming the key asked
+# for exactly once, and the value answered must be a semantic version, which is
+# what the caller compares it as.
 #
 # What it may assume, and nothing beyond it: it is spawned as a direct
 # subprocess from the repository root, with an environment carrying only PATH
@@ -65,8 +73,9 @@ set -euo pipefail
 readonly USER_AGENT="printobserver-release-probe (+https://github.com/nickderobertis/printobserver)"
 readonly CONNECT_TIMEOUT=10
 readonly MAX_TIME=25
-# The forge account a `release:<name>` target is published under — the owner
-# `scripts/install.sh` downloads from — and the file that script verifies.
+# The forge account a `release:<name>` target is published under, and the file
+# every release artifact is verified against: `scripts/install.sh`'s own OWNER
+# and CHECKSUMS, which the probe's journey holds these two to.
 readonly GITHUB_OWNER="nickderobertis"
 readonly CHECKSUMS="SHA256SUMS"
 
@@ -82,9 +91,9 @@ readonly RE_ASK="re-ask once the registry answers; nothing about a release has b
 
 probe_dir="${BASH_SOURCE[0]%/*}"
 [ "$probe_dir" = "${BASH_SOURCE[0]}" ] && probe_dir="."
-cd -- "$probe_dir/.." 2>/dev/null || refuse \
+cd -- "$probe_dir/../../../.." 2>/dev/null || refuse \
     "cannot reach the repository root from ${BASH_SOURCE[0]}" \
-    "run this script from a checkout of the repository, at scripts/release-probe.sh"
+    "run this script from a checkout of the repository, at tools/repo-checks/src/repo_checks/release-probe.sh"
 readonly DECLARATION="release-targets.toml"
 
 if [ $# -ne 1 ]; then
@@ -213,36 +222,40 @@ fetch() {
     esac
 }
 
-# The one value the fetched body gives for a string key, in FIELD. Matched as
-# `,"key":"` or `{"key":"`, so a longer key ending in the one asked for — PyPI's
-# `python_version`, npm's `_npmVersion` — cannot answer for it. Returns 1 when
-# the body names it nowhere and 2 when it names it more than once with
-# different values: a document that is not the shape this script reads.
+# The one value the fetched body gives for a key, in FIELD: a string's
+# contents, or `null`. Answered only from a body that is one whole JSON object —
+# its first character `{` and its last `}`, so a body cut off mid-transfer is
+# refused however much of it arrived — and that names the key exactly once.
+# Matched as `,"key":` or `{"key":`, so a longer key ending in the one asked
+# for — PyPI's `python_version`, npm's `_npmVersion` — cannot answer for it.
+# Returns 1 for anything else: a document that is not the shape this reads.
 FIELD=""
-json_string() {
-    local matches line value found="" seen=1
-    matches="$(printf '%s' "$BODY" | grep -o "[,{]\"$1\":\"[^\"]*\"")" || matches=""
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        value="${line#*\":\"}"
-        value="${value%\"}"
-        if [ "$seen" -eq 0 ] && [ "$value" != "$found" ]; then
-            return 2
-        fi
-        found="$value"
-        seen=0
-    done <<<"$matches"
-    FIELD="$found"
-    return "$seen"
+json_field() {
+    local whole matches count
+    whole="$(trim "$BODY")"
+    case "$whole" in
+    "{"*"}") ;;
+    *) return 1 ;;
+    esac
+    matches="$(printf '%s' "$whole" | grep -oE "[,{]\"$1\":(\"[^\"]*\"|null)")" || return 1
+    count="$(printf '%s\n' "$matches" | grep -c .)" || return 1
+    [ "$count" -eq 1 ] || return 1
+    FIELD="${matches#*\":}"
+    case "$FIELD" in
+    null) ;;
+    *) FIELD="${FIELD#\"}" && FIELD="${FIELD%\"}" ;;
+    esac
 }
+
+# A semantic version — what the caller compares an answer as, so anything else
+# would be a release it cannot order.
+readonly SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
 # The answer, held closed on its way out: what a caller reads on stdout is read
 # as a released version, so anything that is not one is not answered at all.
 answer() {
-    case "$1" in
-    "" | [!0-9]* | *[!0-9A-Za-z.+-]*)
-        refuse "the registry answered '$1' for $identifier, which is not a version" "$RE_ASK" ;;
-    esac
+    [[ "$1" =~ $SEMVER ]] || refuse \
+        "the registry answered '$1' for $identifier, which is not a semantic version" "$RE_ASK"
     printf '%s\n' "$1"
     exit 0
 }
@@ -263,16 +276,9 @@ crate:*)
     404) exit 0 ;;
     *) unreadable "crates.io" ;;
     esac
-    json_string max_stable_version || case "$?" in
-    1)
-        # Every version yanked or a prerelease: the registry serves nothing.
-        if printf '%s' "$BODY" | grep -q '"max_stable_version":null'; then
-            exit 0
-        fi
-        unread_body "crates.io" "max_stable_version"
-        ;;
-    *) unread_body "crates.io" "max_stable_version" ;;
-    esac
+    json_field max_stable_version || unread_body "crates.io" "max_stable_version"
+    # Every version yanked or a prerelease: the registry serves nothing.
+    [ "$FIELD" = null ] && exit 0
     answer "$FIELD"
     ;;
 pypi:*)
@@ -282,7 +288,7 @@ pypi:*)
     404) exit 0 ;;
     *) unreadable "PyPI" ;;
     esac
-    json_string version || unread_body "PyPI" "info.version"
+    json_field version || unread_body "PyPI" "info.version"
     answer "$FIELD"
     ;;
 npm:*)
@@ -292,7 +298,7 @@ npm:*)
     404) exit 0 ;;
     *) unreadable "npm" ;;
     esac
-    json_string version || unread_body "npm" "version"
+    json_field version || unread_body "npm" "version"
     answer "$FIELD"
     ;;
 release:*)
@@ -312,10 +318,8 @@ release:*)
     *) refuse "GitHub sent $releases/latest to '$location', which is neither a release tag nor the releases page" "$RE_ASK" ;;
     esac
     version="${tag#v}"
-    case "$version" in
-    "" | [!0-9]* | *[!0-9A-Za-z.+-]*)
-        refuse "GitHub's latest release of $identifier is tagged '$tag', which is not v<version>" "$RE_ASK" ;;
-    esac
+    [[ "$version" =~ $SEMVER ]] || refuse \
+        "GitHub's latest release of $identifier is tagged '$tag', which is not v<version>" "$RE_ASK"
     # The checksum file is a release asset; github.com answers its download
     # with a redirect to the asset store when it is there, and 404 when not.
     fetch -I -o /dev/null "$releases/download/$tag/$CHECKSUMS"
