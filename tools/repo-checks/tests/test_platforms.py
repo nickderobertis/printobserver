@@ -43,11 +43,10 @@ MATRIX = """    strategy:
             runner: ubuntu-24.04-arm
 """
 
-# The gate's two Windows cells, which follow the Linux ones in its own matrix.
-WINDOWS = """          - id: windows-x86_64
-            runner: windows-2025
-          - id: windows-aarch64
-            runner: windows-11-arm
+# What follows the macOS cell in the gate's own matrix: its two Windows gates
+# are sharded, and carried by their shard jobs instead.
+WINDOWS = """          # The two Windows gates are sharded: `gate-shard-<platform>` runs
+          # each one's work and `gate-<platform>` reports its context.
 """
 
 

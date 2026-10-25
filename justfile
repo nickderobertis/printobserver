@@ -89,9 +89,11 @@ tool-version TOOL:
 # every other one: what it reads of this tree's build, its graph target builds
 # first, so the gate's two longest tiers overlap. Both are waited out whatever
 # either answers, so a run reports every failure of both, and fails if either
-# failed. On Windows it runs last, as the other tiers do in turn: either tier
-# alone fills a 4-processor Windows runner, so beside each other they only slow
-# both down, where every other platform's runner has the room to gain.
+# failed. On Windows it runs last, as the other tiers do in turn: beside each
+# other on a 4-processor Windows runner they only slow both down, and load
+# Nx's plugin workers past the time they are given to start. Continuous
+# integration splits both Windows gates into shards (`just check-shard`), which
+# run their tiers in turn too.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -113,6 +115,22 @@ check tier="affected":
 # Whether `just check` starts the end-to-end tier beside the test tier: `true`
 # everywhere but Windows, for the reason the recipe above gives.
 E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
+
+# One shard (`k/n`) of the gate at a tier, for a platform whose gate is split
+# across runners: `repo_checks.gate_shards` hands each of the tiers `check`
+# invokes to exactly one shard, so the shards together run the whole gate and
+# nothing twice. `just gate-shards 4` prints the four-way split.
+check-shard tier shard:
+    uv run -q python -m repo_checks.gate_shards run {{quote(tier)}} {{quote(shard)}}
+
+# Each shard's gate tiers when the gate is split into COUNT shards, one shard a line.
+gate-shards count:
+    @uv run -q python -m repo_checks.gate_shards plan {{quote(count)}}
+
+# The verdict of a sharded required job: fails unless every shard in the
+# workflow's `needs`, handed over as `NEEDS`, succeeded.
+shard-verdict kind platform:
+    uv run -q python -m repo_checks.gate_shards verdict {{quote(kind)}} {{quote(platform)}}
 
 # The tier a continuous-integration run of the gate is for, off the event the
 # forge started it with: `all` on the release pull request, `affected` on any

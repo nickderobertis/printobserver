@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from repo_checks.checks_ci import status_contexts
+from repo_checks.checks_shards import is_shard_job
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
 from repo_checks.gate_tier import main as gate_tier_main
@@ -275,12 +276,25 @@ def test_a_release_configuration_naming_no_prefix_is_refused(tree: Callable[[], 
         select(copy.repo, {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_HEAD_REF": RELEASE_BRANCH})
 
 
-def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base() -> None:
-    """The half of the selection only a forge runs, read off the committed workflow."""
-    gate = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))["gate"]
+@pytest.mark.parametrize(
+    ("key", "command"),
+    [
+        ("gate", 'just check "$(just gate-tier)"'),
+        ("gate-shard-windows-x86_64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
+        ("gate-shard-windows-aarch64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
+    ],
+)
+def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base(
+    key: str, command: str
+) -> None:
+    """The half of the selection only a forge runs, read off the committed workflow.
+
+    A shard of a sharded gate is held to it as the unsharded gate is.
+    """
+    gate = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))[key]
     uses = [str(step.get("uses", "")) for step in steps_of(gate)]
 
-    contains(run_commands(gate), 'just check "$(just gate-tier)"')
+    contains(run_commands(gate), command)
     truth(
         any(action.startswith("nrwl/nx-set-shas@") for action in uses),
         describing=f"the gate job deriving NX_BASE explicitly; it uses {uses}",
@@ -343,16 +357,28 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
                 kind,
                 describing=f"{context.file}'s pull_request activity types",
             )
-        job = jobs_of(workflow)[context.job]
+        jobs = jobs_of(workflow)
+        job = jobs[context.job]
         condition = job.get("if")
-        if job.get("needs") is not None:
-            # A carrier of a consolidated lane waits on that lane, and reports
-            # whatever it ended as: `always()` is what no result can skip.
+        needs = job.get("needs")
+        if needs is not None:
+            # A carrier of a consolidated lane, or the aggregator of a sharded
+            # context, waits on the jobs doing the work and reports whatever
+            # they ended as: `always()` is what no result can skip. A shard it
+            # waits on is held to running on every pull request instead.
             equal(
                 condition,
                 "always()",
-                describing=f"`{context.job}`'s condition, waiting on {job.get('needs')}",
+                describing=f"`{context.job}`'s condition, waiting on {needs}",
             )
+            for key in [needs] if isinstance(needs, str) else needs:
+                if not is_shard_job(jobs[key]):
+                    continue
+                equal(jobs[key].get("needs"), None, describing=f"what `{key}` waits on")
+                truth(
+                    jobs[key].get("if") in (None, "github.event_name == 'pull_request'"),
+                    describing=f"`{key}`'s condition, {jobs[key].get('if')!r}",
+                )
             continue
         truth(
             condition in (None, "github.event_name == 'pull_request'"),

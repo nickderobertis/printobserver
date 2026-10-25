@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from repo_checks import workers
+from repo_checks import gate_shards, workers
 from repo_checks.model import Repo
 from treecopy import REPO_ROOT, Closure, Tree, copy_tree, strayed
 
@@ -39,6 +39,18 @@ def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("NX_BASE", raising=False)
     monkeypatch.delenv("NX_HEAD", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_ambient_shard_part(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the part of the gate a shard ran this suite under before any test starts.
+
+    A sharded gate runs this suite with `PRINTOBSERVER_GATE_PROJECTS` naming
+    its side of the test tier, and every tier a test drives would inherit it;
+    a test that means a part names it itself.
+    """
+    for name in gate_shards.PARTS:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

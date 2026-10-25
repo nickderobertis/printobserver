@@ -1366,6 +1366,12 @@ reason = "A push to `main` runs the affected tier, never the sweep by name: `jus
 
 [[suppression]]
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/ci.yml"
+site = 'run: just check-shard "$(just gate-tier)" "$GATE_SHARD"'
+reason = "This is one shard of the same gate step suppressed above, at the same tier `just gate-tier` answers, for the platform whose gate is split across runners: the shards together run exactly the tiers that step runs and none twice, so it is no second sweep, and a push to `main` sweeps here exactly when that step does, for the reason given there."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/platform-dispatch.yml"
 site = "- gate"
 reason = "Offering the gate as a choice is not a second automatic sweep of a commit the gate already ran on: this workflow fires on `workflow_dispatch` alone — `just check-repo`'s `platform-dispatch` holds its trigger set to exactly that — so nothing runs here unless a person names one job and one platform by hand, and what runs is one cell of that job rather than every cell of every workflow a push starts. That one cell is the whole point: bringing a platform up means re-running its gate cell while it is red, and a push to do so starts sixteen jobs on hosted runners shared with other work. A dispatch of `gate` is the same recipe `ci.yml` runs, once, on the one runner a person asked for, and it gates nothing — it is not a required check and reports on no pull request."

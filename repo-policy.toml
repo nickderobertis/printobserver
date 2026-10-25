@@ -699,6 +699,9 @@ action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+
 # that may carry a platform matrix. A job's kind is what its own steps run, not
 # what it is called. `just check-repo` holds these to AGENTS.md's
 # supported-platform list and refuses a platform matrix on any other job.
+# A shard job of a sharded gate runs the gate's work and is a `gate` job, its
+# cells one platform's shards; the aggregating job reporting that platform's
+# context carries no matrix, and AGENTS.md's unmatrixed-jobs record says why.
 platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
 # The install scripts behind the install-path section's third route, one per
 # family of platform — the shell one for Linux and macOS, the PowerShell one

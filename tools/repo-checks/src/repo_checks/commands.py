@@ -419,21 +419,34 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     every one of those is affected whenever it is, so restricting the report to
     the affected projects drops whole files and never a test that reached one.
 
+    Narrowed to one side of a tag by `PRINTOBSERVER_GATE_PROJECTS`, as the test
+    tier beside it was, the report is over that side's projects alone. A sharded
+    gate splits on `lang:rust`, which every Rust crate carries and no Python
+    source's project does, so each side's report holds one ecosystem's whole
+    figure at its own floor, measured by the only tests that measure it.
+
     Raises:
         TierError: If the tier or the base it is resolved against is refused,
             or a project file or the coverage sources are not what they must be.
     """
     scope = gate_tier.resolve(repo, tier)
+    narrowed = gate_tier.project_filter()
     reached = gate_tier.affected_projects(repo, scope, "test")
-    if reached is None:
+    if reached is None and narrowed is None:
         return Measured(reason=scope.reason)
     try:
         declared = checks_graph.projects(repo)
     except checks_graph.ProjectFileError as malformed:
         raise gate_tier.TierError(str(malformed)) from malformed
-    graph = [project for project in declared if project.name in reached]
+    graph = [
+        project
+        for project in declared
+        if (reached is None or project.name in reached)
+        and (narrowed is None or narrowed.admits(project.tags))
+    ]
     rust = tuple(project.root for project in graph if checks_graph.RUST in project.tags)
-    return Measured(rust=rust, python=measured_sources(repo, graph), reason=scope.reason)
+    reason = scope.reason if narrowed is None else f"{scope.reason}, only {narrowed}'s side"
+    return Measured(rust=rust, python=measured_sources(repo, graph), reason=reason)
 
 
 def measured_sources(repo: Repo, graph: list[checks_graph.Project]) -> tuple[str, ...]:
