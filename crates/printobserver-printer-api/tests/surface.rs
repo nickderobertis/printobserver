@@ -109,6 +109,16 @@ fn printer_port_declares_exactly_the_stated_methods() {
             &[("file_name", "FileName"), ("position_bytes", "i64")],
             "BoxFuture<'_,Result<Vec<ToolFilament>,PrinterError>>",
         ),
+        method(
+            "push_events",
+            &[],
+            "BoxFuture<'_,Result<BoxStream<'static,PrinterPush>,PrinterError>>",
+        ),
+        method(
+            "send_command",
+            &[("command", "PrinterCommand")],
+            "BoxFuture<'_,Result<(),PrinterError>>",
+        ),
     ];
     assert_eq!(trait_methods(&source, "PrinterPort"), expected);
 }

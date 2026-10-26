@@ -35,7 +35,9 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
         | PrinterMethod::Job
         | PrinterMethod::FileFacts
         | PrinterMethod::PrintedFiles
-        | PrinterMethod::ExtrudedTo => None,
+        | PrinterMethod::ExtrudedTo
+        | PrinterMethod::PushEvents
+        | PrinterMethod::SendCommand => None,
         PrinterMethod::Start => Some(ActionKind::StartPrint),
         PrinterMethod::Pause => Some(ActionKind::Pause),
         PrinterMethod::Resume => Some(ActionKind::Resume),
@@ -48,16 +50,21 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
     }
 }
 
-/// The port's file reads, which this walk does not reach: none is an action,
+/// The port's file reads, and its push channel and command, which this walk
+/// does not reach. The push channel and the command are the server's own to
+/// call, never this crate's, and its journeys walk them there. The file reads
+/// are none of them an action,
 /// and a failing one is not recorded as a port failure against the event being
 /// handled — the filament ledger answers it where it reads it, a charge falling
 /// back to the file's fraction with a note saying why (`print_timeline`), a
 /// file read as having no analysis (`preflight`), an accounting answered as the
 /// printer's own error (`unobserved`) — and those journeys walk it there.
-const NOT_YET_CALLED: [PrinterMethod; 3] = [
+const NOT_YET_CALLED: [PrinterMethod; 5] = [
     PrinterMethod::FileFacts,
     PrinterMethod::PrintedFiles,
     PrinterMethod::ExtrudedTo,
+    PrinterMethod::PushEvents,
+    PrinterMethod::SendCommand,
 ];
 
 /// The failure induced at every site of this walk.

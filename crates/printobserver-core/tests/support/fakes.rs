@@ -122,11 +122,15 @@ pub enum PrinterMethod {
     PrintedFiles,
     /// `extruded_to`.
     ExtrudedTo,
+    /// `push_events`.
+    PushEvents,
+    /// `send_command`.
+    SendCommand,
 }
 
 impl PrinterMethod {
     /// Every method the printer port declares.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::Snapshot,
         Self::Job,
         Self::Start,
@@ -141,6 +145,8 @@ impl PrinterMethod {
         Self::FileFacts,
         Self::PrintedFiles,
         Self::ExtrudedTo,
+        Self::PushEvents,
+        Self::SendCommand,
     ];
 
     /// The method's own name, as the trait spells it.
@@ -161,6 +167,8 @@ impl PrinterMethod {
             Self::FileFacts => "file_facts",
             Self::PrintedFiles => "printed_files",
             Self::ExtrudedTo => "extruded_to",
+            Self::PushEvents => "push_events",
+            Self::SendCommand => "send_command",
         }
     }
 }
