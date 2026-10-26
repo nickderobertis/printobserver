@@ -263,6 +263,11 @@ fn the_documents_restate_the_events_and_watch_bounds_as_the_code_has_them() {
             "0, the default, prints none).".to_owned(),
         ),
         (
+            COMMAND_SURFACE,
+            &surface,
+            "a number of seconds below zero — the only bound either takes — is refused".to_owned(),
+        ),
+        (
             API_AND_CLIENTS,
             &api,
             format!("`wait_s` is 0 to {MAX_EVENTS_WAIT_S}, default 0"),
