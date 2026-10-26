@@ -120,7 +120,8 @@ SKILL = Path(__file__).resolve().parents[4] / "skills/printobserver/SKILL.md"
 #: How long the supervisor is given to answer at the address it bound.
 STARTUP_TIMEOUT_SECONDS = 60.0
 
-#: How long the ingress is given to open the print its alert names.
+#: How long the ingress is given to open the print its alert names, unless the
+#: tier standing the world up names its own bound.
 INGRESS_TIMEOUT_SECONDS = 60.0
 
 
@@ -396,6 +397,7 @@ class World:
         *,
         credential: Credential | None = None,
         refusing: bool = False,
+        ingress_timeout: float = INGRESS_TIMEOUT_SECONDS,
     ) -> None:
         """Bring one up under `root`, running the program at `program`.
 
@@ -409,11 +411,17 @@ class World:
         `CREDENTIAL_BYTES` random bytes; a
         journey names one to hold a client to a credential of a particular
         shape. `refusing` grants the operator nothing; see `_configuration`.
+
+        `ingress_timeout` bounds the wait for the ingress to prepare the print
+        and image its alert opens. A tier passes its own explicit timeout, so a
+        loaded host delays the proof rather than failing it on a deadline the
+        tier never chose.
         """
         self.program = program
         self.root = root
         self.credential = credential or Credential(secrets.token_urlsafe(CREDENTIAL_BYTES))
         self.refusing = refusing
+        self.ingress_timeout = ingress_timeout
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
         self.state = root / "state"
@@ -575,13 +583,16 @@ class World:
             msg = f"the ingress answered {answered.status} to the alert that opens a print"
             raise WorldError(msg)
 
-        deadline = time.monotonic() + INGRESS_TIMEOUT_SECONDS
+        deadline = time.monotonic() + self.ingress_timeout
         while time.monotonic() < deadline:
             found = self._recorded()
             if found is not None:
                 return found
             time.sleep(0.2)
-        msg = "the ingress accepted the alert but did not finish preparing its print and image"
+        msg = (
+            "the ingress accepted the alert but did not finish preparing its print and image "
+            f"in {self.ingress_timeout}s; the last state seen: {self._progress()}"
+        )
         raise WorldError(msg)
 
     def _register_a_spool(self, server: str) -> SpoolId:
@@ -626,6 +637,36 @@ class World:
             msg = f"the supervisor answered a spool with no identifier: {ran.stdout}"
             raise WorldError(msg)
         return SpoolId(spool_id)
+
+    def _progress(self) -> str:
+        """What the store holds of the print the alert opens, for a wait that gave up."""
+        store = self.state / STORE
+        if not store.is_file():
+            return "no store at all"
+        connection = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
+        seen: list[str] = []
+        try:
+            for what, query in (
+                ("prints", "SELECT count(*) FROM prints"),
+                ("images", "SELECT count(*) FROM images"),
+                (
+                    "failure alerts",
+                    "SELECT count(*) FROM events WHERE kind = 'obico_failure_alert'",
+                ),
+                (
+                    "finished supervision turns",
+                    "SELECT count(*) FROM events WHERE kind = 'agent_assessment' "
+                    "OR (kind = 'port_failure' "
+                    "AND json_extract(payload, '$.payload.site') = 'supervision_turn')",
+                ),
+            ):
+                try:
+                    seen.append(f"{connection.execute(query).fetchone()[0]} {what}")
+                except sqlite3.DatabaseError as error:
+                    seen.append(f"{what} unreadable ({error})")
+        finally:
+            connection.close()
+        return ", ".join(seen)
 
     def _recorded(self) -> tuple[str, str, str] | None:
         """The print and image, once the ingress has finished observing the printer.

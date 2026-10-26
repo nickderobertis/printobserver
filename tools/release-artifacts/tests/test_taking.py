@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -257,6 +258,44 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
             world.start()
     finally:
         world.stop()
+
+
+def test_an_ingress_that_never_prepares_the_print_ends_at_the_tier_s_own_timeout(
+    repo: Repo, into: Callable[[str], Path]
+) -> None:
+    """The wait for the print and image is the tier's bound, and its failure says what it saw.
+
+    The stand-in supervisor accepts the alert and records a print, and then
+    never stores an image or finishes a supervision turn: an ingress that
+    stays short of ready however long it is given.
+    """
+    root = into("unprepared")
+    accepting = _stand_in(
+        root,
+        "accepts-and-never-prepares",
+        (Path(__file__).parent / "unprepared_ingress.py").read_text(encoding="utf-8"),
+    )
+    tier_timeout = 3.0
+    world = World(accepting, root, ingress_timeout=tier_timeout)
+
+    began = time.monotonic()
+    try:
+        with pytest.raises(WorldError) as gave_up:
+            world.start()
+    finally:
+        world.stop()
+    waited = time.monotonic() - began
+
+    contains(str(gave_up.value), f"in {tier_timeout}s", describing="the bound the wait names")
+    contains(
+        str(gave_up.value),
+        "the last state seen: 1 prints, 0 images, 0 failure alerts, 0 finished supervision turns",
+        describing="what the wait says it last saw",
+    )
+    truth(
+        tier_timeout <= waited < world_module.INGRESS_TIMEOUT_SECONDS,
+        describing=f"the wait to end at the tier's own {tier_timeout}s bound, not {waited:.1f}s",
+    )
 
 
 def _announcing(root: Path, name: str, address: str) -> Path:
