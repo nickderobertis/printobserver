@@ -40,6 +40,9 @@ const OBSERVATION: &str = "periodic_observation";
 /// A kind no crate declares, standing for anything that is not routine.
 const NOTABLE: &str = "streaming_notable";
 
+/// A second kind no crate declares, which the filters leave out.
+const OTHER: &str = "streaming_other";
+
 /// How long a journey waits for a stream to print what it is waiting for.
 const PATIENCE: Duration = Duration::from_secs(30);
 
@@ -66,6 +69,25 @@ fn notable(print_id: Option<PrintId>) -> EventDraft {
             payload: json!({ "said": "something happened" }),
         },
         raw: None,
+    }
+}
+
+/// One event of a kind nothing declares, received at the instant given.
+fn notable_at(print_id: Option<PrintId>, received_at: Timestamp) -> EventDraft {
+    EventDraft {
+        received_at,
+        ..notable(print_id)
+    }
+}
+
+/// One event of another kind nothing declares, which the filters leave out.
+fn other_kind(print_id: Option<PrintId>) -> EventDraft {
+    EventDraft {
+        body: EventBody {
+            kind: EventKind::new(OTHER).expect("a kind name"),
+            payload: json!({ "said": "something else happened" }),
+        },
+        ..notable(print_id)
     }
 }
 
@@ -943,4 +965,141 @@ fn a_watch_started_after_a_prints_end_ends_with_it_at_once() {
         "{ended}"
     );
     assert_eq!(status.code(), Some(0), "{lines:#?}");
+}
+
+/// Without `--print-id`, a stream carries every event stored after it began —
+/// every print's and the printer's — and none stored before.
+#[test]
+fn a_watch_over_no_print_streams_every_event_stored_after_it_began() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let earlier = own.record(vec![notable(None)]);
+    let mut stream = watch(&own, &["--json", "--kind", NOTABLE, "--reconnect-s", "1"]);
+    std::thread::sleep(Duration::from_millis(500));
+    let later = own.record(vec![
+        notable(Some(print(&own.print_id))),
+        notable(Some(print(&own.elsewhere))),
+        notable(None),
+    ]);
+    own.nudge(&world);
+    let last = later[2].id.to_string();
+    stream.until("what was stored after it began", |seen| {
+        seen.iter().any(|line| line.contains(&last))
+    });
+    own.stop();
+    let (lines, status) = stream.finished();
+    let lines = documents(&lines);
+
+    assert_eq!(
+        printed_ids(&lines),
+        later
+            .iter()
+            .map(|event| event.id.to_string())
+            .collect::<Vec<_>>(),
+        "earlier {}: {lines:#?}",
+        earlier[0].id
+    );
+    assert_eq!(ending(&lines)["reason"], json!("unreachable"), "{lines:#?}");
+    assert_eq!(status.code(), Some(3), "{lines:#?}");
+}
+
+/// Without `--json`, a quiet stream says so in words every heartbeat, and
+/// its ending is in words too.
+#[test]
+fn a_quiet_watch_in_words_beats_and_ends_in_words() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let mut stream = watch(&own, &["--heartbeat-s", "1", "--reconnect-s", "1"]);
+    stream.until("two heartbeats", |seen| {
+        seen.iter()
+            .filter(|line| line.contains("still watching"))
+            .count()
+            >= 2
+    });
+    own.stop();
+    let (lines, status) = stream.finished();
+
+    let last = lines.last().expect("a last line");
+    assert!(
+        last.starts_with("watch ended: the supervisor could not be reached."),
+        "{lines:#?}"
+    );
+    assert_eq!(status.code(), Some(3), "{lines:#?}");
+}
+
+/// `--kind`, `--exclude-kind` and `--sample` each given twice: every value
+/// given rules on the stream.
+#[test]
+fn every_value_of_a_repeated_option_rules_on_the_stream() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let observation_every = format!("{OBSERVATION}=300");
+    let notable_every = format!("{NOTABLE}=600");
+    let included = watch(
+        &own,
+        &[
+            "--json",
+            "--print-id",
+            &watched,
+            "--kind",
+            OBSERVATION,
+            "--kind",
+            NOTABLE,
+            "--sample",
+            &observation_every,
+            "--sample",
+            &notable_every,
+        ],
+    );
+    let excluded = watch(
+        &own,
+        &[
+            "--json",
+            "--print-id",
+            &watched,
+            "--exclude-kind",
+            OTHER,
+            "--exclude-kind",
+            OBSERVATION,
+        ],
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    let base = Timestamp::now();
+    let on = Some(print(&watched));
+    let recorded = own.record(vec![
+        observation(on, base),
+        notable_at(on, base),
+        other_kind(on),
+        observation(on, after(base, 100)),
+        notable_at(on, after(base, 100)),
+        observation(on, after(base, 300)),
+        notable_at(on, after(base, 300)),
+        notable_at(on, after(base, 600)),
+        ended(print(&watched)),
+    ]);
+    own.nudge(&world);
+    let at = |index: usize| recorded[index].id.to_string();
+
+    let (lines, status) = included.finished();
+    let lines = documents(&lines);
+    assert_eq!(
+        printed_ids(&lines),
+        vec![at(0), at(1), at(5), at(7)],
+        "two kinds, each sampled by its own interval: {lines:#?}"
+    );
+    assert_eq!(status.code(), Some(0), "{lines:#?}");
+    assert_eq!(ending(&lines)["reason"], json!("print_ended"));
+
+    let (lines, status) = excluded.finished();
+    let lines = documents(&lines);
+    held_to_the_record(&own, print(&watched), &lines, status, |event| {
+        event.kind().as_str() != OTHER && event.kind().as_str() != OBSERVATION
+    });
+    for index in [1, 4, 6, 7, 8] {
+        assert!(
+            printed_ids(&lines).contains(&at(index)),
+            "two kinds excluded, and more with them: {lines:#?}"
+        );
+    }
 }

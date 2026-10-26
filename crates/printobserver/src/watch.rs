@@ -34,9 +34,10 @@ use std::time::Duration;
 
 use core::num::NonZeroU32;
 
+use printobserver_sdk::PrintOutcome;
 use printobserver_types::serde::Deserialize;
 use printobserver_types::serde_json::{self, Value, json};
-use printobserver_types::{EventId, EventKind, PrintId, Timestamp};
+use printobserver_types::{EventId, EventKind, EventRecord, PrintId, Timestamp};
 use tokio::time::Instant;
 
 use crate::config::{ClientConfig, load};
@@ -280,24 +281,6 @@ impl Sampler {
     }
 }
 
-/// The fields of one event this program reads to decide what to do with it.
-///
-/// The event itself is printed as the server sent it; these are read beside
-/// it, and an event without them is an answer this program cannot read.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(crate = "printobserver_types::serde")]
-struct Head {
-    /// Its identifier, which the stream reads on from.
-    id: EventId,
-    /// Its kind, which the filters and the sampling rule on.
-    kind: EventKind,
-    /// When it was received, which the sampling counts by.
-    received_at: Timestamp,
-    /// The print it belongs to, when it belongs to one.
-    #[serde(default)]
-    print_id: Option<PrintId>,
-}
-
 /// One print's end, as an events answer tells it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "printobserver_types::serde")]
@@ -307,7 +290,7 @@ struct Ended {
     /// When it was received.
     received_at: Timestamp,
     /// How the print ended.
-    outcome: String,
+    outcome: PrintOutcome,
 }
 
 /// One events answer, as the server sends it.
@@ -323,12 +306,12 @@ struct Answer {
     print_ended: Option<Ended>,
 }
 
-/// One events answer, read: each event beside the fields this program decides
-/// on.
+/// One events answer, read: each event as the record it is, beside the text
+/// the server sent for it, which is what is printed.
 #[derive(Debug, Clone)]
 struct Page {
     /// The events, in the order stored.
-    events: Vec<(Head, Value)>,
+    events: Vec<(EventRecord, Value)>,
     /// The last event the read examined.
     cursor: Option<EventId>,
     /// The watched print's end, once it has ended.
@@ -342,7 +325,7 @@ impl Page {
         let events = answer
             .events
             .into_iter()
-            .map(|event| Ok((Head::deserialize(&event)?, event)))
+            .map(|event| Ok((EventRecord::deserialize(&event)?, event)))
             .collect::<Result<_, serde_json::Error>>()?;
         Ok(Self {
             events,
@@ -367,7 +350,7 @@ impl Lines {
     }
 
     /// One event that passed.
-    fn event(&self, head: &Head, event: &Value) {
+    fn event(&self, head: &EventRecord, event: &Value) {
         if self.machine_readable {
             Self::write(&event.to_string());
             return;
@@ -377,7 +360,9 @@ impl Lines {
             .map_or_else(|| "printer".to_owned(), |print| format!("print {print}"));
         Self::write(&format!(
             "{}  {}  {scope}  event {}",
-            head.received_at, head.kind, head.id
+            head.received_at,
+            head.kind(),
+            head.id
         ));
     }
 
@@ -599,17 +584,17 @@ impl Stream<'_> {
         }
         let drained = page.events.is_empty();
         for (head, event) in &page.events {
-            if self.watch.passes(head.kind.as_str())
+            if self.watch.passes(head.kind().as_str())
                 && self
                     .sampler
-                    .passes(self.watch, &head.kind, head.received_at)
+                    .passes(self.watch, head.kind(), head.received_at)
             {
                 self.lines.event(head, event);
                 self.last_line = Instant::now();
             }
             self.cursor = Some(head.id);
             let is_the_end = self.watch.print_id.is_some()
-                && head.kind.as_str() == PRINT_ENDED
+                && head.kind().as_str() == PRINT_ENDED
                 && head.print_id == self.watch.print_id;
             if is_the_end {
                 let detail = self.ended.as_ref().map_or_else(
@@ -686,7 +671,11 @@ fn ended_detail(watch: &Watch, ended: &Ended) -> String {
         watch
             .print_id
             .map_or_else(|| "?".to_owned(), |print| print.to_string()),
-        ended.outcome,
+        match ended.outcome {
+            PrintOutcome::Completed => "completed",
+            PrintOutcome::Cancelled => "cancelled",
+            PrintOutcome::Failed => "failed",
+        },
         ended.received_at,
         ended.event_id
     )
