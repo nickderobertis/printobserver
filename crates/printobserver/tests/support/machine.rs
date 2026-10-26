@@ -55,7 +55,13 @@ pub enum Reports {
     Paused,
     /// Idle, with nothing running.
     Operational,
+    /// In a state of its own that the printer vocabulary does not name, and
+    /// raising none of the flags that vocabulary reads.
+    Unnamed,
 }
+
+/// The machine's own word for the state the printer vocabulary does not name.
+pub const UNNAMED_STATE: &str = "Conditioning chamber";
 
 impl Reports {
     /// The machine's own word for this state, and the flags it sets.
@@ -64,6 +70,7 @@ impl Reports {
             Self::Printing => ("Printing", &["operational", "printing"]),
             Self::Paused => ("Paused", &["operational", "paused"]),
             Self::Operational => ("Operational", &["operational"]),
+            Self::Unnamed => (UNNAMED_STATE, &[]),
         }
     }
 }

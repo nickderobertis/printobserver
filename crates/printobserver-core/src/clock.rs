@@ -1,15 +1,25 @@
 //! The one time source this crate reads.
 //!
 //! Core never calls the system clock. Every instant it stamps, and every
-//! comparison it makes against one — a bounded intervention's expiry, the
-//! agent's minimum interval — is read through a [`Clock`], so that expiry is
-//! driven by time passing and by nothing else and a test drives it by
-//! advancing this one dependency alone.
+//! comparison it makes against one, is read through a [`Clock`], so that a
+//! test drives time by advancing this one dependency alone.
 //!
-//! A wait that is held only in memory — the detector's resume grace — is
-//! timed on [`Clock::elapsed`] instead, which nothing steps: a host's wall
-//! clock is moved by time synchronisation, and a wait measured across one
-//! such step is cut short or drawn out by the step.
+//! A clock has two readings, and they answer different questions. [`Clock::now`]
+//! is the wall clock: every instant this crate **records** — an action's
+//! request, an event's arrival, an intervention's persisted deadline — is
+//! stamped from it, so that the history reads in the absolute time it was
+//! written. [`Clock::elapsed`] is a clock nothing steps, and every **duration
+//! measured while the supervisor lives** is measured on it: a bounded
+//! intervention's expiry, the agent's minimum interval between changes to the
+//! machine, and the detector's resume grace. A host's wall clock is moved by
+//! time synchronisation, and a duration measured across one such step is cut
+//! short or drawn out by the step.
+//!
+//! The two meet only where a recorded instant has to become a live wait: an
+//! intervention's persisted deadline, or the instant the agent last acted, read
+//! back after a restart. Each is translated once, against a [`ClockReading`]
+//! that took both readings together, and is counted down on
+//! [`Clock::elapsed`] from then on.
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -49,6 +59,51 @@ impl Clock for SystemClock {
     fn elapsed(&self) -> Duration {
         static ORIGIN: OnceLock<Instant> = OnceLock::new();
         ORIGIN.get_or_init(Instant::now).elapsed()
+    }
+}
+
+/// Both of a clock's readings, taken together.
+///
+/// The one translation between them: where an absolute instant falls on the
+/// clock nothing steps, as seen from the moment this was read. It is taken
+/// once per instant translated, and never again, so that a later step of the
+/// wall clock cannot move a wait already being counted down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockReading {
+    /// What the wall clock read.
+    pub wall: Timestamp,
+    /// What the clock nothing steps read at the same moment.
+    pub elapsed: Duration,
+}
+
+impl ClockReading {
+    /// Read both of one clock's readings now.
+    #[must_use]
+    pub fn of(clock: &dyn Clock) -> Self {
+        Self {
+            wall: clock.now(),
+            elapsed: clock.elapsed(),
+        }
+    }
+
+    /// Where `instant` falls on [`Clock::elapsed`], as this reading sees it:
+    /// as far after this reading's own `elapsed` as `instant` is after its
+    /// `wall`, and as far before it — down to the clock's origin — as `instant`
+    /// is before.
+    #[must_use]
+    pub fn elapsed_at(&self, instant: Timestamp) -> Duration {
+        let later = instant.as_utc() >= self.wall.as_utc();
+        let offset = instant
+            .as_utc()
+            .signed_duration_since(*self.wall.as_utc())
+            .num_microseconds()
+            .unwrap_or(if later { i64::MAX } else { i64::MIN });
+        let apart = Duration::from_micros(offset.unsigned_abs());
+        if later {
+            self.elapsed.saturating_add(apart)
+        } else {
+            self.elapsed.saturating_sub(apart)
+        }
     }
 }
 

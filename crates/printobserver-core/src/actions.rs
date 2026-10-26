@@ -148,6 +148,11 @@ impl Supervisor {
         let print = self.stores().prints.print(print_id).await?;
         let bounds = self.bounds_for(print.as_ref(), print_id).await?;
         let snapshot = self.read_snapshot().await.ok();
+        let since_last_agent_action = if actor.class() == ActorClass::Agent {
+            self.since_last_agent_action(print_id).await?
+        } else {
+            None
+        };
         let mut decision = decide(&DecisionInput {
             action: &action,
             actor: &actor,
@@ -156,7 +161,7 @@ impl Supervisor {
             printer_state: snapshot.as_ref().map(|taken| &taken.connection),
             bounds: &bounds.effective,
             envelope: &self.config().envelope,
-            last_agent_action: self.last_agent_action(print_id),
+            since_last_agent_action,
         });
         let preflight = self
             .check_accepted(&action, print.as_ref(), &mut decision)
@@ -184,7 +189,7 @@ impl Supervisor {
         }
         // Only a change to the machine starts the agent's interval again.
         if actor.class() == ActorClass::Agent && changes_the_machine(action.kind()) {
-            self.note_agent_action(print_id, requested_at);
+            self.note_agent_action(print_id, self.clock().elapsed());
         }
         self.follow_the_detectors_pause(print_id, &action, snapshot.as_ref());
         if let PrintAction::StartPrint {
@@ -502,6 +507,7 @@ impl Supervisor {
                 expires_at,
             )
             .await?;
+        self.count_down(&opened);
         for earlier in superseded {
             self.stores()
                 .actions
@@ -510,6 +516,7 @@ impl Supervisor {
                     InterventionOutcome::Superseded { by: opened.id },
                 )
                 .await?;
+            self.stop_counting_down(earlier.id);
         }
         Ok(Some(opened))
     }

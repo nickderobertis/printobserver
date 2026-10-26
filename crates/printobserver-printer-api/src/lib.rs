@@ -3,11 +3,12 @@
 //! Owns: the port the physical printer speaks through — the trait for reading
 //! printer and job state and for asking the machine to do one of the bounded
 //! things the action vocabulary names, plus that port's own error type — and
-//! the printer domain's vocabulary: the state a printer reports ([`state`]),
-//! the closed set of things an adjustment may change ([`adjustable`]), the
-//! snapshots those reads answer ([`snapshot`]), what the printer knows of the
-//! files it holds and the filament they use ([`file`]) and the plausibility ranges
-//! their reported numbers are read against ([`ranges`]). A change to what a
+//! the printer domain's vocabulary: the state a printer reports ([`state`],
+//! declared in `printobserver-types` and re-exported here), the closed set of
+//! things an adjustment may change ([`adjustable`]), the snapshots those reads
+//! answer ([`snapshot`]), what the printer knows of the files it holds and the
+//! filament they use ([`file`]) and the plausibility ranges their reported
+//! numbers are read against ([`ranges`]). A change to what a
 //! printer reports edits this crate and the adapters behind it, and nothing
 //! central.
 //!

@@ -22,7 +22,7 @@ use tempfile::TempDir;
 
 use crate::harness::{PROMPT, SIGN_IN_STATE, SIGNED_IN, assessment_answer, stand_in_acting};
 use crate::host::Host;
-use crate::machine::{RUNNING_FILE, Reports};
+use crate::machine::{RUNNING_FILE, Reports, UNNAMED_STATE};
 use crate::world::{STOOD_IN, World, committed_skill};
 
 use super::answers::answered;
@@ -324,6 +324,29 @@ fn what_a_turn_never_took_gets_exactly_one_more_turn_in_the_same_session() {
         .collect();
     assert_eq!(sessions.len(), 2);
     assert_eq!(sessions[0], sessions[1]);
+}
+
+/// A printer in a state the printer vocabulary does not name hands the agent
+/// that state in the printer's own word, under `unknown`, rather than as a
+/// state nobody knows.
+#[test]
+fn a_state_the_vocabulary_does_not_name_reaches_the_turn_in_the_printers_own_word() {
+    let watching = Watching::start(WAITING, |_| {});
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Unnamed);
+    assert_eq!(world.reported_state(), Some(Reports::Unnamed));
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+
+    let begun = situation(&watching.prompt(&print, 1));
+    watching.go();
+    watching.settled_after(&print, 1);
+
+    assert_eq!(
+        begun["printer_state"],
+        json!({ "unknown": UNNAMED_STATE }),
+        "{begun}"
+    );
 }
 
 /// An event for another print is written down and supervised while a look

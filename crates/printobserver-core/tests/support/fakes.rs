@@ -462,6 +462,10 @@ pub enum StoreMethod {
     AccountTallies,
     /// `record_file_position`.
     RecordFilePosition,
+    /// `history`, which the agent's interval is read back from.
+    History,
+    /// `due_interventions`, which the interventions left active are read by.
+    DueInterventions,
 }
 
 /// Everything the fake store holds.
@@ -1083,6 +1087,9 @@ impl EventStore for FakeStore {
         query: HistoryQuery,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
         self.journal.record(Call::ReadHistory);
+        if let Some(error) = self.induced(StoreMethod::History) {
+            return ready(Err(error));
+        }
         let limit = match resolve_history_limit(query.limit) {
             Ok(limit) => limit as usize,
             Err(error) => return ready(Err(error)),
@@ -1366,6 +1373,9 @@ impl ActionStore for FakeStore {
         &self,
         at: Timestamp,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
+        if let Some(error) = self.induced(StoreMethod::DueInterventions) {
+            return ready(Err(error));
+        }
         let due: Vec<Intervention> = self
             .held
             .lock()

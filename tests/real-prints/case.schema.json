@@ -99,7 +99,7 @@
           "type": "string"
         },
         "printer_state": {
-          "description": "The printer contract's PrinterState spelling (schemas/printobserver-printer-api/PrinterState.json): printing, paused, operational, and the rest.",
+          "description": "The printer contract's PrinterState spelling (schemas/printobserver-types/PrinterState.json): printing, paused, operational, and the rest.",
           "type": "string"
         },
         "detector_warned": {

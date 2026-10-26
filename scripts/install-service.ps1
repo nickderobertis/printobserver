@@ -16,20 +16,28 @@
 # script prints when it is done.
 #
 # Usage, in an elevated PowerShell:
-#   install-service.ps1 [-Root DIR] [-Binary PATH]
+#   install-service.ps1 [-Root DIR] [-Binary PATH] [-ObservationIntervalSeconds N]
 #
 #   -Root     install beneath DIR rather than beneath the system drive. This is
 #             how a test owns a throwaway root; the paths under it are the real
 #             ones, and the service is registered naming them.
 #   -Binary   the printobserver program to install. Defaults to the one on PATH,
 #             which is what any of the install path's three routes puts there.
+#   -ObservationIntervalSeconds
+#             how often every active print is observed, written into the
+#             configuration as supervisor.observation_interval_s: a whole number
+#             of seconds above zero, refused otherwise exactly as the server
+#             would refuse it. Left out, the configuration takes the server's own
+#             default. A configuration already in place is left alone, this
+#             value with it.
 #
 # The service runs as its own virtual account, `NT SERVICE\printobserver`, which
 # Windows creates with the registration: no password, no profile, and no right
 # to anything this script does not grant it.
 param(
     [string]$Root = '',
-    [string]$Binary = ''
+    [string]$Binary = '',
+    [string]$ObservationIntervalSeconds = ''
 )
 
 Set-StrictMode -Version Latest
@@ -117,6 +125,22 @@ $Elevate = "Run this from an elevated PowerShell; ``sc.exe query $ServiceName`` 
 
 if ($Root) { Plain '-Root' $Root }
 if ($Binary) { Plain '-Binary' $Binary }
+
+# The interval is the server's `supervisor.observation_interval_s`, which it
+# reads as a whole number of seconds and refuses at zero, and which a TOML
+# document holds as an integer: digits alone, with no sign, no leading zero, and
+# no more than a 64-bit signed integer holds. A value outside that is refused
+# here, before anything is placed, rather than written into a configuration the
+# service would then refuse to start under.
+$Interval = '# observation_interval_s = 120'
+if ($PSBoundParameters.ContainsKey('ObservationIntervalSeconds')) {
+    $seconds = [long]0
+    if (-not ($ObservationIntervalSeconds -cmatch '^[1-9][0-9]*$' -and
+            [long]::TryParse($ObservationIntervalSeconds, [ref]$seconds))) {
+        Fail "-ObservationIntervalSeconds takes a whole number of seconds above zero, written in digits alone, and '$ObservationIntervalSeconds' is not one: an interval of zero observes a print again the moment its last turn returns. Pass a positive number of seconds, or leave -ObservationIntervalSeconds out for the server's default."
+    }
+    $Interval = "observation_interval_s = $seconds"
+}
 
 if (-not $Binary) {
     $found = Get-Command $ServiceName -CommandType Application -ErrorAction SilentlyContinue
@@ -208,6 +232,9 @@ Must "letting the service run its program" $Elevate {
 # overwrite the operator's own values with a template's.
 if (Test-Path -LiteralPath $InstalledConfig -PathType Leaf) {
     $Kept += "$InstalledConfig was already there and was left alone"
+    if ($PSBoundParameters.ContainsKey('ObservationIntervalSeconds')) {
+        $Kept += "so -ObservationIntervalSeconds was not written into it; set supervisor.observation_interval_s there yourself"
+    }
 } else {
     $configuration = @"
 # printobserver's one configuration file.
@@ -237,7 +264,7 @@ skill_path = '$InstalledSkill'
 # How often every active print is looked in on, and its agent given a turn,
 # whether or not the detector has alerted. Left out, every 120 seconds: an
 # eight-hour print is 240 turns. Raise it to spend less; zero is refused.
-# observation_interval_s = 120
+$Interval
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.

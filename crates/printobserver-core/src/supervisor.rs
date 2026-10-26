@@ -40,22 +40,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::time::Duration;
 
-use crate::records::{ActionRecord, ActionRequest, ExecutionOutcome, PolicyDecision, PrintAction};
+use crate::records::{
+    ActionId, ActionRecord, ActionRequest, ActorClass, ExecutionOutcome, PolicyDecision,
+    PrintAction,
+};
 use printobserver_printer_api::{
     FileFacts, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot, ToolFilament,
 };
 use printobserver_supervisor_api::SupervisorPort;
-use printobserver_types::{FileName, PrintId, Timestamp};
+use printobserver_types::{EventPayload as _, EventRecord, FileName, PrintId, Timestamp};
 use printobserver_vision_api::VisionPort;
 
-use crate::store::{StoreError, Stores};
+use crate::store::{HistoryQuery, MAX_HISTORY_LIMIT, StoreError, Stores};
 
 use crate::block_on::block_on;
-use crate::clock::Clock;
+use crate::clock::{Clock, ClockReading};
 use crate::config::CoreConfig;
+use crate::decision::changes_the_machine;
 use crate::detector::DetectorPauses;
+use crate::error::CoreError;
+use crate::expiry::Deadlines;
 use crate::inbox::Inboxes;
+use crate::kinds::{ActionExecutedPayload, ActionRequestedPayload};
 use crate::turn_access::{NoAccess, OpenedTurn, TurnAuthority};
 use crate::turn_lock::TurnLocks;
 
@@ -135,8 +143,15 @@ pub struct Supervisor {
     /// started: a print it closes out that is not among them ended while
     /// nothing was watching it.
     seen_running: Mutex<BTreeSet<PrintId>>,
-    /// When the agent last acted on each print.
-    last_agent_action: Mutex<BTreeMap<PrintId, Timestamp>>,
+    /// When, on the clock nothing steps, the agent last changed the machine
+    /// on each print: absent until it is known, and `None` once it is known
+    /// the agent never has.
+    last_agent_action: Mutex<BTreeMap<PrintId, Option<AgentAction>>>,
+    /// Both of the clock's readings as this supervisor started, which every
+    /// instant a previous supervisor recorded is translated against once.
+    started: ClockReading,
+    /// The active interventions being counted down.
+    deadlines: Deadlines,
     /// What reaches each print's running turn, and which prints have one.
     inboxes: Inboxes,
     /// The prints the detector paused and nobody has resumed yet.
@@ -144,6 +159,18 @@ pub struct Supervisor {
     /// Where each supervision turn's runs take their credentials from, once
     /// the composition root has installed it.
     turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
+}
+
+/// When the agent last changed the machine on one print, as this supervisor
+/// measures it.
+#[derive(Debug, Clone, Copy)]
+struct AgentAction {
+    /// The reading of the clock nothing steps this supervisor counts on from.
+    seen_at: Duration,
+    /// How long before `seen_at` the change was made: nothing for one this
+    /// supervisor made, and for one a previous supervisor recorded, how long
+    /// it had been waited already as this one started.
+    already: Duration,
 }
 
 impl core::fmt::Debug for Supervisor {
@@ -179,6 +206,7 @@ impl Supervisor {
         clock: Arc<dyn Clock>,
     ) -> Arc<Self> {
         let poll = config.expiry_poll;
+        let started = ClockReading::of(clock.as_ref());
         let supervisor = Arc::new(Self {
             printer,
             stores,
@@ -193,6 +221,8 @@ impl Supervisor {
             spool_writes: TurnLocks::default(),
             seen_running: Mutex::new(BTreeSet::new()),
             last_agent_action: Mutex::new(BTreeMap::new()),
+            started,
+            deadlines: Deadlines::default(),
             inboxes: Inboxes::default(),
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
@@ -261,6 +291,16 @@ impl Supervisor {
         &self.expiring
     }
 
+    /// Both of the clock's readings as this supervisor started.
+    pub(crate) const fn started(&self) -> ClockReading {
+        self.started
+    }
+
+    /// The active interventions being counted down.
+    pub(crate) const fn deadlines(&self) -> &Deadlines {
+        &self.deadlines
+    }
+
     /// What reaches each print's running turn.
     pub(crate) const fn inboxes(&self) -> &Inboxes {
         &self.inboxes
@@ -299,21 +339,112 @@ impl Supervisor {
             .contains(&print_id)
     }
 
-    /// Record that the agent acted on one print at an instant.
-    pub(crate) fn note_agent_action(&self, print_id: PrintId, at: Timestamp) {
-        self.last_agent_action
-            .lock()
-            .expect("the agent's own record is not poisoned")
-            .insert(print_id, at);
+    /// Record that the agent changed the machine on one print at a reading of
+    /// the clock nothing steps.
+    pub(crate) fn note_agent_action(&self, print_id: PrintId, at: Duration) {
+        self.last_agents_actions().insert(
+            print_id,
+            Some(AgentAction {
+                seen_at: at,
+                already: Duration::ZERO,
+            }),
+        );
     }
 
-    /// When the agent last acted on one print, if it has.
-    pub(crate) fn last_agent_action(&self, print_id: PrintId) -> Option<Timestamp> {
+    /// How long ago, on the clock nothing steps, the agent last changed the
+    /// machine on one print, if it has.
+    ///
+    /// A print this supervisor has not seen the agent act on is read from its
+    /// history once: the newest change the agent made that reached the machine,
+    /// translated against the reading this supervisor took as it started, so
+    /// that what is left of the interval when a supervisor restarts is waited
+    /// out on the clock nothing steps. The time it had already been waited at
+    /// that reading is kept as a span of its own rather than as a reading of
+    /// that clock, whose origin may be later than the change: a host's
+    /// monotonic clock starts near zero with the process. A change recorded
+    /// after that reading — a wall clock stepped back across the restart — is
+    /// taken as made the moment this supervisor started, which waits the whole
+    /// interval rather than longer.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the print's history could not be
+    /// read, which the next request reads again.
+    pub(crate) async fn since_last_agent_action(
+        &self,
+        print_id: PrintId,
+    ) -> Result<Option<Duration>, CoreError> {
+        let known = self.last_agents_actions().get(&print_id).copied();
+        let last = if let Some(last) = known {
+            last
+        } else {
+            let started = self.started;
+            let recorded = self
+                .recorded_agent_action(print_id)
+                .await?
+                .map(|at| AgentAction {
+                    seen_at: started.elapsed,
+                    already: started
+                        .wall
+                        .as_utc()
+                        .signed_duration_since(*at.as_utc())
+                        .to_std()
+                        .unwrap_or_default(),
+                });
+            *self
+                .last_agents_actions()
+                .entry(print_id)
+                .or_insert(recorded)
+        };
+        Ok(last.map(|action| {
+            self.clock()
+                .elapsed()
+                .saturating_sub(action.seen_at)
+                .saturating_add(action.already)
+        }))
+    }
+
+    /// When the newest change the agent made to the machine on one print was
+    /// recorded, if its history holds one.
+    async fn recorded_agent_action(
+        &self,
+        print_id: PrintId,
+    ) -> Result<Option<Timestamp>, CoreError> {
+        let history = self
+            .stores()
+            .events
+            .history(HistoryQuery {
+                print_id,
+                kinds: vec![
+                    ActionRequestedPayload::kind(),
+                    ActionExecutedPayload::kind(),
+                ],
+                since: None,
+                until: None,
+                limit: Some(MAX_HISTORY_LIMIT),
+            })
+            .await?;
+        let executed: BTreeSet<ActionId> = history
+            .iter()
+            .filter_map(EventRecord::payload_as::<ActionExecutedPayload>)
+            .filter_map(Result::ok)
+            .map(|payload| payload.action_id)
+            .collect();
+        // Newest first, so the first change found is the newest.
+        Ok(history.iter().find_map(|event| {
+            let requested = event.payload_as::<ActionRequestedPayload>()?.ok()?;
+            (executed.contains(&requested.action_id)
+                && requested.actor.class() == ActorClass::Agent
+                && changes_the_machine(requested.action.kind()))
+            .then_some(event.received_at)
+        }))
+    }
+
+    /// The agent's last change on each print, held for one read or write.
+    fn last_agents_actions(&self) -> MutexGuard<'_, BTreeMap<PrintId, Option<AgentAction>>> {
         self.last_agent_action
             .lock()
-            .expect("the agent's own record is not poisoned")
-            .get(&print_id)
-            .copied()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Read the printer's current state.

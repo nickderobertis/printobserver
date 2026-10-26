@@ -15,6 +15,7 @@
 #
 # Usage:
 #   install-service.sh [--root DIR] [--binary PATH] [--user NAME]
+#                      [--observation-interval-seconds N]
 #
 #   --root    install beneath DIR rather than beneath /. This is how a test owns
 #             a throwaway root; the paths under it are the real ones.
@@ -24,6 +25,13 @@
 #             `printobserver` when this runs as root, and to the invoking user
 #             otherwise — because a caller who cannot create a user cannot hand
 #             the state directory to one either.
+#   --observation-interval-seconds
+#             how often every active print is observed, written into the
+#             configuration as supervisor.observation_interval_s: a whole number
+#             of seconds above zero, refused otherwise exactly as the server
+#             would refuse it. Left out, the configuration takes the server's own
+#             default. A configuration already in place is left alone, this
+#             value with it.
 #
 # Which service manager is written for is read off `uname -s`: Linux is systemd
 # and Darwin is launchd, as AGENTS.md's supported-platform list states.
@@ -35,6 +43,9 @@ PROGRAM="printobserver"
 SERVICE_USER=""
 BINARY=""
 ROOT=""
+INTERVAL=""
+INTERVAL_LINE="# observation_interval_s = 120"
+UNWRITTEN=""
 
 die() {
     echo "install-service.sh: $1" >&2
@@ -60,6 +71,29 @@ document have no escape for. Pass a path without quotes or backslashes."
 Pass a path without newlines."
             ;;
     esac
+}
+
+# The server's `supervisor.observation_interval_s`, which it reads as a whole
+# number of seconds and refuses at zero, and which a TOML document holds as an
+# integer: digits alone, with no sign, no leading zero, and no more than a 64-bit
+# signed integer holds — the last checked digit by digit, as `sort` orders two
+# numbers of one length. A value outside that is refused before anything is
+# placed, rather than written into a configuration the service would then refuse
+# to start under.
+LARGEST_INTEGER="9223372036854775807"
+interval() {
+    refused="--observation-interval-seconds takes a whole number of seconds above \
+zero, written in digits alone, and '$1' is not one: an interval of zero observes a \
+print again the moment its last turn returns. Pass a positive number of seconds, or \
+leave --observation-interval-seconds out for the server's default."
+    case "$1" in
+        "" | 0* | *[!0123456789]*) die "$refused" ;;
+    esac
+    [ "${#1}" -le "${#LARGEST_INTEGER}" ] || die "$refused"
+    if [ "${#1}" -eq "${#LARGEST_INTEGER}" ]; then
+        printf '%s\n%s\n' "$1" "$LARGEST_INTEGER" | LC_ALL=C sort -c 2>/dev/null ||
+            die "$refused"
+    fi
 }
 
 # A system user name, as `useradd` and a unit's `User=` take one: a letter or an
@@ -101,8 +135,15 @@ while [ "$#" -gt 0 ]; do
             SERVICE_USER="$2"
             shift 2
             ;;
+        --observation-interval-seconds)
+            [ "$#" -ge 2 ] || die "--observation-interval-seconds takes a number of seconds"
+            interval "$2"
+            INTERVAL="$2"
+            INTERVAL_LINE="observation_interval_s = $2"
+            shift 2
+            ;;
         --help | -h)
-            sed -n '2,29p' "$0"
+            sed -n '2,37p' "$0"
             exit 0
             ;;
         *)
@@ -309,6 +350,10 @@ chmod 0700 "$HOME_DIR" ||
 if [ -e "$INSTALLED_CONFIG" ]; then
     # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     echo "install-service.sh: $INSTALLED_CONFIG is already there and was left alone" >&2
+    if [ -n "$INTERVAL" ]; then
+        UNWRITTEN=" (--observation-interval-seconds was not written into it, because \
+it was already there; set supervisor.observation_interval_s there yourself)"
+    fi
 else
     cat >"$INSTALLED_CONFIG" <<CONFIG || die "$WRITE_REFUSED"
 # printobserver's one configuration file.
@@ -338,7 +383,7 @@ skill_path = "$RUNTIME_STATE/skills/printobserver/SKILL.md"
 # How often every active print is looked in on, and its agent given a turn,
 # whether or not the detector has alerted. Left out, every 120 seconds: an
 # eight-hour print is 240 turns. Raise it to spend less; zero is refused.
-# observation_interval_s = 120
+$INTERVAL_LINE
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.
@@ -499,5 +544,5 @@ echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE
 and $INSTALLED_DEFINITION and started nothing; install the agent's skill with \
 gh skill install nickderobertis/printobserver printobserver --dir $RUNTIME_STATE/skills, \
 run printobserver credential issue as yourself and put the api.credential_verifier \
-line it prints into $INSTALLED_CONFIG, edit the rest of $INSTALLED_CONFIG, then run: \
-$START_COMMAND" >&2
+line it prints into $INSTALLED_CONFIG$UNWRITTEN, edit the rest of $INSTALLED_CONFIG, \
+then run: $START_COMMAND" >&2

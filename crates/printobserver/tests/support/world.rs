@@ -1099,6 +1099,9 @@ impl World {
             // print — and a pause is only valid from printing, so that is the
             // step before pausing too.
             (Reports::Printing | Reports::Paused, _) => self.settle("start-print", starting),
+            (Reports::Unnamed, _) => {
+                panic!("no command puts a real machine in a state its vocabulary does not name")
+            }
         }
     }
 
@@ -1153,16 +1156,19 @@ impl World {
         printobserver_types::serde_json::from_slice(&read.stdout).unwrap_or(Value::Null)
     }
 
-    /// What the machine reports it is doing, read through this same surface.
+    /// What the machine reports it is doing, read through this same surface:
+    /// a state the printer vocabulary does not name is [`Reports::Unnamed`].
     pub fn reported_state(&self) -> Option<Reports> {
-        match self
+        let connection = self
             .status()
             .pointer("/printer/connection")
-            .and_then(Value::as_str)
-        {
+            .cloned()
+            .unwrap_or_default();
+        match connection.as_str() {
             Some("printing") => Some(Reports::Printing),
             Some("paused") => Some(Reports::Paused),
             Some("operational") => Some(Reports::Operational),
+            _ if connection.get("unknown").is_some() => Some(Reports::Unnamed),
             _ => None,
         }
     }

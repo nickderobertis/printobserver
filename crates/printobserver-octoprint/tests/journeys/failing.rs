@@ -10,6 +10,7 @@ use printobserver_printer_api::PrinterState;
 use printobserver_printer_api::{PrinterError, PrinterPort as _};
 
 use crate::block_on::block_on;
+use crate::misframed::misframed;
 use crate::stub::{Reply, Stub, closed_address};
 
 /// A printer against a server answering one reply to everything.
@@ -214,19 +215,52 @@ fn an_answer_framed_by_the_close_alone_is_read_to_the_close() {
     );
 }
 
-/// A header line that is no header is skipped rather than failing the read.
+/// Every reply misframed as a download can be is refused as malformed by an
+/// ordinary read and by an action too, rather than read by looser rules —
+/// each carrying a body the request would otherwise have accepted.
 #[test]
-fn a_header_line_that_is_no_header_is_skipped() {
+fn a_misframed_reply_is_malformed_on_every_request() {
+    for (describing, raw) in misframed(*b"{} ") {
+        let error = block_on(answering(Reply::Raw(raw)).1.job()).expect_err("a refusal");
+
+        assert!(
+            matches!(error, PrinterError::Malformed { .. }),
+            "a read answered {describing}: {error:?}"
+        );
+    }
+    for (describing, raw) in misframed(*b"M83") {
+        let error = error_from(Reply::Raw(raw));
+
+        assert!(
+            matches!(error, PrinterError::Malformed { .. }),
+            "an action answered {describing}: {error:?}"
+        );
+    }
+}
+
+/// A well-formed reply is read on both paths, however it is framed.
+#[test]
+fn a_well_formed_reply_is_read_on_every_request() {
     let body = r#"{"state": "Operational"}"#;
-    let raw = format!(
-        "HTTP/1.1 200 OK\r\nnonsense\r\nContent-Length: {}\r\n\r\n{body}",
-        body.len()
-    );
-    let stub = Stub::always(Reply::Raw(raw.into_bytes()));
-    let config = OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration");
-    let printer = OctoPrintPrinter::new(config);
+    let framed = [
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Length: {0}\r\n\r\n{body}",
+            body.len()
+        ),
+        format!(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\n\r\n\
+             {:x};note=\"a b\"\r\n{body}\r\n0\r\nX-Trailer: done\r\n\r\n",
+            body.len()
+        ),
+        format!("HTTP/1.0 200 OK\r\nX-Note: a\tb\r\n\r\n{body}"),
+    ];
+    for raw in framed {
+        let (stub, printer) = answering(Reply::Raw(raw.clone().into_bytes()));
 
-    let job = block_on(printer.job()).expect("a job");
+        let job = block_on(printer.job()).expect("a job");
+        block_on(printer.pause()).expect("a pause");
 
-    assert_eq!(job.state, PrinterState::Operational);
+        assert_eq!(job.state, PrinterState::Operational, "{raw:?}");
+        assert_eq!(stub.requests().len(), 2, "{raw:?}");
+    }
 }
