@@ -205,16 +205,17 @@ pub fn interposed_within(
 }
 
 /// The socket an observed tree holds its one lifecycle connection to.
-struct Lifecycle {
+pub struct Lifecycle {
     listener: UnixListener,
-    path: PathBuf,
+    /// Where it listens, which the tree is told through its environment.
+    pub path: PathBuf,
 }
 
 impl Lifecycle {
     /// Listen at a path of this run's own, short enough for any platform's
     /// socket address: the system's temporary directory rather than a scratch
     /// directory nested beneath it.
-    fn listening() -> Self {
+    pub fn listening() -> Self {
         let path = std::env::temp_dir().join(unique("po-lifecycle", "sock"));
         let listener = UnixListener::bind(&path).unwrap_or_else(|error| {
             panic!(
@@ -235,7 +236,7 @@ impl Lifecycle {
     ///
     /// Says why the tree cannot be taken as finished: no process ever made the
     /// connection, or some process still held it when `bound` ran out.
-    fn finished(&self, bound: Duration) -> Result<(), String> {
+    pub fn finished(&self, bound: Duration) -> Result<(), String> {
         let deadline = Instant::now() + bound;
         let mut held: Vec<UnixStream> = Vec::new();
         let mut connected = 0_usize;

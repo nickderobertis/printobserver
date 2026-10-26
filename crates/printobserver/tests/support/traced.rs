@@ -371,7 +371,7 @@ mod observing {
     use printobserver::failure::Exit;
     use tempfile::TempDir;
 
-    use super::interposer::{activity, interposed, interposed_within};
+    use super::interposer::{Lifecycle, activity, interposed, interposed_within};
     use super::{connections_in, traced};
 
     /// The fixture command, started as a root that starts one descendant which
@@ -385,6 +385,35 @@ mod observing {
             .env("PRINTOBSERVER_TRACE_DELAY", delay_ms.to_string())
             .env("PRINTOBSERVER_TRACE_CHILD_PID", recorded);
         command
+    }
+
+    /// A lifecycle socket nothing connected to is refused within its bound
+    /// rather than read as a tree that finished, and one whose only holder
+    /// connected and went away is a tree that has.
+    #[test]
+    fn a_lifecycle_nobody_connected_to_is_refused_and_a_released_one_is_finished() {
+        let unconnected = Lifecycle::listening();
+        let bound = std::time::Duration::from_millis(500);
+        let began = std::time::Instant::now();
+        let refused = unconnected
+            .finished(bound)
+            .expect_err("a lifecycle nobody connected to is not a finished tree");
+        let waited = began.elapsed();
+        assert!(
+            refused.contains("no process of the tree made its lifecycle connection"),
+            "{refused}"
+        );
+        assert!(
+            waited >= bound && waited < bound + std::time::Duration::from_secs(10),
+            "the refusal came after {waited:?}, not within the {bound:?} bound"
+        );
+
+        let released = Lifecycle::listening();
+        drop(
+            std::os::unix::net::UnixStream::connect(&released.path)
+                .expect("the lifecycle socket accepts a connection"),
+        );
+        assert_eq!(released.finished(bound), Ok(()));
     }
 
     /// The interposer reads a tree only once its last process has finished.

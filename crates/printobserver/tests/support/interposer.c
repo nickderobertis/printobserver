@@ -135,17 +135,47 @@ static void po_log(const char *line, size_t length) {
 static int po_lifecycle = -1;
 
 /*
+ * The lifecycle descriptor an ancestor named, or -1 where the name is not one.
+ * The whole value has to be a decimal descriptor, and the descriptor has to be
+ * what an ancestor made it: an open, connected Unix stream socket. Anything
+ * else — a malformed value, a descriptor since reused for a file — is not
+ * taken, and this process connects for itself instead.
+ */
+static int po_inherited_lifecycle(const char *named) {
+    if (named == NULL || *named < '0' || *named > '9') {
+        return -1;
+    }
+    char *end = NULL;
+    errno = 0;
+    long fd = strtol(named, &end, 10);
+    if (errno != 0 || end == NULL || *end != '\0' || fd < 0 || fd > INT_MAX) {
+        return -1;
+    }
+    int type = 0;
+    socklen_t type_length = sizeof type;
+    if (getsockopt((int)fd, SOL_SOCKET, SO_TYPE, &type, &type_length) != 0 ||
+        type != SOCK_STREAM) {
+        return -1;
+    }
+    struct sockaddr_un peer;
+    socklen_t peer_length = sizeof peer;
+    memset(&peer, 0, sizeof peer);
+    if (getpeername((int)fd, (struct sockaddr *)&peer, &peer_length) != 0 ||
+        peer.sun_family != AF_UNIX) {
+        return -1;
+    }
+    return (int)fd;
+}
+
+/*
  * Hold the tree's lifecycle connection: the one an ancestor made, inherited,
  * or — in the first observed process — a new one to the reader's socket.
  */
 static void po_hold_lifecycle(void) {
-    const char *inherited = getenv(PO_LIFECYCLE_FD_ENV);
-    if (inherited != NULL && *inherited != '\0') {
-        int fd = atoi(inherited);
-        if (fd >= 0 && fcntl(fd, F_GETFD) != -1) {
-            po_lifecycle = fd;
-            return;
-        }
+    int fd = po_inherited_lifecycle(getenv(PO_LIFECYCLE_FD_ENV));
+    if (fd >= 0) {
+        po_lifecycle = fd;
+        return;
     }
     const char *path = getenv(PO_LIFECYCLE_ENV);
     if (path == NULL || *path == '\0') {
@@ -158,7 +188,7 @@ static void po_hold_lifecycle(void) {
         return;
     }
     strncpy(address.sun_path, path, sizeof address.sun_path - 1);
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
         return;
     }
