@@ -67,8 +67,9 @@ fn refused(cause: SpoolRefusalCause, message: impl Into<String>) -> RejectionRea
     }
 }
 
-/// The refusal of a figure a field cannot hold.
-// llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+/// The refusal of a figure a field cannot hold. Every figure a request can
+/// carry is driven to it through the compiled client by
+/// `every_spool_refusal_is_answered_with_its_cause`.
 fn invalid_figure(field: SpoolField, value: f64, message: impl Into<String>) -> RejectionReason {
     refused(
         SpoolRefusalCause::InvalidAdjustmentFigure { field, value },
