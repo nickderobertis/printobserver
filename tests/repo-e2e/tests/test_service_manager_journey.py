@@ -714,24 +714,53 @@ def _cim_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pi
 
 @dataclass(frozen=True, slots=True)
 class Process:
-    """One process for the whole of its life: its id, and when it started."""
+    """One process for the whole of its life: its id, and when it started.
+
+    `started` is empty for an id the manager reported that no live process
+    holds, which is a different answer from the manager reporting no id.
+    """
 
     pid: int
     started: str
 
 
-def _service_process(manager: Manager) -> Process | None:
-    """The process the manager reports running as the service, or `None`."""
+class _ReportsProcess(Protocol):
+    """The part of a manager that says which process is the service's."""
+
+    def is_running(self) -> bool:
+        """Whether the manager reports the service running."""
+
+    def main_pid(self) -> int:
+        """The process the manager reports as the service's, or zero."""
+
+    def started(self, pid: int) -> str:
+        """When process `pid` started, or empty while there is none."""
+
+
+def _service_process(manager: _ReportsProcess) -> Process | None:
+    """The process the manager reports as the service's, or `None` when it reports none.
+
+    An id the manager reports whose process has ended is kept, with no start,
+    so it reads apart from no id reported at all.
+    """
     if not manager.is_running():
         return None
     pid = manager.main_pid()
-    started = manager.started(pid) if pid > 0 else ""
-    return Process(pid, started) if started else None
+    return Process(pid, manager.started(pid)) if pid > 0 else None
+
+
+def _reported(process: Process | None) -> str:
+    """What the manager reported as the service's process, in words a failure prints."""
+    if process is None:
+        return "no process reported"
+    if not process.started:
+        return f"process {process.pid} reported, with no live process holding that id"
+    return f"process {process.pid}, started {process.started}"
 
 
 def _another_process(before: Process, now: Process | None) -> bool:
-    """Whether `now` is a process other than `before`, its id reused or not."""
-    return now is not None and now != before
+    """Whether `now` is a live process other than `before`, its id reused or not."""
+    return now is not None and bool(now.started) and now != before
 
 
 @dataclass(frozen=True, slots=True)
@@ -1624,8 +1653,8 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     _eventually(manager, "the service running", manager.is_running)
     _answered(manager, activated.served)
     before = _service_process(manager)
-    if before is None:
-        message = f"no process the manager reports as the service's:\n{manager.diagnosis()}"
+    if before is None or not before.started:
+        message = f"the service's process: {_reported(before)}:\n{manager.diagnosis()}"
         raise AssertionError(message)
     manager.end_abruptly(before.pid)
 
@@ -1644,7 +1673,7 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         _eventually(manager, "the service brought back with a new process", brought_back)
     except AssertionError as failed:
         last = seen[-1] if seen else None
-        message = f"{failed}\nended: {before}; last reported as the service's: {last}"
+        message = f"{failed}\nended: {_reported(before)}; last reported: {_reported(last)}"
         raise AssertionError(message) from None
     # The process that answered before is gone, so an answer now is the
     # brought-back process's own.
@@ -1735,6 +1764,53 @@ def test_the_hosts_own_start_reader_names_a_live_process_and_none_once_it_ended(
         child.kill()
         child.wait(timeout=60)
     equal(reader(on_host, child.pid), "", describing=f"the start of ended process {child.pid}")
+
+
+@dataclass(frozen=True, slots=True)
+class _ReportedId:
+    """A manager reporting `pid` as the service's, its start read by this host's own reader."""
+
+    pid: int
+    reader: Callable[[Callable[..., subprocess.CompletedProcess[str]], int], str]
+
+    def is_running(self) -> bool:
+        return True
+
+    def main_pid(self) -> int:
+        return self.pid
+
+    def started(self, pid: int) -> str:
+        return self.reader(lambda *argv: shell_run(list(argv), timeout=120), pid)
+
+
+def test_a_reported_id_whose_process_ended_reads_apart_from_no_id_reported() -> None:
+    """The restart failure names which it saw: a live process, an ended one's id, or no id."""
+    readers = {"linux": _proc_started, "darwin": _ps_started, "win32": _cim_started}
+    reader = readers.get(sys.platform)
+    if reader is None:
+        pytest.skip(f"no service manager this journey drives runs on {sys.platform}")
+
+    child = start([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        live = _service_process(_ReportedId(child.pid, reader))
+    finally:
+        child.kill()
+        child.wait(timeout=60)
+    gone = _service_process(_ReportedId(child.pid, reader))
+    none = _service_process(_ReportedId(0, reader))
+
+    truth(live is not None and bool(live.started), describing=f"live process read as {live}")
+    equal(gone, Process(child.pid, ""), describing="the ended process's reported id")
+    equal(none, None, describing="no id reported")
+    said = {_reported(live), _reported(gone), _reported(none)}
+    equal(len(said), 3, describing=f"three different reports: {sorted(said)}")
+    contains(_reported(gone), str(child.pid), describing="the ended process's report")
+    equal(_reported(none), "no process reported", describing="the report of no id")
+    truth(live is not None and _another_process(live, live) is False, describing="itself")
+    truth(
+        live is not None and not _another_process(live, gone),
+        describing="an ended process's id read as no brought-back process",
+    )
 
 
 @dataclass(frozen=True, slots=True)
