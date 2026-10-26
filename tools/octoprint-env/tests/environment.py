@@ -21,9 +21,11 @@ from repo_checks.shell import run as shell_run
 SCRIPT = Path(__file__).resolve().parents[1] / "octoprint_env.py"
 
 
-def script(*arguments: str, timeout: int = 900) -> subprocess.CompletedProcess[str]:
-    """Run the real script, the way a recipe does."""
-    return shell_run([sys.executable, str(SCRIPT), *arguments], timeout=timeout)
+def script(
+    *arguments: str, timeout: int = 900, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run the real script, the way a recipe does, under `env` or this run's own."""
+    return shell_run([sys.executable, str(SCRIPT), *arguments], timeout=timeout, env=env)
 
 
 def answer(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
