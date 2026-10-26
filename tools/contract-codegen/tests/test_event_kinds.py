@@ -103,6 +103,7 @@ LOOK_ANSWER_FILE = f"{SCHEMAS_DIR}/printobserver-core/Look.json"
 #: The spool ledger's answers that list events, each with the field it lists
 #: them in.
 LEDGER_EVENT_LISTS = (
+    (f"{SERVER_DIR}/EventsAnswer.json", "events"),
     (f"{SERVER_DIR}/SpoolAnswer.json", "recent"),
     (f"{SERVER_DIR}/SpoolCommandAnswer.json", "events"),
     (f"{SERVER_DIR}/TimelineAnswer.json", "events"),
