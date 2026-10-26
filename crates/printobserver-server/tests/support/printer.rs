@@ -255,6 +255,17 @@ impl RecordingPrinter {
             .file_position_bytes = Some(position_bytes);
     }
 
+    /// Report the job read to its file's end with its completion at 1.0, as
+    /// `OctoPrint` reports a print it finished.
+    pub fn reports_finished(&self) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        held.job.file_position_bytes = held.job.size_bytes;
+        held.job.completion = Some(Reported::new(
+            1.0,
+            printobserver_printer_api::COMPLETION_RANGE,
+        ));
+    }
+
     /// Report the job with no position in its file, as a job read taken while
     /// the printer is busy with a filament change can.
     pub fn reports_no_position(&self) {

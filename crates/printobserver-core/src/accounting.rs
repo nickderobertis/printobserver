@@ -435,9 +435,12 @@ enum Watch {
 /// What a file's tally says of a print since one was opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tally {
-    /// A successful print of the file was recorded since.
+    /// A successful print of the file was recorded since, and this
+    /// supervisor did not observe the stop: the one way a print is completed
+    /// without a job read showing the finish.
     CompletedSince,
-    /// Nothing the tally says shows this print completed.
+    /// Nothing the tally says shows this print completed, or the stop was
+    /// observed and its job reads decide it.
     NoCompletion,
 }
 
@@ -474,7 +477,7 @@ impl Ending<'_> {
 
     /// Whether the job read at the stop shows the print finished: one read of
     /// the print's own file reporting both completion 100.0 and a file
-    /// position at the file's size.
+    /// position equal to the file's size.
     ///
     /// Neither alone is a finish. A position at the end is where a print
     /// stands while its last moves still run, and a completion of 100.0 is
@@ -492,7 +495,7 @@ impl Ending<'_> {
             let at_the_end = job
                 .file_position_bytes
                 .zip(size)
-                .is_some_and(|(bytes, size)| bytes >= size);
+                .is_some_and(|(bytes, size)| bytes == size);
             same_file && complete && at_the_end
         })
     }
@@ -934,12 +937,19 @@ impl Supervisor {
         // A print completes after it was opened, whoever opened it; the job's
         // own start, as a read puts it, can lie before that, and a success
         // recorded between the two is an earlier print's.
+        //
+        // That record is read only for a stop this supervisor did not observe
+        // — it was not running when the print ended, so no job read of the
+        // finish was made. A stop it watched is completed by its job reads
+        // alone.
         let began = print.opened_at;
-        let tally = if analysis
-            .facts
-            .as_ref()
-            .and_then(|facts| facts.last_print.as_ref())
-            .is_some_and(|last| last.success && last.at >= began)
+        let unobserved = !self.was_seen_running(print.id);
+        let tally = if unobserved
+            && analysis
+                .facts
+                .as_ref()
+                .and_then(|facts| facts.last_print.as_ref())
+                .is_some_and(|last| last.success && last.at >= began)
         {
             Tally::CompletedSince
         } else {

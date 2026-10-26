@@ -571,6 +571,33 @@ async fn a_print_from_before_tracking_ends_by_what_the_printer_pushed() {
     }
 }
 
+/// A stop the server watched is decided by its job reads: `OctoPrint`'s own
+/// file history recording the print a success, read as the print closes,
+/// does not complete a print no job read showed finishing — it ends
+/// `cancelled`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_successful_file_history_alone_does_not_complete_a_watched_print() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let print_id = watch.printing(700).await;
+
+    watch.octoprint.records_a_success(FILE, SIZE);
+    watch.octoprint.reports("Operational", landed_idle());
+    watch.until("print_ended", 1).await;
+
+    let asked = format!("GET /api/files/local/{FILE}");
+    assert!(
+        watch
+            .octoprint
+            .requests()
+            .iter()
+            .any(|request| request.starts_with(&asked)),
+        "the file's history was never read: {:?}",
+        watch.octoprint.requests()
+    );
+    assert_eq!(ended(&watch.history().await, &print_id), "cancelled");
+}
+
 /// A reset while idle, which nothing a read reports shows, is recorded with
 /// no print it happened during.
 #[tokio::test(flavor = "multi_thread")]

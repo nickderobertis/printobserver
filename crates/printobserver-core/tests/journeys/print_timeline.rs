@@ -582,6 +582,21 @@ fn a_print_from_before_spool_tracking_ends_untracked() {
     assert_eq!(unmoved.trust, SpoolTrust::Verified);
 }
 
+/// A stop this supervisor watched is decided by its job reads alone: a
+/// successful print of the file in the printer's own history, with neither
+/// completion nor the file's end read, does not complete it.
+#[test]
+fn a_watched_stop_is_not_completed_by_the_file_s_history_alone() {
+    let world = spool_world();
+    let _spool = loaded_spool(&world, "History Alone", 1_000.0);
+    let print_id = start(&world);
+    running_at(&world, 400_000);
+    tally_success(&world, world.clock.now());
+    ends(&world, PrinterState::Operational);
+
+    assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Cancelled);
+}
+
 /// A print that completed while nothing was watching is settled once, on the
 /// first read after the restart, charged in full when the file's tally shows a
 /// successful print since it began.
@@ -794,6 +809,13 @@ fn only_completion_at_the_file_s_size_completes_the_print() {
             FILE,
             None,
             Some(SIZE),
+            PrintOutcome::Cancelled,
+        ),
+        (
+            "completion past the file's size",
+            FILE,
+            Some(1.0),
+            Some(SIZE + 1),
             PrintOutcome::Cancelled,
         ),
         (

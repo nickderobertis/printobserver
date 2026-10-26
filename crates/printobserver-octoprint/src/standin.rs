@@ -124,6 +124,9 @@ struct Script {
     position_reply: Option<String>,
     /// The opcode of every frame the client sent on a push socket.
     client_opcodes: Vec<u8>,
+    /// The file whose last print the instance records as a success, its size
+    /// and when that print ended, in seconds since the epoch.
+    succeeded: Option<(String, i64, f64)>,
 }
 
 /// A scripted `OctoPrint` on a loopback socket.
@@ -176,6 +179,7 @@ impl ScriptedOctoPrint {
 
             position_reply: None,
             client_opcodes: Vec::new(),
+            succeeded: None,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -222,6 +226,22 @@ impl ScriptedOctoPrint {
         let mut held = self.held();
         connection.clone_into(&mut held.connection);
         held.job = job;
+    }
+
+    /// Record a print of `file`, of `size` bytes, as having just succeeded:
+    /// what `OctoPrint`'s file history says once it ran a print of it to the
+    /// end, answered at `GET /api/files/local/<file>`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the host's clock reads before the epoch, which is a broken
+    /// host.
+    pub fn records_a_success(&self, file: &str, size: i64) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("the clock reads after the epoch")
+            .as_secs_f64();
+        self.held().succeeded = Some((file.to_owned(), size, now));
     }
 
     /// Report these heater targets from now on.
@@ -577,6 +597,27 @@ fn answer(
         }
         ("GET", path) if path.starts_with("/api/files?") => {
             (200, json!({ "files": [] }).to_string())
+        }
+        ("GET", path) if path.starts_with("/api/files/local/") => {
+            let asked = &path["/api/files/local/".len()..];
+            match &held.succeeded {
+                Some((file, size, at)) if file == asked => (
+                    200,
+                    json!({
+                        "name": file,
+                        "origin": "local",
+                        "type": "machinecode",
+                        "size": size,
+                        "prints": {
+                            "success": 1,
+                            "failure": 0,
+                            "last": { "date": at, "success": true },
+                        },
+                    })
+                    .to_string(),
+                ),
+                _ => (404, r#"{"error":"Not found"}"#.to_owned()),
+            }
         }
         _ => (404, r#"{"error":"Not found"}"#.to_owned()),
     }
