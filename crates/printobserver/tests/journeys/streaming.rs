@@ -659,6 +659,7 @@ fn a_quiet_stream_beats_and_a_signal_ends_it_as_interrupted() {
 
         for beat in lines.iter().filter_map(|line| line.get("watch_heartbeat")) {
             assert!(beat["at"].is_string(), "{beat}");
+            assert!(beat["since"].is_string(), "{beat}");
             assert!(beat.get("cursor").is_some(), "{beat}");
         }
         let ended = ending(&lines);
@@ -1187,12 +1188,13 @@ fn every_value_of_a_repeated_option_rules_on_the_stream() {
 /// A heartbeat comes the interval after the last line and no sooner, and an
 /// event printed puts the next one back a whole interval.
 ///
-/// The gap after the event is read off instants the stream and the store wrote,
-/// never off when this journey happened to read a line: the event's own
-/// `received_at`, stamped before it was stored and so before the stream could
-/// print it, and the heartbeat's own `at`, stamped as it was printed. A reader
-/// delayed under load reads both lines late without moving either instant, and
-/// the gap measured is never shorter than the one the stream left.
+/// The gap after the event is read off the instants the stream itself wrote,
+/// never off when this journey happened to read a line: the heartbeat's `since`,
+/// stamped once the stream had written the event line and its timer reset, and
+/// its `at`, stamped as it was printed. A reader delayed under load reads both
+/// lines late without moving either instant. That `since` is the event line's
+/// own is held too: it is no earlier than the event was stored, which was
+/// after the first heartbeat, and the event line comes before the heartbeat.
 #[test]
 fn a_heartbeat_comes_an_interval_after_the_last_line() {
     let world = World::open(STOOD_IN);
@@ -1226,8 +1228,15 @@ fn a_heartbeat_comes_an_interval_after_the_last_line() {
     stream.until("the next heartbeat", |seen| beats(seen) == 2);
     let lines = stream.seen.clone();
     let documents = documents(&lines);
-    let second_beat = beat_at(&documents[documents.len() - 1..]);
-    let after_the_event = between(recorded[0].received_at, second_beat);
+    let beat = last_beat(&documents);
+    let (since, second_beat) = (instant(beat, "since"), instant(beat, "at"));
+    assert!(
+        since >= recorded[0].received_at && since > first_beat,
+        "the heartbeat after an event counted from {since}, not from the event \
+         line, stored at {} after the first heartbeat at {first_beat}",
+        recorded[0].received_at
+    );
+    let after_the_event = between(since, second_beat);
     assert!(
         after_the_event >= Duration::from_millis(1_800),
         "the heartbeat after an event came before a whole interval: {after_the_event:?}"
@@ -1239,16 +1248,27 @@ fn a_heartbeat_comes_an_interval_after_the_last_line() {
     assert!(event_at < second_beat, "{lines:#?}");
 }
 
-/// When the last heartbeat among `lines` says it was printed.
-fn beat_at(lines: &[Value]) -> Timestamp {
-    let at = lines
+/// The last heartbeat among `lines`.
+fn last_beat(lines: &[Value]) -> &Value {
+    lines
         .iter()
         .rev()
         .find_map(|line| line.get("watch_heartbeat"))
-        .and_then(|beat| beat["at"].as_str())
-        .unwrap_or_else(|| panic!("a heartbeat saying when it was printed: {lines:#?}"));
-    at.parse()
-        .unwrap_or_else(|error| panic!("a heartbeat's `at` is an instant: {error:?}"))
+        .unwrap_or_else(|| panic!("a heartbeat: {lines:#?}"))
+}
+
+/// The instant a heartbeat's `field` names.
+fn instant(beat: &Value, field: &str) -> Timestamp {
+    beat[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("a heartbeat carrying `{field}`: {beat}"))
+        .parse()
+        .unwrap_or_else(|error| panic!("a heartbeat's `{field}` is an instant: {error:?}"))
+}
+
+/// When the last heartbeat among `lines` says it was printed.
+fn beat_at(lines: &[Value]) -> Timestamp {
+    instant(last_beat(lines), "at")
 }
 
 /// How long from `earlier` to `later`, or nothing when `later` is not later.

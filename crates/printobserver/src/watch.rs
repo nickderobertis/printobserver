@@ -380,13 +380,18 @@ impl Lines {
         ));
     }
 
-    /// The watch is running, and nothing passed since the last line.
-    fn heartbeat(&self, cursor: Option<EventId>) {
+    /// The watch is running, and nothing passed since the last line, which
+    /// was printed at `since`.
+    fn heartbeat(&self, since: Timestamp, cursor: Option<EventId>) {
         let at = Timestamp::now().to_string();
         if self.machine_readable {
             Self::write(
                 &json!({
-                    "watch_heartbeat": { "at": at, "cursor": cursor.map(|id| id.to_string()) }
+                    "watch_heartbeat": {
+                        "at": at,
+                        "since": since.to_string(),
+                        "cursor": cursor.map(|id| id.to_string()),
+                    }
                 })
                 .to_string(),
             );
@@ -555,7 +560,28 @@ struct Stream<'watch> {
     /// The watched print's end, once an answer has told it.
     ended: Option<Ended>,
     /// When the last line was printed, which the heartbeat counts from.
-    last_line: Instant,
+    last_line: Printed,
+}
+
+/// When a line was printed: on the clock the heartbeat's timer reads, and on
+/// the wall clock the next heartbeat reports it by, both read once the line
+/// is written.
+#[derive(Clone, Copy)]
+struct Printed {
+    /// What the heartbeat's timer counts from.
+    instant: Instant,
+    /// What the next heartbeat says it counted from.
+    at: Timestamp,
+}
+
+impl Printed {
+    /// A line printed now — or, before any line, the stream starting now.
+    fn now() -> Self {
+        Self {
+            instant: Instant::now(),
+            at: Timestamp::now(),
+        }
+    }
 }
 
 impl Stream<'_> {
@@ -583,7 +609,7 @@ impl Stream<'_> {
         loop {
             // A heartbeat further off than the timer can name is one that
             // never comes, so the read is waited on alone.
-            let beat = heartbeat.and_then(|every| self.last_line.checked_add(every));
+            let beat = heartbeat.and_then(|every| self.last_line.instant.checked_add(every));
             tokio::select! {
                 done = &mut pending => {
                     return done.map_err(|error| {
@@ -595,8 +621,8 @@ impl Stream<'_> {
                 }
                 () = tokio::time::sleep_until(beat.unwrap_or_else(Instant::now)),
                     if beat.is_some() => {
-                    self.lines.heartbeat(self.cursor);
-                    self.last_line = Instant::now();
+                    self.lines.heartbeat(self.last_line.at, self.cursor);
+                    self.last_line = Printed::now();
                 }
                 signal = stop.as_mut() => {
                     return Err(self.end(Ending::Interrupted, &format!("stopped by {signal}")));
@@ -619,7 +645,7 @@ impl Stream<'_> {
                     .passes(self.watch, head.kind(), head.received_at)
             {
                 self.lines.event(head, event);
-                self.last_line = Instant::now();
+                self.last_line = Printed::now();
             }
             self.cursor = Some(head.id);
             let is_the_end = self.watch.print_id.is_some()
@@ -657,7 +683,7 @@ async fn follow(watch: &Watch, config: ClientConfig) -> Ending {
         cursor: watch.after,
         sampler: Sampler::default(),
         ended: None,
-        last_line: Instant::now(),
+        last_line: Printed::now(),
     };
     let mut unreachable_since: Option<Instant> = None;
     let mut stop = std::pin::pin!(stopped());
