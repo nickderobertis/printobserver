@@ -115,6 +115,30 @@ def test_the_bring_up_says_what_it_starts_and_how_long_before_it_starts_anything
     )
 
 
+def test_install_answers_where_the_stack_lives_and_publishes_no_port(state_dir: str) -> None:
+    """Installed rather than started: the answer names the state and the override it wrote.
+
+    The host ports are Docker's to choose as each container starts, so an install
+    that answered ports would be answering numbers nothing holds.
+    """
+    installed = environment("install", "--state-dir", state_dir)
+
+    passing(installed, describing="the install")
+    answered = answer(installed)
+    equal(
+        set(answered),
+        {"state_dir", "override_file"},
+        describing="what the install answers",
+    )
+    equal(
+        Path(str(answered["state_dir"])).resolve(),
+        Path(state_dir).resolve(),
+        describing="the state directory the install names",
+    )
+    override_written = Path(str(answered["override_file"]))
+    truth(override_written.is_file(), describing=f"the override it names, {override_written}")
+
+
 def test_the_stack_carries_the_account_the_printer_and_the_configured_webhook(
     state_dir: str,
 ) -> None:

@@ -49,6 +49,17 @@ def test_a_record_missing_what_the_tier_reads_is_refused_naming_each_field(
         contains(output, named, describing="the refusal of an unusable record")
 
 
+def test_a_record_that_is_not_json_is_refused(tmp_path: Path) -> None:
+    """A record cut short is refused naming the file, rather than raised as a traceback."""
+    (tmp_path / "instance.json").write_text('{"state_dir": ', encoding="utf-8")
+
+    status, output = _reconcile_over(tmp_path)
+
+    equal(status, 2, describing=f"the tier's exit with a record cut short:\n{output}")
+    contains(output, "is not JSON", describing="the refusal of a record cut short")
+    contains(output, "just obico-up", describing="the next action the refusal gives")
+
+
 def test_a_record_that_is_not_an_object_is_refused(tmp_path: Path) -> None:
     """A record holding no object is refused rather than indexed."""
     (tmp_path / "instance.json").write_text("[]", encoding="utf-8")

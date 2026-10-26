@@ -49,7 +49,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, NewType
 
 from obico_env import (
     ACCOUNT_EMAIL,
@@ -350,13 +350,18 @@ print('OBICO_TIER_REPOINTED ' + json.loads(setting.config_json)['custom_webhook_
 REPOINTED = "OBICO_TIER_REPOINTED "
 
 
+#: The token Obico issued the provisioned printer, which its printer API takes
+#: as `Authorization: Token <token>`. A credential, so it is never reported.
+PrinterToken = NewType("PrinterToken", str)
+
+
 @dataclass(frozen=True)
 class Instance:
     """What this tier reads of the record `obico_env.py up` wrote, each field checked."""
 
     stack: Stack
     url: str
-    printer_token: str
+    printer_token: PrinterToken
 
 
 INSTANCE_FIELDS = ("state_dir", "project", "url", "printer_token")
@@ -391,7 +396,7 @@ def stack_under(state_dir: Path) -> Instance:
     return Instance(
         stack=Stack(Path(record["state_dir"]), record["project"]),
         url=record["url"],
-        printer_token=record["printer_token"],
+        printer_token=PrinterToken(record["printer_token"]),
     )
 
 
@@ -447,7 +452,7 @@ def cause_alert_on_stack(state_dir: Path) -> str:
     return answered.stdout.strip()
 
 
-def post_snapshot(url: str, printer_token: str) -> str:
+def post_snapshot(url: str, printer_token: PrinterToken) -> str:
     """Post the snapshot through Obico's own printer API.
 
     Raises:
