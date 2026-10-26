@@ -120,7 +120,33 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
     )
 
 
-@pytest.mark.parametrize("count", [1, *(count for count, _ in SPLITS)])
+@pytest.mark.parametrize("tier", ["affected", "all"])
+def test_two_shards_run_the_rust_tests_beside_the_end_to_end_tier_and_the_rest_beside_them(
+    capsys: pytest.CaptureFixture[str], tier: str
+) -> None:
+    """The macOS split: the whole gate, nothing twice, the measured tiers either side of the tag."""
+    shards = [shard_commands(capsys, tier, f"{index}/2") for index in (1, 2)]
+    selected = [command for shard in shards for command in shard]
+
+    equal(
+        [one for one, seen in Counter(selected).items() if seen > 1],
+        [],
+        describing="commands both shards run",
+    )
+    equal(
+        {invoked(command) for command in selected},
+        dry_run_check(tier),
+        describing="the shards' union against `check`",
+    )
+    equal(
+        shards[0],
+        [f"{RUST} just test {tier}", f"{RUST} just coverage {tier}", f"just test-e2e {tier}"],
+        describing="what the first shard runs",
+    )
+    contains(shards[1], f"{OTHERS} just test {tier}", describing="the second shard")
+
+
+@pytest.mark.parametrize("count", [1, 2, *(count for count, _ in SPLITS)])
 def test_the_printed_split_is_the_plan_each_shard_runs(count: int) -> None:
     """`just gate-shards` prints one shard a line; together they are the tiers `check` runs."""
     shown = run(["just", "gate-shards", str(count)], cwd=REPO_ROOT, timeout=120)
@@ -521,6 +547,27 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
     copy.write(CI, text[:at] + text[at:].replace(old, new, 1))
 
     refused(sharded_jobs(copy.repo), naming)
+
+
+def test_an_aggregator_may_skip_only_where_its_conditioned_shards_were_skipped(
+    tree: Callable[[], Tree], committed: Repo
+) -> None:
+    """The macOS gate's aggregator is skipped with its shards; a Windows one never is."""
+    accepted(sharded_jobs(committed))
+    copy = tree()
+    text = copy.read(CI)
+    at = text.index(AGGREGATOR)
+    copy.write(
+        CI,
+        text[:at]
+        + text[at:].replace(
+            "    if: always()\n",
+            "    if: always() && needs.gate-shard-windows-aarch64.result != 'skipped'\n",
+            1,
+        ),
+    )
+
+    refused(sharded_jobs(copy.repo), "does not run `if: always()`")
 
 
 @pytest.mark.parametrize(
