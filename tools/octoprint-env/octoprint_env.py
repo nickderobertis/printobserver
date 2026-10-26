@@ -242,6 +242,11 @@ FAILURE_CLASSES: dict[str, str] = {
         "read the server log the message names: the instance accepted the upload but "
         "did not report a running print, which the tier needs to act on"
     ),
+    "retain-unwritable": (
+        "make the directory the message names writable by this user, or name another "
+        "with `--into`, and run `retain` again before the bring-down: the instance's "
+        "logs are still where it wrote them until then"
+    ),
     "upload-refused": (
         "run `up` first and name the file with `--file`: `upload` puts a file on an "
         "instance that is already answering, and the instance's own answer says why it "
@@ -1386,7 +1391,7 @@ def retain(instance: Instance, into: Path) -> Retention:
     state directory and by the record `up` wrote, where it wrote one.
     """
     redacted = redactor(instance)
-    into.mkdir(parents=True, exist_ok=True)
+    _writable(into.mkdir, into, parents=True, exist_ok=True)
     record: object = None
     with suppress(OSError, ValueError):
         record = json.loads(instance.record.read_text(encoding="utf-8"))
@@ -1402,16 +1407,40 @@ def retain(instance: Instance, into: Path) -> Retention:
             text = source.read_text(encoding="utf-8", errors="replace")
         except OSError:
             absent.append(name)
-            kept.unlink(missing_ok=True)
+            _writable(kept.unlink, kept, missing_ok=True)
             note(f"{name} is absent: the instance under {instance.state_dir} never wrote it")
             continue
-        kept.parent.mkdir(parents=True, exist_ok=True)
-        kept.write_text(redacted(text), encoding="utf-8")
+        _writable(kept.parent.mkdir, kept.parent, parents=True, exist_ok=True)
+        _writable(kept.write_text, kept, redacted(text), encoding="utf-8")
         retained.append(name)
     answer = Retention(instance=named, into=str(into.resolve()), retained=retained, absent=absent)
-    (into / RETAINED_RECORD).write_text(json.dumps(answer, indent=2) + "\n", encoding="utf-8")
-    note(f"kept {len(retained)} of {len(retained) + len(absent)} logs under {into}")
+    record_path = into / RETAINED_RECORD
+    _writable(
+        record_path.write_text, record_path, json.dumps(answer, indent=2) + "\n", encoding="utf-8"
+    )
     return answer
+
+
+def retained_line(retention: Retention) -> str:
+    """The one line `retain` answers with: how many logs it kept, and where the record is."""
+    kept = len(retention["retained"])
+    every = kept + len(retention["absent"])
+    record = Path(retention["into"]) / RETAINED_RECORD
+    return f"kept {kept} of {every} logs under {retention['into']}; the record is {record}"
+
+
+def _writable(write: Callable[..., object], path: Path, *args: object, **kwargs: object) -> None:
+    """Make one write of a retention, reporting a refusal as `retain-unwritable`.
+
+    Raises:
+        StartupError: If the filesystem refused the write.
+    """
+    try:
+        write(*args, **kwargs)
+    except OSError as error:
+        raise StartupError(
+            "retain-unwritable", f"could not write {path}: {error.strerror or error}"
+        ) from error
 
 
 def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
@@ -1563,7 +1592,10 @@ def main(argv: list[str] | None = None) -> int:
             case "diagnostics":
                 answer = diagnostics(instance, arguments.supervisor_status)
             case "retain":
-                answer = retain(instance, Path(arguments.into))
+                # The record is written beside the logs it names; what is
+                # printed is only where to find it.
+                print(retained_line(retain(instance, Path(arguments.into))))
+                return 0
             case "upload":
                 if not arguments.file:
                     raise StartupError(

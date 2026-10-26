@@ -105,11 +105,13 @@ def test_a_tier_that_fails_keeps_every_log_before_the_bring_down(
 def _retained(state: str, into: Path) -> dict[str, object]:
     kept = script("retain", "--state-dir", state, "--into", str(into))
     passing(kept, describing="keeping the instance's logs")
-    record = answer(kept)
+    record = json.loads((into / "retained.json").read_text(encoding="utf-8"))
+    count = len(record["retained"])
     equal(
-        json.loads((into / "retained.json").read_text(encoding="utf-8")),
-        record,
-        describing="the record kept beside the logs, against what `retain` answered",
+        kept.stdout,
+        f"kept {count} of {count + len(record['absent'])} logs under {into.resolve()}; "
+        f"the record is {into.resolve() / 'retained.json'}\n",
+        describing="the one line `retain` answers with, against the record it kept",
     )
     equal(
         record["instance"],
@@ -207,3 +209,20 @@ def test_an_instance_whose_record_is_unreadable_is_named_by_its_state_directory(
 
         equal(record["retained"], [], describing=f"the logs kept with a record {label}")
         equal(record["absent"], REQUIRED, describing=f"the logs absent with a record {label}")
+
+
+def test_a_retention_the_filesystem_refuses_names_the_path_and_the_next_action(
+    state_dir: Callable[[str], str], tmp_path: Path
+) -> None:
+    """A directory that cannot be made is a declared failure, not a bare traceback."""
+    state = state_dir("unwritable")
+    blocked = tmp_path / "a-file"
+    blocked.write_text("not a directory\n", encoding="utf-8")
+    into = blocked / "kept"
+
+    refused = script("retain", "--state-dir", state, "--into", str(into))
+
+    failing(refused, naming="retain-unwritable")
+    contains(refused.stderr, str(into), describing="the path the filesystem refused")
+    contains(refused.stderr, "next action: make the directory", describing="the next action")
+    equal(refused.stdout, "", describing="what a refused retention printed on standard output")
