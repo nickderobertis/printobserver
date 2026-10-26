@@ -101,7 +101,7 @@ pub use kinds::{
     FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload,
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
     PortFailureSite, PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, RebaselineDisposition, SpoolAdjustedPayload,
+    PrintUntrackedPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
     SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
     SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     agent_source, operator_source, system_source,

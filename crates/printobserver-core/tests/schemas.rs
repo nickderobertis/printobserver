@@ -28,7 +28,7 @@ use printobserver_core::{
     FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload, Look,
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
     PortFailureSite, PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, RebaselineDisposition, SpoolAdjustedPayload,
+    PrintUntrackedPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
     SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
     SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     agent_source, operator_source, system_source,
@@ -140,6 +140,10 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((
         "RebaselineDisposition.json".to_owned(),
         schema_of::<RebaselineDisposition>(),
+    ));
+    entries.push((
+        "SignalPosition.json".to_owned(),
+        schema_of::<SignalPosition>(),
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));

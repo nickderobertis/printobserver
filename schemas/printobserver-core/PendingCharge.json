@@ -1,85 +1,5 @@
 {
   "$defs": {
-    "ChargeKey": {
-      "description": "The durable identity of one debit, so that a replay can never debit twice.",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "description": "One segment of a print this system watched, on one tool.",
-          "properties": {
-            "key": {
-              "const": "print",
-              "type": "string"
-            },
-            "print_id": {
-              "$ref": "#/$defs/PrintId",
-              "description": "The print."
-            },
-            "segment": {
-              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "print_id",
-            "tool",
-            "segment"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "One print this system never saw, on one tool.",
-          "properties": {
-            "file_name": {
-              "description": "The file that was printed.",
-              "type": "string"
-            },
-            "generation": {
-              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "key": {
-              "const": "unobserved",
-              "type": "string"
-            },
-            "origin": {
-              "description": "Where the file lives, in the printer's own vocabulary.",
-              "type": "string"
-            },
-            "print_number": {
-              "description": "The print's ordinal in the file's tally — completed and failed\nprints counted up to and including this one — within that\ngeneration.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "origin",
-            "file_name",
-            "generation",
-            "print_number",
-            "tool"
-          ],
-          "type": "object"
-        }
-      ]
-    },
     "ChargeMethod": {
       "description": "How the length a charge debits was worked out.",
       "oneOf": [
@@ -140,6 +60,33 @@
       "title": "PrintId",
       "type": "string"
     },
+    "PrintSegmentKey": {
+      "additionalProperties": false,
+      "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+      "properties": {
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "segment": {
+          "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "print_id",
+        "tool",
+        "segment"
+      ],
+      "type": "object"
+    },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
       "format": "date-time",
@@ -160,8 +107,8 @@
       ]
     },
     "charge_key": {
-      "$ref": "#/$defs/ChargeKey",
-      "description": "The key of the print segment the filament was fed in."
+      "$ref": "#/$defs/PrintSegmentKey",
+      "description": "The print segment the filament was fed in, which names the print and\nthe tool that fed it."
     },
     "length_mm": {
       "description": "How much was fed, in millimetres.",
@@ -193,21 +140,10 @@
         }
       ],
       "description": "How far into the file the segment ran, when that was read."
-    },
-    "print_id": {
-      "$ref": "#/$defs/PrintId",
-      "description": "The print it was fed in."
-    },
-    "tool": {
-      "description": "The tool that fed it.",
-      "format": "int64",
-      "type": "integer"
     }
   },
   "required": [
     "charge_key",
-    "print_id",
-    "tool",
     "length_mm",
     "method",
     "pended_at"

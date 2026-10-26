@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+  "properties": {
+    "buffer_g": {
+      "description": "The margin asked for beyond that.",
+      "format": "double",
+      "type": "number"
+    },
+    "required_g": {
+      "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "required_g",
+    "buffer_g"
+  ],
+  "title": "PreflightNeed",
+  "type": "object"
+}

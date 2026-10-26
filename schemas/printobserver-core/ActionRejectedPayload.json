@@ -497,13 +497,18 @@
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -515,12 +520,288 @@
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",

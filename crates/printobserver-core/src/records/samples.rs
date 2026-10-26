@@ -407,6 +407,13 @@ impl Sample for SpoolRefusalCause {
         }
     }
 
+    fn sample_minimal() -> Self {
+        Self::DensityRequired {
+            spool_id: None,
+            material: "PEEK".to_owned(),
+        }
+    }
+
     fn sample_alternates() -> Vec<Self> {
         vec![
             Self::UnknownSpool {
@@ -422,10 +429,6 @@ impl Sample for SpoolRefusalCause {
             },
             Self::DensityRequired {
                 spool_id: Some(spool_id()),
-                material: "PEEK".to_owned(),
-            },
-            Self::DensityRequired {
-                spool_id: None,
                 material: "PEEK".to_owned(),
             },
             Self::MissingField {
@@ -793,10 +796,14 @@ impl Sample for PreflightObjection {
         Self::Insufficient(ShortSpool::sample_full())
     }
 
+    fn sample_minimal() -> Self {
+        Self::NoAnalysis(UnanalysedSpool::sample_full())
+    }
+
     fn sample_alternates() -> Vec<Self> {
         vec![
+            Self::Insufficient(ShortSpool::sample_minimal()),
             Self::UnverifiedSpool(DoubtedSpool::sample_full()),
-            Self::NoAnalysis(UnanalysedSpool::sample_full()),
         ]
     }
 }

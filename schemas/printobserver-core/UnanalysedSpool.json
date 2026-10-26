@@ -1,0 +1,50 @@
+{
+  "$defs": {
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A spool on a tool of a file with no analysis, so what it needs is unknown.",
+  "properties": {
+    "remaining_g": {
+      "description": "What the spool holds, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool."
+    }
+  },
+  "required": [
+    "spool",
+    "remaining_g"
+  ],
+  "title": "UnanalysedSpool",
+  "type": "object"
+}
