@@ -19,8 +19,10 @@
 # so the gate's and the integration tier's `macos-aarch64` cells run as jobs of
 # their own — the gate's two shards and `integration-macos` — and only on a
 # pull request the classifier (`.github/macos-policy.mjs`) says owes them.
-# `repo-policy.toml`'s `[[workflows.carried]]` records the two cells as
-# carried, and AGENTS.md's "The consolidated macOS lanes" says why.
+# `repo-policy.toml`'s `[[workflows.carried]]` records the integration cell
+# as carried by `integration-macos`, the gate's cell is reported by its
+# aggregator `gate-macos`, and AGENTS.md's "The consolidated macOS lanes" says
+# why.
 
 name: ci
 

@@ -283,16 +283,21 @@ def end_to_end_part(file_name: str, parts: int) -> int:
     Raises:
         ShardError: If the tier is split into a number of parts no partition makes.
     """
-    if parts == 1:
-        return 1
-    if parts == END_TO_END_PARTS:
-        return 2 if file_name in END_TO_END_SECOND_PART else 1
-    if parts == END_TO_END_THIRDS:
-        if file_name in END_TO_END_THIRD_PART:
+    match parts:
+        case 1:
+            return 1
+        case 2:
+            return 2 if file_name in END_TO_END_SECOND_PART else 1
+        case 3 if file_name in END_TO_END_THIRD_PART:
             return 3
-        return 2 if file_name in END_TO_END_SECOND_PART else 1
-    msg = f"the end-to-end tier's test files are split into one, two or three parts, not {parts}"
-    raise ShardError(msg)
+        case 3:
+            return 2 if file_name in END_TO_END_SECOND_PART else 1
+        case _:
+            msg = (
+                f"the end-to-end tier's test files are split into one, two or three parts, "
+                f"not {parts}"
+            )
+            raise ShardError(msg)
 
 
 def commands(repo: Repo, tier: str, shard: Shard) -> list[Invocation]:
