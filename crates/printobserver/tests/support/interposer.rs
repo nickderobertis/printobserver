@@ -338,11 +338,17 @@ fn watched(watching: &[PathBuf]) -> String {
 
 /// The interposer, built into one scratch directory once.
 ///
-/// The two variables this module hands it are the ones the C source reads,
-/// held to it before the build: a rename on either side is refused here rather
-/// than read as a program that touched nothing.
+/// The variables this module hands it are the ones the C source reads, held
+/// to it before the build: a rename on either side is refused here rather
+/// than read as a program that touched nothing, or as a descriptor nothing
+/// clears any more.
 fn built(scratch: &Path) -> PathBuf {
-    for (name, value) in [("PO_LOG_ENV", LOG_ENV), ("PO_WATCH_ENV", WATCH_ENV)] {
+    for (name, value) in [
+        ("PO_LOG_ENV", LOG_ENV),
+        ("PO_WATCH_ENV", WATCH_ENV),
+        ("PO_LIFECYCLE_ENV", LIFECYCLE_ENV),
+        ("PO_LIFECYCLE_FD_ENV", LIFECYCLE_FD_ENV),
+    ] {
         assert!(
             SOURCE.contains(&format!("#define {name} \"{value}\"")),
             "the interposer's source does not read {value} as {name}"
@@ -386,4 +392,48 @@ fn unique(stem: &str, extension: &str) -> String {
         std::process::id(),
         RUNS.fetch_add(1, Ordering::Relaxed)
     )
+}
+
+/// A lifecycle descriptor named but not inherited — malformed, carrying more
+/// than a number, closed, or reused for a file — is not taken: the process
+/// makes a connection of its own, so the tree is finished once it exits
+/// rather than read as one nobody connected to.
+#[cfg(test)]
+mod a_named_descriptor_that_is_not_one {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
+    use super::{LIFECYCLE_ENV, LIFECYCLE_FD_ENV, LOADER_ENV, Lifecycle, built};
+
+    #[test]
+    fn is_replaced_by_a_connection_of_its_own() {
+        let scratch = tempfile::TempDir::new().expect("a scratch directory");
+        let library = built(scratch.path());
+        let file = scratch.path().join("standard-input");
+        std::fs::write(&file, "").expect("a file for standard input");
+        for named in ["not-a-descriptor", "0x", "7abc", "-1", "4096", "0"] {
+            let lifecycle = Lifecycle::listening();
+            // Standard input, descriptor 0, is a file here: a descriptor an
+            // ancestor's connection could once have had, since reused.
+            let input = std::fs::File::open(&file).expect("the file opens");
+            // This test binary again, selecting no test: a program the
+            // interposer loads into that does nothing and exits.
+            let status = Command::new(std::env::current_exe().expect("test executable"))
+                .args(["--exact", "no::such::test"])
+                .env(LOADER_ENV, &library)
+                .env(LIFECYCLE_ENV, &lifecycle.path)
+                .env(LIFECYCLE_FD_ENV, named)
+                .stdin(input)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("the program runs");
+            assert!(status.success(), "the program failed: {status}");
+            assert_eq!(
+                lifecycle.finished(Duration::from_secs(5)),
+                Ok(()),
+                "a process told its lifecycle is on {named:?} made no connection of its own"
+            );
+        }
+    }
 }

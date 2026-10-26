@@ -472,6 +472,34 @@ mod observing {
         );
     }
 
+    /// A descendant that closes the lifecycle descriptor it inherited, and
+    /// connects a second later, is still in the recording: the close is
+    /// answered and not made, so the tree stays held until it has finished.
+    ///
+    /// Not on macOS, where the shell that makes the close is a protected
+    /// program the loader inserts no library into.
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_descendant_closing_the_lifecycle_descriptor_still_holds_the_tree() {
+        let reservation = crate::unreachable::Unreachable::held();
+        let endpoint = reservation.address();
+        let scratch = TempDir::new().expect("a scratch directory");
+        let late = scratch.path().join("closing-descendant");
+        let mut root = outliving_root(endpoint, 100, &late);
+        root.env("PRINTOBSERVER_TRACE_CLOSE_LIFECYCLE", "yes");
+
+        let run = interposed(root, scratch.path(), &[]);
+
+        assert_eq!(run.output.status.code(), Some(0));
+        assert!(late.is_file(), "the root started no descendant");
+        assert_eq!(
+            connections_in(&run.activity),
+            BTreeSet::from([endpoint]),
+            "the connection made after the lifecycle descriptor was closed is missing: {}",
+            run.activity
+        );
+    }
+
     /// A print identifier the program accepts, naming no print anywhere.
     const SOME_PRINT: &str = "01900000-0000-7000-8000-000000000000";
 
@@ -719,8 +747,18 @@ mod regression {
         }
         if std::env::var_os("PRINTOBSERVER_TRACE_CHILD").is_some() {
             let inherited = std::env::var("PRINTOBSERVER_TRACE_INHERIT").as_deref() == Ok("yes");
-            let child = Command::new(std::env::current_exe().expect("test executable"))
-                .args(["--exact", "traced::regression::connector", "--nocapture"])
+            let program = std::env::current_exe().expect("test executable");
+            let mut descendant =
+                if std::env::var("PRINTOBSERVER_TRACE_CLOSE_LIFECYCLE").as_deref() == Ok("yes") {
+                    let mut closing = Command::new("bash");
+                    closing.args(["-c", CLOSES_ITS_LIFECYCLE]).arg(&program);
+                    closing
+                } else {
+                    let mut connecting = Command::new(&program);
+                    connecting.args(["--exact", "traced::regression::connector", "--nocapture"]);
+                    connecting
+                };
+            let child = descendant
                 .env_remove("PRINTOBSERVER_TRACE_CHILD")
                 .env(
                     "PRINTOBSERVER_TRACE_DELAY",
@@ -756,6 +794,16 @@ mod regression {
             let _ = TcpStream::connect_timeout(&address, std::time::Duration::from_millis(200));
         }
     }
+
+    /// The descendant a closing fixture starts in place of a connecting one: it
+    /// closes the lifecycle descriptor it inherited, takes away the socket a
+    /// process could make a connection of its own to, and only then, a second
+    /// on, becomes the connecting fixture. The descriptor it closed is what
+    /// holds the tree over that second, or nothing does.
+    const CLOSES_ITS_LIFECYCLE: &str = r#"eval "exec ${PRINTOBSERVER_INTERPOSE_LIFECYCLE_FD}>&-"
+unset PRINTOBSERVER_INTERPOSE_LIFECYCLE
+sleep 1
+exec "$0" --exact traced::regression::connector --nocapture"#;
 
     /// Accepted and refused attempts belong to this invocation's lifetime and
     /// ancestry; adjacent invocations and simultaneous host traffic do not.
