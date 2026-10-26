@@ -631,7 +631,10 @@ impl Terminal {
     ///
     /// Answers why the instance did not take it.
     pub fn connect(&self) -> Result<(), String> {
-        match self.post("/api/connection", &json!({ "command": "connect", "autoconnect": true }))? {
+        match self.post(
+            "/api/connection",
+            &json!({ "command": "connect", "autoconnect": true }),
+        )? {
             204 => Ok(()),
             status => Err(format!("the connection answered {status}")),
         }
