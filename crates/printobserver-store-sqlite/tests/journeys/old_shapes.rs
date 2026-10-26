@@ -541,6 +541,28 @@ fn an_old_row_whose_fields_its_kind_cannot_hold_is_answered_as_stored() {
             json!({ "spool": { "id": SPOOL, "loaded_on_tool": null }, "actor": "operator", "reason": "r" }),
         ),
         (
+            "filament_change_signalled",
+            json!({ "position_read_at_signal": "yes", "source_kind": "obico_printer_notification" }),
+        ),
+        (
+            "preflight_checked",
+            json!({ "preflight": { "file_name": "f", "checked_at": AT, "verdict": "insufficient",
+                    "tools": [tool("insufficient", &json!({ "spool_id": SPOOL, "spool_name": "P",
+                        "remaining_g": 1.0, "required_g": 120.0 }))] } }),
+        ),
+        (
+            "preflight_checked",
+            json!({ "preflight": { "file_name": "f", "checked_at": AT, "verdict": "unchecked",
+                    "tools": [tool("unchecked", &json!({ "spool_id": SPOOL }))] } }),
+        ),
+        (
+            "preflight_checked",
+            json!({ "preflight": { "file_name": "f", "checked_at": AT, "verdict": "passed",
+                    "tools": [tool("passed", &json!({ "spool_id": SPOOL, "spool_name": "P",
+                        "remaining_g": 100.0, "required_g": 1.0, "buffer_g": 1.0,
+                        "marks": [{ "reason": { "reason": "uncharged_print", "print_id": PRINT }, "since": AT }] }))] } }),
+        ),
+        (
             "filament_consumed",
             json!({ "charge_key": key, "tool": 1, "spool_id": SPOOL, "method": "gcode_extrusion",
                     "length_mm": 1.0, "grams": "twelve", "diameter_mm": 1.75, "density_g_cm3": 1.27,

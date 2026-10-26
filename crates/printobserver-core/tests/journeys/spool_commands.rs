@@ -446,6 +446,40 @@ fn an_unload_of_a_shelved_spool_or_a_negative_reading_is_refused_naming_it() {
     assert_close(spool_now(&world, weighed.id).remaining_g, 1_000.0);
 }
 
+/// A figure no JSON document can carry — reachable only by a caller of this
+/// crate, never over the wire — is refused as the refusal would be written,
+/// so no refusal is written that no reader could read back.
+#[test]
+fn a_figure_no_document_can_carry_is_refused_before_it_is_written() {
+    let world = spool_world();
+    let before = timeline(&world).len();
+    let asked = block_on(
+        world
+            .core
+            .request_spool_command(SpoolCommand::RegisterSpool {
+                name: "Endless".to_owned(),
+                material: "PLA".to_owned(),
+                color: None,
+                diameter_mm: None,
+                density_g_cm3: None,
+                initial_g: 1_000.0,
+                remaining_g: Some(f64::INFINITY),
+                tare_g: None,
+                reason: "bought".to_owned(),
+                actor: Actor::Operator,
+            }),
+    );
+    assert!(
+        matches!(&asked, Err(printobserver_core::CoreError::Unrepresentable { detail }) if detail.contains("inf")),
+        "{asked:?}"
+    );
+    assert_eq!(
+        timeline(&world).len(),
+        before,
+        "an unreadable refusal was written"
+    );
+}
+
 /// A registration naming neither diameter nor density takes 1.75 mm and the
 /// material's own density, matched without regard to case; one naming them
 /// keeps them; and the remaining figure defaults to the full one. The event

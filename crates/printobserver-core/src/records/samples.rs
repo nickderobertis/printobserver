@@ -34,7 +34,7 @@ use super::preflight::{
 use super::print::{ManifestNarrowing, PrintRecord};
 use super::spool::{
     ClearedMark, LoadedSpool, SpoolLifecycle, SpoolRecord, SpoolTrust, UnverifiedMark,
-    UnverifiedReason,
+    UnverifiedMarks, UnverifiedReason,
 };
 use super::spool_command::SpoolCommand;
 
@@ -522,18 +522,25 @@ impl Sample for UnverifiedMark {
     }
 }
 
+impl Sample for UnverifiedMarks {
+    fn sample_full() -> Self {
+        Self::new(vec![
+            UnverifiedMark::sample_full(),
+            UnverifiedMark {
+                reason: UnverifiedReason::FilamentChangeUnconfirmed {
+                    print_id: PrintId::sample_full(),
+                },
+                since: later_instant(),
+            },
+        ])
+        .expect("two marks")
+    }
+}
+
 impl Sample for SpoolTrust {
     fn sample_full() -> Self {
         Self::Unverified {
-            marks: vec![
-                UnverifiedMark::sample_full(),
-                UnverifiedMark {
-                    reason: UnverifiedReason::FilamentChangeUnconfirmed {
-                        print_id: PrintId::sample_full(),
-                    },
-                    since: later_instant(),
-                },
-            ],
+            marks: UnverifiedMarks::sample_full(),
         }
     }
 
@@ -770,7 +777,7 @@ impl Sample for DoubtedSpool {
             spool: PreflightSpool::sample_full(),
             remaining_g: 742.5,
             need: Some(PreflightNeed::sample_full()),
-            marks: vec![UnverifiedMark::sample_full()],
+            marks: UnverifiedMarks::sample_full(),
         }
     }
 

@@ -30,8 +30,10 @@ fn kinds_answered(answer: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Post one `Obico` filament-change notification and wait for its handling.
-async fn signal_a_filament_change(world: &World) {
+/// Post one `Obico` filament-change notification, and wait until the printer's
+/// history carries `signals` of them: a completion seen for an earlier
+/// notification is not this one's.
+async fn signal_a_filament_change(world: &World, signals: usize) {
     let mut completions = world.server.completions();
     let job_started = printobserver_core::unix_seconds(Timestamp::now()) - 900;
     let status = reqwest::Client::new()
@@ -44,6 +46,18 @@ async fn signal_a_filament_change(world: &World) {
         .status();
     assert_eq!(status, reqwest::StatusCode::ACCEPTED);
     completions.changed().await.expect("the handling finishes");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let history = the_whole_history(world).await;
+        if of_kind(&history, "filament_change_signalled").len() >= signals {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the history never carried {signals} filament changes: {history:#?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 }
 
 /// The keys one JSON object carries, sorted.
@@ -161,8 +175,8 @@ async fn a_filament_change_records_its_position_whole_or_not_at_all() {
     world.printer.at_byte(SIZE_BYTES / 4);
     look_at_the_job(&world).await;
 
-    signal_a_filament_change(&world).await;
-    signal_a_filament_change(&world).await;
+    signal_a_filament_change(&world, 1).await;
+    signal_a_filament_change(&world, 2).await;
     let events = the_whole_history(&world).await;
     let signalled = of_kind(&events, "filament_change_signalled");
     assert_eq!(signalled.len(), 2, "{events:#?}");
@@ -224,7 +238,7 @@ async fn a_filament_change_records_its_position_whole_or_not_at_all() {
     let spool = registered(&world, "PLA grey", FULL_G).await;
     loaded(&world, &spool, 0).await;
     look_at_the_job(&world).await;
-    signal_a_filament_change(&world).await;
+    signal_a_filament_change(&world, 1).await;
     let events = the_whole_history(&world).await;
     let signalled = of_kind(&events, "filament_change_signalled");
     assert_eq!(signalled.len(), 1, "{events:#?}");

@@ -113,26 +113,74 @@ pub enum SpoolTrust {
     Unverified {
         /// Every reason the figure is in doubt, oldest first, at most one per
         /// distinct reason; never empty.
-        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-        #[serde(deserialize_with = "at_least_one_mark")]
-        #[schemars(length(min = 1))]
-        marks: Vec<UnverifiedMark>,
+        marks: UnverifiedMarks,
     },
 }
 
-/// Read an unverified spool's marks, refusing none: a spool holding no mark is
-/// `verified`, and one written as unverified with nothing to say why is not a
-/// state this ledger has.
-fn at_least_one_mark<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<UnverifiedMark>, D::Error> {
-    let marks = Vec::<UnverifiedMark>::deserialize(deserializer)?;
-    if marks.is_empty() {
-        return Err(D::Error::custom(
-            "an unverified spool carries at least one mark; one with none is verified",
-        ));
+/// Every reason a spool's figure is in doubt, oldest first: never empty.
+///
+/// A spool holding no mark is verified, and one called unverified with nothing
+/// to say why is not a state this ledger has, so this list cannot be built
+/// empty and an empty one is refused on read. On the wire it is an array the
+/// schema bounds with `minItems: 1`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(crate = "printobserver_types::serde", transparent)]
+pub struct UnverifiedMarks(Vec<UnverifiedMark>);
+
+impl UnverifiedMarks {
+    /// These marks, when there is at least one.
+    #[must_use]
+    pub fn new(marks: Vec<UnverifiedMark>) -> Option<Self> {
+        (!marks.is_empty()).then_some(Self(marks))
     }
-    Ok(marks)
+
+    /// The mark held longest.
+    #[must_use]
+    pub fn oldest(&self) -> &UnverifiedMark {
+        &self.0[0]
+    }
+
+    /// Every mark, oldest first, as a list of its own.
+    #[must_use]
+    pub fn into_vec(self) -> Vec<UnverifiedMark> {
+        self.0
+    }
+}
+
+impl core::ops::Deref for UnverifiedMarks {
+    type Target = [UnverifiedMark];
+
+    fn deref(&self) -> &[UnverifiedMark] {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for UnverifiedMarks {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(Vec::<UnverifiedMark>::deserialize(deserializer)?).ok_or_else(|| {
+            D::Error::custom(
+                "an unverified spool carries at least one mark; one with none is verified",
+            )
+        })
+    }
+}
+
+impl JsonSchema for UnverifiedMarks {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "UnverifiedMarks".into()
+    }
+
+    fn json_schema(
+        generator: &mut printobserver_types::schemars::SchemaGenerator,
+    ) -> printobserver_types::schemars::Schema {
+        let mut schema = Vec::<UnverifiedMark>::json_schema(generator);
+        schema.insert("minItems".to_owned(), 1.into());
+        schema
+    }
 }
 
 /// One reason a spool's figure is in doubt, and since when.

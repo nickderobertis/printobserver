@@ -117,8 +117,8 @@ pub use records::{
     PolicyDecision, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
     PreflightToolResult, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, PrintSegmentKey,
     RejectionReason, SafetyEnvelope, ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle,
-    SpoolRecord, SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UnverifiedMark, UnverifiedReason,
-    UnverifiedReasonKind,
+    SpoolRecord, SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UnverifiedMark, UnverifiedMarks,
+    UnverifiedReason, UnverifiedReasonKind,
 };
 pub use spools::SpoolCommandOutcome;
 pub use store::{

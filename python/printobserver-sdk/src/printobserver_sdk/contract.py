@@ -2418,7 +2418,9 @@ class SpoolRefusalCauseInvalidAdjustmentFigure(TypedDict):
     cause: Literal["invalid_adjustment_figure"]
     # The field the figure was given for.
     field: SpoolField
-    # The figure given.
+    # The figure given; always a number, because a figure JSON cannot
+    # carry is refused as it would be written rather than written as
+    # `null`.
     value: float
 
 

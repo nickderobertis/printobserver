@@ -106,12 +106,6 @@ reason = "The printer contract's own state vocabulary, `PrinterState`, lives in 
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/spool.rs"
-site = "marks: Vec<UnverifiedMark>,"
-reason = "The shape is the filament ledger's shared contract, stated once by the plan as `unverified { marks: Vec<UnverifiedMark> }` and built against by the store, the domain and the three clients at the same time, so a non-empty collection type in its place is a change to that agreement rather than to this field; it is proposed as a follow-up instead. What can be enforced without changing the agreement is: the schema says `minItems: 1`, a parse of an empty list is refused naming why, and the only two functions that produce this variant — `SpoolTrust::marked`, which always adds one, and `SpoolTrust::cleared`, which answers `verified` once none remain — cannot make an empty one, which `tests/filament.rs` and `tests/spool_ledger.rs` hold."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/records/spool_command.rs"
 site = "AdjustSpool {"
 reason = "The plan states this command's shape as `adjust_spool { spool_id, remaining_g: Option<f64>, gross_g: Option<f64> }` and makes naming both or neither a stated refusal, `spool_refused`, which the domain gives and records; the command-line surface folds each field into an option of its own, and the store, the domain and the clients are being built against that shape at the same time. An enum of the two would be a different wire form every one of them would have to change to, so it is proposed as a follow-up rather than made here."
@@ -2613,3 +2607,27 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_fresh_clone_journey.py"
 site = "def test_a_clones_commands_sync_its_own_environment_and_start_no_daemon"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the journey proves a copy's own `uv run` syncs the copy's lock under a caller exporting `UV_NO_SYNC`, which only an environment that does not already hold the dependencies can show, and with uv's cache warm from the shared environment that sync links rather than downloads."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/spools.rs"
+site = "fn invalid_figure("
+reason = "Every finite figure this refusal carries is driven end to end: `every_spool_refusal_is_answered_with_its_cause` sends an impossible initial figure and a negative scale reading through the compiled client to a real supervisor and reads back `invalid_adjustment_figure` with its field and value. The one figure no journey can send is a non-finite one, because a JSON document has no such number and the server reads every command from one; only a caller of this crate can pass it, and `a_figure_no_document_can_carry_is_refused_before_it_is_written` proves that the refusal is then refused as it would be written (`value` serializes through `a_number`) rather than written as an unreadable `null`."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "marks: Vec<UnverifiedMark>,"
+reason = "Generated: the schema bounds these marks with `minItems: 1`, and core holds them as `UnverifiedMarks`, which cannot be built empty and refuses an empty list on read, so no supervisor answers an empty list here. The contract generator has no non-empty list type yet in any of the three clients; `tools/contract-codegen`'s Rust emitter writes this directive above every list the schema says is never empty, and teaching it `minItems` across the Rust, Python and TypeScript clients is the drafted follow-up 'Teach the contract generator minItems'."
+
+[[suppression]]
+rule = "clippy::trivially_copy_pass_by_ref"
+file = "crates/printobserver-core/src/records/policy.rs"
+site = "fn a_number<S"
+reason = "`a_number` is the `serialize_with` of `SpoolRefusalCause::InvalidAdjustmentFigure.value`, and serde calls a `serialize_with` function with a reference to the field, so its signature is serde's rather than this crate's; taking the `f64` by value would be a function serde cannot call."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "NON_EMPTY_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated Rust list the schema bounds with `minItems: 1`, so that the directives standing in `crates/printobserver-sdk/src/contract.rs` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."

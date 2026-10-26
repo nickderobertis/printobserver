@@ -23,7 +23,7 @@ use printobserver_core::store::{
 };
 use printobserver_core::{
     Actor, FilePosition, PrintOutcome, PrintRecord, SpoolId, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, UnverifiedReasonKind,
+    UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind,
 };
 use printobserver_types::{EventKind, EventPayload, EventRecord, PrintId};
 
@@ -350,7 +350,7 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
         let repeated = mark(uncharged(print.id), 3);
         assert_eq!(repeated.events, Vec::new(), "{name}: a repeated mark wrote");
         let both = SpoolTrust::Unverified {
-            marks: vec![
+            marks: UnverifiedMarks::new(vec![
                 UnverifiedMark {
                     reason: uncharged(print.id),
                     since: at(1),
@@ -359,7 +359,8 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
                     reason: unconfirmed(print.id),
                     since: at(2),
                 },
-            ],
+            ])
+            .expect("two marks"),
         };
         assert_eq!(repeated.spools[0].trust, both, "{name}");
         assert_eq!(unverified_events(&port, spool.id), 2, "{name}");
@@ -384,10 +385,11 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
         assert_eq!(
             cleared.spools[0].trust,
             SpoolTrust::Unverified {
-                marks: vec![UnverifiedMark {
+                marks: UnverifiedMarks::new(vec![UnverifiedMark {
                     reason: uncharged(print.id),
                     since: at(1),
-                }],
+                }])
+                .expect("one mark"),
             },
             "{name}: clearing one kind did not leave the other"
         );

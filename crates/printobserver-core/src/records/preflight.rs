@@ -5,7 +5,7 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 
 use super::ids::SpoolId;
-use super::spool::UnverifiedMark;
+use super::spool::{UnverifiedMark, UnverifiedMarks};
 
 /// What a filament check found, for one tool or for a whole print.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -97,8 +97,7 @@ pub struct DoubtedSpool {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub need: Option<PreflightNeed>,
     /// Every reason the spool's figure is in doubt, oldest first; never empty.
-    #[schemars(length(min = 1))]
-    pub marks: Vec<UnverifiedMark>,
+    pub marks: UnverifiedMarks,
 }
 
 /// A spool on a tool of a file with no analysis, so what it needs is unknown.

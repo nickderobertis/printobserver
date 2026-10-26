@@ -31,6 +31,9 @@ class ListOf:
     """A sequence of one shape."""
 
     item: TypeExpr
+    #: Whether the schema bounds it with `minItems: 1`: a list that is never
+    #: empty, which no generated client yet has a type for.
+    non_empty: bool = False
 
 
 @dataclass(frozen=True, slots=True)

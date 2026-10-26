@@ -249,7 +249,14 @@ pub(crate) fn charge_from_row(row: &Row<'_>) -> rusqlite::Result<ChargeRecord> {
         row.get::<_, Option<f64>>(11)?,
     );
     let charged = match (spool_id, figures) {
-        (None, _) => None,
+        (None, (None, None, None, None, None)) => None,
+        (None, _) => {
+            return Err(reported(
+                3,
+                Type::Null,
+                format!("charge {canonical} names no spool and still holds part of a calculation"),
+            ));
+        }
         (
             Some(spool_id),
             (

@@ -1426,7 +1426,7 @@ Declared by `printobserver-server`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -3068,7 +3068,7 @@ Declared by `printobserver-core`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -4049,7 +4049,7 @@ Declared by `printobserver-core`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -13006,7 +13006,7 @@ Declared by `printobserver-core`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -20199,7 +20199,7 @@ Declared by `printobserver-core`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -23294,7 +23294,7 @@ Declared by `printobserver-server`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -24570,7 +24570,7 @@ Declared by `printobserver-core`.
               "description": "The field the figure was given for."
             },
             "value": {
-              "description": "The figure given.",
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
               "format": "double",
               "type": "number"
             }
@@ -25841,7 +25841,7 @@ Declared by `printobserver-core`.
           "description": "The field the figure was given for."
         },
         "value": {
-          "description": "The figure given.",
+          "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
           "format": "double",
           "type": "number"
         }

@@ -145,7 +145,10 @@ fn filament_change_signalled(payload: Value) -> Value {
     let Value::Object(mut object) = payload.clone() else {
         return payload;
     };
-    let Some(read_at_signal) = object.remove("position_read_at_signal") else {
+    let Some(read_at_signal) = object
+        .remove("position_read_at_signal")
+        .filter(Value::is_boolean)
+    else {
         return payload;
     };
     if let Some(position) = object.remove("position") {
@@ -257,9 +260,11 @@ fn preflight_tool(tool: Value) -> Option<Value> {
         (Some(required_g), Some(buffer_g)) => {
             Some(json!({ "required_g": required_g, "buffer_g": buffer_g }))
         }
-        _ => None,
+        (None, None) => None,
+        // Half a requirement is no evidence a verdict rests on.
+        _ => return None,
     };
-    let marked = marks.as_array().is_some_and(|marks| !marks.is_empty());
+    let marked = !marks.as_array()?.is_empty();
     let objection = |name: &str| -> Option<Value> {
         let mut found = held(name)?;
         match name {
@@ -282,7 +287,12 @@ fn preflight_tool(tool: Value) -> Option<Value> {
         }
         Some(Value::Object(found))
     };
+    let evidence = spool_id.is_some() || spool_name.is_some() || remaining_g.is_some();
     let result = match verdict.as_str()? {
+        // A verdict of nothing checked that names what was checked, or one of
+        // enough or of no analysis that names a doubt, is not one of 0.4.3's.
+        "unchecked" if evidence || need.is_some() || marked => return None,
+        "passed" | "no_analysis" if marked => return None,
         "unchecked" => json!({ "verdict": "unchecked" }),
         "passed" => {
             let mut found = held("passed")?;

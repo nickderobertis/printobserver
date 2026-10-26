@@ -57,6 +57,6 @@ pub use preflight::{
 pub use print::{ManifestNarrowing, PrintRecord};
 pub use spool::{
     ClearedMark, LoadedSpool, SpoolLifecycle, SpoolRecord, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, UnverifiedReasonKind,
+    UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind,
 };
 pub use spool_command::SpoolCommand;

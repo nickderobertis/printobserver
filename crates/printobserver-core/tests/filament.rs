@@ -11,8 +11,8 @@
 
 use printobserver_core::{
     DEFAULT_DIAMETER_MM, MATERIAL_DENSITIES, MarkClearing, SpoolPolicy, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, UnverifiedReasonKind, buffer_g, density_for, grams_for_length,
-    marks_cleared_by,
+    UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind, buffer_g, density_for,
+    grams_for_length, marks_cleared_by,
 };
 use printobserver_types::contract::Sample;
 use printobserver_types::{PrintId, Timestamp};
@@ -200,10 +200,11 @@ fn each_clearing_removes_exactly_the_marks_its_rule_names() {
     assert_eq!(
         swapped,
         SpoolTrust::Unverified {
-            marks: vec![UnverifiedMark {
+            marks: UnverifiedMarks::new(vec![UnverifiedMark {
                 reason: UnverifiedReason::UnchargedPrint { print_id },
                 since: at(0),
-            }]
+            }])
+            .expect("one mark")
         }
     );
 
@@ -236,10 +237,11 @@ fn each_clearing_removes_exactly_the_marks_its_rule_names() {
     assert_eq!(
         confirmed,
         SpoolTrust::Unverified {
-            marks: vec![UnverifiedMark {
+            marks: UnverifiedMarks::new(vec![UnverifiedMark {
                 reason: UnverifiedReason::UnchargedPrint { print_id },
                 since: at(0),
-            }]
+            }])
+            .expect("one mark")
         },
         "a confirmation in place cleared the uncharged print"
     );

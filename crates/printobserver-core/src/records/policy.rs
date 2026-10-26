@@ -192,7 +192,10 @@ pub enum SpoolRefusalCause {
     InvalidAdjustmentFigure {
         /// The field the figure was given for.
         field: SpoolField,
-        /// The figure given.
+        /// The figure given; always a number, because a figure JSON cannot
+        /// carry is refused as it would be written rather than written as
+        /// `null`.
+        #[serde(serialize_with = "a_number")]
         value: f64,
     },
     /// A scale reading was given for a spool with no tare, so it cannot be
@@ -234,6 +237,23 @@ pub enum SpoolRefusalCause {
     /// The ledger refused the write the command made, because the spools
     /// changed under it; reading them again shows how.
     LedgerRefused,
+}
+
+/// Write a figure as the number it is, refusing one JSON has no number for:
+/// written as `null`, it would be a refusal no reader could read back.
+#[expect(clippy::trivially_copy_pass_by_ref)]
+fn a_number<S: printobserver_types::serde::Serializer>(
+    value: &f64,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use printobserver_types::serde::ser::Error as _;
+    if value.is_finite() {
+        serializer.serialize_f64(*value)
+    } else {
+        Err(S::Error::custom(format!(
+            "the figure {value} has no number JSON can carry"
+        )))
+    }
 }
 
 /// The decision policy took on one request.

@@ -1150,6 +1150,7 @@ pub enum PreflightObjection {
     UnverifiedSpool {
         /// Every reason the spool's figure is in doubt, oldest first; never
         /// empty.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         marks: Vec<UnverifiedMark>,
         /// What the print needs from it, when the file's analysis says.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1227,6 +1228,7 @@ pub enum PreflightToolResult {
     UnverifiedSpool {
         /// Every reason the spool's figure is in doubt, oldest first; never
         /// empty.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         marks: Vec<UnverifiedMark>,
         /// What the print needs from it, when the file's analysis says.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2085,7 +2087,9 @@ pub enum SpoolRefusalCause {
     InvalidAdjustmentFigure {
         /// The field the figure was given for.
         field: SpoolField,
-        /// The figure given.
+        /// The figure given; always a number, because a figure JSON cannot
+        /// carry is refused as it would be written rather than written as
+        /// `null`.
         value: f64,
     },
     /// A scale reading was given for a spool with no tare, so it cannot be
@@ -2172,6 +2176,7 @@ pub enum SpoolTrust {
     Unverified {
         /// Every reason the figure is in doubt, oldest first, at most one per
         /// distinct reason; never empty.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         marks: Vec<UnverifiedMark>,
     },
 }

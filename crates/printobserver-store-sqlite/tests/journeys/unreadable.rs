@@ -334,7 +334,7 @@ fn charges_read(store: &SqliteStore, print_id: PrintId, _: SpoolId) -> Result<()
 fn a_ledger_row_this_build_cannot_read_is_reported() {
     // `{print}` is the seeded print's identifier: a key naming it with its
     // segment spelled `00` reads as a key, and spells a different one again.
-    let cases: [(&str, LedgerRead); 15] = [
+    let cases: [(&str, LedgerRead); 16] = [
         ("UPDATE spools SET trust = 'not json'", spool_read),
         (
             "UPDATE spools SET registered_at = 'not an instant'",
@@ -366,6 +366,7 @@ fn a_ledger_row_this_build_cannot_read_is_reported() {
             charges_read,
         ),
         ("UPDATE charges SET diameter_mm = NULL", charges_read),
+        ("UPDATE charges SET spool_id = NULL", charges_read),
         (
             "UPDATE spools SET retired_at = '2026-03-01T12:30:00.000000000Z'",
             spool_read,

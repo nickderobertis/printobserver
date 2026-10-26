@@ -30,7 +30,7 @@ use crate::filament::{buffer_g, grams_for_length};
 use crate::records::{
     ActionKind, Actor, ActorClass, DoubtedSpool, Preflight, PreflightNeed, PreflightObjection,
     PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict, RejectionReason,
-    ShortSpool, SpoolRecord, SpoolTrust, UnanalysedSpool, UnverifiedMark,
+    ShortSpool, SpoolRecord, SpoolTrust, UnanalysedSpool, UnverifiedMarks,
 };
 use crate::supervisor::Supervisor;
 
@@ -75,11 +75,11 @@ fn worst(tools: &[PreflightTool]) -> PreflightVerdict {
         .unwrap_or(PreflightVerdict::Unchecked)
 }
 
-/// The marks a spool holds, oldest first.
-fn marks(spool: &SpoolRecord) -> Vec<UnverifiedMark> {
+/// The marks a spool holds, oldest first, when it holds any.
+fn marks(spool: &SpoolRecord) -> Option<UnverifiedMarks> {
     match &spool.trust {
-        SpoolTrust::Verified => Vec::new(),
-        SpoolTrust::Unverified { marks } => marks.clone(),
+        SpoolTrust::Verified => None,
+        SpoolTrust::Unverified { marks } => Some(marks.clone()),
     }
 }
 
@@ -100,40 +100,38 @@ fn judged(spool: &SpoolRecord, need: PreflightNeed) -> PreflightToolResult {
             spool: named(spool),
             remaining_g: spool.remaining_g,
             need,
-            marks,
+            marks: marks.map(UnverifiedMarks::into_vec).unwrap_or_default(),
         });
     }
-    if marks.is_empty() {
-        return PreflightToolResult::Passed {
+    match marks {
+        None => PreflightToolResult::Passed {
             spool: named(spool),
             remaining_g: spool.remaining_g,
             need,
-        };
+        },
+        Some(marks) => PreflightToolResult::UnverifiedSpool(DoubtedSpool {
+            spool: named(spool),
+            remaining_g: spool.remaining_g,
+            need: Some(need),
+            marks,
+        }),
     }
-    PreflightToolResult::UnverifiedSpool(DoubtedSpool {
-        spool: named(spool),
-        remaining_g: spool.remaining_g,
-        need: Some(need),
-        marks,
-    })
 }
 
 /// What one tool's spool is found to be when the file has no analysis: in
 /// doubt when it holds a mark, otherwise unanalysed.
 fn unanalysed(spool: &SpoolRecord) -> PreflightToolResult {
-    let marks = marks(spool);
-    if marks.is_empty() {
-        PreflightToolResult::NoAnalysis(UnanalysedSpool {
+    match marks(spool) {
+        None => PreflightToolResult::NoAnalysis(UnanalysedSpool {
             spool: named(spool),
             remaining_g: spool.remaining_g,
-        })
-    } else {
-        PreflightToolResult::UnverifiedSpool(DoubtedSpool {
+        }),
+        Some(marks) => PreflightToolResult::UnverifiedSpool(DoubtedSpool {
             spool: named(spool),
             remaining_g: spool.remaining_g,
             need: None,
             marks,
-        })
+        }),
     }
 }
 
@@ -155,15 +153,12 @@ fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
     let unverified = || {
         preflight.tools.iter().find_map(|tool| match &tool.result {
             PreflightToolResult::UnverifiedSpool(doubted) => {
-                doubted
-                    .marks
-                    .first()
-                    .map(|mark| RejectionReason::UnverifiedSpool {
-                        tool: tool.tool,
-                        spool_id: doubted.spool.id,
-                        spool_name: doubted.spool.name.clone(),
-                        reason: mark.reason.clone(),
-                    })
+                Some(RejectionReason::UnverifiedSpool {
+                    tool: tool.tool,
+                    spool_id: doubted.spool.id,
+                    spool_name: doubted.spool.name.clone(),
+                    reason: doubted.marks.oldest().reason.clone(),
+                })
             }
             _ => None,
         })
