@@ -9,6 +9,11 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
 
+#[path = "support/unreachable.rs"]
+mod unreachable;
+
+use unreachable::Unreachable;
+
 use printobserver::failure::Exit;
 use printobserver::surface::{MAX_DURATION_SECONDS, MIN_DURATION_SECONDS};
 
@@ -59,16 +64,46 @@ fn nothing_listening() -> SocketAddr {
 /// connection to it fails and the program reports every run as unreachable.
 #[test]
 fn an_unreachable_address_stays_unreachable_while_listeners_come_and_go() {
-    let nowhere = nothing_listening();
+    stays_unreachable_while_listeners_come_and_go(nothing_listening());
+}
+
+/// The address the tracing suites hand out as unreachable holds the same way:
+/// port zero off Windows, and on Windows a port its helper holds and never
+/// releases, which no listener asking for port zero is handed and no standard
+/// listener asking for that port can bind.
+#[test]
+fn the_tracing_suites_unreachable_address_stays_unreachable_while_listeners_come_and_go() {
+    let held = Unreachable::held();
+    stays_unreachable_while_listeners_come_and_go(held.address());
+}
+
+/// Bind standard listeners at `nowhere` and on ephemeral ports while the
+/// program and plain connections are pointed at `nowhere`, and require that no
+/// listener came to be listening there and every run was reported unreachable.
+fn stays_unreachable_while_listeners_come_and_go(nowhere: SocketAddr) {
     let server = format!("http://{nowhere}");
     let binding = std::thread::spawn(move || {
         for _ in 0..2000 {
-            let listener = TcpListener::bind(nowhere).expect("a standard listener binds");
-            let listening = listener.local_addr().expect("the listener's address");
+            let ephemeral = TcpListener::bind("127.0.0.1:0").expect("an ephemeral listener binds");
+            let handed = ephemeral.local_addr().expect("the listener's address");
             assert_ne!(
-                listening, nowhere,
-                "a listener came to be listening at {nowhere}"
+                handed, nowhere,
+                "an ephemeral listener was handed {nowhere}"
             );
+            match TcpListener::bind(nowhere) {
+                Ok(asked) => {
+                    let listening = asked.local_addr().expect("the listener's address");
+                    assert_ne!(
+                        listening, nowhere,
+                        "a listener came to be listening at {nowhere}"
+                    );
+                }
+                Err(refused) => assert_eq!(
+                    refused.kind(),
+                    std::io::ErrorKind::AddrInUse,
+                    "binding {nowhere} failed otherwise than as held: {refused}"
+                ),
+            }
         }
     });
     loop {

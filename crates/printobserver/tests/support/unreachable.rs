@@ -13,11 +13,12 @@
 //! On Windows the event-tracing session reads the TCP/IP provider's connection
 //! requests, and Winsock rejects port zero before any request is made, so the
 //! address is a real port instead: bound, connected to a peer and never
-//! listened on, for as long as this lives. A connection to it is reset, and no
-//! socket can bind the port while it is held except one setting
-//! `SO_REUSEADDR`, which no standard listener on Windows sets. `SO_EXCLUSIVEADDRUSE`
-//! would close that last case, and nothing in this workspace may set an option
-//! `socket2` does not wrap, because `unsafe` is forbidden.
+//! listened on, and never released for as long as this lives. A connection to
+//! it is reset, and the operating system's ephemeral assignment never hands out
+//! a port a socket holds, so no listener asking for port zero can be given it.
+//! The one way to take it is a deliberate bind of that very port setting
+//! `SO_REUSEADDR`, and no test makes one. `SO_EXCLUSIVEADDRUSE` would refuse
+//! even that, but `socket2` does not set it and `unsafe` is forbidden here.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
