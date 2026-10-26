@@ -813,10 +813,23 @@ def test_relaying_again_replaces_the_relay_with_one_under_the_new_configuration(
 def test_a_client_that_goes_away_while_feeding_input_ends_the_program_s_input(
     world: World, tmp_path: Path
 ) -> None:
-    """A client gone mid-input closes the program's input, and the relay serves the next command."""
+    """A client gone mid-input closes the program's input, and the relay serves the next command.
+
+    The program publishes what it was fed by writing a sibling temporary file
+    and renaming it into place, and it holds between the two until the test
+    lets it go. The record's path therefore exists only once it is whole, and
+    the test proves it waits on that path rather than on the first file seen.
+    """
     fed = tmp_path / "fed"
+    writing = tmp_path / "fed.partial"
+    go = tmp_path / "go"
     reading = (
-        f"import sys; from pathlib import Path; Path({str(fed)!r}).write_text(sys.stdin.read())"
+        "import sys, time; from pathlib import Path\n"
+        f"Path({str(writing)!r}).write_text(sys.stdin.read())\n"
+        f"deadline = time.monotonic() + {SETTLE_S}\n"
+        f"while not Path({str(go)!r}).exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        f"Path({str(writing)!r}).replace({str(fed)!r})\n"
     )
     argv = [b"-c", reading.encode()]
     environment = relayed(world)
@@ -828,6 +841,10 @@ def test_a_client_that_goes_away_while_feeding_input_ends_the_program_s_input(
             + b"partial"
         )
 
+    until(writing.is_file, describing="the program to have begun writing what it was fed")
+    truth(not fed.exists(), describing="the record to be absent while it is being written")
+    go.touch()
     until(fed.is_file, describing="the program to have been given the end of its input")
     equal(fed.read_text(encoding="utf-8"), "partial", describing="what the program was fed")
+    truth(not writing.exists(), describing="the temporary file to have become the record")
     passing(relay(environment, "-c", ECHO, "status"), describing="the next command")
