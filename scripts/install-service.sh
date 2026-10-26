@@ -45,6 +45,7 @@ BINARY=""
 ROOT=""
 INTERVAL=""
 INTERVAL_LINE="# observation_interval_s = 120"
+UNWRITTEN=""
 
 die() {
     echo "install-service.sh: $1" >&2
@@ -350,8 +351,8 @@ if [ -e "$INSTALLED_CONFIG" ]; then
     # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     echo "install-service.sh: $INSTALLED_CONFIG is already there and was left alone" >&2
     if [ -n "$INTERVAL" ]; then
-        echo "install-service.sh: so --observation-interval-seconds was not written into \
-it; set supervisor.observation_interval_s there yourself" >&2
+        UNWRITTEN=" (--observation-interval-seconds was not written into it, because \
+it was already there; set supervisor.observation_interval_s there yourself)"
     fi
 else
     cat >"$INSTALLED_CONFIG" <<CONFIG || die "$WRITE_REFUSED"
@@ -541,5 +542,5 @@ echo "install-service.sh: installed $INSTALLED_BINARY, $INSTALLED_CONFIG, $STATE
 and $INSTALLED_DEFINITION and started nothing; install the agent's skill with \
 gh skill install nickderobertis/printobserver printobserver --dir $RUNTIME_STATE/skills, \
 run printobserver credential issue as yourself and put the api.credential_verifier \
-line it prints into $INSTALLED_CONFIG, edit the rest of $INSTALLED_CONFIG, then run: \
-$START_COMMAND" >&2
+line it prints into $INSTALLED_CONFIG$UNWRITTEN, edit the rest of $INSTALLED_CONFIG, \
+then run: $START_COMMAND" >&2

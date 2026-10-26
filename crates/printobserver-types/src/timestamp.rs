@@ -85,6 +85,25 @@ impl Timestamp {
             })
     }
 
+    /// The latest instant this type writes as a string it reads back.
+    ///
+    /// The last moment of the year 9999: RFC 3339 spells a year in four
+    /// digits, so a later instant is written with a sign and more digits that
+    /// no RFC 3339 reader accepts — and that a store ordering instants by their
+    /// text would order before every earlier one. Reading what is due by this
+    /// instant reads everything due at any instant this type can record.
+    ///
+    /// # Panics
+    ///
+    /// Never: the instant is a fixed one every `chrono` represents.
+    #[must_use]
+    pub fn latest() -> Self {
+        let last_day = chrono::NaiveDate::from_ymd_opt(9999, 12, 31)
+            .and_then(|day| day.and_hms_nano_opt(23, 59, 59, 999_999_999))
+            .expect("the last moment of the year 9999 is a date-time");
+        Self(last_day.and_utc())
+    }
+
     /// The instant as the UTC date-time it is.
     #[must_use]
     pub const fn as_utc(&self) -> &DateTime<Utc> {

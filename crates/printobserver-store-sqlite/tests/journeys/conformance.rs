@@ -818,6 +818,50 @@ fn an_action_binds_to_the_open_print_and_is_refused_without_one() {
     }
 }
 
+/// Every active intervention is due by the latest instant a timestamp writes,
+/// however far off its own deadline is, and a settled one is not.
+#[test]
+fn every_active_intervention_is_due_by_the_latest_instant() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        // The print the actions are requested against.
+        let _ = print_and_event(&port);
+        let mut opened = Vec::new();
+        for expires_at in ["2026-03-01T12:30:00Z", "9999-12-31T23:59:59Z"] {
+            let action = block_on(port.record_action(
+                request(instant("2026-03-01T12:00:00Z")),
+                PolicyDecision::Accepted,
+            ))
+            .expect("an action is recorded");
+            opened.push(
+                block_on(port.open_intervention(
+                    action.id,
+                    Adjustable::BedTarget,
+                    None,
+                    60.0,
+                    instant("2026-03-01T12:00:00Z"),
+                    instant(expires_at),
+                ))
+                .expect("an intervention opens"),
+            );
+        }
+
+        assert_eq!(
+            block_on(port.due_interventions(Timestamp::latest())),
+            Ok(opened.clone()),
+            "{name}: an active intervention was not due by the latest instant"
+        );
+        block_on(port.settle_intervention(opened[0].id, InterventionOutcome::Restored))
+            .expect("the first settles");
+        assert_eq!(
+            block_on(port.due_interventions(Timestamp::latest())),
+            Ok(vec![opened[1].clone()]),
+            "{name}: a settled intervention was still due"
+        );
+    }
+}
+
 /// One intervention, and the interventions due to expire at an instant.
 #[test]
 fn an_intervention_settles_once_and_says_which_outcome_won() {

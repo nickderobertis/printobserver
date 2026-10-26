@@ -54,10 +54,6 @@ use crate::error::CoreError;
 use crate::store::{EventDraft, SettleOutcome};
 use crate::supervisor::Supervisor;
 
-/// The last instant a timestamp can hold, at or before which every active
-/// intervention is due: reading what is due by then reads every one.
-const LATEST_SECONDS: i64 = 253_402_300_799;
-
 /// The active interventions this supervisor is counting down, each with the
 /// reading of [`Clock::elapsed`](crate::Clock::elapsed) it expires at.
 #[derive(Debug, Default)]
@@ -239,12 +235,14 @@ impl Supervisor {
         if deadlines.adopted.load(Ordering::Acquire) {
             return Ok(());
         }
-        let latest = Timestamp::from_unix_seconds(LATEST_SECONDS).map_err(|error| {
-            CoreError::Unrepresentable {
-                detail: error.to_string(),
-            }
-        })?;
-        for intervention in self.stores().actions.due_interventions(latest).await? {
+        // Every active intervention is due by the latest instant a deadline can
+        // be recorded at, so this reads every one.
+        for intervention in self
+            .stores()
+            .actions
+            .due_interventions(Timestamp::latest())
+            .await?
+        {
             deadlines.adopt(&intervention, self.started());
         }
         deadlines.adopted.store(true, Ordering::Release);

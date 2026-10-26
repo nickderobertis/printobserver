@@ -181,3 +181,29 @@ def test_a_reinstall_given_an_interval_leaves_the_configuration_alone_and_says_s
         f"{INTERVAL} was not written into it",
         describing="what the reinstall said of the interval it did not write",
     )
+
+
+def test_an_observation_interval_option_with_no_value_is_refused_naming_it(
+    tmp_path: Path, program: Path
+) -> None:
+    """The option given last with no number after it is a stop naming it, placing nothing."""
+    root = tmp_path / "root"
+    result = shell_run(
+        [
+            "sh",
+            str(INSTALLER),
+            "--root",
+            str(root),
+            "--binary",
+            str(program),
+            "--user",
+            getpass.getuser(),
+            INTERVAL,
+        ],
+        cwd=tmp_path,
+        env=clean_environment(),
+        timeout=300,
+    )
+
+    failing(result, naming=f"{INTERVAL} takes a number of seconds")
+    truth(not root.exists(), describing="nothing to have been placed")

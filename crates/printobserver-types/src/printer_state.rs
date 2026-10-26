@@ -17,6 +17,7 @@ use crate::contract::Sample;
 /// carrying the source's own word for it rather than lost.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
+// llmlint: ignore[code_lands_in_the_domain_that_owns_it] suppressions.toml has the reason.
 pub enum PrinterState {
     /// Connected and idle.
     Operational,

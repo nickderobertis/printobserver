@@ -13,14 +13,15 @@
 
 use std::time::Duration;
 
-use printobserver_core::store::{EventStore as _, HistoryQuery};
+use printobserver_core::store::{EventStore as _, HistoryQuery, StoreError};
 use printobserver_core::{
-    ActionRequestedPayload, Actor, Clock as _, Intervention, InterventionOutcome, PolicyDecision,
-    PrintAction, RejectionReason,
+    ActionRequestedPayload, Actor, Clock as _, CoreError, Intervention, InterventionOutcome,
+    PolicyDecision, PrintAction, RejectionReason,
 };
 use printobserver_printer_api::PrinterState;
 use printobserver_types::{EventPayload as _, PrintId, Timestamp};
 
+use crate::fakes::StoreMethod;
 use crate::journal::Call;
 use crate::world::{World, agent_actor, permissive_envelope};
 
@@ -105,21 +106,30 @@ fn spaced_world() -> (World, PrintId) {
     (world, print.id)
 }
 
-/// The agent's fan change, which changes the machine, and the decision it got.
+/// The agent's fan change, which changes the machine.
+fn agent_fan_request(print_id: PrintId) -> PrintAction {
+    PrintAction::SetFanPercent {
+        percent: 70.0,
+        duration_s: None,
+        reason: "a little more cooling".to_owned(),
+        actor: agent_actor(print_id),
+    }
+}
+
+/// The agent's fan change, and the decision it got.
 fn agent_fan(world: &World, print_id: PrintId) -> PolicyDecision {
     world
-        .request(
-            print_id,
-            PrintAction::SetFanPercent {
-                percent: 70.0,
-                duration_s: None,
-                reason: "a little more cooling".to_owned(),
-                actor: agent_actor(print_id),
-            },
-        )
+        .request(print_id, agent_fan_request(print_id))
         .expect("the request is recorded")
         .record
         .decision
+}
+
+/// What a store that cannot be read answers.
+fn unreadable() -> StoreError {
+    StoreError::Io {
+        detail: "the disk is unreadable".to_owned(),
+    }
 }
 
 /// The refusal an agent change gets `since_last_s` into the interval.
@@ -231,4 +241,77 @@ fn a_restart_waits_out_what_was_left_of_the_agents_interval() {
     assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
 
     assert_eq!(requested_at(&world, print_id), written);
+}
+
+/// A wall clock stepped back an hour before the restart puts the agent's last
+/// change after the moment the restarted supervisor started, by the wall
+/// clock's reading. That change is taken as made the moment it started: the
+/// agent waits the whole interval on the restarted supervisor's clock, rather
+/// than that interval and the hour besides.
+#[test]
+fn a_change_recorded_after_the_restart_by_the_wall_clock_waits_the_whole_interval() {
+    let (mut world, print_id) = spaced_world();
+    assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
+
+    world.clock.step_wall(-HOUR_S);
+    world.restart();
+    world.clock.advance(INTERVAL_S - 1);
+    assert_eq!(agent_fan(&world, print_id), too_soon(INTERVAL_S - 1));
+
+    world.clock.advance(1);
+    assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
+}
+
+/// A restarted supervisor that cannot read when the agent last acted refuses
+/// to decide rather than deciding without it: the request fails naming the
+/// store, nothing reaches the printer, and once the store reads again the next
+/// request reads what was left of the interval and waits it out.
+#[test]
+fn a_history_that_cannot_be_read_decides_nothing_and_the_next_request_reads_it() {
+    let (mut world, print_id) = spaced_world();
+    assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
+    world.clock.advance(100);
+    world.restart();
+    world.journal.clear();
+
+    world.store.fails(StoreMethod::History, unreadable());
+    let refused = world.request(print_id, agent_fan_request(print_id));
+    assert!(
+        matches!(refused, Err(CoreError::Store(StoreError::Io { .. }))),
+        "{refused:?}"
+    );
+    assert_eq!(
+        world.journal.printer_actions(),
+        Vec::new(),
+        "the printer was acted on"
+    );
+
+    world.store.heals();
+    assert_eq!(agent_fan(&world, print_id), too_soon(100));
+    world.clock.advance(INTERVAL_S - 100);
+    assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
+}
+
+/// A restarted supervisor that cannot read the interventions left active
+/// expires none of them while it cannot, and the first sweep that reads them
+/// counts each down from the moment it started: one already past its deadline
+/// is put back at once.
+#[test]
+fn interventions_that_cannot_be_read_at_a_restart_are_adopted_by_a_later_sweep() {
+    let mut world = World::new();
+    let print = world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+    let intervention = fan_change(&world, print.id);
+    world.clock.advance(20);
+
+    world
+        .store
+        .fails(StoreMethod::DueInterventions, unreadable());
+    world.restart();
+    world.journal.clear();
+    world.clock.advance(DURATION_S);
+    still_active(&world, &intervention);
+
+    world.store.heals();
+    restored(&world, &intervention);
 }

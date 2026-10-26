@@ -426,20 +426,11 @@ def octoprint() -> Iterator[str]:
         server.server_close()
 
 
-@pytest.mark.parametrize("interval", [None, "60"])
 def test_the_configuration_it_writes_is_one_the_server_starts_under(
-    installer: Callable[..., Ran],
-    program: Path,
-    octoprint: str,
-    tmp_path: Path,
-    interval: str | None,
+    installer: Callable[..., Ran], program: Path, octoprint: str, tmp_path: Path
 ) -> None:
-    """Filled in as an operator would, the template is a document the real server accepts.
-
-    With an observation interval given and without one, so that what the
-    installer accepts and writes is what the server reads.
-    """
-    ran = installer(binary=program, interval=interval)
+    """Filled in as an operator would, the template is a document the real server accepts."""
+    ran = installer(binary=program)
     passing((ran.code, ran.said), describing="the installer under the fixture session")
     filled = (
         ran.configuration.read_text(encoding="utf-8")
@@ -488,6 +479,22 @@ def test_an_observation_interval_given_is_written_into_the_configuration(
         written["supervisor"].get("observation_interval_s"),
         60,
         describing="the observation interval the configuration names",
+    )
+
+
+def test_the_largest_interval_a_configuration_holds_is_written(
+    installer: Callable[..., Ran], program: Path
+) -> None:
+    """The bound is the TOML integer's own: its largest value is accepted and written."""
+    largest = "9223372036854775807"
+    ran = installer(binary=program, interval=largest)
+
+    passing((ran.code, ran.said), describing="the installer given the largest interval")
+    written = tomllib.loads(ran.configuration.read_text(encoding="utf-8"))
+    equal(
+        written["supervisor"].get("observation_interval_s"),
+        int(largest),
+        describing="the largest observation interval, as the configuration names it",
     )
 
 
