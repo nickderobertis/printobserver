@@ -297,3 +297,65 @@ fn the_database_refuses_an_incoherent_charge_or_spool_on_write() {
         Ok(None) | Err(StoreError::NotFound { .. })
     ));
 }
+
+/// A 0.4.3 database whose one charge row was changed, as a hand or a build
+/// before this one's refusals could leave it, before this build opens it.
+fn copied_and_changed(statement: &str) -> TempDir {
+    let dir = copied();
+    connect(&dir.path().join(DATABASE_FILE_NAME))
+        .expect("the database opens")
+        .execute_batch(statement)
+        .unwrap_or_else(|error| panic!("`{statement}` was refused: {error}"));
+    dir
+}
+
+/// A charge 0.4.3's database holds that names a spool with only part of a
+/// calculation — its event no longer says the diameter — and one whose stored
+/// tool is not the one its key names are each carried forward as they are,
+/// written into the migration's report, and reported by every read of them.
+#[test]
+fn an_incoherent_charge_0_4_3_held_is_reported_by_the_migration_and_every_read() {
+    for (statement, said) in [
+        (
+            "UPDATE events SET payload = json_remove(payload, '$.payload.diameter_mm') \
+             WHERE kind = 'filament_consumed' AND print_id IS NOT NULL",
+            "without the whole calculation",
+        ),
+        (
+            "UPDATE charges SET tool = 7 WHERE charge_key LIKE 'print:%'",
+            "which its key does not name",
+        ),
+    ] {
+        let dir = copied_and_changed(statement);
+        let store = SqliteStore::open(dir.path()).expect("the 0.4.3 database opens");
+        let reported: Vec<_> = store
+            .migrated()
+            .iter()
+            .filter(|note| note.subject.starts_with("charge print:"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            reported.len(),
+            1,
+            "after `{statement}`: {:#?}",
+            store.migrated()
+        );
+        assert_eq!(reported[0].version, 6);
+        assert!(reported[0].detail.contains(said), "{}", reported[0]);
+        let port: &dyn Store = &store;
+        let read = block_on(port.charges(PRINT.parse().expect("an id")));
+        assert!(
+            matches!(&read, Err(StoreError::Database { detail }) if detail.contains(said)),
+            "after `{statement}` the charge read answered {read:?}"
+        );
+        drop(store);
+        let reopened = SqliteStore::open(dir.path()).expect("the database opens again");
+        assert!(
+            reopened
+                .migration_report()
+                .expect("the report reads")
+                .contains(&reported[0]),
+            "the database's own report lost the charge"
+        );
+    }
+}
