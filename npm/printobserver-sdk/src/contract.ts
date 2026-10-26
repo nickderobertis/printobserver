@@ -73,6 +73,7 @@ export const OPERATION_NAMES = [
   "context",
   "image",
   "history",
+  "events",
   "manifest_get",
   "look",
   "manifest_set",
@@ -380,6 +381,29 @@ export interface EventRecord {
  * declares for itself.
  */
 export type EventSource = string;
+
+/**
+ * What an events read answers: the events stored after its cursor that pass
+ * its filters, oldest first, and where the next read picks up.
+ */
+export interface EventsAnswer {
+  /**
+   * The last event this read examined, whether or not it passed the
+   * filters, given as `after` to read on from it; null when the log held
+   * nothing to start after. Always sent, as null when it is that.
+   */
+  cursor?: EventId | null;
+  /**
+   * The events, oldest first in the order they were stored, each exactly as
+   * a history read serves it.
+   */
+  events: Array<EventRecord>;
+  /**
+   * The watched print's end as stored, whatever the filters said, and null
+   * while it is open. Absent from a read that names no print.
+   */
+  print_ended?: PrintEnded | null;
+}
 
 /** What happened when an accepted action reached the printer. */
 export type ExecutionOutcome = "succeeded" | { failed: { reason: string } };
@@ -1079,6 +1103,16 @@ export interface PrintContext {
   printer?: PrinterSnapshot | null;
   /** A bounded list of this print's events, newest first. */
   recent_events: Array<EventRecord>;
+}
+
+/** One print's end, as its `print_ended` event stored it. */
+export interface PrintEnded {
+  /** The `print_ended` event. */
+  event_id: EventId;
+  /** How the print ended. */
+  outcome: PrintOutcome;
+  /** When that event was received. */
+  received_at: Timestamp;
 }
 
 /** A print ended. */
@@ -1820,6 +1854,50 @@ export class GeneratedClient extends GeneratedSurface {
     const sending = undefined;
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<HistoryAnswer>("GET", target, asked, sending);
+  }
+
+  /**
+   * Call `events` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async events(
+    after?: string,
+    printId?: string,
+    kinds?: Array<string>,
+    excludeKinds?: Array<string>,
+    waitS?: number,
+    limit?: number,
+  ): Promise<EventsAnswer> {
+    const target = `/v1/events`;
+    const asked: Array<[string, string]> = [];
+    if (after !== undefined) {
+      asked.push(["after", String(after)]);
+    }
+    if (printId !== undefined) {
+      asked.push(["print_id", String(printId)]);
+    }
+    if (kinds !== undefined) {
+      for (const value of kinds) {
+        asked.push(["kinds", String(value)]);
+      }
+    }
+    if (excludeKinds !== undefined) {
+      for (const value of excludeKinds) {
+        asked.push(["exclude_kinds", String(value)]);
+      }
+    }
+    if (waitS !== undefined) {
+      asked.push(["wait_s", String(waitS)]);
+    }
+    if (limit !== undefined) {
+      asked.push(["limit", String(limit)]);
+    }
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<EventsAnswer>("GET", target, asked, sending);
   }
 
   /**

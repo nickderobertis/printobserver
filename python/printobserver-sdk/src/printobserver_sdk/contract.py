@@ -68,6 +68,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "context",
     "image",
     "history",
+    "events",
     "manifest_get",
     "look",
     "manifest_set",
@@ -475,6 +476,27 @@ class EventRecord(TypedDict):
 # Where an event came from, as the bare string the domain that raised it
 # declares for itself.
 EventSource: TypeAlias = str
+
+
+class EventsAnswer(TypedDict):
+    """`EventsAnswer`, as the contracts declare it.
+
+    What an events read answers: the events stored after its cursor that
+    pass
+    its filters, oldest first, and where the next read picks up.
+    """
+
+    # The last event this read examined, whether or not it passed the
+    # filters, given as `after` to read on from it; null when the log held
+    # nothing to start after. Always sent, as null when it is that.
+    cursor: NotRequired[EventId | None]
+    # The events, oldest first in the order they were stored, each exactly
+    # as
+    # a history read serves it.
+    events: list[EventRecord]
+    # The watched print's end as stored, whatever the filters said, and null
+    # while it is open. Absent from a read that names no print.
+    print_ended: NotRequired[PrintEnded | None]
 
 
 class ExecutionOutcomeFailedPayload(TypedDict):
@@ -1438,6 +1460,20 @@ class PrintContext(TypedDict):
     printer: NotRequired[PrinterSnapshot | None]
     # A bounded list of this print's events, newest first.
     recent_events: list[EventRecord]
+
+
+class PrintEnded(TypedDict):
+    """`PrintEnded`, as the contracts declare it.
+
+    One print's end, as its `print_ended` event stored it.
+    """
+
+    # The `print_ended` event.
+    event_id: EventId
+    # How the print ended.
+    outcome: PrintOutcome
+    # When that event was received.
+    received_at: Timestamp
 
 
 class PrintEndedPayload(TypedDict):
@@ -2828,6 +2864,48 @@ class GeneratedClient(GeneratedSurface):
         # type `operations.json` declares for it, so this cast names that type.
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(HistoryAnswer, answered)
+
+    def events(
+        self,
+        after: str | None = None,
+        print_id: PrintId | None = None,
+        kinds: list[str] | None = None,
+        exclude_kinds: list[str] | None = None,
+        wait_s: int | None = None,
+        limit: int | None = None,
+    ) -> EventsAnswer:
+        """Call `events` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/events"
+        asked: list[tuple[str, str]] = []
+        if after is not None:
+            asked.append(("after", str(after)))
+        if print_id is not None:
+            asked.append(("print_id", str(print_id)))
+        if kinds is not None:
+            for value in kinds:
+                asked.append(("kinds", str(value)))
+        if exclude_kinds is not None:
+            for value in exclude_kinds:
+                asked.append(("exclude_kinds", str(value)))
+        if wait_s is not None:
+            asked.append(("wait_s", str(wait_s)))
+        if limit is not None:
+            asked.append(("limit", str(limit)))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(EventsAnswer, answered)
 
     def manifest_get(self, print_id: PrintId) -> ManifestAnswer:
         """Call `manifest_get` on the configured supervisor.

@@ -112,6 +112,31 @@ test("history sends what it declares and answers what the server sent", async ()
   expect(answered).toEqual(answer);
 });
 
+test("events sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"cursor": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "print_ended": {"event_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "completed", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.events(
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    ["0198f0a1-2b3c-7d4e-8f90-123456789abc"],
+    ["0198f0a1-2b3c-7d4e-8f90-123456789abc"],
+    7,
+    7,
+  );
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe(
+    "/v1/events?after=0198f0a1-2b3c-7d4e-8f90-123456789abc&print_id=0198f0a1-2b3c-7d4e-8f90-123456789abc&kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&exclude_kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&wait_s=7&limit=7",
+  );
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
 test("manifest_get sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
     '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}',

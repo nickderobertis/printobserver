@@ -313,6 +313,7 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
                 .expect("the operator's credential is one"),
         )),
         turns: printobserver_server::TurnCredentials::new(None),
+        stored: printobserver_server::Stored::channel().0,
     };
     let rendered = format!(
         "{state:?} {:?} {:?}",

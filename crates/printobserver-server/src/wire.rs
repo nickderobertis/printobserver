@@ -14,15 +14,15 @@ use printobserver_core::PrintContext;
 use printobserver_core::store::ImageLookup;
 use printobserver_core::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, ImageRecord, Intervention,
-    JobManifest, ManifestNarrowing, PendingCharge, PolicyDecision, Preflight, PrintRecord,
-    SpoolCommand, SpoolId, SpoolRecord, SpoolTrust,
+    JobManifest, ManifestNarrowing, PendingCharge, PolicyDecision, Preflight, PrintOutcome,
+    PrintRecord, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust,
 };
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::serde_json::{Map, Value};
-use printobserver_types::{EventId, EventRecord, FileName, PrintId};
+use printobserver_types::{EventId, EventRecord, FileName, PrintId, Timestamp};
 
 /// Why a request could not be turned into one action of the vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -587,6 +587,38 @@ pub struct PrintsAnswer {
 pub struct HistoryAnswer {
     /// The print's events, newest first.
     pub events: Vec<EventRecord>,
+}
+
+/// What an events read answers: the events stored after its cursor that pass
+/// its filters, oldest first, and where the next read picks up.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct EventsAnswer {
+    /// The events, oldest first in the order they were stored, each exactly as
+    /// a history read serves it.
+    pub events: Vec<EventRecord>,
+    /// The last event this read examined, whether or not it passed the
+    /// filters, given as `after` to read on from it; null when the log held
+    /// nothing to start after. Always sent, as null when it is that.
+    pub cursor: Option<EventId>,
+    /// The watched print's end as stored, whatever the filters said, and null
+    /// while it is open. Absent from a read that names no print.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print_ended: Option<Option<PrintEnded>>,
+}
+
+/// One print's end, as its `print_ended` event stored it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PrintEnded {
+    /// The `print_ended` event.
+    pub event_id: EventId,
+    /// When that event was received.
+    pub received_at: Timestamp,
+    /// How the print ended.
+    pub outcome: PrintOutcome,
 }
 
 /// What a manifest read or write answers.
