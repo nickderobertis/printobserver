@@ -56,6 +56,22 @@ pub(crate) fn is_constraint_violation(error: &rusqlite::Error) -> bool {
     )
 }
 
+/// The constraint a trigger of this schema refused a write for, when one did.
+///
+/// Each trigger raises with the name of the rule it holds, such as
+/// `charges.coherent`, so the refusal names that rule rather than the driver's
+/// word for it.
+pub(crate) fn raised(error: &rusqlite::Error) -> Option<&str> {
+    match error {
+        rusqlite::Error::SqliteFailure(failure, Some(message))
+            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER =>
+        {
+            Some(message.as_str())
+        }
+        _ => None,
+    }
+}
+
 /// One instant, in the one representation this store keeps instants in.
 pub(crate) fn instant_text(instant: Timestamp) -> String {
     instant.as_utc().to_rfc3339_opts(SecondsFormat::Nanos, true)

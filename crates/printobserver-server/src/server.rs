@@ -39,6 +39,7 @@ use tokio::task::JoinHandle;
 
 use crate::api::{ApiState, router};
 use crate::config::{ApiCredential, ConfigError, ConfigField, CredentialVerifier, ServerConfig};
+use crate::events::Stored;
 use crate::ingress::{IngressState, receive};
 use crate::operations::{INGRESS_PATH, OPERATIONS, command_for};
 use crate::reconcile::{ReconcileStores, Reconciliation, overdue, reconcile};
@@ -424,11 +425,13 @@ impl Server {
     /// variants for a host that will not let this server come up.
     pub async fn start(config_path: impl AsRef<Path>) -> Result<Running, StartError> {
         let config = ServerConfig::load(config_path)?;
-        let stores = Stores::of(Arc::new(SqliteStore::open(&config.state_dir).map_err(
-            |error| StartError::Store {
-                detail: error.to_string(),
-            },
-        )?));
+        let store = SqliteStore::open(&config.state_dir).map_err(|error| StartError::Store {
+            detail: error.to_string(),
+        })?;
+        // A row a migration could not carry forward as it was is said once, as
+        // the start that migrated it comes up, beside the store's own record.
+        let migrated: Vec<String> = store.migrated().iter().map(ToString::to_string).collect();
+        let stores = Stores::of(Arc::new(store));
         let printer = Arc::new(OctoPrintPrinter::new(config.octoprint.clone()));
         probe(printer.as_ref()).await?;
         let vision = Arc::new(
@@ -439,7 +442,7 @@ impl Server {
                 .with_api(config.obico_api.clone()),
         );
         let agent = Arc::new(agent_for(&config)?);
-        Self::start_with(
+        let mut running = Self::start_with(
             config,
             Ports {
                 printer,
@@ -448,7 +451,9 @@ impl Server {
                 agent,
             },
         )
-        .await
+        .await?;
+        running.warnings.extend(migrated);
+        Ok(running)
     }
 
     /// Serve over ports a caller composed.
@@ -524,6 +529,11 @@ impl Server {
         );
         let completions = ingress.completions();
         let observing = crate::observation::start(&supervisor);
+        // Every events read waits on this, and every write that stores an
+        // event raises it once committed — whichever of this server's parts
+        // made the write.
+        let (stored, signal) = Stored::channel();
+        ports.stores.events.on_stored(signal);
         let application = router(ApiState {
             supervisor: Arc::clone(&supervisor),
             prints: Arc::clone(&ports.stores.prints),
@@ -532,6 +542,7 @@ impl Server {
             sessions: Arc::clone(&ports.stores.sessions),
             operator: Arc::new(operator),
             turns,
+            stored,
         })
         .merge(
             Router::new()

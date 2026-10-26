@@ -1,73 +1,370 @@
 {
   "$defs": {
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PreflightTool": {
       "additionalProperties": false,
       "description": "What a filament check found for one tool.",
       "properties": {
-        "buffer_g": {
-          "description": "The margin asked for beyond that, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "marks": {
-          "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
-          "items": {
-            "$ref": "#/$defs/UnverifiedMark"
-          },
-          "type": "array"
-        },
-        "remaining_g": {
-          "description": "What the spool holds, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "required_g": {
-          "description": "What the print needs from it, in grams, when the file's analysis says.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "spool_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SpoolId"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The spool loaded on it, when one is."
-        },
-        "spool_name": {
-          "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "result": {
+          "$ref": "#/$defs/PreflightToolResult",
+          "description": "What the check found for it, with the evidence that finding rests on."
         },
         "tool": {
           "description": "The tool, in the printer's own numbering.",
           "format": "int64",
           "type": "integer"
-        },
-        "verdict": {
-          "$ref": "#/$defs/PreflightVerdict",
-          "description": "What the check found for this tool."
         }
       },
       "required": [
         "tool",
-        "verdict"
+        "result"
       ],
       "type": "object"
+    },
+    "PreflightToolResult": {
+      "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+          "properties": {
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PreflightVerdict": {
       "description": "What a filament check found, for one tool or for a whole print.",

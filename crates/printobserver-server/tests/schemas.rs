@@ -151,6 +151,14 @@ fn answer_schemas() -> Vec<(String, Value)> {
             schema_of::<printobserver_server::ErrorAnswer>(),
         ),
         (
+            "EventsAnswer.json".to_owned(),
+            schema_of::<printobserver_server::EventsAnswer>(),
+        ),
+        (
+            "PrintEnded.json".to_owned(),
+            schema_of::<printobserver_server::PrintEnded>(),
+        ),
+        (
             "HistoryAnswer.json".to_owned(),
             schema_of::<printobserver_server::HistoryAnswer>(),
         ),
@@ -352,7 +360,14 @@ fn a_repeated_value_is_described_as_one_at_the_description_version_that_carries_
             }
         }
     }
-    assert_eq!(repeated, vec!["printer_history.kinds".to_owned()]);
+    assert_eq!(
+        repeated,
+        vec![
+            "events.kinds".to_owned(),
+            "events.exclude_kinds".to_owned(),
+            "printer_history.kinds".to_owned(),
+        ]
+    );
 }
 
 /// A mutating operation is described as answering the policy's own rejection.

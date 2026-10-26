@@ -233,6 +233,9 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     Ordered("manifest_set", ""),
     Ordered("manifest_get", ""),
     Ordered("history", ""),
+    # The print's events replayed from its first, at once: a wait here would
+    # only be the walk's own time spent.
+    Ordered("events", ""),
     # A look at once rather than a wait: nothing arrives for a print no turn is
     # running for, so a wait here would only be the walk's own time spent.
     Ordered("look", ""),
@@ -297,6 +300,10 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("*", "duration_s"): "60",
     ("*", "limit"): "20",
     ("look", "wait_s"): "0",
+    ("events", "wait_s"): "0",
+    ("events", "after"): ABSENT,
+    ("events", "kinds"): ABSENT,
+    ("events", "exclude_kinds"): ABSENT,
     ("*", "disposition"): "disposition:continue",
     ("set_feedrate_factor", "factor"): "1.1",
     ("set_flowrate_factor", "factor"): "1.0",

@@ -2,8 +2,8 @@
 
 What may be asked for, what happens when it may not, and what happens to a
 change that was only meant to stand for a while. This document covers where the
-bounds come from, what a rejection carries, how a bounded intervention is
-restored, what expiry does when no prior value was available, what happens
+bounds come from, what a rejection carries, why the spool ledger refused a
+command, how a bounded intervention is restored, what expiry does when no prior value was available, what happens
 to a print the detector paused, who may command the spool ledger, the filament
 check a start is held to, and what marks a spool unverified, and what clears
 each mark.
@@ -85,13 +85,32 @@ carry out:
 - `analysis_unavailable` — a start was refused because OctoPrint had not
   analysed the file when the start's wait elapsed. It carries `file_name` and
   `waited_s`.
-- `spool_refused` — a spool command could not be carried out. It carries
-  `detail`, saying why.
+- `spool_refused` — a spool command could not be carried out. It carries a
+  tagged `cause`, which the next section lists, and a `message` saying what to
+  do instead. Act on the cause; the message is for a person.
 
 The command-line program exits with its rejected status on all of these and prints
 the record,
 so the reason, the value asked for and the range allowed are in front of
 whoever — or whatever — is composing the next request.
+
+## Why the spool ledger refused a command
+
+A spool refusal's cause is tagged by its own `cause` field, and carries what the
+next valid request needs:
+
+- `unknown_spool`, `retired_spool` and `not_loaded`, each with the `spool_id`
+  named — list the spools, register a new one, or load it first.
+- `nothing_to_confirm` and `unknown_tool`, each with the `tool` named.
+- `tare_required`, with the `spool_id`: give `remaining_g` rather than a scale
+  reading.
+- `density_required`, with the `material`, and the `spool_id` when the spool
+  exists: give `density_g_cm3`.
+- `invalid_adjustment_figure`, with the `field` and the `value` it was given.
+- `missing_field`, with the `field`, and `conflicting_fields`, with the
+  `fields` only one of which may be given.
+- `ledger_refused`: the spools changed while the command was carried out; read
+  them again and ask again.
 
 ## How a bounded intervention is restored
 
@@ -229,15 +248,20 @@ with `adjust-spool`, or the start made again with
 `--override-filament-check true`; for `unverified_spool` the spool, the tool and its mark, then weighing it
 and `adjust-spool`, or the override; and for `analysis_unavailable` the file and
 how long the start waited, then starting again once OctoPrint has analysed the
-file, or the override. A spool command the ledger refused is printed beside the
-ledger's own `detail`.
+file, or the override. A spool command the ledger refused is printed beside its
+cause and the ledger's own `message`.
 
 Every check a start makes is written into the printer's history as a
 `preflight_checked`, and the start's `print_started` carries it. `printobserver
 preflight` makes the same check without starting anything, records nothing and
 waits for no analysis — which is how to see a start's figures before asking for
-it. Its verdicts are those above: `passed`, `insufficient`, `unverified_spool`,
-`no_analysis` and `unchecked`, and a start adds `overridden` and `warned`.
+it. Each tool carries one `result`, tagged by its `verdict` — `passed`,
+`insufficient`, `unverified_spool`, `no_analysis` and `unchecked`, and a start
+adds `overridden` and `warned`, which carry the `objection` they let through.
+Each carries exactly its evidence: the `spool` by `id` and `name` and its
+`remaining_g` wherever a spool is loaded, the `need` — `required_g` and
+`buffer_g` — wherever the file's analysis says, and the spool's `marks` where
+they are in doubt; `unchecked` carries nothing.
 
 ## What marks a spool unverified, and what clears each mark
 

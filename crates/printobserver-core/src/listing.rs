@@ -418,7 +418,6 @@ impl Supervisor {
             .prints
             .open_print(None, Some(file_name.to_owned()))
             .await?;
-        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         let opened = self.record_sighting(opened, observed).await?;
         self.record_print_started(opened.id, Some(file_name.to_owned()), None, None)
             .await?;
@@ -430,7 +429,6 @@ impl Supervisor {
     /// far into its file the job had got: `OctoPrint` clears a job's position
     /// when it is cancelled or fails, so every read that finds it running is
     /// where the print is next known to have stopped.
-    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     async fn note_running(
         &self,
         print: &PrintRecord,

@@ -255,6 +255,16 @@ impl RecordingPrinter {
             .file_position_bytes = Some(position_bytes);
     }
 
+    /// Report the job with no position in its file, as a job read taken while
+    /// the printer is busy with a filament change can.
+    pub fn reports_no_position(&self) {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .job
+            .file_position_bytes = None;
+    }
+
     /// Everything it has been asked, in order.
     #[must_use]
     pub fn calls(&self) -> Vec<Call> {

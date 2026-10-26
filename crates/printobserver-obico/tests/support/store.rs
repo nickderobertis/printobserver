@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use printobserver_core::records::PrinterState;
 use printobserver_core::store::{
     AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
-    PrintStore, StoreError,
+    PrintStore, StoreError, StoredQuery, StoredSignal,
 };
 use printobserver_core::{ImageRecord, JobManifest, ManifestNarrowing, PrintRecord};
 use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
@@ -258,6 +258,42 @@ impl EventStore for MemoryStore {
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
         unsupported("audit_page")
     }
+
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move {
+            let limit = usize::try_from(query.resolved_limit()?).unwrap_or(usize::MAX);
+            let held = self.held.lock().expect("the store is not poisoned");
+            let from = query
+                .after
+                .and_then(|cursor| held.events.iter().position(|record| record.id == cursor))
+                .map_or(0, |at| at + 1);
+            Ok(held
+                .events
+                .iter()
+                .skip(from)
+                .filter(|record| {
+                    query
+                        .print_id
+                        .is_none_or(|print_id| record.print_id.is_none_or(|own| own == print_id))
+                })
+                .take(limit)
+                .cloned()
+                .collect())
+        })
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        Box::pin(async move {
+            let held = self.held.lock().expect("the store is not poisoned");
+            Ok(held.events.last().map(|record| record.id))
+        })
+    }
+
+    // Nothing in this suite waits on the log, so nothing is raised.
+    fn on_stored(&self, _signal: StoredSignal) {}
 }
 
 impl ImageStore for MemoryStore {
@@ -436,6 +472,20 @@ impl EventStore for RefusingStore {
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
         refused()
     }
+
+    fn stored_after(
+        &self,
+        _query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        refused()
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        refused()
+    }
+
+    // Nothing is ever stored here, so there is nothing to raise.
+    fn on_stored(&self, _signal: StoredSignal) {}
 }
 
 impl ImageStore for RefusingStore {

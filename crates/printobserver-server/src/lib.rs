@@ -38,6 +38,7 @@
 
 pub mod api;
 pub mod config;
+pub mod events;
 pub mod ingress;
 pub mod observation;
 pub mod operations;
@@ -54,6 +55,7 @@ pub use config::{
     OctoprintSection, REDACTED, SKILL_INSTALL, ServerConfig, SharedSecret, SignInConfig,
     SpoolsSection, SupervisorSection, VERIFIER_PREFIX, plainly_written,
 };
+pub use events::{DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT, MAX_EVENTS_WAIT_S, Stored};
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
     Answer, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
@@ -76,8 +78,8 @@ pub use server::{
 };
 pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
 pub use wire::{
-    ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer,
-    SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, at_a_glance,
-    claimed_actor, reason_of, spool_command_of,
+    ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, EventsAnswer, HistoryAnswer,
+    ImageAnswer, IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PreflightAnswer,
+    PrintEnded, PrintsAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer,
+    TimelineAnswer, at_a_glance, claimed_actor, reason_of, spool_command_of,
 };

@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a charge took from a spool, and the whole calculation behind it.\n\nPresent or absent as one: a debit names its spool exactly when it carries\nthe grams, the figures they were worked out with, and the spool's figure\neither side of them.",
+  "properties": {
+    "density_g_cm3": {
+      "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
+      "format": "double",
+      "type": "number"
+    },
+    "diameter_mm": {
+      "description": "The diameter the grams were worked out with, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "grams": {
+      "description": "What the length weighs, in grams; what is subtracted from the spool.",
+      "format": "double",
+      "type": "number"
+    },
+    "remaining_after_g": {
+      "description": "The spool's figure after it, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "remaining_before_g": {
+      "description": "The spool's figure before the charge, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "spool_id": {
+      "$ref": "#/$defs/SpoolId",
+      "description": "The spool charged."
+    }
+  },
+  "required": [
+    "spool_id",
+    "grams",
+    "diameter_mm",
+    "density_g_cm3",
+    "remaining_before_g",
+    "remaining_after_g"
+  ],
+  "title": "ChargedFilament",
+  "type": "object"
+}

@@ -97,7 +97,10 @@ fn unseen_prints_are_accounted_once_and_seen_ones_never() {
     assert_eq!(charges.len(), 1);
     assert_eq!(charges[0].charge_key, unobserved(0, 6));
     assert_close(charges[0].length_mm, TOTAL_MM);
-    assert_close(charges[0].grams.expect("weighed"), grams(&spool, TOTAL_MM));
+    assert_close(
+        charges[0].charged.as_ref().expect("weighed").grams,
+        grams(&spool, TOTAL_MM),
+    );
     let SpoolTrust::Unverified { marks } = spool_now(&world, spool.id).trust else {
         panic!("the failed print left no mark");
     };

@@ -112,6 +112,9 @@ fn main() -> ExitCode {
         }
         Invocation::Refused { detail } => refusal(&Failure::of(Exit::Usage, detail)),
         Invocation::Call(call) => perform(&call),
+        Invocation::Watch(watch) => {
+            return ExitCode::from(printobserver::watch::run(&watch).status());
+        }
     };
     let mut out = std::io::stdout();
     let _ = out.write_all(outcome.out.as_bytes());

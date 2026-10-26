@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One field of a spool command, as the command names it.",
+  "oneOf": [
+    {
+      "const": "name",
+      "description": "The operator's own label for the spool.",
+      "type": "string"
+    },
+    {
+      "const": "material",
+      "description": "The material, such as `PLA`.",
+      "type": "string"
+    },
+    {
+      "const": "diameter_mm",
+      "description": "The filament's diameter, in millimetres.",
+      "type": "string"
+    },
+    {
+      "const": "density_g_cm3",
+      "description": "The material's density, in grams per cubic centimetre.",
+      "type": "string"
+    },
+    {
+      "const": "initial_g",
+      "description": "The net filament on the spool when full, in grams.",
+      "type": "string"
+    },
+    {
+      "const": "remaining_g",
+      "description": "The filament on the spool now, in grams.",
+      "type": "string"
+    },
+    {
+      "const": "tare_g",
+      "description": "The empty spool's own weight, in grams.",
+      "type": "string"
+    },
+    {
+      "const": "gross_g",
+      "description": "A scale reading of the spool, in grams.",
+      "type": "string"
+    }
+  ],
+  "title": "SpoolField"
+}

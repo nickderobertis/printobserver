@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-132 types. The set is every type any crate declares under
+148 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -1277,13 +1277,18 @@ Declared by `printobserver-server`.
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -1295,12 +1300,288 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -2638,13 +2919,18 @@ Declared by `printobserver-core`.
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -2656,12 +2942,288 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -3338,13 +3900,18 @@ Declared by `printobserver-core`.
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -3356,12 +3923,288 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -4999,86 +5842,6 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
-    "ChargeKey": {
-      "description": "The durable identity of one debit, so that a replay can never debit twice.",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "description": "One segment of a print this system watched, on one tool.",
-          "properties": {
-            "key": {
-              "const": "print",
-              "type": "string"
-            },
-            "print_id": {
-              "$ref": "#/$defs/PrintId",
-              "description": "The print."
-            },
-            "segment": {
-              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "print_id",
-            "tool",
-            "segment"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "One print this system never saw, on one tool.",
-          "properties": {
-            "file_name": {
-              "description": "The file that was printed.",
-              "type": "string"
-            },
-            "generation": {
-              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "key": {
-              "const": "unobserved",
-              "type": "string"
-            },
-            "origin": {
-              "description": "Where the file lives, in the printer's own vocabulary.",
-              "type": "string"
-            },
-            "print_number": {
-              "description": "The print's ordinal in the file's tally \u2014 completed and failed\nprints counted up to and including this one \u2014 within that\ngeneration.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "origin",
-            "file_name",
-            "generation",
-            "print_number",
-            "tool"
-          ],
-          "type": "object"
-        }
-      ]
-    },
     "ChargeMethod": {
       "description": "How the length a charge debits was worked out.",
       "oneOf": [
@@ -5145,8 +5908,8 @@ Declared by `printobserver-core`.
           ]
         },
         "charge_key": {
-          "$ref": "#/$defs/ChargeKey",
-          "description": "The key of the print segment the filament was fed in."
+          "$ref": "#/$defs/PrintSegmentKey",
+          "description": "The print segment the filament was fed in, which names the print and\nthe tool that fed it."
         },
         "length_mm": {
           "description": "How much was fed, in millimetres.",
@@ -5178,21 +5941,10 @@ Declared by `printobserver-core`.
             }
           ],
           "description": "How far into the file the segment ran, when that was read."
-        },
-        "print_id": {
-          "$ref": "#/$defs/PrintId",
-          "description": "The print it was fed in."
-        },
-        "tool": {
-          "description": "The tool that fed it.",
-          "format": "int64",
-          "type": "integer"
         }
       },
       "required": [
         "charge_key",
-        "print_id",
-        "tool",
         "length_mm",
         "method",
         "pended_at"
@@ -5205,6 +5957,33 @@ Declared by `printobserver-core`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "PrintId",
       "type": "string"
+    },
+    "PrintSegmentKey": {
+      "additionalProperties": false,
+      "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+      "properties": {
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "segment": {
+          "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "print_id",
+        "tool",
+        "segment"
+      ],
+      "type": "object"
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -5228,6 +6007,68 @@ Declared by `printobserver-core`.
   "title": "ChargePendedPayload",
   "type": "object",
   "x-event-kind": "charge_pended"
+}
+```
+
+### ChargedFilament
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a charge took from a spool, and the whole calculation behind it.\n\nPresent or absent as one: a debit names its spool exactly when it carries\nthe grams, the figures they were worked out with, and the spool's figure\neither side of them.",
+  "properties": {
+    "density_g_cm3": {
+      "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
+      "format": "double",
+      "type": "number"
+    },
+    "diameter_mm": {
+      "description": "The diameter the grams were worked out with, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "grams": {
+      "description": "What the length weighs, in grams; what is subtracted from the spool.",
+      "format": "double",
+      "type": "number"
+    },
+    "remaining_after_g": {
+      "description": "The spool's figure after it, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "remaining_before_g": {
+      "description": "The spool's figure before the charge, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "spool_id": {
+      "$ref": "#/$defs/SpoolId",
+      "description": "The spool charged."
+    }
+  },
+  "required": [
+    "spool_id",
+    "grams",
+    "diameter_mm",
+    "density_g_cm3",
+    "remaining_before_g",
+    "remaining_after_g"
+  ],
+  "title": "ChargedFilament",
+  "type": "object"
 }
 ```
 
@@ -6355,6 +7196,246 @@ Declared by `printobserver-vision-api`.
 }
 ```
 
+### DoubtedSpool
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedMark": {
+      "additionalProperties": false,
+      "description": "One reason a spool's figure is in doubt, and since when.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/UnverifiedReason",
+          "description": "Why the figure is in doubt."
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the spool was marked for it."
+        }
+      },
+      "required": [
+        "reason",
+        "since"
+      ],
+      "type": "object"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis \u2014 an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A spool whose figure is in doubt.",
+  "properties": {
+    "marks": {
+      "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+      "items": {
+        "$ref": "#/$defs/UnverifiedMark"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "need": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PreflightNeed"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the print needs from it, when the file's analysis says."
+    },
+    "remaining_g": {
+      "description": "What the spool holds, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool."
+    }
+  },
+  "required": [
+    "spool",
+    "remaining_g",
+    "marks"
+  ],
+  "title": "DoubtedSpool",
+  "type": "object"
+}
+```
+
 ### EffectiveBounds
 
 Declared by `printobserver-core`.
@@ -6734,6 +7815,228 @@ Declared by `printobserver-types`.
 }
 ```
 
+### EventsAnswer
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventRecord": {
+      "description": "One event, as the store holds it and the server serves it.\n\n`raw` holds the bytes exactly as received for an externally sourced event\nand is absent for an internally raised one \u2014 it is what makes the history\nauditable when a normalization turns out to be wrong. `print_id` is\noptional, because an externally sourced event may name no print this system\nknows.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "This event's identifier, minted by the store."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The image it arrived with, when it arrived with one."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "Which event this is."
+        },
+        "payload": {
+          "description": "What it carries, in the form its kind declares."
+        },
+        "print_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one."
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RawBytes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bytes exactly as received, for an externally sourced event."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource",
+          "description": "Where it came from."
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "received_at",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "PrintEnded": {
+      "description": "One print's end, as its `print_ended` event stored it.",
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/EventId",
+          "description": "The `print_ended` event."
+        },
+        "outcome": {
+          "$ref": "#/$defs/PrintOutcome",
+          "description": "How the print ended."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When that event was received."
+        }
+      },
+      "required": [
+        "event_id",
+        "received_at",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        }
+      ]
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What an events read answers: the events stored after its cursor that pass\nits filters, oldest first, and where the next read picks up.",
+  "properties": {
+    "cursor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The last event this read examined, whether or not it passed the\nfilters, given as `after` to read on from it; null when the log held\nnothing to start after. Always sent, as null when it is that."
+    },
+    "events": {
+      "description": "The events, oldest first in the order they were stored, each exactly as\na history read serves it.",
+      "items": {
+        "$ref": "#/$defs/EventRecord"
+      },
+      "type": "array"
+    },
+    "print_ended": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintEnded"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The watched print's end as stored, whatever the filters said, and null\nwhile it is open. Absent from a read that names no print.",
+      "x-null-is-sent": true
+    }
+  },
+  "required": [
+    "events",
+    "cursor"
+  ],
+  "title": "EventsAnswer",
+  "type": "object"
+}
+```
+
 ### ExecutionOutcome
 
 Declared by `printobserver-core`.
@@ -6853,6 +8156,40 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PositionFreshness": {
+      "description": "How fresh the position a filament change charged up to is.",
+      "oneOf": [
+        {
+          "const": "read_at_signal",
+          "description": "Read from the job as the signal was handled: where the spool stopped.",
+          "type": "string"
+        },
+        {
+          "const": "last_recorded",
+          "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+          "type": "string"
+        }
+      ]
+    },
+    "SignalPosition": {
+      "additionalProperties": false,
+      "description": "The position a filament change charged up to, and how fresh it is.",
+      "properties": {
+        "freshness": {
+          "$ref": "#/$defs/PositionFreshness",
+          "description": "Whether it was read when the signal was handled, or is the last one\nrecorded before it."
+        },
+        "position": {
+          "$ref": "#/$defs/FilePosition",
+          "description": "The position."
+        }
+      },
+      "required": [
+        "position",
+        "freshness"
+      ],
+      "type": "object"
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
@@ -6874,17 +8211,13 @@ Declared by `printobserver-core`.
     "position": {
       "anyOf": [
         {
-          "$ref": "#/$defs/FilePosition"
+          "$ref": "#/$defs/SignalPosition"
         },
         {
           "type": "null"
         }
       ],
-      "description": "The position the spool was charged up to, when one was known."
-    },
-    "position_read_at_signal": {
-      "description": "Whether that position was read when the signal was handled, rather than\nbeing the last one recorded; never with no position at all.",
-      "type": "boolean"
+      "description": "The position the spool was charged up to, and how fresh it is, when one\nwas known; absent, there is no position and so no claim about one."
     },
     "source_kind": {
       "$ref": "#/$defs/EventKind",
@@ -6911,8 +8244,7 @@ Declared by `printobserver-core`.
     }
   },
   "required": [
-    "source_kind",
-    "position_read_at_signal"
+    "source_kind"
   ],
   "title": "FilamentChangeSignalledPayload",
   "type": "object",
@@ -7032,6 +8364,50 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "ChargedFilament": {
+      "additionalProperties": false,
+      "description": "What a charge took from a spool, and the whole calculation behind it.\n\nPresent or absent as one: a debit names its spool exactly when it carries\nthe grams, the figures they were worked out with, and the spool's figure\neither side of them.",
+      "properties": {
+        "density_g_cm3": {
+          "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
+          "format": "double",
+          "type": "number"
+        },
+        "diameter_mm": {
+          "description": "The diameter the grams were worked out with, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "grams": {
+          "description": "What the length weighs, in grams; what is subtracted from the spool.",
+          "format": "double",
+          "type": "number"
+        },
+        "remaining_after_g": {
+          "description": "The spool's figure after it, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "remaining_before_g": {
+          "description": "The spool's figure before the charge, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool charged."
+        }
+      },
+      "required": [
+        "spool_id",
+        "grams",
+        "diameter_mm",
+        "density_g_cm3",
+        "remaining_before_g",
+        "remaining_after_g"
+      ],
+      "type": "object"
+    },
     "FilePosition": {
       "additionalProperties": false,
       "description": "How far into its file a print had got, and when that was read.",
@@ -7097,29 +8473,16 @@ Declared by `printobserver-core`.
       "$ref": "#/$defs/ChargeKey",
       "description": "The durable identity of this debit."
     },
-    "density_g_cm3": {
-      "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "diameter_mm": {
-      "description": "The diameter the grams were worked out with, in millimetres.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "grams": {
-      "description": "What that length weighs, in grams, when a spool gave its diameter and\ndensity.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
+    "charged": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ChargedFilament"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool charged and the whole calculation of what it was charged;\nabsent when nothing was tracked on the tool, and the filament was\nrecorded uncharged."
     },
     "length_mm": {
       "description": "How much was fed, in millimetres.",
@@ -7148,35 +8511,8 @@ Declared by `printobserver-core`.
       ],
       "description": "How far into the file the charge runs, when that was read."
     },
-    "remaining_after_g": {
-      "description": "The spool's figure after it, in grams.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "remaining_before_g": {
-      "description": "The spool's figure before the charge, in grams.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "spool_id": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/SpoolId"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "The spool charged; absent when nothing was tracked on the tool, and the\nfilament was recorded uncharged."
-    },
     "tool": {
-      "description": "The tool that fed it.",
+      "description": "The tool that fed it, as its key names it.",
       "format": "int64",
       "type": "integer"
     }
@@ -10648,86 +11984,6 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
-    "ChargeKey": {
-      "description": "The durable identity of one debit, so that a replay can never debit twice.",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "description": "One segment of a print this system watched, on one tool.",
-          "properties": {
-            "key": {
-              "const": "print",
-              "type": "string"
-            },
-            "print_id": {
-              "$ref": "#/$defs/PrintId",
-              "description": "The print."
-            },
-            "segment": {
-              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "print_id",
-            "tool",
-            "segment"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "One print this system never saw, on one tool.",
-          "properties": {
-            "file_name": {
-              "description": "The file that was printed.",
-              "type": "string"
-            },
-            "generation": {
-              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "key": {
-              "const": "unobserved",
-              "type": "string"
-            },
-            "origin": {
-              "description": "Where the file lives, in the printer's own vocabulary.",
-              "type": "string"
-            },
-            "print_number": {
-              "description": "The print's ordinal in the file's tally \u2014 completed and failed\nprints counted up to and including this one \u2014 within that\ngeneration.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "origin",
-            "file_name",
-            "generation",
-            "print_number",
-            "tool"
-          ],
-          "type": "object"
-        }
-      ]
-    },
     "ChargeMethod": {
       "description": "How the length a charge debits was worked out.",
       "oneOf": [
@@ -10788,6 +12044,33 @@ Declared by `printobserver-core`.
       "title": "PrintId",
       "type": "string"
     },
+    "PrintSegmentKey": {
+      "additionalProperties": false,
+      "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+      "properties": {
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "segment": {
+          "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "print_id",
+        "tool",
+        "segment"
+      ],
+      "type": "object"
+    },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
       "format": "date-time",
@@ -10808,8 +12091,8 @@ Declared by `printobserver-core`.
       ]
     },
     "charge_key": {
-      "$ref": "#/$defs/ChargeKey",
-      "description": "The key of the print segment the filament was fed in."
+      "$ref": "#/$defs/PrintSegmentKey",
+      "description": "The print segment the filament was fed in, which names the print and\nthe tool that fed it."
     },
     "length_mm": {
       "description": "How much was fed, in millimetres.",
@@ -10841,21 +12124,10 @@ Declared by `printobserver-core`.
         }
       ],
       "description": "How far into the file the segment ran, when that was read."
-    },
-    "print_id": {
-      "$ref": "#/$defs/PrintId",
-      "description": "The print it was fed in."
-    },
-    "tool": {
-      "description": "The tool that fed it.",
-      "format": "int64",
-      "type": "integer"
     }
   },
   "required": [
     "charge_key",
-    "print_id",
-    "tool",
     "length_mm",
     "method",
     "pended_at"
@@ -11822,13 +13094,18 @@ Declared by `printobserver-core`.
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -11840,12 +13117,288 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -12112,6 +13665,30 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PositionFreshness
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How fresh the position a filament change charged up to is.",
+  "oneOf": [
+    {
+      "const": "read_at_signal",
+      "description": "Read from the job as the signal was handled: where the spool stopped.",
+      "type": "string"
+    },
+    {
+      "const": "last_recorded",
+      "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+      "type": "string"
+    }
+  ],
+  "title": "PositionFreshness"
+}
+```
+
 ### Preflight
 
 Declared by `printobserver-core`.
@@ -12119,74 +13696,371 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PreflightTool": {
       "additionalProperties": false,
       "description": "What a filament check found for one tool.",
       "properties": {
-        "buffer_g": {
-          "description": "The margin asked for beyond that, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "marks": {
-          "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
-          "items": {
-            "$ref": "#/$defs/UnverifiedMark"
-          },
-          "type": "array"
-        },
-        "remaining_g": {
-          "description": "What the spool holds, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "required_g": {
-          "description": "What the print needs from it, in grams, when the file's analysis says.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "spool_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SpoolId"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The spool loaded on it, when one is."
-        },
-        "spool_name": {
-          "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "result": {
+          "$ref": "#/$defs/PreflightToolResult",
+          "description": "What the check found for it, with the evidence that finding rests on."
         },
         "tool": {
           "description": "The tool, in the printer's own numbering.",
           "format": "int64",
           "type": "integer"
-        },
-        "verdict": {
-          "$ref": "#/$defs/PreflightVerdict",
-          "description": "What the check found for this tool."
         }
       },
       "required": [
         "tool",
-        "verdict"
+        "result"
       ],
       "type": "object"
+    },
+    "PreflightToolResult": {
+      "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+          "properties": {
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PreflightVerdict": {
       "description": "What a filament check found, for one tool or for a whole print.",
@@ -12452,74 +14326,371 @@ Declared by `printobserver-server`.
       ],
       "type": "object"
     },
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PreflightTool": {
       "additionalProperties": false,
       "description": "What a filament check found for one tool.",
       "properties": {
-        "buffer_g": {
-          "description": "The margin asked for beyond that, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "marks": {
-          "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
-          "items": {
-            "$ref": "#/$defs/UnverifiedMark"
-          },
-          "type": "array"
-        },
-        "remaining_g": {
-          "description": "What the spool holds, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "required_g": {
-          "description": "What the print needs from it, in grams, when the file's analysis says.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "spool_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SpoolId"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The spool loaded on it, when one is."
-        },
-        "spool_name": {
-          "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "result": {
+          "$ref": "#/$defs/PreflightToolResult",
+          "description": "What the check found for it, with the evidence that finding rests on."
         },
         "tool": {
           "description": "The tool, in the printer's own numbering.",
           "format": "int64",
           "type": "integer"
-        },
-        "verdict": {
-          "$ref": "#/$defs/PreflightVerdict",
-          "description": "What the check found for this tool."
         }
       },
       "required": [
         "tool",
-        "verdict"
+        "result"
       ],
       "type": "object"
+    },
+    "PreflightToolResult": {
+      "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+          "properties": {
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PreflightVerdict": {
       "description": "What a filament check found, for one tool or for a whole print.",
@@ -12773,74 +14944,371 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PreflightTool": {
       "additionalProperties": false,
       "description": "What a filament check found for one tool.",
       "properties": {
-        "buffer_g": {
-          "description": "The margin asked for beyond that, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "marks": {
-          "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
-          "items": {
-            "$ref": "#/$defs/UnverifiedMark"
-          },
-          "type": "array"
-        },
-        "remaining_g": {
-          "description": "What the spool holds, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "required_g": {
-          "description": "What the print needs from it, in grams, when the file's analysis says.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "spool_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SpoolId"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The spool loaded on it, when one is."
-        },
-        "spool_name": {
-          "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "result": {
+          "$ref": "#/$defs/PreflightToolResult",
+          "description": "What the check found for it, with the evidence that finding rests on."
         },
         "tool": {
           "description": "The tool, in the printer's own numbering.",
           "format": "int64",
           "type": "integer"
-        },
-        "verdict": {
-          "$ref": "#/$defs/PreflightVerdict",
-          "description": "What the check found for this tool."
         }
       },
       "required": [
         "tool",
-        "verdict"
+        "result"
       ],
       "type": "object"
+    },
+    "PreflightToolResult": {
+      "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+          "properties": {
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PreflightVerdict": {
       "description": "What a filament check found, for one tool or for a whole print.",
@@ -13061,6 +15529,385 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PreflightNeed
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+  "properties": {
+    "buffer_g": {
+      "description": "The margin asked for beyond that.",
+      "format": "double",
+      "type": "number"
+    },
+    "required_g": {
+      "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "required_g",
+    "buffer_g"
+  ],
+  "title": "PreflightNeed",
+  "type": "object"
+}
+```
+
+### PreflightObjection
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedMark": {
+      "additionalProperties": false,
+      "description": "One reason a spool's figure is in doubt, and since when.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/UnverifiedReason",
+          "description": "Why the figure is in doubt."
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the spool was marked for it."
+        }
+      },
+      "required": [
+        "reason",
+        "since"
+      ],
+      "type": "object"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis \u2014 an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a check that refuses a start found for one tool.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The spool holds less than the print needs and its buffer.",
+      "properties": {
+        "marks": {
+          "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+          "items": {
+            "$ref": "#/$defs/UnverifiedMark"
+          },
+          "type": "array"
+        },
+        "need": {
+          "$ref": "#/$defs/PreflightNeed",
+          "description": "What the print needs from it."
+        },
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "insufficient",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g",
+        "need"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The spool's figure is in doubt.",
+      "properties": {
+        "marks": {
+          "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+          "items": {
+            "$ref": "#/$defs/UnverifiedMark"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "need": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreflightNeed"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the print needs from it, when the file's analysis says."
+        },
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "unverified_spool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g",
+        "marks"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The file has no analysis, so what the spool must hold is unknown.",
+      "properties": {
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "no_analysis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PreflightObjection"
+}
+```
+
+### PreflightSpool
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/SpoolId",
+      "description": "The spool's identifier."
+    },
+    "name": {
+      "description": "The spool's name.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "PreflightSpool",
+  "type": "object"
+}
+```
+
 ### PreflightTool
 
 Declared by `printobserver-core`.
@@ -13068,43 +15915,349 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
-    "PreflightVerdict": {
-      "description": "What a filament check found, for one tool or for a whole print.",
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
       "oneOf": [
         {
-          "const": "passed",
-          "description": "The spool holds what the print needs and its buffer.",
-          "type": "string"
-        },
-        {
-          "const": "unchecked",
-          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
-          "type": "string"
-        },
-        {
-          "const": "insufficient",
+          "additionalProperties": false,
           "description": "The spool holds less than the print needs and its buffer.",
-          "type": "string"
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
         },
         {
-          "const": "unverified_spool",
+          "additionalProperties": false,
           "description": "The spool's figure is in doubt.",
-          "type": "string"
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
         },
         {
-          "const": "no_analysis",
-          "description": "`OctoPrint`'s analysis of the file had still not appeared when the\nstart's wait for it elapsed, or has not appeared yet when the check is\nonly read.",
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
           "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PreflightToolResult": {
+      "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+          "properties": {
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
         },
         {
-          "const": "overridden",
-          "description": "The start went ahead despite the check, because the actor said so.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
         },
         {
-          "const": "warned",
-          "description": "The check is set to warn, and let an insufficient, unverified or\nunanalysed start go ahead.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -13262,71 +16415,528 @@ Declared by `printobserver-core`.
   "additionalProperties": false,
   "description": "What a filament check found for one tool.",
   "properties": {
-    "buffer_g": {
-      "description": "The margin asked for beyond that, in grams.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "marks": {
-      "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
-      "items": {
-        "$ref": "#/$defs/UnverifiedMark"
-      },
-      "type": "array"
-    },
-    "remaining_g": {
-      "description": "What the spool holds, in grams.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "required_g": {
-      "description": "What the print needs from it, in grams, when the file's analysis says.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "spool_id": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/SpoolId"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "The spool loaded on it, when one is."
-    },
-    "spool_name": {
-      "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
-      "type": [
-        "string",
-        "null"
-      ]
+    "result": {
+      "$ref": "#/$defs/PreflightToolResult",
+      "description": "What the check found for it, with the evidence that finding rests on."
     },
     "tool": {
       "description": "The tool, in the printer's own numbering.",
       "format": "int64",
       "type": "integer"
-    },
-    "verdict": {
-      "$ref": "#/$defs/PreflightVerdict",
-      "description": "What the check found for this tool."
     }
   },
   "required": [
     "tool",
-    "verdict"
+    "result"
   ],
   "title": "PreflightTool",
   "type": "object"
+}
+```
+
+### PreflightToolResult
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedMark": {
+      "additionalProperties": false,
+      "description": "One reason a spool's figure is in doubt, and since when.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/UnverifiedReason",
+          "description": "Why the figure is in doubt."
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the spool was marked for it."
+        }
+      },
+      "required": [
+        "reason",
+        "since"
+      ],
+      "type": "object"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis \u2014 an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+      "properties": {
+        "need": {
+          "$ref": "#/$defs/PreflightNeed",
+          "description": "What the print needs from it."
+        },
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "passed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g",
+        "need"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+      "properties": {
+        "verdict": {
+          "const": "unchecked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The spool holds less than the print needs and its buffer.",
+      "properties": {
+        "marks": {
+          "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+          "items": {
+            "$ref": "#/$defs/UnverifiedMark"
+          },
+          "type": "array"
+        },
+        "need": {
+          "$ref": "#/$defs/PreflightNeed",
+          "description": "What the print needs from it."
+        },
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "insufficient",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g",
+        "need"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The spool's figure is in doubt.",
+      "properties": {
+        "marks": {
+          "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+          "items": {
+            "$ref": "#/$defs/UnverifiedMark"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "need": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreflightNeed"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the print needs from it, when the file's analysis says."
+        },
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "unverified_spool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g",
+        "marks"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+      "properties": {
+        "remaining_g": {
+          "description": "What the spool holds, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool."
+        },
+        "verdict": {
+          "const": "no_analysis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "spool",
+        "remaining_g"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The start went ahead despite this objection, because an operator said\nso.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/PreflightObjection",
+          "description": "What the check objected to."
+        },
+        "verdict": {
+          "const": "overridden",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/PreflightObjection",
+          "description": "What the check objected to."
+        },
+        "verdict": {
+          "const": "warned",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PreflightToolResult"
 }
 ```
 
@@ -14761,6 +18371,73 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PrintEnded
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One print's end, as its `print_ended` event stored it.",
+  "properties": {
+    "event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The `print_ended` event."
+    },
+    "outcome": {
+      "$ref": "#/$defs/PrintOutcome",
+      "description": "How the print ended."
+    },
+    "received_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When that event was received."
+    }
+  },
+  "required": [
+    "event_id",
+    "received_at",
+    "outcome"
+  ],
+  "title": "PrintEnded",
+  "type": "object"
+}
+```
+
 ### PrintEndedPayload
 
 Declared by `printobserver-core`.
@@ -15161,6 +18838,51 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PrintSegmentKey
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+  "properties": {
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print."
+    },
+    "segment": {
+      "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "print_id",
+    "tool",
+    "segment"
+  ],
+  "title": "PrintSegmentKey",
+  "type": "object"
+}
+```
+
 ### PrintStartedPayload
 
 Declared by `printobserver-core`.
@@ -15227,74 +18949,371 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightObjection": {
+      "description": "What a check that refuses a start found for one tool.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file has no analysis, so what the spool must hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PreflightTool": {
       "additionalProperties": false,
       "description": "What a filament check found for one tool.",
       "properties": {
-        "buffer_g": {
-          "description": "The margin asked for beyond that, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "marks": {
-          "description": "The loaded spool's marks at the check, oldest first, whatever the\nverdict, so a spool both short and unverified says both.",
-          "items": {
-            "$ref": "#/$defs/UnverifiedMark"
-          },
-          "type": "array"
-        },
-        "remaining_g": {
-          "description": "What the spool holds, in grams.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "required_g": {
-          "description": "What the print needs from it, in grams, when the file's analysis says.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "spool_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SpoolId"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The spool loaded on it, when one is."
-        },
-        "spool_name": {
-          "description": "That spool's name, beside its identifier, so a reader need not look it\nup.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "result": {
+          "$ref": "#/$defs/PreflightToolResult",
+          "description": "What the check found for it, with the evidence that finding rests on."
         },
         "tool": {
           "description": "The tool, in the printer's own numbering.",
           "format": "int64",
           "type": "integer"
-        },
-        "verdict": {
-          "$ref": "#/$defs/PreflightVerdict",
-          "description": "What the check found for this tool."
         }
       },
       "required": [
         "tool",
-        "verdict"
+        "result"
       ],
       "type": "object"
+    },
+    "PreflightToolResult": {
+      "description": "What a filament check found for one tool, tagged by its verdict, each\nverdict carrying exactly the evidence it rests on.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The spool holds what the print needs and its buffer, and its figure is\nnot in doubt.",
+          "properties": {
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on the tool, so nothing was checked.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool holds less than the print needs and its buffer.",
+          "properties": {
+            "marks": {
+              "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "type": "array"
+            },
+            "need": {
+              "$ref": "#/$defs/PreflightNeed",
+              "description": "What the print needs from it."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "insufficient",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "need"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool's figure is in doubt.",
+          "properties": {
+            "marks": {
+              "description": "Every reason the spool's figure is in doubt, oldest first; never empty.",
+              "items": {
+                "$ref": "#/$defs/UnverifiedMark"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "need": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PreflightNeed"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What the print needs from it, when the file's analysis says."
+            },
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "unverified_spool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g",
+            "marks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`OctoPrint`'s analysis of the file had not appeared, so what the spool\nmust hold is unknown.",
+          "properties": {
+            "remaining_g": {
+              "description": "What the spool holds, in grams.",
+              "format": "double",
+              "type": "number"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool."
+            },
+            "verdict": {
+              "const": "no_analysis",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "spool",
+            "remaining_g"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/PreflightObjection",
+              "description": "What the check objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PreflightVerdict": {
       "description": "What a filament check found, for one tool or for a whole print.",
@@ -16382,12 +20401,288 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -16791,13 +21086,18 @@ Declared by `printobserver-core`.
         "spool_refused": {
           "additionalProperties": false,
           "properties": {
-            "detail": {
-              "description": "Why, in a sentence naming what to do instead.",
+            "cause": {
+              "$ref": "#/$defs/SpoolRefusalCause",
+              "description": "Why, in a form a client acts on without reading `message`."
+            },
+            "message": {
+              "description": "Why, in a sentence naming what to do instead, for a person.",
               "type": "string"
             }
           },
           "required": [
-            "detail"
+            "cause",
+            "message"
           ],
           "type": "object"
         }
@@ -17008,6 +21308,317 @@ Declared by `printobserver-supervisor-api`.
     }
   ],
   "title": "SessionPhase"
+}
+```
+
+### ShortSpool
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightNeed": {
+      "additionalProperties": false,
+      "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
+      "properties": {
+        "buffer_g": {
+          "description": "The margin asked for beyond that.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What the print needs from the spool, by the file's analysis and the\nspool's own diameter and density.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "required_g",
+        "buffer_g"
+      ],
+      "type": "object"
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "UnverifiedMark": {
+      "additionalProperties": false,
+      "description": "One reason a spool's figure is in doubt, and since when.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/UnverifiedReason",
+          "description": "Why the figure is in doubt."
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the spool was marked for it."
+        }
+      },
+      "required": [
+        "reason",
+        "since"
+      ],
+      "type": "object"
+    },
+    "UnverifiedReason": {
+      "description": "Why a spool's figure is in doubt.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A print ran on the spool's tool and nothing could be charged, because\nthe file had no analysis \u2014 an SD-card file, for one.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print nothing could be charged for."
+            },
+            "reason": {
+              "const": "uncharged_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print this system never saw ran and did not complete.",
+          "properties": {
+            "file_name": {
+              "description": "The file that was printed.",
+              "type": "string"
+            },
+            "printed_at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was printed."
+            },
+            "reason": {
+              "const": "unaccounted_print",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "printed_at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled and nobody has said which spool is now\nloaded. The spool was charged up to a position read when the signal was\nhandled.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A filament change was signalled, nobody has said which spool is now\nloaded, and no fresh position could be read at the signal: the spool was\ncharged only up to the last recorded position, so its figure may be\noverstated.",
+          "properties": {
+            "print_id": {
+              "$ref": "#/$defs/PrintId",
+              "description": "The print the change was signalled during."
+            },
+            "reason": {
+              "const": "filament_change_unconfirmed_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "print_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A file's print tally was reset, and it cannot be told which of the\nprints since the re-upload were already settled.",
+          "properties": {
+            "file_name": {
+              "description": "The file whose tally was reset.",
+              "type": "string"
+            },
+            "origin": {
+              "description": "Where the file lives, in the printer's own vocabulary.",
+              "type": "string"
+            },
+            "reason": {
+              "const": "tally_reset",
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason",
+            "file_name",
+            "origin"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A spool that holds less than the print needs and its buffer.",
+  "properties": {
+    "marks": {
+      "description": "The spool's marks at the check, oldest first, so a spool both short\nand unverified says both.",
+      "items": {
+        "$ref": "#/$defs/UnverifiedMark"
+      },
+      "type": "array"
+    },
+    "need": {
+      "$ref": "#/$defs/PreflightNeed",
+      "description": "What the print needs from it."
+    },
+    "remaining_g": {
+      "description": "What the spool holds, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool."
+    }
+  },
+  "required": [
+    "spool",
+    "remaining_g",
+    "need"
+  ],
+  "title": "ShortSpool",
+  "type": "object"
+}
+```
+
+### SignalPosition
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PositionFreshness": {
+      "description": "How fresh the position a filament change charged up to is.",
+      "oneOf": [
+        {
+          "const": "read_at_signal",
+          "description": "Read from the job as the signal was handled: where the spool stopped.",
+          "type": "string"
+        },
+        {
+          "const": "last_recorded",
+          "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The position a filament change charged up to, and how fresh it is.",
+  "properties": {
+    "freshness": {
+      "$ref": "#/$defs/PositionFreshness",
+      "description": "Whether it was read when the signal was handled, or is the last one\nrecorded before it."
+    },
+    "position": {
+      "$ref": "#/$defs/FilePosition",
+      "description": "The position."
+    }
+  },
+  "required": [
+    "position",
+    "freshness"
+  ],
+  "title": "SignalPosition",
+  "type": "object"
 }
 ```
 
@@ -17503,6 +22114,64 @@ Declared by `printobserver-server`.
       "title": "SpoolId",
       "type": "string"
     },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "SpoolRecord": {
       "additionalProperties": false,
       "description": "One spool the operator registered, and what is known of it now.",
@@ -17533,13 +22202,9 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
-        "loaded_on_tool": {
-          "description": "The tool the spool is loaded on, when it is loaded.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "lifecycle": {
+          "$ref": "#/$defs/SpoolLifecycle",
+          "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired \u2014 and never both of the last two."
         },
         "material": {
           "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -17557,17 +22222,6 @@ Declared by `printobserver-server`.
           "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
           "format": "double",
           "type": "number"
-        },
-        "retired_at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "When the spool was retired, if it has been."
         },
         "tare_g": {
           "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -17594,6 +22248,7 @@ Declared by `printobserver-server`.
         "density_g_cm3",
         "initial_g",
         "remaining_g",
+        "lifecycle",
         "trust",
         "registered_at",
         "updated_at"
@@ -18692,13 +23347,18 @@ Declared by `printobserver-server`.
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -18710,12 +23370,115 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolRecord": {
       "additionalProperties": false,
@@ -18747,13 +23510,9 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
-        "loaded_on_tool": {
-          "description": "The tool the spool is loaded on, when it is loaded.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "lifecycle": {
+          "$ref": "#/$defs/SpoolLifecycle",
+          "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired \u2014 and never both of the last two."
         },
         "material": {
           "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -18771,17 +23530,6 @@ Declared by `printobserver-server`.
           "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
           "format": "double",
           "type": "number"
-        },
-        "retired_at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "When the spool was retired, if it has been."
         },
         "tare_g": {
           "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -18808,11 +23556,243 @@ Declared by `printobserver-server`.
         "density_g_cm3",
         "initial_g",
         "remaining_g",
+        "lifecycle",
         "trust",
         "registered_at",
         "updated_at"
       ],
       "type": "object"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolTrust": {
       "description": "How far a spool's remaining figure can be trusted.",
@@ -19562,13 +24542,18 @@ Declared by `printobserver-core`.
             "spool_refused": {
               "additionalProperties": false,
               "properties": {
-                "detail": {
-                  "description": "Why, in a sentence naming what to do instead.",
+                "cause": {
+                  "$ref": "#/$defs/SpoolRefusalCause",
+                  "description": "Why, in a form a client acts on without reading `message`."
+                },
+                "message": {
+                  "description": "Why, in a sentence naming what to do instead, for a person.",
                   "type": "string"
                 }
               },
               "required": [
-                "detail"
+                "cause",
+                "message"
               ],
               "type": "object"
             }
@@ -19802,12 +24787,288 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolRefusalCause": {
+      "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "No spool was ever registered under this identifier.",
+          "properties": {
+            "cause": {
+              "const": "unknown_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The identifier the command named."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is retired, and takes no further command.",
+          "properties": {
+            "cause": {
+              "const": "retired_spool",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The retired spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+          "properties": {
+            "cause": {
+              "const": "nothing_to_confirm",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool the spool is already on.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+          "properties": {
+            "cause": {
+              "const": "invalid_adjustment_figure",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field the figure was given for."
+            },
+            "value": {
+              "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cause",
+            "field",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+          "properties": {
+            "cause": {
+              "const": "tare_required",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool with no tare."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The material has no known density, so the command needs one.",
+          "properties": {
+            "cause": {
+              "const": "density_required",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material, as given and trimmed.",
+              "type": "string"
+            },
+            "spool_id": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SpoolId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The spool, when the command was about one that exists; absent for\na registration."
+            }
+          },
+          "required": [
+            "cause",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A field the command needs was empty or absent.",
+          "properties": {
+            "cause": {
+              "const": "missing_field",
+              "type": "string"
+            },
+            "field": {
+              "$ref": "#/$defs/SpoolField",
+              "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+            }
+          },
+          "required": [
+            "cause",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command gave fields only one of which it may carry.",
+          "properties": {
+            "cause": {
+              "const": "conflicting_fields",
+              "type": "string"
+            },
+            "fields": {
+              "description": "Every field given that conflicts, in the command's own order.",
+              "items": {
+                "$ref": "#/$defs/SpoolField"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "cause",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The command named a tool the printer cannot have.",
+          "properties": {
+            "cause": {
+              "const": "unknown_tool",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool named.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The spool is loaded on no tool, so there is nothing to unload.",
+          "properties": {
+            "cause": {
+              "const": "not_loaded",
+              "type": "string"
+            },
+            "spool_id": {
+              "$ref": "#/$defs/SpoolId",
+              "description": "The spool."
+            }
+          },
+          "required": [
+            "cause",
+            "spool_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+          "properties": {
+            "cause": {
+              "const": "ledger_refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -19949,6 +25210,60 @@ Declared by `printobserver-core`.
 }
 ```
 
+### SpoolField
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One field of a spool command, as the command names it.",
+  "oneOf": [
+    {
+      "const": "name",
+      "description": "The operator's own label for the spool.",
+      "type": "string"
+    },
+    {
+      "const": "material",
+      "description": "The material, such as `PLA`.",
+      "type": "string"
+    },
+    {
+      "const": "diameter_mm",
+      "description": "The filament's diameter, in millimetres.",
+      "type": "string"
+    },
+    {
+      "const": "density_g_cm3",
+      "description": "The material's density, in grams per cubic centimetre.",
+      "type": "string"
+    },
+    {
+      "const": "initial_g",
+      "description": "The net filament on the spool when full, in grams.",
+      "type": "string"
+    },
+    {
+      "const": "remaining_g",
+      "description": "The filament on the spool now, in grams.",
+      "type": "string"
+    },
+    {
+      "const": "tare_g",
+      "description": "The empty spool's own weight, in grams.",
+      "type": "string"
+    },
+    {
+      "const": "gross_g",
+      "description": "A scale reading of the spool, in grams.",
+      "type": "string"
+    }
+  ],
+  "title": "SpoolField"
+}
+```
+
 ### SpoolId
 
 Declared by `printobserver-core`.
@@ -19961,6 +25276,81 @@ Declared by `printobserver-core`.
   "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
   "title": "SpoolId",
   "type": "string"
+}
+```
+
+### SpoolLifecycle
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Registered, and loaded on no tool.",
+      "properties": {
+        "state": {
+          "const": "shelved",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Loaded on one tool.",
+      "properties": {
+        "state": {
+          "const": "loaded",
+          "type": "string"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "state",
+        "tool"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Retired: it takes no further command, and is on no tool.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was retired."
+        },
+        "state": {
+          "const": "retired",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "at"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SpoolLifecycle"
 }
 ```
 
@@ -20338,6 +25728,64 @@ Declared by `printobserver-core`.
       "title": "SpoolId",
       "type": "string"
     },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "SpoolTrust": {
       "description": "How far a spool's remaining figure can be trusted.",
       "oneOf": [
@@ -20546,13 +25994,9 @@ Declared by `printobserver-core`.
       "format": "double",
       "type": "number"
     },
-    "loaded_on_tool": {
-      "description": "The tool the spool is loaded on, when it is loaded.",
-      "format": "int64",
-      "type": [
-        "integer",
-        "null"
-      ]
+    "lifecycle": {
+      "$ref": "#/$defs/SpoolLifecycle",
+      "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired \u2014 and never both of the last two."
     },
     "material": {
       "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -20570,17 +26014,6 @@ Declared by `printobserver-core`.
       "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
       "format": "double",
       "type": "number"
-    },
-    "retired_at": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Timestamp"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "When the spool was retired, if it has been."
     },
     "tare_g": {
       "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -20607,12 +26040,307 @@ Declared by `printobserver-core`.
     "density_g_cm3",
     "initial_g",
     "remaining_g",
+    "lifecycle",
     "trust",
     "registered_at",
     "updated_at"
   ],
   "title": "SpoolRecord",
   "type": "object"
+}
+```
+
+### SpoolRefusalCause
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "SpoolField": {
+      "description": "One field of a spool command, as the command names it.",
+      "oneOf": [
+        {
+          "const": "name",
+          "description": "The operator's own label for the spool.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The material, such as `PLA`.",
+          "type": "string"
+        },
+        {
+          "const": "diameter_mm",
+          "description": "The filament's diameter, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "density_g_cm3",
+          "description": "The material's density, in grams per cubic centimetre.",
+          "type": "string"
+        },
+        {
+          "const": "initial_g",
+          "description": "The net filament on the spool when full, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "remaining_g",
+          "description": "The filament on the spool now, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "tare_g",
+          "description": "The empty spool's own weight, in grams.",
+          "type": "string"
+        },
+        {
+          "const": "gross_g",
+          "description": "A scale reading of the spool, in grams.",
+          "type": "string"
+        }
+      ]
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why the spool ledger refused a command, each cause carrying what a client\nneeds to choose the next valid request.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "No spool was ever registered under this identifier.",
+      "properties": {
+        "cause": {
+          "const": "unknown_spool",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The identifier the command named."
+        }
+      },
+      "required": [
+        "cause",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The spool is retired, and takes no further command.",
+      "properties": {
+        "cause": {
+          "const": "retired_spool",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The retired spool."
+        }
+      },
+      "required": [
+        "cause",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The spool named is already on the tool, and nothing is pending there or\nmarked on it for a load to confirm.",
+      "properties": {
+        "cause": {
+          "const": "nothing_to_confirm",
+          "type": "string"
+        },
+        "tool": {
+          "description": "The tool the spool is already on.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cause",
+        "tool"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A figure the command gave is not one the field can hold: not a number,\nor out of the field's range.",
+      "properties": {
+        "cause": {
+          "const": "invalid_adjustment_figure",
+          "type": "string"
+        },
+        "field": {
+          "$ref": "#/$defs/SpoolField",
+          "description": "The field the figure was given for."
+        },
+        "value": {
+          "description": "The figure given; always a number, because a figure JSON cannot\ncarry is refused as it would be written rather than written as\n`null`.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cause",
+        "field",
+        "value"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A scale reading was given for a spool with no tare, so it cannot be\nturned into a figure.",
+      "properties": {
+        "cause": {
+          "const": "tare_required",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool with no tare."
+        }
+      },
+      "required": [
+        "cause",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The material has no known density, so the command needs one.",
+      "properties": {
+        "cause": {
+          "const": "density_required",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material, as given and trimmed.",
+          "type": "string"
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool, when the command was about one that exists; absent for\na registration."
+        }
+      },
+      "required": [
+        "cause",
+        "material"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A field the command needs was empty or absent.",
+      "properties": {
+        "cause": {
+          "const": "missing_field",
+          "type": "string"
+        },
+        "field": {
+          "$ref": "#/$defs/SpoolField",
+          "description": "The field; for a correction naming neither figure, `remaining_g`,\nwhich `gross_g` may stand in for."
+        }
+      },
+      "required": [
+        "cause",
+        "field"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The command gave fields only one of which it may carry.",
+      "properties": {
+        "cause": {
+          "const": "conflicting_fields",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Every field given that conflicts, in the command's own order.",
+          "items": {
+            "$ref": "#/$defs/SpoolField"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "cause",
+        "fields"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The command named a tool the printer cannot have.",
+      "properties": {
+        "cause": {
+          "const": "unknown_tool",
+          "type": "string"
+        },
+        "tool": {
+          "description": "The tool named.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cause",
+        "tool"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The spool is loaded on no tool, so there is nothing to unload.",
+      "properties": {
+        "cause": {
+          "const": "not_loaded",
+          "type": "string"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool."
+        }
+      },
+      "required": [
+        "cause",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The ledger refused the write the command made, because the spools\nchanged under it; reading them again shows how.",
+      "properties": {
+        "cause": {
+          "const": "ledger_refused",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SpoolRefusalCause"
 }
 ```
 
@@ -20675,6 +26403,64 @@ Declared by `printobserver-core`.
       "title": "SpoolId",
       "type": "string"
     },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "SpoolRecord": {
       "additionalProperties": false,
       "description": "One spool the operator registered, and what is known of it now.",
@@ -20705,13 +26491,9 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
-        "loaded_on_tool": {
-          "description": "The tool the spool is loaded on, when it is loaded.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "lifecycle": {
+          "$ref": "#/$defs/SpoolLifecycle",
+          "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired \u2014 and never both of the last two."
         },
         "material": {
           "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -20729,17 +26511,6 @@ Declared by `printobserver-core`.
           "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
           "format": "double",
           "type": "number"
-        },
-        "retired_at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "When the spool was retired, if it has been."
         },
         "tare_g": {
           "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -20766,6 +26537,7 @@ Declared by `printobserver-core`.
         "density_g_cm3",
         "initial_g",
         "remaining_g",
+        "lifecycle",
         "trust",
         "registered_at",
         "updated_at"
@@ -21515,86 +27287,6 @@ Declared by `printobserver-server`.
 ```json
 {
   "$defs": {
-    "ChargeKey": {
-      "description": "The durable identity of one debit, so that a replay can never debit twice.",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "description": "One segment of a print this system watched, on one tool.",
-          "properties": {
-            "key": {
-              "const": "print",
-              "type": "string"
-            },
-            "print_id": {
-              "$ref": "#/$defs/PrintId",
-              "description": "The print."
-            },
-            "segment": {
-              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "print_id",
-            "tool",
-            "segment"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "One print this system never saw, on one tool.",
-          "properties": {
-            "file_name": {
-              "description": "The file that was printed.",
-              "type": "string"
-            },
-            "generation": {
-              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "key": {
-              "const": "unobserved",
-              "type": "string"
-            },
-            "origin": {
-              "description": "Where the file lives, in the printer's own vocabulary.",
-              "type": "string"
-            },
-            "print_number": {
-              "description": "The print's ordinal in the file's tally \u2014 completed and failed\nprints counted up to and including this one \u2014 within that\ngeneration.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "origin",
-            "file_name",
-            "generation",
-            "print_number",
-            "tool"
-          ],
-          "type": "object"
-        }
-      ]
-    },
     "ChargeMethod": {
       "description": "How the length a charge debits was worked out.",
       "oneOf": [
@@ -21661,8 +27353,8 @@ Declared by `printobserver-server`.
           ]
         },
         "charge_key": {
-          "$ref": "#/$defs/ChargeKey",
-          "description": "The key of the print segment the filament was fed in."
+          "$ref": "#/$defs/PrintSegmentKey",
+          "description": "The print segment the filament was fed in, which names the print and\nthe tool that fed it."
         },
         "length_mm": {
           "description": "How much was fed, in millimetres.",
@@ -21694,21 +27386,10 @@ Declared by `printobserver-server`.
             }
           ],
           "description": "How far into the file the segment ran, when that was read."
-        },
-        "print_id": {
-          "$ref": "#/$defs/PrintId",
-          "description": "The print it was fed in."
-        },
-        "tool": {
-          "description": "The tool that fed it.",
-          "format": "int64",
-          "type": "integer"
         }
       },
       "required": [
         "charge_key",
-        "print_id",
-        "tool",
         "length_mm",
         "method",
         "pended_at"
@@ -21722,12 +27403,97 @@ Declared by `printobserver-server`.
       "title": "PrintId",
       "type": "string"
     },
+    "PrintSegmentKey": {
+      "additionalProperties": false,
+      "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+      "properties": {
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "segment": {
+          "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "print_id",
+        "tool",
+        "segment"
+      ],
+      "type": "object"
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolRecord": {
       "additionalProperties": false,
@@ -21759,13 +27525,9 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
-        "loaded_on_tool": {
-          "description": "The tool the spool is loaded on, when it is loaded.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "lifecycle": {
+          "$ref": "#/$defs/SpoolLifecycle",
+          "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired \u2014 and never both of the last two."
         },
         "material": {
           "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -21783,17 +27545,6 @@ Declared by `printobserver-server`.
           "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
           "format": "double",
           "type": "number"
-        },
-        "retired_at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "When the spool was retired, if it has been."
         },
         "tare_g": {
           "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -21820,6 +27571,7 @@ Declared by `printobserver-server`.
         "density_g_cm3",
         "initial_g",
         "remaining_g",
+        "lifecycle",
         "trust",
         "registered_at",
         "updated_at"
@@ -24182,6 +29934,63 @@ Declared by `printobserver-core`.
 }
 ```
 
+### UnanalysedSpool
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A spool on a tool of a file with no analysis, so what it needs is unknown.",
+  "properties": {
+    "remaining_g": {
+      "description": "What the spool holds, in grams.",
+      "format": "double",
+      "type": "number"
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool."
+    }
+  },
+  "required": [
+    "spool",
+    "remaining_g"
+  ],
+  "title": "UnanalysedSpool",
+  "type": "object"
+}
+```
+
 ### UnverifiedMark
 
 Declared by `printobserver-core`.
@@ -24609,6 +30418,89 @@ Declared by `printobserver-server`.
         {
           "answer": "success",
           "type": "HistoryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "events",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "after",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "print_id",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "kinds",
+          "repeated": true,
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "exclude_kinds",
+          "repeated": true,
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "wait_s",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "limit",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/events",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "EventsAnswer"
         }
       ]
     },

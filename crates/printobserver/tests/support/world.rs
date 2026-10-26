@@ -237,6 +237,28 @@ impl World {
             skill,
             harness,
             edit,
+            None,
+        )
+    }
+
+    /// The same, with the supervisor started over a copy of `database` — a
+    /// store an earlier release wrote — rather than over a store of its own,
+    /// so the first thing to open it is the supervisor under test.
+    ///
+    /// # Panics
+    ///
+    /// The same as [`World::open`], and when the database cannot be copied.
+    pub fn upgraded_from(world: &str, database: &Path) -> Self {
+        Self::over(
+            match world {
+                STOOD_IN => Printer::StoodIn(Machine::start()),
+                SCRIPTED => crate::scripted::scripted(),
+                other => panic!("there is no `{other}` world to open"),
+            },
+            &committed_skill(),
+            None,
+            |_| {},
+            Some(database),
         )
     }
 
@@ -246,11 +268,25 @@ impl World {
         skill: &Path,
         harness: Option<&Path>,
         edit: impl FnOnce(&mut Value),
+        database: Option<&Path>,
     ) -> Self {
         let root = TempDir::new().expect("this tier's own root");
         let state = root.path().join("state");
         std::fs::create_dir_all(&state).expect("a state directory");
-        let (print_id, image_id, event_id) = seed(&state, &printable_file(&printer));
+        let file = printable_file(&printer);
+        // A store an earlier release wrote is opened first by the supervisor,
+        // so the world's own records are put in it only once that has.
+        let seeded_first = match database {
+            Some(database) => {
+                std::fs::copy(
+                    database,
+                    state.join(printobserver_store_sqlite::DATABASE_FILE_NAME),
+                )
+                .expect("the earlier release's store copies");
+                None
+            }
+            None => Some(seed(&state, &file)),
+        };
         let camera = Host::answering(Answer::image(FRAME_BYTES));
 
         let configuration = root.path().join("server.toml");
@@ -280,6 +316,7 @@ impl World {
             .expect("the command that runs the supervisor runs");
         let (address, said) =
             announced::serving(&mut server, "the command that runs the supervisor");
+        let (print_id, image_id, event_id) = seeded_first.unwrap_or_else(|| seed(&state, &file));
         let proxy = Proxy::in_front_of(address);
 
         let world = Self {
@@ -527,7 +564,7 @@ impl World {
         let spool = self.spool_id();
         let read = self.ledger(&["spool", "--spool-id", &spool]);
         let on_tool = read
-            .pointer("/spool/loaded_on_tool")
+            .pointer("/spool/lifecycle/tool")
             .and_then(Value::as_i64);
         match (command == "unload-spool", on_tool) {
             (true, None) => {

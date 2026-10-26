@@ -15,7 +15,8 @@ use printobserver_core::store::{
     SpoolMutation, SpoolWrite, StoreError,
 };
 use printobserver_core::{
-    Actor, ChargeKey, PendingCharge, PrintOutcome, SpoolId, SpoolRecord, SpoolTrust, UnverifiedMark,
+    Actor, ChargeKey, PendingCharge, PrintOutcome, SpoolId, SpoolLifecycle, SpoolRecord,
+    SpoolTrust, UnverifiedMark,
 };
 use printobserver_types::serde_json::Value;
 use printobserver_types::{EventBody, EventRecord, EventSource, PrintId, Timestamp};
@@ -127,11 +128,14 @@ pub(crate) fn register(
         initial_g: spool.initial_g,
         remaining_g: spool.remaining_g,
         tare_g: spool.tare_g,
-        loaded_on_tool: spool.loaded_on_tool,
+        lifecycle: spool
+            .loaded_on_tool
+            .map_or(SpoolLifecycle::Shelved, |tool| SpoolLifecycle::Loaded {
+                tool,
+            }),
         trust: spool.trust,
         registered_at: spool.registered_at,
         updated_at: spool.registered_at,
-        retired_at: None,
     };
     ledger.insert_spool(&record)?;
     let body = body_of(&SpoolRegisteredPayload {
@@ -149,8 +153,8 @@ pub(crate) fn register(
     Ok((record, event))
 }
 
-/// The spool one change leaves, and whether the change writes its event; or
-/// nothing at all, for a change that changes nothing.
+/// The spool one change leaves, and the event the change writes when it
+/// writes one; or nothing at all, for a change that changes nothing.
 ///
 /// # Errors
 ///
@@ -158,42 +162,53 @@ pub(crate) fn register(
 /// `spools.retired_at`.
 pub(crate) fn changed(
     spool: &SpoolRecord,
-    change: &SpoolChange,
+    change: SpoolChange,
     at: Timestamp,
-) -> Result<Option<(SpoolRecord, bool)>, StoreError> {
+) -> Result<Option<(SpoolRecord, Option<EventDraft>)>, StoreError> {
     let marking = matches!(change, SpoolChange::MarkUnverified { .. });
-    if spool.retired_at.is_some() && !marking {
+    if spool.is_retired() && !marking {
         return Err(refused("spools.retired_at"));
     }
     let mut next = spool.clone();
     next.updated_at = at;
-    match change {
-        SpoolChange::Load { tool } => next.loaded_on_tool = Some(*tool),
-        SpoolChange::Unload => next.loaded_on_tool = None,
-        SpoolChange::SetRemaining { remaining_g } => {
-            next.remaining_g = *remaining_g;
-            next.trust = SpoolTrust::Verified;
+    let event = match change {
+        SpoolChange::Load { tool, event } => {
+            next.lifecycle = SpoolLifecycle::Loaded { tool };
+            event
         }
-        SpoolChange::MarkUnverified { reason } => {
-            next.trust = spool.trust.clone().marked(UnverifiedMark {
-                reason: reason.clone(),
-                since: at,
-            });
+        SpoolChange::Unload { event } => {
+            next.lifecycle = SpoolLifecycle::Shelved;
+            event
+        }
+        SpoolChange::SetRemaining { remaining_g, event } => {
+            next.remaining_g = remaining_g;
+            next.trust = SpoolTrust::Verified;
+            event
+        }
+        SpoolChange::MarkUnverified { reason, event } => {
+            next.trust = spool
+                .trust
+                .clone()
+                .marked(UnverifiedMark { reason, since: at });
             if next.trust == spool.trust {
                 return Ok(None);
             }
+            event
         }
         SpoolChange::ClearMarks { kinds } => {
-            let (trust, removed) = spool.trust.clone().cleared(kinds);
+            let (trust, removed) = spool.trust.clone().cleared(&kinds);
             if removed.is_empty() {
                 return Ok(None);
             }
             next.trust = trust;
-            return Ok(Some((next, false)));
+            return Ok(Some((next, None)));
         }
-        SpoolChange::Retire => next.retired_at = Some(at),
-    }
-    Ok(Some((next, true)))
+        SpoolChange::Retire { event } => {
+            next.lifecycle = SpoolLifecycle::Retired { at };
+            event
+        }
+    };
+    Ok(Some((next, Some(event))))
 }
 
 /// Apply one mutation, with its event when it writes one.
@@ -206,12 +221,12 @@ fn mutate(
         .spool(mutation.spool_id)?
         .ok_or_else(|| no_spool(mutation.spool_id))?;
     written.name(spool.id);
-    let Some((next, writes_event)) = changed(&spool, &mutation.change, mutation.at)? else {
+    let Some((next, event)) = changed(&spool, mutation.change, mutation.at)? else {
         return Ok(());
     };
     ledger.update_spool(&next)?;
-    if writes_event {
-        written.events.push(ledger.append(mutation.event)?);
+    if let Some(event) = event {
+        written.events.push(ledger.append(event)?);
     }
     Ok(())
 }
@@ -222,20 +237,20 @@ fn charge(
     charge: Charge,
     written: &mut Written,
 ) -> Result<(), StoreError> {
-    let key = charge.key.canonical();
+    let key = charge.identity.key().canonical();
     if let Some(existing) = ledger.charge(&key)? {
-        if let Some(spool_id) = existing.spool_id {
+        if let Some(spool_id) = existing.spool_id() {
             written.name(spool_id);
         }
         written.charges.push(existing);
         return Ok(());
     }
-    if let Some(spool_id) = charge.spool_id {
-        let mut spool = ledger.spool(spool_id)?.ok_or_else(|| no_spool(spool_id))?;
-        written.name(spool_id);
-        if let Some(grams) = charge.grams {
-            spool.remaining_g -= grams;
-        }
+    if let Some(charged) = &charge.charged {
+        let mut spool = ledger
+            .spool(charged.spool_id)?
+            .ok_or_else(|| no_spool(charged.spool_id))?;
+        written.name(charged.spool_id);
+        spool.remaining_g -= charged.grams;
         spool.updated_at = spool.updated_at.max(charge.at);
         ledger.update_spool(&spool)?;
     }
@@ -244,12 +259,9 @@ fn charge(
     }
     let event = ledger.append(charge.event)?;
     let record = ChargeRecord {
-        key: charge.key,
-        tool: charge.tool,
-        print_id: charge.print_id,
-        spool_id: charge.spool_id,
+        identity: charge.identity,
         length_mm: charge.length_mm,
-        grams: charge.grams,
+        charged: charge.charged,
         at: charge.at,
         event_id: event.id,
     };
@@ -261,7 +273,7 @@ fn charge(
 
 /// Hold one pending charge under the replay rules.
 fn pend(ledger: &mut impl Ledger, pend: Pend, written: &mut Written) -> Result<(), StoreError> {
-    let key = pend.pending.charge_key.canonical();
+    let key = pend.pending.charge_key.charge_key().canonical();
     if ledger.is_pending(&key)? || ledger.charge(&key)?.is_some() {
         return Ok(());
     }
@@ -369,11 +381,12 @@ pub(crate) fn sort_charges(charges: &mut [ChargeRecord]) {
 
 /// One charge's place in [`sort_charges`]'s order.
 fn order_of(record: &ChargeRecord) -> (i64, u32, Timestamp, String) {
-    let segment = match &record.key {
+    let key = record.identity.key();
+    let segment = match key {
         ChargeKey::Print { segment, .. } => *segment,
         ChargeKey::Unobserved { .. } => 0,
     };
-    (record.tool, segment, record.at, record.key.canonical())
+    (record.identity.tool(), segment, record.at, key.canonical())
 }
 
 /// A charge key read back from its canonical spelling.
