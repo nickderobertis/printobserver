@@ -23,6 +23,7 @@ from repo_checks import (
     checks_smoke,
     checks_supervisor,
     checks_suppressions,
+    just_pin,
 )
 from repo_checks.model import Repo
 
@@ -102,6 +103,7 @@ CHECKS: dict[str, Check] = {
     "release-tracking": checks_release.release_tracking,
     "publish-credentials": checks_release.publish_credentials,
     "base-files": base_files,
+    "just-pin": just_pin.just_pin,
     "suppressions": checks_suppressions.suppressions,
     "docs-skill": checks_docs.skill,
     "docs-skill-directory": checks_docs.skill_directory,

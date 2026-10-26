@@ -15,6 +15,7 @@ from repo_checks import (
     commands,
     gate_tier,
     gh_release,
+    just_pin,
     powershell_release,
     release_plz_release,
     release_probes,
@@ -52,6 +53,7 @@ INSTALLERS = {
 }
 
 COMMANDS = (
+    "check-justfile",
     "install-tools",
     *INSTALLERS,
     "tool-version",
@@ -140,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     repo = Repo(Path(parsed.root))
 
     match parsed.name:
+        case "check-justfile":
+            return just_pin.check_justfile(repo)
         case "install-tools":
             return commands.install_tools(repo, parsed.argument)
         case verb if verb in INSTALLERS:

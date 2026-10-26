@@ -117,6 +117,7 @@ CHECKS: dict[str, Closure] = {
     "release-tracking": Closure((WORKFLOWS, JUSTFILE, POLICY)),
     "publish-credentials": Closure((WORKFLOWS, "gh-secrets.json", POLICY)),
     "base-files": Closure((".gitignore", "gh-secrets.json")),
+    "just-pin": Closure((POLICY, ".tool-versions", "scripts/session-setup.sh")),
     "docs-skill": Closure((SCHEMAS, POLICY, SKILL)),
     "docs-skill-directory": Closure((POLICY, SKILL)),
     "docs-link-symlinks": Closure(("**/*.md", SKILL)),
