@@ -449,3 +449,113 @@ fn an_unobserved_charge_is_refused_any_tool_but_the_one_its_key_names() {
         "a refused write left a row this build cannot read"
     );
 }
+
+/// The refusals hold on insert as on update: a new charge row whose watched
+/// print is not the one its key names, or that names a spool with half a
+/// calculation, is refused as it is written, and so is a new spool both
+/// retired and loaded — while the same rows made coherent are written.
+#[test]
+fn the_database_refuses_an_incoherent_charge_or_spool_on_insert() {
+    let dir = copied();
+    drop(SqliteStore::open(dir.path()).expect("the 0.4.3 database opens"));
+    let connection = connect(&dir.path().join(DATABASE_FILE_NAME)).expect("the database opens");
+    let insert = |print: &str, grams: &str| {
+        connection.execute(
+            &format!(
+                "INSERT INTO charges (charge_key, print_id, tool, spool_id, length_mm, grams, \
+                 event_id, charged_at, diameter_mm, density_g_cm3, remaining_before_g, \
+                 remaining_after_g) \
+                 SELECT 'print:{PRINT}:1:9', {print}, tool, spool_id, length_mm, {grams}, \
+                 event_id, charged_at, diameter_mm, density_g_cm3, remaining_before_g, \
+                 remaining_after_g FROM charges WHERE charge_key = 'print:{PRINT}:1:0'"
+            ),
+            [],
+        )
+    };
+    for (answer, what) in [
+        (
+            insert("NULL", "grams"),
+            "no watched print under a print key",
+        ),
+        (insert("print_id", "NULL"), "a spool with no grams"),
+    ] {
+        let said = answer
+            .err()
+            .unwrap_or_else(|| panic!("the database wrote {what}"))
+            .to_string();
+        assert!(said.contains("charges.coherent"), "{what}: {said}");
+    }
+    assert_eq!(
+        insert("print_id", "grams"),
+        Ok(1),
+        "a coherent charge was refused on insert"
+    );
+
+    let spool = |id: &str, tool: &str, retired: &str| {
+        connection.execute(
+            &format!(
+                "INSERT INTO spools (id, name, material, color, diameter_mm, density_g_cm3, \
+                 initial_g, remaining_g, tare_g, loaded_on_tool, trust, registered_at, \
+                 updated_at, retired_at) \
+                 SELECT '{id}', name, material, color, diameter_mm, density_g_cm3, initial_g, \
+                 remaining_g, tare_g, {tool}, trust, registered_at, updated_at, {retired} \
+                 FROM spools WHERE id = '{RETIRED_ON_TOOL}'"
+            ),
+            [],
+        )
+    };
+    let said = spool(UNKNOWN, "2", "retired_at")
+        .expect_err("the database wrote a spool both retired and loaded")
+        .to_string();
+    assert!(said.contains("spools.lifecycle"), "{said}");
+    assert_eq!(
+        spool(UNKNOWN, "NULL", "retired_at"),
+        Ok(1),
+        "a retired spool on no tool was refused on insert"
+    );
+
+    let store = SqliteStore::open(dir.path()).expect("the database opens");
+    let port: &dyn Store = &store;
+    assert_eq!(
+        block_on(port.charges(PRINT.parse().expect("an id")))
+            .expect("the charges read")
+            .len(),
+        2,
+        "the coherent charge written on insert does not read back"
+    );
+}
+
+/// A charge 0.4.3 wrote naming no spool but carrying grams is carried forward
+/// with no grams — nothing was taken from a spool, so nothing was weighed —
+/// and, being then coherent, is neither reported nor refused when written again.
+#[test]
+fn a_spoolless_charge_0_4_3_held_with_grams_is_migrated_without_them() {
+    let dir =
+        copied_and_changed("UPDATE charges SET grams = 3.5 WHERE charge_key LIKE 'unobserved:%'");
+    let store = SqliteStore::open(dir.path()).expect("the 0.4.3 database opens");
+    assert!(
+        !store
+            .migrated()
+            .iter()
+            .any(|note| note.subject.starts_with("charge unobserved:")),
+        "{:#?}",
+        store.migrated()
+    );
+    let connection = connect(&dir.path().join(DATABASE_FILE_NAME)).expect("the database opens");
+    let grams: Option<f64> = connection
+        .query_row(
+            "SELECT grams FROM charges WHERE charge_key LIKE 'unobserved:%'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the unobserved charge is there");
+    assert_eq!(grams, None);
+    assert_eq!(
+        connection.execute(
+            "UPDATE charges SET length_mm = length_mm WHERE charge_key LIKE 'unobserved:%'",
+            [],
+        ),
+        Ok(1),
+        "the migrated row is one the database's own refusals would not write"
+    );
+}
