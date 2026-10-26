@@ -38,6 +38,8 @@ pub fn base_url(host: &Host) -> String {
 pub struct Unreachable {
     /// Held only so the port stays bound.
     _socket: Socket,
+    /// Keeps the reservation connected without ever listening on its port.
+    _peer: std::net::TcpStream,
     address: SocketAddr,
 }
 
@@ -54,8 +56,19 @@ impl Unreachable {
             .expect("the bound address reads")
             .as_socket()
             .expect("the bound address is an internet address");
+        // Darwin silently drops SYNs for an unconnected bound socket. An
+        // established socket reserves the same port without matching a new
+        // caller's peer tuple, so that caller receives a reset on every host.
+        // Neither end is closed until the reservation is released.
+        let listener =
+            std::net::TcpListener::bind((address.ip(), 0)).expect("a peer listener binds");
+        socket
+            .connect(&listener.local_addr().expect("the peer address").into())
+            .expect("the reservation connects to its peer");
+        let (peer, _) = listener.accept().expect("the peer accepts the reservation");
         Self {
             _socket: socket,
+            _peer: peer,
             address,
         }
     }

@@ -126,4 +126,13 @@ def unreachable(host: str = LOOPBACK) -> Iterator[tuple[str, int]]:
         if exclusive is not None:
             held.setsockopt(socket.SOL_SOCKET, exclusive, 1)
         held.bind((host, 0))
-        yield host, int(held.getsockname()[1])
+        # Darwin drops SYNs matching an unconnected bound TCP socket. Keep an
+        # established peer tuple instead: new callers match no connection and
+        # receive a reset, while this socket still reserves the port.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind((host, 0))
+            listener.listen(1)
+            held.connect(listener.getsockname())
+            peer, _ = listener.accept()
+        with peer:
+            yield host, int(held.getsockname()[1])

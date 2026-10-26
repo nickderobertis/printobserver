@@ -154,8 +154,8 @@ fn closed_address() -> String {
 
     use socket2::{Domain, Socket, Type};
 
-    static HELD: OnceLock<(Socket, SocketAddr)> = OnceLock::new();
-    let (_, address) = HELD.get_or_init(|| {
+    static HELD: OnceLock<(Socket, std::net::TcpStream, SocketAddr)> = OnceLock::new();
+    let (_, _, address) = HELD.get_or_init(|| {
         let socket =
             Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
         socket
@@ -166,7 +166,17 @@ fn closed_address() -> String {
             .expect("the bound address reads")
             .as_socket()
             .expect("the bound address is an internet address");
-        (socket, address)
+        // Darwin silently drops SYNs for an unconnected bound socket. An
+        // established socket reserves the same port without matching a new
+        // caller's peer tuple, so that caller receives a reset on every host.
+        // Neither end is closed until the reservation is released.
+        let listener =
+            std::net::TcpListener::bind((address.ip(), 0)).expect("a peer listener binds");
+        socket
+            .connect(&listener.local_addr().expect("the peer address").into())
+            .expect("the reservation connects to its peer");
+        let (peer, _) = listener.accept().expect("the peer accepts the reservation");
+        (socket, peer, address)
     });
     format!("http://{address}")
 }
