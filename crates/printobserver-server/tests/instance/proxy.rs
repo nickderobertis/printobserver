@@ -8,6 +8,11 @@
 //! recorded is what the machine ruled on rather than what this server believed
 //! it sent.
 //!
+//! It forwards one request at a time and reads each answer to its end, so a
+//! request to upgrade its connection — which never ends — is refused rather
+//! than forwarded: a server behind this proxy reads the machine without a push
+//! channel, as it does whenever one cannot be opened.
+//!
 //! Nothing here reads what it forwards. It carries no path, header or body of
 //! the printer's own vocabulary, because only the adapter crate may construct
 //! one of those — and a proxy that forwards bytes needs to know none of it.
@@ -66,6 +71,13 @@ impl Proxy {
                     let Some(request) = read_request(&mut connection) else {
                         continue;
                     };
+                    // A connection that upgrades never ends, and this proxy
+                    // forwards one answer at a time, read to its end: it is
+                    // refused, so the server reads the machine without one.
+                    if upgrades(&request) {
+                        let _ = connection.write_all(REFUSED_UPGRADE);
+                        continue;
+                    }
                     let answer = forward(upstream, &request);
                     recorded
                         .lock()
@@ -134,6 +146,18 @@ impl Drop for Proxy {
             let _ = thread.join();
         }
     }
+}
+
+/// What an upgrade is refused with.
+const REFUSED_UPGRADE: &[u8] =
+    b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+/// Whether one request asks to upgrade its connection.
+fn upgrades(request: &Recorded) -> bool {
+    request
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("upgrade"))
 }
 
 /// Send one recorded request upstream and read the whole answer back.

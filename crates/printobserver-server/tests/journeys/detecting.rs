@@ -265,6 +265,14 @@ async fn a_detector_outage_is_recorded_once_each_way_and_read_with_its_start() {
         .get(&world.operation_url("/v1/prints/{print_id}/context", print_id))
         .await;
     assert_eq!(context["context"]["detector"], health);
+    assert!(
+        context["context"]["recent_events"]
+            .as_array()
+            .expect("recent events")
+            .iter()
+            .any(|event| event["kind"] == "detector_health_changed"),
+        "the outage is not among the print's recent events: {context}"
+    );
     let deadline = tokio::time::Instant::now() + PATIENCE;
     let turn = loop {
         if let Some(turn) = world
