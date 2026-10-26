@@ -19,13 +19,14 @@
 //! keeps its `print_ended` with the outcome the operator gave.
 
 use printobserver_printer_api::{JobSnapshot, PrinterState};
-use printobserver_types::{EventBody, PrintId};
+use printobserver_types::{EventBody, EventPayload as _, PrintId};
 
 use printobserver_supervisor_api::{SupervisionSession, SupervisionSessionClosedPayload};
 
 use crate::error::CoreError;
 use crate::kinds::{PrintEndedPayload, system_source};
 use crate::records::{PolicyDecision, PrintAction, PrintOutcome, PrintRecord, RejectionReason};
+use crate::store::HistoryQuery;
 use crate::supervisor::Supervisor;
 
 /// What every operator close's recorded end reason begins with.
@@ -107,9 +108,9 @@ impl Supervisor {
     /// Close one print record at an operator's word, with no charge.
     ///
     /// The print is settled first — no charge, no pend, no mark, and its
-    /// `print_ended` — and ended after, so a crash between the two leaves a
-    /// settled, open print, which the next close-out only ends. Its
-    /// supervision session closes with it.
+    /// `print_ended` — then its supervision session is closed, and the record
+    /// is ended last. A failure between any two leaves a settled, open print
+    /// whose next close writes only what is missing and ends it.
     pub(crate) async fn close_by_operator(
         &self,
         print_id: PrintId,
@@ -137,16 +138,25 @@ impl Supervisor {
                 .settle_print(print_id, outcome, ended, Vec::new(), Vec::new(), Vec::new())
                 .await?;
         }
+        // The session closes before the record ends, so a close that fails
+        // part-way leaves the record open for the next close to finish.
+        self.close_session_of(print_id, &closing).await?;
         self.stores()
             .prints
-            .end_print(print_id, state.clone(), self.clock().now(), closing.clone())
+            .end_print(print_id, state.clone(), self.clock().now(), closing)
             .await?;
-        self.close_session_of(print_id, &closing).await
+        Ok(())
     }
 
-    /// Close one ended print's supervision session — in the harness, in the
-    /// record of it the store holds, and in the print's history — when the
-    /// print had one.
+    /// Close one print's supervision session — in the harness, in the record
+    /// of it the store holds, and in the print's history — when the print had
+    /// one.
+    ///
+    /// Each half is written once however often this is asked: the store's
+    /// record only while it is open, and the history's
+    /// `supervision_session_closed` only while the history carries none. So a
+    /// close retried after one of them failed writes the other and nothing
+    /// twice.
     pub(crate) async fn close_session_of(
         &self,
         print_id: PrintId,
@@ -156,18 +166,32 @@ impl Supervisor {
             .agent()
             .close_session(print_id, reason.to_owned())
             .await;
-        if let Some(session) = self.stores().sessions.session(print_id).await? {
-            let session_name = session.session_name.clone();
-            if session.closed_at.is_none() {
-                self.stores()
-                    .sessions
-                    .put_session(SupervisionSession {
-                        closed_at: Some(self.clock().now()),
-                        close_reason: Some(reason.to_owned()),
-                        ..session
-                    })
-                    .await?;
-            }
+        let Some(session) = self.stores().sessions.session(print_id).await? else {
+            return Ok(());
+        };
+        let session_name = session.session_name.clone();
+        if session.closed_at.is_none() {
+            self.stores()
+                .sessions
+                .put_session(SupervisionSession {
+                    closed_at: Some(self.clock().now()),
+                    close_reason: Some(reason.to_owned()),
+                    ..session
+                })
+                .await?;
+        }
+        let written = self
+            .stores()
+            .events
+            .history(HistoryQuery {
+                print_id,
+                kinds: vec![SupervisionSessionClosedPayload::kind()],
+                since: None,
+                until: None,
+                limit: Some(1),
+            })
+            .await?;
+        if written.is_empty() {
             self.append_system_event(
                 print_id,
                 EventBody::of(&SupervisionSessionClosedPayload {

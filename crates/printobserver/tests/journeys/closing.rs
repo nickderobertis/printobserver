@@ -255,7 +255,6 @@ fn blank_reasons_are_refused(world: &World, left: &str) {
 /// open, and the rejection names the state; so does any running job for a
 /// record naming no file, which cannot be told apart from it.
 fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
-    // open, and the rejection names the state.
     for (state, word) in [
         (Reports::Printing, "printing"),
         (Reports::Paused, "paused"),

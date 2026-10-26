@@ -731,3 +731,90 @@ async fn a_close_whose_settlement_committed_and_died_is_finished_by_the_next_clo
     assert_eq!(the_ledger_balances(&world).await, events);
     world.server.stop().await;
 }
+
+/// (g) A close whose session write committed and whose caller was told it did
+/// not leaves the record open; the next close ends it, with one `print_ended`,
+/// one `supervision_session_closed` and the session closed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_close_whose_session_write_committed_and_died_is_finished_by_the_next_close() {
+    use printobserver_core::store::SessionStore as _;
+
+    let (world, print_id, _) = an_adopted_print(World::open().await).await;
+    let state_dir = world.state_dir();
+    let print: printobserver_types::PrintId = print_id.parse().expect("a print identifier");
+    let opened = Timestamp::now();
+    let session = printobserver_types::serde_json::from_value(json!({
+        "print_id": print,
+        "session_name": format!("print-{print}"),
+        "harness_identity": "claude-code",
+        "created_at": opened,
+        "last_turn_at": opened,
+    }))
+    .expect("a session reads from its own fields");
+    SqliteStore::open(&state_dir)
+        .expect("the store opens")
+        .put_session(session)
+        .await
+        .expect("the print's session is stored");
+    let world = world
+        .restart_over(|_| {
+            CommitThenFail::once(
+                SqliteStore::open(&state_dir).expect("the store opens"),
+                "put_session",
+            )
+        })
+        .await;
+    world.printer.in_state(PrinterState::Printing);
+    look_at_the_job(&world).await;
+    world.printer.in_state(PrinterState::Operational);
+
+    let (status, failed) = closes(&world, &print_id, "interrupted").await;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        "{failed}"
+    );
+    assert!(
+        failed["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains(DETAIL),
+        "{failed}"
+    );
+    let (status, finished) = closes(&world, &print_id, "interrupted").await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{finished}");
+
+    let (status, read) = world
+        .get(
+            &world.operation_url(
+                &printobserver_server::operation("status")
+                    .expect("the operation is declared")
+                    .full_path(),
+                print,
+            ),
+        )
+        .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{read}");
+    assert!(read["print"]["ended_at"].is_string(), "{read}");
+    assert!(read["session"]["closed_at"].is_string(), "{read}");
+    let events = the_ledger_balances(&world).await;
+    assert_eq!(of_kind(&events, "print_ended").len(), 1, "{events:?}");
+    let (status, history) = world
+        .get(&format!(
+            "{}?limit=100",
+            world.operation_url(
+                &printobserver_server::operation("history")
+                    .expect("the operation is declared")
+                    .full_path(),
+                print,
+            )
+        ))
+        .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{history}");
+    let closed = of_kind(
+        history["events"].as_array().map_or(&[][..], Vec::as_slice),
+        "supervision_session_closed",
+    );
+    assert_eq!(closed.len(), 1, "{history}");
+    world.server.stop().await;
+}
