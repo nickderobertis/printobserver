@@ -15,13 +15,17 @@ Two verbs of `python -m repo_checks gate_time_budget`, one per side of `onebudge
   its threshold — except on the release pull request's full sweep, where the
   figure is reported and the step passes.
 
-The span runs from the earliest real start of any job behind the context to the
-start of the aggregating job's own `gate-time` step, read off that job's
-recorded steps; while the forge has not recorded that step's start yet it runs
-to the moment of measuring, which is that step's own. A run recorded before
-the step existed is read to the aggregator's completion instead — the
-retrospective span — so a finished run's figure is the one its context waited.
-The queue before the first job started is reported, and is not part of the figure.
+The figure is the critical path of the context's jobs' own running time, never
+time a job spent queued for a runner: the jobs behind the aggregator — its
+shards, or the combined job a platform's two contexts once shared — run side by
+side, so the longest of them, from its start to its end, and then the
+aggregator itself, from its start to the start of its own `gate-time` step.
+That step's start is read off the aggregator's recorded steps; while the forge
+has not recorded it yet, it is the moment of measuring, which is that step's own.
+A run recorded before the step existed is read to the aggregator's completion
+instead, so a finished run's figure is its whole critical path. What the context
+waited on the clock — the span from the first start, queues included — is
+reported beside it, with every job's queue, and is not the figure.
 
 What the jobs API answers is read as GitHub documents it, and the suites replay
 documents recorded from real runs. The producer is reconciled on every change
@@ -131,7 +135,11 @@ class Measurement:
     platform: str
     run_id: int
     run_attempt: int
+    #: The critical path of the jobs' own running time: the figure.
     seconds: float
+    #: The clock from the first job's start to the end of the path, runner
+    #: queues after that start included: reported, not the figure.
+    wall_seconds: float
     started_at: str | None
     measured_to: str | None
     #: `step` (the budget step's recorded start), `completion` (a finished
@@ -391,13 +399,24 @@ def measured(run: RunJobs, context: Context, now: datetime) -> Measurement:
             )
         )
     first_created = min(job.created_at for job in span.jobs)
+    aggregator, behind = span.jobs[0], span.jobs[1:]
+    longest_behind = max(
+        (
+            ((job.completed_at or end) - job.started_at).total_seconds()
+            for job in behind
+            if job.started_at is not None
+        ),
+        default=0.0,
+    )
+    own = (end - aggregator.started_at).total_seconds() if aggregator.started_at else 0.0
     return Measurement(
         context=context.name,
         kind=context.kind,
         platform=context.platform,
         run_id=run.run_id,
         run_attempt=run.attempt,
-        seconds=span.seconds_to(end),
+        seconds=longest_behind + max(0.0, own),
+        wall_seconds=span.seconds_to(end),
         started_at=_stamp(span.started_at),
         measured_to=_stamp(end),
         measured_to_source=source,

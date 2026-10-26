@@ -311,13 +311,13 @@ def _step(repo: Repo, key: str) -> tuple[str, dict[str, str]]:
 @pytest.mark.parametrize(
     ("key", "head", "status", "said"),
     [
-        ("gate-macos", "nick/255/printobserver-release-declaration", 1, "gate-time: over: 2581 s"),
-        ("integration-macos", "nick/255/x", 1, "gate-time: over: 2582 s"),
+        ("gate-macos", "nick/255/printobserver-release-declaration", 1, "gate-time: over: 2579 s"),
+        ("integration-macos", "nick/255/x", 1, "gate-time: over: 2580 s"),
         (
             "gate-macos",
             "release-plz-2026-10-25T21-00-00Z",
             0,
-            "over, reported and not enforced on the release sweep: 2581 s",
+            "over, reported and not enforced on the release sweep: 2579 s",
         ),
     ],
 )
@@ -330,7 +330,7 @@ def test_the_step_s_own_script_fails_an_over_budget_context_but_on_the_release_s
     status: int,
     said: str,
 ) -> None:
-    """`run: just gate-time`, exactly as `ci.yml` states it, over a recorded 2,581 s span."""
+    """`run: just gate-time`, exactly as `ci.yml` states it, over a recorded 2,579 s path."""
     script, environment = _step(committed_repo, key)
     for name, value in {
         **environment,

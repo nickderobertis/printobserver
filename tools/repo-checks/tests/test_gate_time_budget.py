@@ -128,13 +128,13 @@ def test_an_unsharded_gate_is_measured_with_its_breakdown(
 def test_a_sharded_gate_spans_its_shards_to_its_aggregator(
     api: tuple[Jobs, str], result: Path
 ) -> None:
-    """`gate (windows-aarch64)`: four shards from 21:28:08, the aggregator done at 21:47:33."""
+    """`gate (windows-aarch64)`: its longest shard's 1,155 s, then its aggregator's 9 s."""
     _, address = api
 
     equal(measure(environment(address, "gate", "windows-aarch64")), 0)
 
     value, detail = reported(result)
-    equal(value, 1165.0)
+    equal(value, 1164.0)
     equal(
         [entry["name"] for entry in detail["jobs"]],
         ["gate (windows-aarch64)", *(f"gate-shard (windows-aarch64, {k}/4)" for k in range(1, 5))],
@@ -143,16 +143,39 @@ def test_a_sharded_gate_spans_its_shards_to_its_aggregator(
     equal(detail["initial_queue_seconds"], 1.0)
 
 
+#: A pull-request run at 65bf8ff while the account's runners were saturated:
+#: `gate (windows-aarch64)`'s five shards started over fourteen minutes, and its
+#: aggregator queued 717 s for a runner after the last of them ended.
+SATURATED = 40310931115
+
+
+def test_a_runner_queue_is_reported_and_never_part_of_the_figure(result: Path) -> None:
+    """The longest shard's 1,584 s and the aggregator's own 9 s, not the 2,633 s waited."""
+    with serving(Jobs(REPOSITORY, SATURATED, 1, document(SATURATED))) as address:
+        settings = {
+            **environment(address, "gate", "windows-aarch64"),
+            "GITHUB_RUN_ID": str(SATURATED),
+        }
+        equal(measure(settings), 0)
+
+    value, detail = reported(result)
+    equal(value, 1593.0)
+    equal(detail["wall_seconds"], 2633.0)
+    queues = {job["name"]: job["queue_seconds"] for job in detail["jobs"]}
+    equal(queues["gate (windows-aarch64)"], 717.0)
+    equal(queues["gate-shard (windows-aarch64, 2/5)"], 561.0)
+
+
 def test_the_combined_macos_job_is_behind_its_integration_context(
     api: tuple[Jobs, str], result: Path
 ) -> None:
-    """`integration (macos-aarch64)` waited the combined job's whole 2,573 s, and its carrier."""
+    """`integration (macos-aarch64)`: the combined job's 2,573 s, then its carrier's 7 s."""
     _, address = api
 
     equal(measure(environment(address, "integration", "macos-aarch64")), 0)
 
     value, detail = reported(result)
-    equal(value, 2582.0)
+    equal(value, 2580.0)
     equal(
         [entry["name"] for entry in detail["jobs"]],
         ["integration (macos-aarch64)", "macos-aarch64 (gate, integration)"],
@@ -427,13 +450,13 @@ def test_the_check_passes_a_context_within_budget_its_breakdown_in_the_result(
 def test_the_check_fails_a_context_over_budget_on_a_pull_request(
     checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """2,581 s of `gate (macos-aarch64)` is over, and the required context fails."""
+    """2,579 s of `gate (macos-aarch64)` is over, and the required context fails."""
     environ = _step_environment(monkeypatch, environment(checking, "gate", "macos-aarch64"))
 
     equal(check_budget(Repo(REPO_ROOT), environ), OVER)
 
     said = capsys.readouterr()
-    contains(said.err, "gate-time: over: 2581 s against 1800 s")
+    contains(said.err, "gate-time: over: 2579 s against 1800 s")
     contains(said.err, "sharding it behind its own required name (`just gate-shards`)")
     contains(said.out, '"name": "macos-aarch64 (gate, integration)"')
 
@@ -453,7 +476,7 @@ def test_the_release_sweep_reports_an_over_budget_figure_and_passes(
 
     contains(
         capsys.readouterr().out,
-        "gate-time: over, reported and not enforced on the release sweep: 2581 s against 1800 s",
+        "gate-time: over, reported and not enforced on the release sweep: 2579 s against 1800 s",
     )
 
 
@@ -472,7 +495,7 @@ def test_only_the_release_pull_request_is_spared(
 
     equal(check_budget(Repo(REPO_ROOT), environ), OVER)
 
-    contains(capsys.readouterr().err, "gate-time: over: 2581 s")
+    contains(capsys.readouterr().err, "gate-time: over: 2579 s")
 
 
 def test_the_check_refuses_by_name_with_no_run_id(
@@ -563,7 +586,7 @@ def test_a_job_whose_steps_are_unrecorded_or_unreadable_still_has_its_span(resul
         equal(measure(environment(address, "gate", "windows-aarch64")), 0)
 
     value, detail = reported(result)
-    equal(value, 1165.0)
+    equal(value, 1164.0)
     equal(detail["jobs"][0]["steps"], [])
     equal(detail["jobs"][1]["steps"][0]["seconds"], None)
 
