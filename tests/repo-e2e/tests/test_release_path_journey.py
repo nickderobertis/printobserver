@@ -73,9 +73,11 @@ WEDGED = "not found in the registry, but the git tag"
 #: What it says as it reaches the computation that state stops, once per crate.
 DETERMINING = "determining next version for"
 
-#: The drafting computation takes a few seconds over this workspace; this is a
-#: bound on a hang rather than a budget.
-DRAFT_TIMEOUT_SECONDS = 120
+#: A bound on a hang rather than a budget. Drafting every crate of this
+#: workspace downloads and diffs each published package, which took 282-333 s
+#: by hand on a loaded development host and 125 s on a base tree, so the bound
+#: sits well above the longest complete draft seen.
+DRAFT_TIMEOUT_SECONDS = 600
 
 pytestmark = [
     RELEASE_DRAFTING,
