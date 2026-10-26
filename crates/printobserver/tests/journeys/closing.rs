@@ -288,6 +288,15 @@ fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
     still_open(world, &nameless);
 }
 
+/// A job of another file holds nothing open: the record closes, in the state
+/// the machine reported running that job.
+fn another_files_job_holds_nothing_open(world: &World) {
+    world.wants(Reports::Printing);
+    let stale = world.open_record_with_a_session(Some(STALE_FILE), None);
+    let ran = close(world, &stale, "cancelled", REASON);
+    closed(world, &stale, &ran, "cancelled", "printing");
+}
+
 /// A session already closed keeps the closure it has.
 fn a_closed_session_keeps_its_closure(world: &World) {
     let watched_before = world.open_record_with_a_session(Some(STALE_FILE), Some(EARLIER_CLOSE));
@@ -360,6 +369,7 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
 
     blank_reasons_are_refused(world, &left);
     a_running_job_holds_its_record_open(world, &running_one);
+    another_files_job_holds_nothing_open(world);
     a_closed_session_keeps_its_closure(world);
     an_adjustment_holds_its_record_open(world);
 
