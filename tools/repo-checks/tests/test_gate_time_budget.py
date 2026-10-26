@@ -166,6 +166,42 @@ def test_a_runner_queue_is_reported_and_never_part_of_the_figure(result: Path) -
     equal(queues["gate-shard (windows-aarch64, 2/5)"], 561.0)
 
 
+def _requeued(recorded: dict[str, Any], seconds: int) -> dict[str, Any]:
+    """`recorded` with its n-th job left queued n times `seconds` longer, each running as long."""
+    derived = copy.deepcopy(recorded)
+    for n, entry in enumerate(derived["jobs"], start=1):
+        for holder in (entry, *(entry.get("steps") or ())):
+            for field in ("started_at", "completed_at"):
+                if holder.get(field):
+                    moved = datetime.fromisoformat(holder[field]).timestamp() + n * seconds
+                    holder[field] = datetime.fromtimestamp(moved, UTC).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    )
+    return derived
+
+
+def test_two_runs_differing_only_in_queueing_read_one_figure(result: Path) -> None:
+    """Each job held minutes longer for a runner than the last, and the figure does not move."""
+    figures, walls = [], []
+    for seconds in (0, 300):
+        recorded = _requeued(document(SATURATED), seconds)
+        with serving(Jobs(REPOSITORY, SATURATED, 1, recorded)) as address:
+            settings = {
+                **environment(address, "gate", "windows-aarch64"),
+                "GITHUB_RUN_ID": str(SATURATED),
+            }
+            equal(measure(settings), 0)
+        value, detail = reported(result)
+        figures.append(value)
+        walls.append(detail["wall_seconds"])
+
+    equal(figures, [1593.0, 1593.0])
+    truth(
+        walls[1] > walls[0],
+        describing=f"the second run waited longer from first start to end: {walls}",
+    )
+
+
 def test_the_combined_macos_job_is_behind_its_integration_context(
     api: tuple[Jobs, str], result: Path
 ) -> None:
