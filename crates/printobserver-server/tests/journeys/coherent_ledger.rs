@@ -9,7 +9,7 @@
 //! verdict's evidence, and a change that writes no event writes none.
 
 use printobserver_core::ActionKind;
-use printobserver_printer_api::ToolFilament;
+use printobserver_printer_api::{PrinterState, ToolFilament};
 use printobserver_types::Timestamp;
 use printobserver_types::serde_json::{Value, json};
 
@@ -18,7 +18,7 @@ use crate::ledger_restarts::{
     of_kind, printing_world, spool_of, the_whole_history,
 };
 use crate::spooling::{close, loaded, plain, registered};
-use crate::world::{SECRET, World, spool_body};
+use crate::world::{SECRET, World, set, spool_body};
 
 /// The kinds of the events one command's answer carries, in order.
 fn kinds_answered(answer: &Value) -> Vec<String> {
@@ -253,6 +253,118 @@ async fn a_filament_change_records_its_position_whole_or_not_at_all() {
         read["spool"]["trust"]["marks"][0]["reason"]["reason"],
         json!("filament_change_unconfirmed_position"),
         "{read}"
+    );
+    world.server.stop().await;
+}
+
+/// A filament change signalled while the job reports no position, after one
+/// was recorded, records that recorded position with `read_at_signal` false,
+/// and marks the spool as one whose figure may be overstated.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_filament_change_with_only_a_recorded_position_says_it_is_not_fresh() {
+    let world = printing_world().await;
+    let spool = registered(&world, "PLA black", FULL_G).await;
+    loaded(&world, &spool, 0).await;
+    world.printer.at_byte(SIZE_BYTES / 4);
+    look_at_the_job(&world).await;
+    world.printer.reports_no_position();
+    signal_a_filament_change(&world, 1).await;
+
+    let events = the_whole_history(&world).await;
+    let signalled = of_kind(&events, "filament_change_signalled");
+    assert_eq!(
+        signalled[0]["payload"]["position"]["read_at_signal"],
+        json!(false),
+        "{}",
+        signalled[0]
+    );
+    assert_eq!(
+        signalled[0]["payload"]["position"]["position"]["bytes"],
+        json!(SIZE_BYTES / 4),
+        "{}",
+        signalled[0]
+    );
+    let read = spool_of(&world, &spool).await;
+    assert_eq!(
+        read["spool"]["trust"]["marks"][0]["reason"]["reason"],
+        json!("filament_change_unconfirmed_position"),
+        "{read}"
+    );
+    world.server.stop().await;
+}
+
+/// In mode `warn`, a start onto a spool too short for the file goes ahead,
+/// and the check it records carries the tool's result as `warned` with the
+/// objection it let through and that objection's evidence.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_warned_start_records_the_objection_it_let_through() {
+    let world = World::configured(
+        crate::printer::RecordingPrinter::printing(),
+        crate::agent::StandInAgent::new(),
+        |document| {
+            set(
+                document,
+                "spools",
+                toml::Value::Table(toml::Table::from_iter([
+                    (
+                        "preflight".to_owned(),
+                        toml::Value::String("warn".to_owned()),
+                    ),
+                    ("analysis_wait_seconds".to_owned(), toml::Value::Integer(0)),
+                ])),
+            );
+        },
+    )
+    .await;
+    world.printer.holds_file(
+        FILE,
+        SIZE_BYTES,
+        Some(vec![ToolFilament {
+            tool: 0,
+            length_mm: WHOLE_MM,
+            volume_cm3: None,
+        }]),
+    );
+    let short = registered(&world, "PLA nearly out", 5.0).await;
+    loaded(&world, &short, 0).await;
+    let asked_against = world.open_print().await;
+    world.printer.in_state(PrinterState::Operational);
+
+    let manifest = printobserver_types::serde_json::to_value(
+        <printobserver_core::JobManifest as printobserver_types::contract::Sample>::sample_full(),
+    )
+    .expect("a manifest renders");
+    let start = json!({
+        "reason": "a journey is asking",
+        "actor": "operator",
+        "file_name": FILE,
+        "manifest": manifest,
+    });
+    let start_path = printobserver_server::operation("start_print")
+        .expect("`start_print` is served")
+        .full_path();
+    let (status, answer) = world
+        .post(&world.operation_url(&start_path, asked_against), &start)
+        .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+    assert_eq!(answer["record"]["decision"], json!("accepted"), "{answer}");
+
+    let events = the_whole_history(&world).await;
+    let checked = of_kind(&events, "preflight_checked");
+    let preflight = &checked.last().expect("the start's check is recorded")["payload"]["preflight"];
+    assert_eq!(preflight["verdict"], json!("warned"), "{preflight}");
+    let result = &preflight["tools"][0]["result"];
+    assert_eq!(result["verdict"], json!("warned"), "{result}");
+    let objection = &result["objection"];
+    assert_eq!(objection["verdict"], json!("insufficient"), "{objection}");
+    assert_eq!(
+        objection["spool"],
+        json!({ "id": short, "name": "PLA nearly out" })
+    );
+    assert!(close(&objection["remaining_g"], 5.0), "{objection}");
+    assert!(
+        close(&objection["need"]["required_g"], grams(WHOLE_MM)),
+        "{objection}"
     );
     world.server.stop().await;
 }
