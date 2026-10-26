@@ -363,3 +363,16 @@ def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) ->
     findings = platforms(broken.repo)
 
     refused(findings, "a non-empty `reason`")
+
+
+def test_a_gate_job_with_no_matrix_is_excused_only_by_its_carried_record(
+    tree: Callable[[], Tree],
+) -> None:
+    """`gate-macos` declares no matrix because a record holds it to the cell it carries."""
+    broken = tree()
+    broken.edit("repo-policy.toml", 'carrier = "ci.yml:gate-macos"', 'carrier = "ci.yml:gone"')
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "job `gate-macos` is a gate job but declares no platform matrix")
+    refused_naming(findings, "names carrier `ci.yml:gone`, which no workflow declares")

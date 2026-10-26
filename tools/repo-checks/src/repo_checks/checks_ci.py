@@ -499,15 +499,22 @@ def _carriers(repo: Repo) -> set[str]:
     """
     carried, _ = _carried(repo)
     declared = policy_table(repo, "workflows").get(CARRIED, [])
-    entries = declared if isinstance(declared, list) else []
-    return {
-        str(entry["carrier"])
-        for entry in entries
-        if isinstance(entry, dict)
-        and isinstance(entry.get("jobs"), list)
-        and entry["jobs"]
-        and all((entry.get("platform"), job) in carried for job in entry["jobs"])
-    }
+    carriers: set[str] = set()
+    for entry in declared if isinstance(declared, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        carrier, platform, jobs = entry.get("carrier"), entry.get("platform"), entry.get("jobs")
+        if not (
+            isinstance(carrier, str)
+            and isinstance(platform, str)
+            and isinstance(jobs, list)
+            and jobs
+            and all(isinstance(job, str) for job in jobs)
+        ):
+            continue
+        if all((platform, job) in carried for job in jobs):
+            carriers.add(carrier)
+    return carriers
 
 
 def _exclusions(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
