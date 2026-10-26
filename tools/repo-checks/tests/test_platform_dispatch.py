@@ -954,8 +954,8 @@ def test_a_job_level_literal_environment_is_carried_and_an_expression_is_not(
     )
 
 
-def _exporting(recording: Recording, exports: str) -> None:
-    """A stand-in `just` whose `runner-temp` appends `exports` to `$GITHUB_ENV`.
+def _exporting(recording: Recording, exports: str, file: str = "GITHUB_ENV") -> None:
+    """A stand-in `just` whose `runner-temp` appends `exports` to the file `$<file>` names.
 
     Every call records the platform and the exported scratch directory it was
     handed. The export is written byte for byte as given, so a caller can hand
@@ -970,7 +970,7 @@ def _exporting(recording: Recording, exports: str) -> None:
         'echo "just $* platform=${PRINTOBSERVER_PLATFORM-unset}'
         " scratch=${PRINTOBSERVER_JOB_SCRATCH-unset}"
         ' owner=${PRINTOBSERVER_JOB_SCRATCH_OWNER-unset}" >> "$RECORD"\n'
-        f'if [ "$*" = "runner-temp" ]; then cat "{written.as_posix()}" >> "$GITHUB_ENV"; fi\n',
+        f'if [ "$*" = "runner-temp" ]; then cat "{written.as_posix()}" >> "${file}"; fi\n',
         encoding="utf-8",
     )
     script.chmod(0o755)
@@ -1011,21 +1011,34 @@ def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved
     )
 
 
+#: Each form of export no source job writes: what is written, to which file,
+#: and the words the refusal names it in.
+REFUSED_EXPORTS = {
+    "multi-line": (
+        "GITHUB_ENV",
+        "PRINTOBSERVER_JOB_SCRATCH<<EOF\nsomewhere\nEOF\n",
+        "multi-line `NAME<<DELIMITER` form",
+    ),
+    "no assignment": ("GITHUB_ENV", "PRINTOBSERVER_JOB_SCRATCH\n", "is not a `NAME=value` line"),
+    "a path entry": ("GITHUB_PATH", "/opt/somewhere/bin\n", "added to `$GITHUB_PATH`"),
+}
+
+
+@pytest.mark.parametrize("form", list(REFUSED_EXPORTS))
 def test_an_export_in_a_form_no_source_job_writes_is_refused_by_name(
-    tree: Callable[[], Tree], tmp_path: Path
+    form: str, tree: Callable[[], Tree], tmp_path: Path
 ) -> None:
-    """The multi-line form stops the job naming it, and the teardown still runs."""
+    """The form stops the job naming it, and the teardown still runs."""
+    file, exports, named = REFUSED_EXPORTS[form]
     copy = tree()
     recording = Recording(tmp_path)
-    _exporting(recording, "PRINTOBSERVER_JOB_SCRATCH<<EOF\nsomewhere\nEOF\n")
+    _exporting(recording, exports, file)
 
     code, said = _run(copy, "gate", "linux-x86_64", recording)
 
-    equal(
-        code, REFUSED, describing=f"the exit of a job whose setup exported a refused form:\n{said}"
-    )
+    equal(code, REFUSED, describing=f"the exit of a job whose setup wrote {form}:\n{said}")
     contains(said, "platform-dispatch: refused: `just runner-temp`", describing=said)
-    contains(said, "multi-line `NAME<<DELIMITER` form", describing=said)
+    contains(said, named, describing=said)
     equal(
         recording.recorded(),
         [
