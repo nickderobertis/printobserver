@@ -35,6 +35,8 @@ INTEGRATION_AARCH64 = (
     AARCH64
     + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
+    + "    permissions:\n      contents: read\n"
+    + "      # The `gate-time` step reads this run's jobs.\n      actions: read\n"
     + "    # Git's own bash on the Windows runners rather than PowerShell, so that\n"
     + "    # every cell runs its steps, and `just` finds the bash its recipes name, the\n"
     + "    # same way.\n"
