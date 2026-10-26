@@ -276,6 +276,9 @@ class Manager(Protocol):
     def runs_as_the_service_user(self, pid: int) -> Reported:
         """Whether `pid` runs as the account the service is installed to run as."""
 
+    def listening_on(self, pid: int) -> list[str]:
+        """Every loopback `host:port` process `pid` itself holds a listening socket on."""
+
     def end_abruptly(self, pid: int) -> None:
         """End the service's process the way a crash does."""
 
@@ -526,6 +529,10 @@ class Systemd:
         """The process's user id against the id of the user the installer created."""
         return _compare_users(self._as_root, pid, SERVICE_USER)
 
+    def listening_on(self, pid: int) -> list[str]:
+        """Read inside the container, whose network is the host's."""
+        return _proc_listening(self._as_root, pid)
+
     def end_abruptly(self, pid: int) -> None:
         """`SIGKILL`, which the process cannot answer, as a crash is."""
         result = self._as_root("kill", "-KILL", str(pid))
@@ -618,6 +625,43 @@ def _compare_users(
         bool(expected) and running == expected,
         f"process {pid} runs as uid {running or '(none)'}; {user} is uid {expected or '(none)'}",
     )
+
+
+#: Prints every descriptor a Linux process holds, then the kernel's table of
+#: TCP sockets, so a listening socket can be traced to the process holding it.
+PROC_SOCKETS = 'for fd in /proc/"$0"/fd/*; do readlink "$fd"; done; echo ---; cat /proc/net/tcp'
+
+
+def _proc_listening(
+    on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int
+) -> list[str]:
+    """The loopback addresses a Linux process listens on, read from `/proc`.
+
+    Each socket the process holds is named by its inode among its descriptors,
+    and the kernel's TCP table gives each inode's local address and state, so
+    only a socket the process itself holds counts, never one of another's.
+    """
+    printed = on_machine("sh", "-c", PROC_SOCKETS, str(pid)).stdout
+    held_part, _, table = printed.partition("---")
+    held = set(re.findall(r"socket:\[(\d+)\]", held_part))
+    found: list[str] = []
+    for line in table.splitlines()[1:]:
+        words = line.split()
+        # `0A` is TCP_LISTEN; the address is hexadecimal, little-endian on every
+        # architecture this journey runs on.
+        if len(words) > 9 and words[3] == "0A" and words[9] in held:
+            address, _, port = words[1].partition(":")
+            octets = bytes.fromhex(address)[::-1]
+            found.append(f"{'.'.join(str(octet) for octet in octets)}:{int(port, 16)}")
+    return [address for address in found if address.startswith("127.0.0.1:")]
+
+
+def _lsof_listening(
+    on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int
+) -> list[str]:
+    """The loopback addresses a macOS process listens on, as `lsof` names them."""
+    printed = on_machine("lsof", "-nP", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-Fn").stdout
+    return [line[1:] for line in printed.splitlines() if line.startswith("n127.0.0.1:")]
 
 
 @dataclass(frozen=True, slots=True)
@@ -908,6 +952,12 @@ class Launchd:
         equal(named, self.user, describing="the user the installed property list runs it as")
         return _compare_users(self._on_machine, pid, self.user)
 
+    def listening_on(self, pid: int) -> list[str]:
+        """`lsof` against the host's launchd; `/proc` on the stand-in's Linux machine."""
+        if sys.platform == "darwin":
+            return _lsof_listening(self._on_machine, pid)
+        return _proc_listening(self._on_machine, pid)
+
     def end_abruptly(self, pid: int) -> None:
         """`SIGKILL`, which the process cannot answer, as a crash is."""
         result = self._on_machine("kill", "-KILL", str(pid))
@@ -1152,6 +1202,18 @@ class WindowsService:
             f"process {pid} runs as {owner or '(nobody)'}; the service is registered as {account}",
         )
 
+    def listening_on(self, pid: int) -> list[str]:
+        """`netstat`'s listening TCP sockets, by the process that owns each."""
+        table = self._run("netstat", "-ano", "-p", "TCP").stdout
+        return [
+            words[1]
+            for words in (line.split() for line in table.splitlines())
+            if len(words) == 5
+            and words[3] == "LISTENING"
+            and words[4] == str(pid)
+            and words[1].startswith("127.0.0.1:")
+        ]
+
     def end_abruptly(self, pid: int) -> None:
         """Terminate the process the way a crash does; it is another account's, so elevated."""
         result = self._run("taskkill.exe", "/F", "/PID", str(pid))
@@ -1280,24 +1342,20 @@ def manager(
             return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
 
 
-def _free_address() -> str:
-    """A loopback address nothing listens on now, for the service to take."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return f"127.0.0.1:{probe.getsockname()[1]}"
+#: Where the service is first told to listen: a port it chooses and binds
+#: itself, so no port is chosen by this journey and released for it to take.
+ITS_OWN_PORT = "127.0.0.1:0"
 
 
-def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> Served:
+def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
     """Fill the template in as an operator would, and install the skill.
 
     The operator's credential goes in as the verifier `credential issue` prints,
-    above the first table, and the service listens on a free port this names —
-    the address it serves on is written down nowhere else, the same port across
-    a restart.
+    above the first table, and the service listens on a port of its own choosing
+    until `_pinned` reads which one it bound.
     """
     template = manager.read(installed.configuration)
     truth(template is not None, describing="the installer to have written a configuration")
-    address = _free_address()
     verifier = "sha256:" + hashlib.sha256(OPERATOR.encode("utf-8")).hexdigest()
     filled = f'api.credential_verifier = "{verifier}"\n' + (
         (template or "")
@@ -1305,11 +1363,52 @@ def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> Served:
         .replace('shared_secret = ""', 'shared_secret = "a-shared-secret"')
         # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
-        .replace('listen = "127.0.0.1:8420"', f'listen = "{address}"')
+        .replace('listen = "127.0.0.1:8420"', f'listen = "{ITS_OWN_PORT}"')
     )
     manager.write(installed.configuration, filled)
     manager.lay_down_skill(installed)
-    return Served(address, OPERATOR)
+
+
+def _pinned(manager: Manager, installed: Installed) -> Served:
+    """Where the running service bound for itself, written back as where it listens.
+
+    The service the manager started holds the port it chose for as long as it
+    runs; writing that same address into its configuration is what makes the
+    process the manager brings back after a crash serve where this one does —
+    the same port across a restart, without this journey ever having chosen a
+    port and let it go.
+    """
+    _eventually(manager, "the service running", manager.is_running)
+    addresses: list[str] = []
+
+    def bound() -> bool:
+        addresses[:] = manager.listening_on(manager.main_pid())
+        return len(addresses) == 1
+
+    _eventually(manager, "the service listening on one port of its own", bound)
+    configuration = manager.read(installed.configuration) or ""
+    contains(
+        configuration,
+        f'listen = "{ITS_OWN_PORT}"',
+        describing="the configuration the service chose its own port under",
+    )
+    manager.write(
+        installed.configuration,
+        configuration.replace(f'listen = "{ITS_OWN_PORT}"', f'listen = "{addresses[0]}"'),
+    )
+    return Served(addresses[0], OPERATOR)
+
+
+def _held_by_the_service(manager: Manager, served: Served) -> None:
+    """The service's own process holds its address: nothing else can bind it."""
+    equal(
+        manager.listening_on(manager.main_pid()),
+        [served.address],
+        describing="the addresses the service's own process listens on",
+    )
+    host, _, port = served.address.rpartition(":")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taker, pytest.raises(OSError):
+        taker.bind((host, int(port)))
 
 
 def _ask(served: Served) -> str:
@@ -1392,9 +1491,9 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
         truth(not manager.is_present(), describing="the host to carry no service of this name")
         installed = manager.install()
         truth(not manager.is_running(), describing="the installer to have started nothing")
-        served = _fill_in(manager, installed, octoprint)
+        _fill_in(manager, installed, octoprint)
         manager.activate()
-        yield Activated(manager, installed, served)
+        yield Activated(manager, installed, _pinned(manager, installed))
     finally:
         manager.remove()
     equal(manager.leftovers(), [], describing="what the journey left on the host once removed")
@@ -1409,6 +1508,7 @@ def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
 
     _eventually(manager, "the service running", manager.is_running)
     answer = _answered(manager, activated.served)
+    _held_by_the_service(manager, activated.served)
     _keeps_no_plaintext(manager, activated.installed.state)
     truth(
         _status_line(answer.text).startswith("HTTP/1.1 200 "),
@@ -1455,6 +1555,8 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         _status_line(again.text).startswith("HTTP/1.1 200 "),
         describing=f"the API answering again from the brought-back process:\n{again.text}",
     )
+    # The same port across the restart, and the brought-back process's own.
+    _held_by_the_service(manager, activated.served)
     _holds(
         manager.runs_as_the_service_user(manager.main_pid()),
         "the brought-back service running as the user it is installed to run as",
