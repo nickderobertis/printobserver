@@ -43,7 +43,9 @@ PARSE_ERROR = """error: Unknown start of token '-'
 # where that is FAILS, as a build that cannot report itself does — and, asked for
 # anything else, either says PARSE_ERROR and exits 1, as a release that cannot
 # read the file does, or lists nothing and exits 0. Each invocation is recorded
-# to JUST_STANDIN_RECORD.
+# to JUST_STANDIN_RECORD. It writes its error as UTF-8 bytes, as the real `just`
+# does whatever the console's code page: an interpreter's own `sys.stderr` on a
+# Windows runner encodes in that code page instead, mangling the box-drawing.
 JUST_STANDIN = """
 import os
 import sys
@@ -56,7 +58,7 @@ if sys.argv[1:] == ["--version"]:
     print("just " + os.environ["JUST_STANDIN_RELEASE"])
     raise SystemExit(0)
 if os.environ.get("JUST_STANDIN_ERROR"):
-    sys.stderr.write(os.environ["JUST_STANDIN_ERROR"] + "\\n")
+    sys.stderr.buffer.write((os.environ["JUST_STANDIN_ERROR"] + "\\n").encode("utf-8"))
     raise SystemExit(1)
 """
 
