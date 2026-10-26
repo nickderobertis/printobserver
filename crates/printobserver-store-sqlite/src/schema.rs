@@ -488,7 +488,13 @@ fn notes_after(connection: &Connection, after: u32) -> Result<Vec<MigrationNote>
     let rows = statement
         .query_map([i64::from(after)], |row| {
             Ok(MigrationNote {
-                version: u32::try_from(row.get::<_, i64>(0)?).unwrap_or(u32::MAX),
+                version: u32::try_from(row.get::<_, i64>(0)?).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Integer,
+                        Box::new(error),
+                    )
+                })?,
                 subject: row.get(1)?,
                 detail: row.get(2)?,
             })

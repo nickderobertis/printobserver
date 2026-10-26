@@ -115,6 +115,13 @@ fn a_filament_change_reads_with_its_position_carrying_its_freshness() {
     let position = fresh.position.expect("a position");
     assert_eq!(position.freshness, PositionFreshness::ReadAtSignal);
     assert_eq!(position.position.bytes, 40_960);
+    let recorded: FilamentChangeSignalledPayload = read_as(json!({
+        "position": { "bytes": 1024, "observed_at": AT },
+        "position_read_at_signal": false, "source_kind": "obico_printer_notification",
+    }));
+    let position = recorded.position.expect("a position");
+    assert_eq!(position.freshness, PositionFreshness::LastRecorded);
+    assert_eq!(position.position.bytes, 1_024);
     let none: FilamentChangeSignalledPayload = read_as(json!({
         "position_read_at_signal": false, "source_kind": "obico_printer_notification",
     }));
@@ -580,5 +587,59 @@ fn an_old_row_whose_fields_its_kind_cannot_hold_is_answered_as_stored() {
         ),
     ] {
         assert_eq!(read(kind, payload.clone()).payload, payload, "{kind}");
+    }
+}
+
+/// The one tool of a filament check 0.4.3 wrote, read through the store.
+fn read_tool(old: &Value) -> PreflightToolResult {
+    let checked: PreflightCheckedPayload = read_as(json!({ "preflight": {
+        "file_name": "bracket.gcode", "checked_at": AT, "verdict": "unchecked",
+        "tools": [old],
+    } }));
+    checked.preflight.tools[0].result.clone()
+}
+
+/// The evidence a tool of 0.4.3's check carried survives into its result: a
+/// short spool keeps its marks, whether it objected or was let through, and a
+/// doubted spool keeps what the print needs from it when the analysis said.
+#[test]
+fn a_preflight_tools_evidence_survives_the_read() {
+    let marks =
+        json!([{ "reason": { "reason": "uncharged_print", "print_id": PRINT }, "since": AT }]);
+    let figures = |required: f64| {
+        json!({ "spool_id": SPOOL, "spool_name": "PETG", "remaining_g": 80.0,
+                "required_g": required, "buffer_g": 12.0, "marks": marks })
+    };
+    let short_marks = |result: &PreflightToolResult| match result {
+        PreflightToolResult::Insufficient(short)
+        | PreflightToolResult::Overridden {
+            objection: PreflightObjection::Insufficient(short),
+        }
+        | PreflightToolResult::Warned {
+            objection: PreflightObjection::Insufficient(short),
+        } => short.marks.len(),
+        other => panic!("not a short spool: {other:?}"),
+    };
+    for verdict in ["insufficient", "overridden", "warned"] {
+        let result = read_tool(&tool(verdict, &figures(120.0)));
+        assert_eq!(
+            short_marks(&result),
+            1,
+            "{verdict} lost its marks: {result:?}"
+        );
+    }
+    for verdict in ["unverified_spool", "warned"] {
+        let result = read_tool(&tool(verdict, &figures(10.0)));
+        let doubted = match &result {
+            PreflightToolResult::UnverifiedSpool(doubted)
+            | PreflightToolResult::Warned {
+                objection: PreflightObjection::UnverifiedSpool(doubted),
+            } => doubted,
+            other => panic!("{verdict} is not a doubted spool: {other:?}"),
+        };
+        let need = doubted.need.as_ref().expect("the need survives");
+        assert!((need.required_g - 10.0).abs() < 1e-9, "{verdict}: {need:?}");
+        assert!((need.buffer_g - 12.0).abs() < 1e-9, "{verdict}: {need:?}");
+        assert_eq!(doubted.marks.len(), 1, "{verdict}: {doubted:?}");
     }
 }
