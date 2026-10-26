@@ -392,7 +392,7 @@ export interface EventsAnswer {
    * filters, given as `after` to read on from it; null when the log held
    * nothing to start after. Always sent, as null when it is that.
    */
-  cursor?: EventId | null;
+  cursor: EventId | null;
   /**
    * The events, oldest first in the order they were stored, each exactly as
    * a history read serves it.

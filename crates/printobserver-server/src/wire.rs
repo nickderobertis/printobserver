@@ -594,6 +594,7 @@ pub struct HistoryAnswer {
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
 #[schemars(crate = "printobserver_types::schemars")]
+#[schemars(transform = cursor_is_always_sent)]
 pub struct EventsAnswer {
     /// The events, oldest first in the order they were stored, each exactly as
     /// a history read serves it.
@@ -604,8 +605,21 @@ pub struct EventsAnswer {
     pub cursor: Option<EventId>,
     /// The watched print's end as stored, whatever the filters said, and null
     /// while it is open. Absent from a read that names no print.
+    // Marked as a field whose null is sent and means something its absence
+    // does not, so a generated client keeps the two apart.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-null-is-sent" = true))]
     pub print_ended: Option<Option<PrintEnded>>,
+}
+
+/// Declare an events answer's `cursor` required, as the null it may be.
+///
+/// The derive reads an `Option` as a field that may be absent, and its own
+/// `required` attribute drops the null with the absence; this keeps the null.
+fn cursor_is_always_sent(schema: &mut printobserver_types::schemars::Schema) {
+    if let Some(Value::Array(required)) = schema.get_mut("required") {
+        required.push(Value::from("cursor"));
+    }
 }
 
 /// One print's end, as its `print_ended` event stored it.

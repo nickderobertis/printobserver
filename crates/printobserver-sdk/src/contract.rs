@@ -50,6 +50,15 @@ pub const OPERATION_NAMES: [&str; 28] = [
     "retire_spool",
 ];
 
+/// A field that was sent, null included, as what was sent.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
 /// What an operator's acknowledgement of a failure event asks for next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AcknowledgementDisposition {
@@ -453,7 +462,6 @@ pub struct EventsAnswer {
     /// The last event this read examined, whether or not it passed the
     /// filters, given as `after` to read on from it; null when the log held
     /// nothing to start after. Always sent, as null when it is that.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<EventId>,
     /// The events, oldest first in the order they were stored, each exactly
     /// as
@@ -461,8 +469,12 @@ pub struct EventsAnswer {
     pub events: Vec<EventRecord>,
     /// The watched print's end as stored, whatever the filters said, and null
     /// while it is open. Absent from a read that names no print.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub print_ended: Option<PrintEnded>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub print_ended: Option<Option<PrintEnded>>,
 }
 
 /// What happened when an accepted action reached the printer.

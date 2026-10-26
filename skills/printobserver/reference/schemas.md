@@ -6943,11 +6943,13 @@ Declared by `printobserver-server`.
           "type": "null"
         }
       ],
-      "description": "The watched print's end as stored, whatever the filters said, and null\nwhile it is open. Absent from a read that names no print."
+      "description": "The watched print's end as stored, whatever the filters said, and null\nwhile it is open. Absent from a read that names no print.",
+      "x-null-is-sent": true
     }
   },
   "required": [
-    "events"
+    "events",
+    "cursor"
   ],
   "title": "EventsAnswer",
   "type": "object"

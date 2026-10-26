@@ -489,7 +489,7 @@ class EventsAnswer(TypedDict):
     # The last event this read examined, whether or not it passed the
     # filters, given as `after` to read on from it; null when the log held
     # nothing to start after. Always sent, as null when it is that.
-    cursor: NotRequired[EventId | None]
+    cursor: EventId | None
     # The events, oldest first in the order they were stored, each exactly
     # as
     # a history read serves it.
