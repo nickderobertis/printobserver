@@ -7,12 +7,14 @@ files, and the files are the ones this repository ships.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 from repo_checks import gate_shards, workers
 from repo_checks.model import Repo
+from repo_checks.shell import DISCOVERY_CEILING, discovered_no_higher_than
 from treecopy import REPO_ROOT, Closure, Tree, copy_tree, strayed
 
 # Each worker measures itself when this suite runs under coverage.
@@ -51,6 +53,23 @@ def no_ambient_shard_part(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in gate_shards.PARTS:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_enclosing_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop git's search for a repository at each test's own temporary directory.
+
+    Every tree a test builds there without a history is meant to be no
+    repository, and is one only while nothing above it is a checkout. A
+    temporary directory inside some other checkout — a scratch directory under
+    an operator's workspace — hands each of them that checkout's history, and
+    the gate tier scopes the copy by a base commit of a repository it is not
+    part of. Set in the process environment, the bound reaches every program a
+    test starts and every program those start. A repository a test initialises
+    under it is still found.
+    """
+    bounded = discovered_no_higher_than(tmp_path, os.environ)
+    monkeypatch.setenv(DISCOVERY_CEILING, bounded[DISCOVERY_CEILING])
 
 
 @pytest.fixture(autouse=True)

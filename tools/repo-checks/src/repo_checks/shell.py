@@ -13,7 +13,8 @@ carrying one allowlist entry, instead of one at every call in the tree.
 
 The third thing that follows is the ambient-git repair below: a subprocess
 started here runs on the directory it was given, whatever repository the
-caller's own environment happens to name.
+caller's own environment happens to name — and, where the caller bounded git's
+search with `discovered_no_higher_than`, finds no repository above that bound.
 """
 
 from __future__ import annotations
@@ -50,11 +51,41 @@ GIT_LOCATION_VARIABLES = (
 )
 
 
+#: The variable bounding git's upward search for a repository. It names no
+#: repository — only where looking for one stops — so it is never dropped with
+#: the variables above, and a bound a caller set reaches every program started
+#: here and every program those start.
+DISCOVERY_CEILING = "GIT_CEILING_DIRECTORIES"
+
+
 def without_ambient_git(environment: Mapping[str, str]) -> dict[str, str]:
-    """`environment` minus every variable that names a repository."""
+    """`environment` minus every variable that names a repository.
+
+    `DISCOVERY_CEILING` is kept: it bounds where git looks rather than naming
+    what it finds.
+    """
     return {
         name: value for name, value in environment.items() if name not in GIT_LOCATION_VARIABLES
     }
+
+
+def discovered_no_higher_than(root: Path, environment: Mapping[str, str]) -> dict[str, str]:
+    """`environment`, with git's search for a repository stopping at `root`.
+
+    A tree meant to be no repository — a copy of this one with its history left
+    behind — is one only while nothing above it is a checkout. Under a scratch
+    directory inside some other checkout, git finds that one instead, and the
+    gate tier scopes the copy by a base commit of a repository it is not part
+    of. A repository initialised at `root` or anywhere under it is still found.
+
+    git never applies a ceiling to the directory it starts in, so the bound is
+    `root`'s parent: from `root` or below, git looks at `root` and stops there.
+    A bound already in `environment` is kept after this one.
+    """
+    ceiling = str(root.resolve().parent)
+    inherited = environment.get(DISCOVERY_CEILING)
+    bounded = os.pathsep.join([ceiling, inherited]) if inherited else ceiling
+    return {**environment, DISCOVERY_CEILING: bounded}
 
 
 def run(
