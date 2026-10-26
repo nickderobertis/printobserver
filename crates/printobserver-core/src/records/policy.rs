@@ -241,6 +241,7 @@ pub enum SpoolRefusalCause {
 
 /// Write a figure as the number it is, refusing one JSON has no number for:
 /// written as `null`, it would be a refusal no reader could read back.
+// serde hands a `serialize_with` a reference to the field; suppressions.toml has the reason.
 #[expect(clippy::trivially_copy_pass_by_ref)]
 fn a_number<S: printobserver_types::serde::Serializer>(
     value: &f64,
