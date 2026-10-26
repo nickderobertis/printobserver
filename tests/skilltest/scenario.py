@@ -965,7 +965,7 @@ def _spool_answers(composer: _Composer) -> dict[str, list[dict[str, Any]]]:
             "diameter_mm": 1.75,
             "id": _id(),
             "initial_g": 1000.0,
-            "loaded_on_tool": TOOL,
+            "lifecycle": {"state": "loaded", "tool": TOOL},
             "material": "PLA",
             "name": "PLA black",
             "registered_at": _instant(composer.now - timedelta(days=3)),
@@ -977,7 +977,7 @@ def _spool_answers(composer: _Composer) -> dict[str, list[dict[str, Any]]]:
         _schema_path("SpoolRecord"),
         "the spool",
     )
-    unloaded = {key: value for key, value in spool.items() if key != "loaded_on_tool"}
+    unloaded = {**spool, "lifecycle": {"state": "shelved"}}
     commanded = _instant(composer.now)
 
     def event(payload_type: str, payload: dict[str, Any], by: object, at: str) -> dict[str, Any]:
@@ -1033,11 +1033,12 @@ def _spool_answers(composer: _Composer) -> dict[str, list[dict[str, Any]]]:
                         "file_name": composer.file_name,
                         "tools": [
                             {
-                                "remaining_g": spool["remaining_g"],
-                                "spool_id": spool["id"],
-                                "spool_name": spool["name"],
+                                "result": {
+                                    "remaining_g": spool["remaining_g"],
+                                    "spool": {"id": spool["id"], "name": spool["name"]},
+                                    "verdict": "no_analysis",
+                                },
                                 "tool": TOOL,
-                                "verdict": "no_analysis",
                             }
                         ],
                         "verdict": "no_analysis",
@@ -1059,7 +1060,7 @@ def _spool_answers(composer: _Composer) -> dict[str, list[dict[str, Any]]]:
         ),
         "retire-spool": command(
             "SpoolRetiredPayload",
-            {**unloaded, "retired_at": commanded},
+            {**spool, "lifecycle": {"state": "retired", "at": commanded}},
             remaining_g=spool["remaining_g"],
             spool_id=spool["id"],
         ),

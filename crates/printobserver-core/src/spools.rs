@@ -75,6 +75,26 @@ fn invalid_figure(field: SpoolField, value: f64, message: impl Into<String>) -> 
     )
 }
 
+/// The refusal of a load onto a tool the printer cannot have.
+fn no_such_tool(tool: i64) -> RejectionReason {
+    refused(
+        SpoolRefusalCause::UnknownTool { tool },
+        format!("there is no tool {tool}; tools are numbered from 0, as the printer numbers them"),
+    )
+}
+
+/// The refusal of a load naming the spool already on the tool, with nothing
+/// there for it to confirm.
+fn nothing_to_confirm(spool: &SpoolRecord, tool: i64) -> RejectionReason {
+    refused(
+        SpoolRefusalCause::NothingToConfirm { tool },
+        format!(
+            "spool {} is already on tool {tool}, and nothing is pending there to confirm",
+            spool.name
+        ),
+    )
+}
+
 /// A registration's fields, as the command gave them.
 struct Registration<'a> {
     /// The operator's own label for the spool.
@@ -468,13 +488,7 @@ impl Supervisor {
         during: Option<PrintId>,
     ) -> Result<Result<SpoolCommandOutcome, RejectionReason>, CoreError> {
         if tool < 0 {
-            return Ok(Err(refused(
-                SpoolRefusalCause::UnknownTool { tool },
-                format!(
-                    "there is no tool {tool}; tools are numbered from 0, as the printer numbers \
-                     them"
-                ),
-            )));
+            return Ok(Err(no_such_tool(tool)));
         }
         let incoming = match self.live_spool(spool_id).await? {
             Ok(spool) => spool,
@@ -485,13 +499,7 @@ impl Supervisor {
         let mut figures = Figures::default();
         let already_there = incoming.loaded_tool() == Some(tool);
         if already_there && pending.is_empty() && !holds_any_change_mark(&incoming) {
-            return Ok(Err(refused(
-                SpoolRefusalCause::NothingToConfirm { tool },
-                format!(
-                    "spool {} is already on tool {tool}, and nothing is pending there to confirm",
-                    incoming.name
-                ),
-            )));
+            return Ok(Err(nothing_to_confirm(&incoming, tool)));
         }
         let spools = self.stores().filament.spools(true).await?;
         // The spool that was feeding the tool, which the load takes off it.
@@ -752,7 +760,7 @@ impl Supervisor {
             .filter_map(|charge| charge.charged.as_ref())
             .filter(|charged| charged.spool_id == spool.id)
             .map(|charged| charged.remaining_after_g)
-            .last()
+            .next_back()
             .unwrap_or(spool.remaining_g);
         write.mutations.push(self.mutation(
             spool.id,

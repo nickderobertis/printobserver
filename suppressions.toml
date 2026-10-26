@@ -119,18 +119,6 @@ reason = "The plan states this command's shape as `adjust_spool { spool_id, rema
 [[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/kinds.rs"
-site = "pub position_read_at_signal: bool,"
-reason = "The plan states this payload as `position: Option<FilePosition>` beside `position_read_at_signal: bool`, and the domain that writes it, the store that keeps it and the clients that read it are being built against that shape at the same time; nothing writes the event yet. Folding the flag into the position's own type would be a different wire form, so it is proposed as a follow-up rather than made unilaterally here, and the field's documentation states that it is never set with no position."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/policy.rs"
-site = "SpoolRefused {"
-reason = "The plan states this rejection as `spool_refused { detail: String }`, one variant for every spool command the domain cannot carry out — an unknown or retired spool, a tool that already holds the spool with nothing to confirm, an adjust naming both or neither figure, a gross weight with no tare, a material with no known density — and the domain, the command surface and the three clients are being built against that one variant at the same time. A variant per cause would be a different wire form each of them would have to change to, so it is proposed as a follow-up rather than made here; every other rejection stays a distinct variant carrying what a second request is composed from."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/kinds.rs"
 site = "pub success: bool,"
 reason = "`UnaccountedPrintPayload.success` is a bare flag beside `PrintOutcome`. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
 
@@ -142,63 +130,9 @@ reason = "`UnaccountedPrintPayload.charged` is a bare flag for whether the print
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/kinds.rs"
-site = "pub struct FilamentConsumedPayload {"
-reason = "`FilamentConsumedPayload` carries its grams, diameter, density and before and after figures as independent options, each present exactly when a spool was charged. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-printer-api/src/file.rs"
 site = "pub success: bool,"
 reason = "`FilePrint.success` is the printer's own completed-or-not flag for a file's last print, as `OctoPrint` reports it. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/charge.rs"
-site = "pub print_id: PrintId,"
-reason = "`PendingCharge.print_id` repeats what its `print` charge key names, so a reader of a pending charge need not unpack the key. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/charge.rs"
-site = "pub tool: i64,"
-reason = "`PendingCharge.tool` repeats what its `print` charge key names, so a reader of a pending charge need not unpack the key. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/preflight.rs"
-site = "pub spool_name: Option<String>,"
-reason = "`PreflightTool.spool_name` is an option independent of `spool_id`, present exactly when it is. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/spool.rs"
-site = "pub loaded_on_tool: Option<i64>,"
-reason = "`SpoolRecord.loaded_on_tool` and `retired_at` are independent options, so a retired spool still loaded is representable; the domain unloads a spool as it retires it, and the canonical values carry a loaded spool and a retired one apart. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/spool.rs"
-site = "pub retired_at: Option<Timestamp>,"
-reason = "`SpoolRecord.retired_at` is an option independent of `loaded_on_tool`, for the same reason as that field's entry. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/preflight.rs"
-site = "pub required_g: Option<f64>,"
-reason = "`PreflightTool.required_g`, `buffer_g` and `remaining_g` are independent options whose valid combinations follow the verdict and whether a spool is loaded. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/preflight.rs"
-site = "pub buffer_g: Option<f64>,"
-reason = "`PreflightTool.buffer_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/records/preflight.rs"
-site = "pub remaining_g: Option<f64>,"
-reason = "`PreflightTool.remaining_g` is one of the three independent figures `required_g`'s entry names. The plan states this shape verbatim for the filament ledger's shared contract, which the user approved and which the store, the domain, the command surface and the three clients are built against concurrently, so the manager ruled it is not changed here; the shape that would make the invalid state unrepresentable is proposed in the consolidated follow-up on these sites."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
@@ -2344,48 +2278,6 @@ site = "pub file_name: String,"
 reason = "The task that froze the filament store's shapes states `FileTally { file_name: String, origin: String, .. }`, and the tally is keyed by the same file name the frozen spool-ledger contract already carries as a `String` in `ChargeKey::Unobserved.file_name` and `UnaccountedPrintPayload.file_name`: a tally, the unobserved charge it accounts and the event that reports it must name one file identically, so one of the three cannot take `FileName` alone. The name is the printer's own, read back from its file listing rather than typed by anybody, and is stored and compared verbatim. Moving all three to a validated name together is a contract amendment for the manager, drafted as a follow-up rather than made here."
 
 [[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-core/src/store.rs"
-site = "pub struct Charge"
-reason = "`Charge` and `ChargeRecord` carry `tool` and `print_id` beside their `ChargeKey` because the task that froze the filament store states both shapes with those fields, and the frozen `charges` table holds `tool` and `print_id` as columns of their own so a print's charges are read through `charges_by_print(print_id, tool)`. They do not always restate the key either: an `unobserved` key names no print, and the same unobserved print may be charged against a print record the domain did open. Deriving the two from the key, or validating them against it, is a change to the shared contract for the manager, drafted as a follow-up rather than made here; until then the domain builds each charge's three fields together, and the store reads a charge's key back from its own canonical spelling and refuses a non-canonical one."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/spools.rs"
-site = "pub async fn request_spool_command("
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. The journeys in `tests/journeys/spool_commands.rs` and `filament_change.rs` drive every command, grant, refusal, swap, confirmation and a correction racing a close-out through this method."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/preflight.rs"
-site = "pub(crate) async fn check_start("
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `tests/journeys/preflight.rs` drives the check, the analysis wait on the injected clock, every refusal, warn, off and the operator-only override through `request_action`."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/accounting.rs"
-site = "pub(crate) async fn settle_filament("
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `tests/journeys/print_timeline.rs` drives each outcome, the fallback estimate, the untracked close-out, replays after a refused or unanswered settlement, and restarts through a second `Supervisor` over the same store."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/accounting.rs"
-site = "pub(crate) async fn handle_signal("
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `tests/journeys/filament_change.rs` feeds the adapter-pinned alert to `handle_event` and drives the charge, marks, holds, confirmations and replays after a refused or unanswered write."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/unobserved.rs"
-site = "pub async fn account_unobserved_prints("
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `tests/journeys/unobserved.rs` drives the baseline, unseen prints, settlement subtraction, tally resets and an interrupted run through this method."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/look.rs"
-site = "&& print.ended_at.is_none()"
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `a_look_records_where_the_print_had_got` and `a_look_whose_position_is_refused_is_answered_and_a_later_read_records_it` in `tests/journeys/print_timeline.rs` drive this write and its refusal through `take_look`."
-
-[[suppression]]
 rule = "clippy::cast_precision_loss"
 file = "crates/printobserver-core/src/accounting.rs"
 site = "let fraction = (position.bytes as f64 / size as f64)"
@@ -2420,30 +2312,6 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-core/src/events.rs"
 site = "Resolution::Opened(print) => {"
 reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `tests/journeys/filament_change.rs` hands the adapter-pinned Obico alert to `handle_event`; the existing event-loop journeys still pass with a print an alert opens now carrying its `print_started`."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/listing.rs"
-site = "let opened = self.record_sighting(opened, observed).await?;"
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `a_job_started_at_the_printer_is_adopted_and_charged` and `an_sd_card_print_marks_the_loaded_spool_uncharged` in `tests/journeys/print_timeline.rs` drive adoption through `list_and_adopt_prints` and read the adopted print's `print_started` back."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/listing.rs"
-site = "async fn note_running("
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. Every stopped-print journey in `tests/journeys/print_timeline.rs` charges to the position these reads recorded after the printer cleared it, including after a restart."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/preflight.rs"
-site = "pub async fn preflight(&self, file_name: &FileName)"
-reason = "`printobserver-core` may not depend on any adapter or store — `repo-policy.toml`'s `crates.may_depend_on` row for it names only the type crate and the three ports — so no test of this crate can reach the real OctoPrint adapter or the SQLite store, and the filament-accounting task confines these proofs to the crate's own journeys over its port doubles and keeps the store, adapter and server crates out of its scope. The composed end-to-end proof lands in the plan's later spool-command-surface node, in the first crate that can compose it: its server restart-and-replay journeys run a real supervisor over the real on-disk SQLite store and prove each spool's remaining figure across a restart, and its command-line journeys drive the compiled binary against a real server and the scripted OctoPrint. The structural substitute is the one this crate's every journey stands on: the layer under test, the `Supervisor`, is driven unfaked through its public methods; `FakeStore` applies the `FilamentStore` and `TimelineStore` contracts as their trait documentation states them (keyed replays, all-or-nothing writes, failure injection for a refused and for a committed-but-unanswered write), and the SQLite crate's conformance suite holds the real store to that same contract; the one printer-port double is the only implementation of that port in these tests. The adapter-to-ledger chain is joined through `crates/printobserver-obico/tests/fixtures/filament-change-alert.json`, which the Obico adapter's own test pins its normalization to. `the_check_read_reports_each_tool_and_records_nothing` and `a_file_that_cannot_be_read_is_checked_as_having_no_analysis` in `tests/journeys/preflight.rs` drive this read and assert it writes nothing."
-
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "crates/printobserver-core/src/preflight.rs"
-site = "if Delay::new(ANALYSIS_POLL).await.is_err() {"
-reason = "This branch is reached only when the operating system refuses to start a thread, which no journey can arrange without exhausting the host's threads for every test running beside it. What it does is the smallest true thing — stop waiting and judge the start on the file's facts as they stand, which is the path `a_start_whose_analysis_never_appears_is_refused_unless_an_operator_overrides` drives once the wait elapses — and `Delay` itself answers the spawn's own error rather than panicking, with its waking proven by `delay`'s own tests."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"

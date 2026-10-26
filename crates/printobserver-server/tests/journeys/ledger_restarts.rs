@@ -30,19 +30,19 @@ use crate::spooling::{close, loaded, plain, registered};
 use crate::world::{SECRET, World};
 
 /// The file every journey here prints.
-const FILE: &str = "benchy.gcode";
+pub(crate) const FILE: &str = "benchy.gcode";
 
 /// Its size, which the machine's job reports too.
-const SIZE_BYTES: i64 = 4_096;
+pub(crate) const SIZE_BYTES: i64 = 4_096;
 
 /// What its analysis says tool 0 feeds over the whole of it, in millimetres.
-const WHOLE_MM: f64 = 8_000.0;
+pub(crate) const WHOLE_MM: f64 = 8_000.0;
 
 /// What a spool holds when it is registered, in grams.
-const FULL_G: f64 = 1_000.0;
+pub(crate) const FULL_G: f64 = 1_000.0;
 
 /// The grams a length of PLA at the default diameter weighs.
-fn grams(length_mm: f64) -> f64 {
+pub(crate) fn grams(length_mm: f64) -> f64 {
     grams_for_length(
         length_mm,
         printobserver_core::DEFAULT_DIAMETER_MM,
@@ -51,14 +51,14 @@ fn grams(length_mm: f64) -> f64 {
 }
 
 /// A world whose machine holds the file, analysed, part-way through printing it.
-async fn printing_world() -> World {
+pub(crate) async fn printing_world() -> World {
     let world = World::open().await;
     analysed(&world);
     world
 }
 
 /// The machine holds the file, freshly uploaded, with its analysis.
-fn analysed(world: &World) {
+pub(crate) fn analysed(world: &World) {
     world.printer.holds_file(
         FILE,
         SIZE_BYTES,
@@ -72,7 +72,7 @@ fn analysed(world: &World) {
 
 /// Read the prints, which is what has the supervisor look at the machine's job:
 /// adopting it, noting where it has got to, or closing what it shows is over.
-async fn look_at_the_job(world: &World) -> Value {
+pub(crate) async fn look_at_the_job(world: &World) -> Value {
     let (status, listing) = world.get(&plain(world, "prints")).await;
     assert_eq!(status, reqwest::StatusCode::OK, "{listing}");
     listing
@@ -80,13 +80,13 @@ async fn look_at_the_job(world: &World) -> Value {
 
 /// The machine finishes the job it is running: it reports itself idle, and the
 /// file's tally counts one more completed print.
-fn finishes(world: &World) {
+pub(crate) fn finishes(world: &World) {
     world.printer.counts_print(FILE, true, Timestamp::now());
     world.printer.in_state(PrinterState::Operational);
 }
 
 /// Every event of the printer's history, newest first, read a page at a time.
-async fn the_whole_history(world: &World) -> Vec<Value> {
+pub(crate) async fn the_whole_history(world: &World) -> Vec<Value> {
     let history = plain(world, "printer_history");
     let mut events = Vec::new();
     let mut before: Option<String> = None;
@@ -106,7 +106,7 @@ async fn the_whole_history(world: &World) -> Vec<Value> {
 }
 
 /// The events of one kind, oldest first.
-fn of_kind<'a>(events: &'a [Value], kind: &str) -> Vec<&'a Value> {
+pub(crate) fn of_kind<'a>(events: &'a [Value], kind: &str) -> Vec<&'a Value> {
     events
         .iter()
         .rev()
@@ -134,18 +134,22 @@ async fn spools_by_id(world: &World) -> BTreeMap<String, Value> {
 }
 
 /// One spool, as its own read answers it.
-async fn spool_of(world: &World, spool_id: &str) -> Value {
+pub(crate) async fn spool_of(world: &World, spool_id: &str) -> Value {
     let (status, read) = world.get(&world.spool_url("spool", spool_id)).await;
     assert_eq!(status, reqwest::StatusCode::OK, "{read}");
     read
 }
 
 /// The grams every `filament_consumed` in the history debited one spool.
-fn debited(events: &[Value], spool_id: &str) -> Vec<f64> {
+pub(crate) fn debited(events: &[Value], spool_id: &str) -> Vec<f64> {
     of_kind(events, "filament_consumed")
         .into_iter()
-        .filter(|event| event["payload"]["spool_id"] == json!(spool_id))
-        .map(|event| event["payload"]["grams"].as_f64().unwrap_or_default())
+        .filter(|event| event["payload"]["charged"]["spool_id"] == json!(spool_id))
+        .map(|event| {
+            event["payload"]["charged"]["grams"]
+                .as_f64()
+                .unwrap_or_default()
+        })
         .collect()
 }
 
@@ -213,7 +217,11 @@ async fn a_swap_before_a_restart_charges_each_spool_its_own_segment() {
     // Half-way through the file, the operator swaps the spool on tool 0.
     world.printer.at_byte(SIZE_BYTES / 2);
     let swapped = loaded(&world, &incoming, 0).await;
-    assert_eq!(swapped["spool"]["loaded_on_tool"], json!(0), "{swapped}");
+    assert_eq!(
+        swapped["spool"]["lifecycle"],
+        json!({ "state": "loaded", "tool": 0 }),
+        "{swapped}"
+    );
 
     let world = world.restart().await;
     world.printer.at_byte(3 * SIZE_BYTES / 4);
@@ -519,7 +527,7 @@ async fn a_reset_tally_reused_ordinal_is_a_new_print_charged_once() {
 
 /// The `Obico` notification of a filament change about the print the machine
 /// is running, started when the job did.
-fn filament_change(started_at: i64) -> Value {
+pub(crate) fn filament_change(started_at: i64) -> Value {
     json!({
         "event": { "type": "FilamentChange", "is_warning": false, "print_paused": false },
         "printer": { "id": 17, "name": "Prusa MK4" },

@@ -199,7 +199,11 @@ fn the_ledger_reads_back_unchanged_from_a_reopened_file_and_a_replay_writes_noth
         "both spools were not written"
     );
     assert!(
-        written.state.spools.iter().any(|spool| spool.is_retired()),
+        written
+            .state
+            .spools
+            .iter()
+            .any(printobserver_core::SpoolRecord::is_retired),
         "the retired spool was not written"
     );
     assert_eq!(

@@ -249,7 +249,11 @@ CREATE INDEX events_by_kind_and_instant ON events(kind, received_at, id);
 ///
 /// A charge's diameter, density and the spool's figures either side of it were
 /// held only in its `filament_consumed` event, so they are read back from
-/// there. The triggers are the refusals the database makes from here on.
+/// there. The triggers are the refusals the database makes from here on. A
+/// watched key spells its print and tool first, so those are held exactly;
+/// an unobserved key's origin and file name may each carry a colon, so the
+/// database holds only that its tool is one of the key's fields, and every
+/// read of the row holds it exactly.
 const V6_COHERENT_LEDGER: &str = "\
 CREATE TABLE migration_reports (
     version INTEGER NOT NULL,

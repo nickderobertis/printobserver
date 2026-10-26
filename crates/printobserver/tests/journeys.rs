@@ -85,6 +85,8 @@ mod spooling;
 mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
+#[path = "journeys/upgrading.rs"]
+mod upgrading;
 
 use world::World;
 
@@ -122,6 +124,26 @@ fn an_operator_keeps_the_spool_ledger_through_this_program() {
     let world = World::open(world::STOOD_IN);
 
     spooling::an_operator_keeps_the_ledger_through_this_program(&world);
+}
+
+/// Every refusal of the spool ledger is answered through this program with
+/// its tagged cause, which an automation acts on without reading the message.
+///
+/// A world of its own, because the journey's spools are the only ones the
+/// automation's listing is about.
+#[test]
+fn every_spool_refusal_is_answered_with_its_cause_through_this_program() {
+    let world = World::open(world::STOOD_IN);
+
+    spooling::every_spool_refusal_is_answered_with_its_cause(&world);
+}
+
+/// A supervisor of this build started over the store a published release
+/// wrote migrates it, says what it changed, and reads every event that release
+/// wrote through this program.
+#[test]
+fn a_store_a_published_release_wrote_is_migrated_and_still_reads() {
+    upgrading::a_store_0_4_3_wrote_is_migrated_and_every_event_still_reads(world::STOOD_IN);
 }
 
 /// The listing opens with one line per spool, and a start the filament check

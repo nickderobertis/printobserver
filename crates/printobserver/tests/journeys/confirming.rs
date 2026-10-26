@@ -354,14 +354,14 @@ fn the_ledger_carried_it_out(world: &World, one: &Driven, said: &BTreeMap<String
             }
         }
         "load-spool" => assert_eq!(
-            held("loaded_on_tool"),
+            read.pointer("/spool/lifecycle/tool").cloned(),
             one.given("tool")
                 .map(|tool| as_sent(ValueKind::Integer, &tool)),
             "`load-spool` did not put the spool on the tool its caller named: {read}"
         ),
         "unload-spool" => assert_eq!(
-            held("loaded_on_tool"),
-            None,
+            held("lifecycle"),
+            Some(printobserver_types::serde_json::json!({ "state": "shelved" })),
             "`unload-spool` left the spool on its tool: {read}"
         ),
         "adjust-spool" => {
@@ -379,7 +379,8 @@ fn the_ledger_carried_it_out(world: &World, one: &Driven, said: &BTreeMap<String
             );
         }
         _ => assert!(
-            held("retired_at").is_some(),
+            read.pointer("/spool/lifecycle/state")
+                == Some(&printobserver_types::serde_json::json!("retired")),
             "`retire-spool` left the spool unretired: {read}"
         ),
     }

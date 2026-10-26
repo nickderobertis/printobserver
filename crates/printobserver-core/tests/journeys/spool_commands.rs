@@ -147,11 +147,10 @@ fn refused_with(world: &World, asked: &SpoolCommand, cause: &SpoolRefusalCause, 
     assert_eq!(last.decision, outcome.decision);
 }
 
-/// Each case the ledger cannot carry out is refused `spool_refused`, saying
-/// why, and written down: an unknown spool, a retired one, a load of the spool
-/// already on a tool with nothing to confirm, a correction naming both figures
-/// or neither, a scale reading with no tare, and a material with no known
-/// density.
+/// Each case the ledger cannot carry out about the spool or the tool named is
+/// refused `spool_refused` with its cause, and written down: an unknown spool,
+/// a retired one, a load of the spool already on a tool with nothing to
+/// confirm, and a tool the printer cannot have.
 #[test]
 fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
     let world = spool_world();
@@ -220,7 +219,15 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
         "there is no tool -1",
     );
     assert_eq!(spool_now(&world, loaded.id).loaded_tool(), Some(0));
+}
 
+/// A correction naming both figures or neither, a scale reading of a spool
+/// with no tare, and a registration of a material with no known density are
+/// each refused with the cause that names what to give instead.
+#[test]
+fn a_correction_or_registration_missing_what_it_needs_is_refused_saying_why() {
+    let world = spool_world();
+    let loaded = loaded_spool(&world, "On The Printer", 1_000.0);
     let both = SpoolCommand::AdjustSpool {
         spool_id: loaded.id,
         remaining_g: Some(10.0),
@@ -316,9 +323,8 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
 }
 
 /// A registration with an empty name or material, or a figure no spool can
-/// have, an unload of a spool on no tool, and a correction to a weight below
-/// zero are each refused with the cause that names the field or the spool, and
-/// nothing is written but the refusal.
+/// have, is refused with the cause that names the field, and nothing is
+/// written but the refusal.
 #[test]
 fn every_figure_and_field_a_command_cannot_carry_is_refused_naming_it() {
     let world = spool_world();
@@ -403,7 +409,14 @@ fn every_figure_and_field_a_command_cannot_carry_is_refused_naming_it() {
             .is_empty(),
         "a refused registration wrote a spool"
     );
+}
 
+/// An unload of a spool on no tool and a correction to a weight below zero are
+/// refused with the cause naming the spool or the field, and change nothing.
+#[test]
+fn an_unload_of_a_shelved_spool_or_a_negative_reading_is_refused_naming_it() {
+    let world = spool_world();
+    let figure = |field, value| SpoolRefusalCause::InvalidAdjustmentFigure { field, value };
     let shelved = register(&world, "On The Shelf", 1_000.0);
     refused_with(
         &world,

@@ -46,3 +46,5 @@ mod timeline_volume;
 mod unbounded;
 #[path = "journeys/unreadable.rs"]
 mod unreadable;
+#[path = "journeys/upgrading.rs"]
+mod upgrading;

@@ -1,0 +1,299 @@
+//! A database a published release wrote, opened by this build.
+//!
+//! `tests/fixtures/v0.4.3/printobserver.sqlite3` was written through
+//! printobserver 0.4.3's own store, whose spools carry a loaded tool beside a
+//! retirement and whose charges, pending charges and filament events carry the
+//! shapes that release wrote; `PROVENANCE.md` beside it says how. Opened here,
+//! it is migrated forward with what could not be carried as it was written
+//! down, and every record and event it held reads back in the shapes this
+//! build answers.
+
+use std::path::{Path, PathBuf};
+
+use crate::block_on::block_on;
+use crate::fixture::Store;
+use printobserver_core::kinds::{
+    ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
+    PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
+    SpoolRegisteredPayload,
+};
+use printobserver_core::store::{HistoryQuery, StoreError, TimelineQuery};
+use printobserver_core::{
+    ChargeKey, PolicyDecision, PreflightObjection, PreflightToolResult, RejectionReason, SpoolId,
+    SpoolLifecycle, SpoolRefusalCause,
+};
+use printobserver_store_sqlite::{
+    CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, SqliteStore, connect,
+};
+use printobserver_types::{EventPayload, EventRecord, PrintId};
+use tempfile::TempDir;
+
+/// The print the fixture holds.
+pub const PRINT: &str = "01a176c4-548a-7bb1-80e5-a5a058ca2ad2";
+/// The spool 0.4.3 retired while it was still loaded on tool 0.
+pub const RETIRED_ON_TOOL: &str = "01a176c4-5487-73b0-a80f-753b6f3fdc64";
+/// The spool loaded on tool 1.
+pub const LOADED: &str = "01a176c4-5488-7532-8297-73e157be17bc";
+/// The spool nothing names but its registration, ever.
+pub const UNKNOWN: &str = "01950000-0000-7000-8000-000000000001";
+
+/// The fixture, as it is checked in.
+#[must_use]
+pub fn fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("v0.4.3")
+        .join("printobserver.sqlite3")
+}
+
+/// A state directory holding a copy of the fixture, which a test may migrate.
+fn copied() -> TempDir {
+    let dir = TempDir::new().expect("a temporary state directory");
+    std::fs::copy(fixture(), dir.path().join(DATABASE_FILE_NAME)).expect("the fixture copies");
+    dir
+}
+
+/// The version a database file records.
+fn version_of(path: &Path) -> i64 {
+    connect(path)
+        .expect("the database opens")
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .expect("the version reads")
+}
+
+/// The one payload of one kind among events, read as that kind.
+fn every<P: EventPayload>(events: &[EventRecord]) -> Vec<P> {
+    events
+        .iter()
+        .filter_map(EventRecord::payload_as::<P>)
+        .map(|read| read.expect("an old event reads in this build's shape"))
+        .collect()
+}
+
+/// Opened by this build, the 0.4.3 database is migrated to this build's
+/// version; the spool 0.4.3 left retired and loaded is retired and on no tool,
+/// and the migration's report names it — once, by the open that migrated it,
+/// and in the database's own record from then on.
+#[test]
+fn a_database_0_4_3_wrote_is_migrated_with_the_retired_loaded_spool_reported() {
+    let dir = copied();
+    let path = dir.path().join(DATABASE_FILE_NAME);
+    assert_eq!(version_of(&path), 5, "the fixture is not the 0.4.3 schema");
+
+    let store = SqliteStore::open(dir.path()).expect("the 0.4.3 database opens");
+    assert_eq!(version_of(&path), i64::from(CURRENT_SCHEMA_VERSION));
+    let migrated = store.migrated().to_vec();
+    assert_eq!(migrated.len(), 1, "{migrated:#?}");
+    assert_eq!(migrated[0].version, 6);
+    assert_eq!(migrated[0].subject, format!("spool {RETIRED_ON_TOOL}"));
+    assert!(
+        migrated[0].detail.contains("PLA retired-on-tool")
+            && migrated[0].detail.contains("while still loaded on tool 0")
+            && migrated[0].detail.contains("loaded on no tool"),
+        "{}",
+        migrated[0]
+    );
+
+    let port: &dyn Store = &store;
+    let retired = block_on(port.spool(RETIRED_ON_TOOL.parse().expect("an id")))
+        .expect("the spool reads")
+        .expect("the spool is there");
+    assert!(
+        matches!(retired.lifecycle, SpoolLifecycle::Retired { .. }),
+        "{retired:?}"
+    );
+    let loaded: Vec<String> = block_on(port.loaded_spools())
+        .expect("the loaded spools read")
+        .iter()
+        .map(|spool| spool.id.to_string())
+        .collect();
+    assert_eq!(loaded, [LOADED]);
+    drop(store);
+
+    let reopened = SqliteStore::open(dir.path()).expect("the database opens again");
+    assert!(
+        reopened.migrated().is_empty(),
+        "a second open reported a migration it did not make"
+    );
+    assert_eq!(
+        reopened.migration_report().expect("the report reads"),
+        migrated,
+        "the database's own record of the migration is not what the migrating open said"
+    );
+}
+
+/// The charge and the pending charge the 0.4.3 database held read back in this
+/// build's shapes: the charge's calculation whole, read from its own event,
+/// and the pending charge keyed by its print segment alone.
+#[test]
+fn every_charge_0_4_3_wrote_reads_back_whole() {
+    let dir = copied();
+    let store = SqliteStore::open(dir.path()).expect("the 0.4.3 database opens");
+    let port: &dyn Store = &store;
+    let print: PrintId = PRINT.parse().expect("an id");
+    let charges = block_on(port.charges(print)).expect("the charges read");
+    assert_eq!(charges.len(), 1, "{charges:#?}");
+    let calculation = charges[0]
+        .charged
+        .as_ref()
+        .expect("the charge names its spool");
+    assert_eq!(calculation.spool_id.to_string(), LOADED);
+    assert!(
+        (calculation.diameter_mm - 1.75).abs() < 1e-9,
+        "{calculation:?}"
+    );
+    assert!(
+        (calculation.remaining_before_g - calculation.grams - calculation.remaining_after_g).abs()
+            < 1e-9,
+        "{calculation:?}"
+    );
+    assert_eq!(charges[0].identity.print_id(), Some(print));
+    let pending = block_on(port.pending_charges(Some(1))).expect("the pending charges read");
+    assert_eq!(pending.len(), 1, "{pending:#?}");
+    assert_eq!(pending[0].print_id(), print);
+    assert_eq!(pending[0].charge_key.segment, 1);
+}
+
+/// Every event the 0.4.3 database held reads back in this build's shapes:
+/// each filament event's position and calculation in one field, each preflight
+/// tool one tagged result, and a refusal 0.4.3 wrote as a sentence with its
+/// cause.
+#[test]
+fn every_event_0_4_3_wrote_reads_back_in_this_builds_shapes() {
+    let dir = copied();
+    let store = SqliteStore::open(dir.path()).expect("the 0.4.3 database opens");
+    let port: &dyn Store = &store;
+    let print: PrintId = PRINT.parse().expect("an id");
+    let history = block_on(port.history(HistoryQuery {
+        print_id: print,
+        kinds: Vec::new(),
+        since: None,
+        until: None,
+        limit: None,
+    }))
+    .expect("the print's history reads");
+    let timeline = block_on(port.timeline(TimelineQuery {
+        kinds: Vec::new(),
+        since: None,
+        until: None,
+        spool_id: None,
+        before: None,
+        limit: Some(1_000),
+    }))
+    .expect("the timeline reads");
+    let held: i64 = connect(&dir.path().join(DATABASE_FILE_NAME))
+        .expect("the database opens")
+        .query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
+        .expect("the events count");
+    assert_eq!(
+        i64::try_from(timeline.len()).expect("a count"),
+        held,
+        "the timeline does not answer every event 0.4.3 wrote"
+    );
+
+    let signals = every::<FilamentChangeSignalledPayload>(&history);
+    assert_eq!(signals.len(), 2, "{history:#?}");
+    let fresh = signals
+        .iter()
+        .find_map(|signal| signal.position.as_ref())
+        .expect("one signal had a position");
+    assert!(fresh.read_at_signal);
+    assert_eq!(fresh.position.bytes, 40_960);
+    assert!(signals.iter().any(|signal| signal.position.is_none()));
+
+    let consumed = every::<FilamentConsumedPayload>(&timeline);
+    assert_eq!(consumed.len(), 2, "{timeline:#?}");
+    for consumption in &consumed {
+        match &consumption.charge_key {
+            ChargeKey::Print { .. } => {
+                let whole = consumption.charged.as_ref().expect("charged whole");
+                assert_eq!(whole.spool_id.to_string(), LOADED);
+            }
+            ChargeKey::Unobserved { .. } => assert_eq!(consumption.charged, None),
+        }
+    }
+    let pended = every::<ChargePendedPayload>(&history);
+    assert_eq!(pended.len(), 1);
+    assert_eq!(pended[0].pending.charge_key.tool, 1);
+
+    let started = every::<PrintStartedPayload>(&history);
+    let overridden = &started[0]
+        .preflight
+        .as_ref()
+        .expect("the start carried its check")
+        .tools[0]
+        .result;
+    let PreflightToolResult::Overridden {
+        objection: PreflightObjection::Insufficient(short),
+    } = overridden
+    else {
+        panic!("the overridden tool did not keep what it objected to: {overridden:?}");
+    };
+    assert_eq!(short.spool.name, "PETG loaded");
+    assert!((short.need.required_g - 120.0).abs() < 1e-9);
+    let checked = every::<PreflightCheckedPayload>(&timeline);
+    let results: Vec<&PreflightToolResult> = checked[0]
+        .preflight
+        .tools
+        .iter()
+        .map(|tool| &tool.result)
+        .collect();
+    assert!(matches!(results[0], PreflightToolResult::Insufficient(_)));
+    assert_eq!(results[1], &PreflightToolResult::Unchecked);
+
+    let rejected = every::<SpoolCommandRejectedPayload>(&timeline);
+    let unknown: SpoolId = UNKNOWN.parse().expect("an id");
+    assert_eq!(
+        rejected[0].decision,
+        PolicyDecision::Rejected(RejectionReason::SpoolRefused {
+            cause: SpoolRefusalCause::UnknownSpool { spool_id: unknown },
+            message: format!("there is no spool {unknown}; list the spools to find the one meant"),
+        })
+    );
+    let registered = every::<SpoolRegisteredPayload>(&timeline);
+    assert_eq!(registered.len(), 3);
+    assert!(
+        registered
+            .iter()
+            .any(|spool| spool.spool.lifecycle == SpoolLifecycle::Loaded { tool: 0 })
+    );
+}
+
+/// From the version this build migrates to, the database itself refuses a
+/// charge whose print or tool is not the one its key names, one naming a spool
+/// with half a calculation, and a spool both retired and loaded — whoever
+/// writes it.
+#[test]
+fn the_database_refuses_an_incoherent_charge_or_spool_on_write() {
+    let dir = copied();
+    drop(SqliteStore::open(dir.path()).expect("the 0.4.3 database opens"));
+    let connection = connect(&dir.path().join(DATABASE_FILE_NAME)).expect("the database opens");
+    for statement in [
+        "UPDATE charges SET tool = 7 WHERE charge_key LIKE 'print:%'",
+        "UPDATE charges SET print_id = NULL WHERE charge_key LIKE 'print:%'",
+        "UPDATE charges SET diameter_mm = NULL WHERE spool_id IS NOT NULL",
+        "UPDATE charges SET tool = 7 WHERE charge_key LIKE 'unobserved:%'",
+        "UPDATE spools SET loaded_on_tool = 2 WHERE retired_at IS NOT NULL",
+    ] {
+        let refused = connection
+            .execute(statement, [])
+            .err()
+            .unwrap_or_else(|| panic!("the database wrote `{statement}`"));
+        let said = refused.to_string();
+        assert!(
+            said.contains("charges.coherent") || said.contains("spools.lifecycle"),
+            "`{statement}` was refused for another reason: {said}"
+        );
+    }
+    let store = SqliteStore::open(dir.path()).expect("the database opens");
+    let port: &dyn Store = &store;
+    assert!(
+        block_on(port.charges(PRINT.parse().expect("an id"))).is_ok(),
+        "a refused write left a row this build cannot read"
+    );
+    assert!(matches!(
+        block_on(port.spool(SpoolId::new())),
+        Ok(None) | Err(StoreError::NotFound { .. })
+    ));
+}

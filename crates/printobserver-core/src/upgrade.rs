@@ -37,8 +37,7 @@ pub fn upgraded(mut body: EventBody) -> EventBody {
         "filament_change_signalled" => filament_change_signalled(payload),
         "spool_registered" => at_field(payload, "spool", spool),
         "charge_pended" => at_field(payload, "pending", pending),
-        "preflight_checked" => at_field(payload, "preflight", preflight),
-        "print_started" => at_field(payload, "preflight", preflight),
+        "preflight_checked" | "print_started" => at_field(payload, "preflight", preflight),
         "spool_command_rejected" => spool_command_rejected(payload),
         _ => payload,
     };

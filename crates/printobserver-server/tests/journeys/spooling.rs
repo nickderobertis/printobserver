@@ -220,13 +220,14 @@ async fn checked_recording_nothing(world: &World, spool: &str) {
         printobserver_core::DEFAULT_DIAMETER_MM,
         density_for("PLA").expect("PLA has a known density"),
     );
-    let tool = &checked["preflight"]["tools"][0];
-    assert_eq!(tool["spool_id"], json!(spool), "{checked}");
-    assert_eq!(tool["spool_name"], json!("PLA white"), "{checked}");
-    assert!(close(&tool["required_g"], required), "{checked}");
+    let tool = &checked["preflight"]["tools"][0]["result"];
+    assert_eq!(tool["verdict"], json!("passed"), "{checked}");
+    assert_eq!(tool["spool"]["id"], json!(spool), "{checked}");
+    assert_eq!(tool["spool"]["name"], json!("PLA white"), "{checked}");
+    assert!(close(&tool["need"]["required_g"], required), "{checked}");
     assert!(
         close(
-            &tool["buffer_g"],
+            &tool["need"]["buffer_g"],
             buffer_g(required, &SpoolPolicy::default())
         ),
         "{checked}"
@@ -334,7 +335,7 @@ async fn a_turn_reads_the_ledger_and_is_refused_every_command_by_its_grants() {
     );
     let (_, read) = world.get(&world.spool_url("spool", &spool)).await;
     assert!(
-        read["spool"]["loaded_on_tool"].is_null() && read["spool"]["retired_at"].is_null(),
+        read["spool"]["lifecycle"] == json!({ "state": "shelved" }),
         "a refused command moved the spool: {read}"
     );
 

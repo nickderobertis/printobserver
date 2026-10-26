@@ -227,11 +227,11 @@ fn the_two_carry_the_same_fields(machine: &Ran, plain: &Ran) {
         machine.arguments
     );
     for (at, value) in &document {
-        // The instants and the identifiers an answer carries differ between two
-        // runs by design, so what is compared here is the field set and the
+        // The instants — `*_at`, or an `at` of a state that happened then — and
+        // the identifiers an answer carries differ between two runs by design, so what is compared here is the field set and the
         // values that do not: a value that moved is one of those, and one that
         // did not is a field carrying something different in the two renderings.
-        if at.ends_with("_at") || at.ends_with("id") {
+        if at.ends_with("_at") || at.rsplit('.').next() == Some("at") || at.ends_with("id") {
             continue;
         }
         assert_eq!(

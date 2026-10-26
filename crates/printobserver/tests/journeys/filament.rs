@@ -308,7 +308,7 @@ fn a_cancelled_print_is_charged_what_it_fed(world: &World, spool: &str, file: &s
         json!("gcode_extrusion"),
         "the cancelled print was not charged what its own moves fed: {history}"
     );
-    let grams = consumed[0]["payload"]["grams"]
+    let grams = consumed[0]["payload"]["charged"]["grams"]
         .as_f64()
         .expect("the charge carries its grams");
     let length = consumed[0]["payload"]["length_mm"]
