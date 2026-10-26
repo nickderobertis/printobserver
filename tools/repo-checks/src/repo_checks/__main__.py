@@ -14,6 +14,7 @@ from typing import NamedTuple, Protocol
 from repo_checks import (
     commands,
     gate_tier,
+    gate_time_budget,
     gh_release,
     just_pin,
     powershell_release,
@@ -64,6 +65,7 @@ COMMANDS = (
     "lint-windows-target",
     "docs-schemas-write",
     "probe-registries",
+    "gate_time_budget",
 )
 
 # The checks that read a base revision as well as the tree: what a change adds,
@@ -97,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
         "argument",
         nargs="?",
         help=(
-            "the commit-message file, for commit-msg; the tool, for tool-version and "
+            "the commit-message file, for commit-msg; `measure` (the default) or `check`, for "
+            "gate_time_budget; the tool, for tool-version and "
             "install-tools; the release, for install-gh, install-release-plz and "
             "install-powershell"
         ),
@@ -174,6 +177,13 @@ def main(argv: list[str] | None = None) -> int:
             return commands.coverage(repo, measured)
         case "probe-registries":
             return release_probes.probe_registries(repo)
+        case "gate_time_budget":
+            verb = parsed.argument or "measure"
+            if verb not in {"measure", "check"}:
+                parser.error("gate_time_budget takes `measure` (the default) or `check`")
+            if verb == "check":
+                return gate_time_budget.check_budget(repo)
+            return gate_time_budget.measure()
         case "lint-windows-target":
             return windows_lint.lint_windows_target(repo)
         case "pr-title":

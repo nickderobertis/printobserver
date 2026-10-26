@@ -952,6 +952,20 @@ version = "2.100.0"
 bootstrap = false
 install = "uv run -q python -m repo_checks install-gh {version}"
 
+# onebudgetspec, which checks the root `budgets.yaml`'s `gate-time` in the
+# `gate-time` step of every required gate and integration job, and which
+# `repo_checks gate_time_budget` reports that figure through. Held at the
+# release the budget was registered on, 2026-10-25. The `dev` dependency group
+# pins `onebudgetspec-sdk` at this same release — `test_gate_time_budget.py`
+# holds the two together — and that SDK requires `onebudgetspec-cli` at its
+# own release, whose wheel puts this binary in the environment `uv run` gives
+# every recipe; where a host's PATH carries no copy at all, `install` puts this
+# release on it.
+[[toolchain.tool]]
+command = "onebudgetspec"
+version = "0.1.5"
+install = "uv tool install onebudgetspec-cli=={version}"
+
 # PowerShell, for the three end-to-end journeys that drive the committed
 # PowerShell install script and the Windows service installer the way a caller
 # on Windows runs them. Nothing used to declare or install it, so those journeys

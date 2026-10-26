@@ -532,9 +532,21 @@ octoprint-down:
 # Deliberately not one of `just check`'s tiers: it installs OctoPrint, starts
 # it, and waits a print out, so it is a continuous-integration job of its own
 # rather than something every gate run pays for.
-test-integration:
+#
+# Given LANE, the same tier runs in the background instead, its output and exit
+# status kept under LANE, so a job can run another lane beside it — the `macos`
+# job of `ci.yml` runs the gate — and `just test-integration-wait LANE` answers
+# it: its output, and its exit status.
+test-integration lane="":
     just node-modules
-    bunx nx run-many -t test-integration --output-style=stream
+    if [ -z {{quote(lane)}} ]; then \
+    bunx nx run-many -t test-integration --output-style=stream; \
+    else uv run -q python -m repo_checks.lanes start {{quote(lane)}} just test-integration; \
+    fi
+
+# Wait out the integration tier `just test-integration LANE` started.
+test-integration-wait lane:
+    uv run -q python -m repo_checks.lanes wait {{quote(lane)}}
 
 # Rewrite every generated documentation artifact from what the tree declares.
 #
@@ -633,6 +645,14 @@ install-pool-maintenance:
 # `.cargo/config.toml` resolves every workspace's build output to root `target/`.
 pool-maintenance:
     cargo-prune-superseded --keep-within 2d target
+
+# The `gate-time` step every required gate and integration job ends with: the
+# onebudgetspec check of the root `budgets.yaml`'s `gate-time`, for the context
+# `GATE_TIME_KIND` and `GATE_TIME_PLATFORM` name, read off the current run's
+# jobs. Over its threshold it fails that required context, except on the
+# release pull request's full sweep, where it reports the figure and passes.
+gate-time:
+    uv run -q python -m repo_checks gate_time_budget check
 
 # Whether this run owes the macOS lane, as the `name=value` lines the `classify`
 # job of `ci.yml` appends to its outputs: `macos-required` and `reason`. EVENT

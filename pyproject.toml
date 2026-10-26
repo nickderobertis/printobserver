@@ -49,6 +49,12 @@ dev = [
     # build for Windows on ARM, so that one platform is marked off and the check
     # says it read nothing there.
     "onevcs-cli==0.56.11; sys_platform != 'win32' or (platform_machine != 'ARM64' and platform_machine != 'aarch64')",
+    # The onebudgetspec SDK, through which `repo_checks gate_time_budget` reports
+    # the `gate-time` figure and its step runs the check of it. Its release is
+    # `repo-policy.toml`'s `[[toolchain.tool]]` `onebudgetspec`, which
+    # `just check-repo` holds this pin to: the SDK requires `onebudgetspec-cli`
+    # at its own release, whose wheel puts that binary in this environment.
+    "onebudgetspec-sdk==0.1.5",
 ]
 # zig, as the cross C compiler `just lint`'s Windows-target pass hands cargo on a
 # Unix host. Its own group rather than `dev` so hosts that never run that pass —

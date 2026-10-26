@@ -78,6 +78,10 @@ jobs:
       # runner here has its own, so on the merge path a missing one fails the
       # journey rather than skipping it.
       PRINTOBSERVER_SERVICE_JOURNEY: required
+      # What the `gate-time` step reads this run's jobs with. At job level
+      # because a dispatch by hand carries a step's literal environment alone,
+      # and leaves this out: that run reads the public jobs API unauthenticated.
+      GITHUB_TOKEN: ${{ github.token }}
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
@@ -131,6 +135,14 @@ jobs:
       - run: just budgets-release-pr
       - if: always()
         run: just runner-temp cleanup
+      # The `gate-time` budget, last so that the span it reads ends here: over
+      # 1,800 s it fails this required context, and on the release pull
+      # request's full sweep it reports the figure and passes. AGENTS.md's
+      # "Commits, releases, and merging" says what it reads.
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
 
   # A platform whose gate does not fit one runner in the 30 minutes each
   # platform is held to is split: one matrix cell per shard, each running the
@@ -211,6 +223,10 @@ jobs:
     needs: [gate-shard-windows-aarch64]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     steps:
       - uses: actions/checkout@v5
       - uses: extractions/setup-just@v3
@@ -218,6 +234,16 @@ jobs:
       - run: just shard-verdict gate windows-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
+      # The `gate-time` budget, last so that the span it reads ends here: over
+      # 1,800 s it fails this required context, and on the release pull
+      # request's full sweep it reports the figure and passes. AGENTS.md's
+      # "Commits, releases, and merging" says what it reads.
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: windows-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
 
   gate-shard-windows-x86_64:
     env:
@@ -293,6 +319,10 @@ jobs:
     needs: [gate-shard-windows-x86_64]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     steps:
       - uses: actions/checkout@v5
       - uses: extractions/setup-just@v3
@@ -300,10 +330,19 @@ jobs:
       - run: just shard-verdict gate windows-x86_64
         env:
           NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: windows-x86_64
+          GITHUB_TOKEN: ${{ github.token }}
 
   integration:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      # What the `gate-time` step reads this run's jobs with, at job level for
+      # the reason the gate job's gives.
+      GITHUB_TOKEN: ${{ github.token }}
     # Named by platform id, not runner, so a new runner image renames no
     # required check; each cell reports the context AGENTS.md's required-checks
     # record names, and that record says how the live protection follows a rename.
@@ -327,6 +366,10 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
     runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     # Git's own bash on the Windows runners rather than PowerShell, so that
     # every cell runs its steps, and `just` finds the bash its recipes name, the
     # same way.
@@ -363,11 +406,22 @@ jobs:
         run: just octoprint-down
       - if: always()
         run: just runner-temp cleanup
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: integration
 
   # The gate and the printer integration tier for `macos-aarch64`, in one job:
   # one shared macOS slot for a pull request rather than two. Each lane's own
-  # step publishes its outcome, and the integration lane runs whatever the gate
-  # answered, so each required context below reports its own lane's verdict.
+  # step publishes its outcome, and neither lane waits on the other's verdict,
+  # so each required context below reports its own lane's verdict.
+  #
+  # The two lanes run side by side rather than in turn: the integration lane is
+  # started in the background once its printer is up, the gate runs, and the
+  # `integration` step then waits that lane out and answers its exit status.
+  # In turn they spanned 2,147 to 2,573 s, over the 1,800 s `gate-time` holds
+  # both macOS contexts to, because the integration tier is paced by the
+  # virtual printer rather than by the runner's processors.
   macos:
     name: macos-aarch64 (gate, integration)
     needs: classify
@@ -405,12 +459,8 @@ jobs:
       - run: just runner-temp
       - id: bootstrap
         run: just bootstrap
-      # The gate lane: the same recipe, at the same tier, as every gate cell.
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - id: gate
-        run: just check "$(just gate-tier)"
-      # The integration lane, after the gate whatever it answered: a failed gate
-      # is that lane's verdict, not this one's.
+      # The integration lane's printer, and the lane itself started in the
+      # background: a failure here is that lane's verdict, not the gate's.
       - id: release-program
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
         run: just release-program-key >> "$GITHUB_OUTPUT"
@@ -425,9 +475,19 @@ jobs:
       - id: octoprint-up
         if: ${{ !cancelled() && steps.release-program-built.outcome == 'success' }}
         run: just octoprint-up
-      - id: integration
+      - id: integration-started
         if: ${{ !cancelled() && steps.octoprint-up.outcome == 'success' }}
-        run: just test-integration
+        run: just test-integration "$RUNNER_TEMP/integration-lane"
+      # The gate lane: the same recipe, at the same tier, as every gate cell,
+      # whatever the integration lane's bring-up answered.
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - id: gate
+        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
+        run: just check "$(just gate-tier)"
+      # The integration lane's verdict: its whole log, and its exit status.
+      - id: integration
+        if: ${{ !cancelled() && steps.integration-started.outcome == 'success' }}
+        run: just test-integration-wait "$RUNNER_TEMP/integration-lane"
       - if: always()
         run: just octoprint-down
       - if: always()
@@ -442,24 +502,46 @@ jobs:
     needs: [classify, macos]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     steps:
       - uses: actions/checkout@v5
       - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
       - run: just macos-carry gate
         env:
           NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: macos-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
 
   integration-macos:
     name: integration (macos-aarch64)
     needs: [classify, macos]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     steps:
       - uses: actions/checkout@v5
       - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
       - run: just macos-carry integration
         env:
           NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: integration
+          PRINTOBSERVER_PLATFORM: macos-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
 
   llmlint:
     name: llmlint

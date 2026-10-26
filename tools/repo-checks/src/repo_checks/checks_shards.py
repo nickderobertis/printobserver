@@ -13,7 +13,8 @@ is the check holding the workflow to it:
 * exactly one aggregating job reports that platform's `gate_jobs.GATE_JOB`: it
   `needs` the shard job, runs `if: always()` so a failed or cancelled shard
   still reaches it, and runs nothing but `just shard-verdict` over the
-  workflow's own `needs`, handed over as `${{ toJSON(needs) }}`;
+  workflow's own `needs`, handed over as `${{ toJSON(needs) }}`, and then the
+  `gate-time` budget step every required job ends with;
 * and the unsharded gate job's matrix leaves the platform out, so no second job
   reports the same context.
 
@@ -38,6 +39,7 @@ from repo_checks.gate_shards import (
     ShardError,
     plan,
 )
+from repo_checks.gate_time_budget import STEP_RUN
 from repo_checks.model import Repo
 from repo_checks.parsing import (
     MarkerBlockMissingError,
@@ -178,10 +180,10 @@ def _aggregator_findings(where: str, key: str, job: dict[str, Any], platform: st
             f"skips the verdict rather than failing it"
         )
     verdict = f"just {VERDICT_RECIPE} gate {platform}"
-    if run_commands(job) != [verdict]:
+    if run_commands(job) != [verdict, STEP_RUN]:
         findings.append(
             f"{where} runs {run_commands(job)}, and the one thing an aggregating job runs "
-            f"is `{verdict}`"
+            f"is `{verdict}`, followed by the `{STEP_RUN}` budget step every required job ends with"
         )
     handed = [
         step.get("env", {}).get(NEEDS_VARIABLE)
