@@ -13,11 +13,18 @@ caller's own environment names.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 from repo_checks.expect import contains, equal, passing, truth
-from repo_checks.shell import PROGRAM_NOT_FOUND, run
+from repo_checks.shell import (
+    DISCOVERY_CEILING,
+    PROGRAM_NOT_FOUND,
+    discovered_no_higher_than,
+    run,
+    without_ambient_git,
+)
 
 ABSENT = "a-program-this-repository-does-not-install"
 
@@ -125,3 +132,29 @@ def test_a_commit_lands_where_the_subprocess_was_pointed(
         128,
         describing="an empty repository",
     )
+
+
+def test_a_discovery_bound_survives_the_scrub_and_keeps_one_already_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bound names no repository, so it reaches what a subprocess starts in turn.
+
+    A bound the caller already had stays after the new one, and git started
+    through `run` stops at the bounded root rather than finding the repository
+    above it.
+    """
+    above = _repository(tmp_path / "above")
+    root = above / "copy"
+    (root / "inside").mkdir(parents=True)
+    monkeypatch.setenv(DISCOVERY_CEILING, "elsewhere")
+
+    bounded = discovered_no_higher_than(root, os.environ)
+
+    equal(
+        bounded[DISCOVERY_CEILING],
+        os.pathsep.join([str(above.resolve()), "elsewhere"]),
+        describing="the bound, with the one already set after it",
+    )
+    equal(without_ambient_git(bounded)[DISCOVERY_CEILING], bounded[DISCOVERY_CEILING])
+    found = run(["git", "rev-parse", "--show-toplevel"], cwd=root / "inside", env=bounded)
+    equal(found.returncode, 128, describing=f"git under the bound: {found.stdout}{found.stderr}")

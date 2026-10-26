@@ -22,7 +22,7 @@ from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
 from repo_checks.parsing import jobs_of, load_workflow, marker_block, run_commands, steps_of
-from repo_checks.shell import run
+from repo_checks.shell import DISCOVERY_CEILING, discovered_no_higher_than, run
 from treecopy import REPO_ROOT, Tree
 
 IDENTITY = ("-c", "user.email=tier@printobserver.test", "-c", "user.name=tier")
@@ -392,3 +392,64 @@ def test_the_required_checks_record_is_the_fixed_contract_in_full() -> None:
     record = [line[2:].strip("`") for line in block if line.startswith("- ")]
 
     equal(sorted(record), sorted(FIXED_CONTEXTS))
+
+
+def a_tree_with_no_history(root: Path) -> Path:
+    """The two projects of `repository`, written at `root` with no repository of their own."""
+    for name in ("alpha", "beta"):
+        (root / name).mkdir(parents=True)
+        (root / name / "project.json").write_text(
+            PROJECT.format(name=name, root=name), encoding="utf-8"
+        )
+        (root / name / "source.txt").write_text(f"{name}\n", encoding="utf-8")
+    (root / "repo-policy.toml").write_text(POLICY, encoding="utf-8")
+    return root
+
+
+def test_a_tree_with_no_history_inside_a_checkout_sweeps_as_it_does_outside_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A copy meant to be no repository is not scoped by the checkout it happens to sit in.
+
+    Under a scratch directory inside some other checkout, git finds that one,
+    and the tier diffs the copy against a base commit of a repository it is not
+    part of. Bounded at its own root it is no repository again, and fails
+    closed to the sweep exactly as a copy outside every checkout does — while a
+    repository initialised at that root is still the one git finds.
+    """
+    outside = a_tree_with_no_history(tmp_path / "outside")
+    swept = resolve(Repo(outside), AFFECTED, {}).nx("lint")
+    equal(swept, ["bunx", "nx", "run-many", "-t", "lint"], describing="the tier outside a checkout")
+
+    enclosing = tmp_path / "enclosing"
+    copy = a_tree_with_no_history(enclosing / "scratch" / "copy")
+    git(enclosing, "init", "-q", "-b", "main")
+    git(enclosing, "add", "-A")
+    git(enclosing, "commit", "-q", "-m", "chore: a checkout holding a scratch directory")
+    equal(
+        resolve(Repo(copy), AFFECTED, {}).nx("lint")[:3],
+        ["bunx", "nx", "affected"],
+        describing="the tier of an unbounded copy, which git places in the enclosing checkout",
+    )
+
+    monkeypatch.setenv(
+        DISCOVERY_CEILING, discovered_no_higher_than(copy, os.environ)[DISCOVERY_CEILING]
+    )
+
+    scope = resolve(Repo(copy), AFFECTED, {})
+    equal(scope.nx("lint"), swept, describing="the tier of the bounded copy")
+    contains(scope.reason, "no merge base of HEAD with origin/main or main")
+
+    git(copy, "init", "-q", "-b", "main")
+    git(copy, "add", "-A")
+    git(copy, "commit", "-q", "-m", "chore: the copy's own history")
+    equal(
+        Path(git(copy / "alpha", "rev-parse", "--show-toplevel")).resolve(),
+        copy.resolve(),
+        describing="the repository git finds from inside the bounded copy",
+    )
+    equal(
+        resolve(Repo(copy), AFFECTED, {}).base,
+        git(copy, "rev-parse", "HEAD"),
+        describing="the base the tier derives from the copy's own history",
+    )

@@ -23,9 +23,10 @@
 # llmlint: ignore-file[tool_output_is_signal, boundary_inputs_validated] deliberate for a session-startup installer (see header): success stays quiet while failures log-and-continue rather than block startup; and `just` is installed from PyPI (`uv tool install rust-just`) whose wheels ship with Trusted Publishing + PEP 740 attestations, so no unvalidated external input is executed.
 set -uo pipefail
 
-# `just` floor — keep in lockstep with your `.tool-versions` pin. `rust-just` is
+# `just` floor — `just check-repo`'s `just-pin` holds it to `.tool-versions` and
+# `repo-policy.toml`'s `toolchain.just.version`. `rust-just` is
 # the PyPI package that ships the `just` binary.
-readonly JUST_MIN="1.40.0"
+readonly JUST_MIN="1.44.0"
 readonly BIN_DIR="$HOME/.local/bin"
 # Capture the inherited PATH before we prepend BIN_DIR, so persist_session_env can
 # tell whether BIN_DIR was already resolvable and only override PATH when it isn't.

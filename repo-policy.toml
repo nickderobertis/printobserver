@@ -862,6 +862,18 @@ allowlist = ".claude/settings.json"
 # `just install-tools` — and so `just bootstrap` — leaves it alone, and `just
 # install-tools <command>` installs it, and it alone, where that job needs it.
 # Absent, `bootstrap` is `true`.
+
+# The `just` release the recipes are held to: the oldest that parses the
+# committed `justfile`, which 1.40.0 to 1.43.1 refuse at its first variadic
+# recipe's body. `.tool-versions` pins it for asdf and mise and
+# `scripts/session-setup.sh` installs no older one where neither is; `just
+# check-repo`'s `just-pin` holds both to this. `just bootstrap` starts by
+# handing the `justfile` to the `just` on PATH, and refuses one that cannot
+# parse it naming this release. Not a `[[toolchain.tool]]`: `just` runs every
+# recipe, so no recipe can install it.
+[toolchain.just]
+version = "1.44.0"
+
 # The Windows target `just lint` runs clippy for on a Unix host, so a finding
 # in the tree's `cfg(windows)` code is reported before a push rather than by a
 # Windows runner two hours later. The GNU flavour rather than MSVC: it sees the

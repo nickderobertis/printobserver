@@ -14,13 +14,10 @@ import re
 from collections.abc import Callable
 
 import pytest
-from journey import GateCopy, capture, clean_environment, plain
+from journey import QUIET, GateCopy, capture, clean_environment, plain
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.gate_tier import PROJECTS_VARIABLE
 
-#: Every journey here runs Nx in a copy nobody will clean up after, so it runs
-#: without the daemon a local Nx would otherwise leave behind per copy.
-QUIET = {"NX_DAEMON": "false", "NX_NO_CLOUD": "true"}
 RAN = re.compile(r"^> nx run (?P<project>[^:\s]+):format-check", re.MULTILINE)
 
 

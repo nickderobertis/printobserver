@@ -38,6 +38,7 @@ default:
 
 # Bring a clean clone to a state in which the gate runs.
 bootstrap:
+    uv run -q python -m repo_checks check-justfile
     rustup show active-toolchain
     cargo fetch --locked
     just install-pool-maintenance
