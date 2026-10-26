@@ -61,13 +61,13 @@ use printobserver_types::FileName;
 
 pub use adjustable::{Adjustable, AdjustableError};
 pub use file::{FileFacts, FilePrint, ToolFilament};
-pub use push::{BoxStream, PrinterCommand, PrinterPush, Stream};
+pub use push::{BoxStream, PrinterCommand, PrinterErrorReason, PrinterPush, Stream};
 pub use ranges::{
     COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
     HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, RANGED_FIELDS,
     RangedField,
 };
-pub use snapshot::{HeaterSnapshot, JobSnapshot, PrinterSnapshot};
+pub use snapshot::{ErrorSource, HeaterSnapshot, JobSnapshot, PrinterSnapshot};
 pub use state::PrinterState;
 
 /// A future this port's methods answer with, in the one shape a trait object

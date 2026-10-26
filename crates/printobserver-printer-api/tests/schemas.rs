@@ -64,6 +64,7 @@ type StatedField = (&'static str, &'static str, bool);
 /// all, and its wire form is asserted where the accessors are.
 const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
     ("Adjustable", &[]),
+    ("ErrorSource", &[]),
     (
         "FileFacts",
         &[
@@ -93,6 +94,7 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
         &[
             ("completion", "Reported", false),
             ("error", "string", false),
+            ("error_source", "ErrorSource", false),
             ("estimated_print_time_s", "integer", false),
             ("filament", "array:ToolFilament", false),
             ("file_name", "string", false),
@@ -200,8 +202,8 @@ fn an_absent_optional_is_absent_from_the_serialized_object() {
         }
     }
     assert_eq!(
-        checked, 22,
-        "the twenty-two optional fields were not all checked"
+        checked, 23,
+        "the twenty-three optional fields were not all checked"
     );
 }
 

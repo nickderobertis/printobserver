@@ -1,5 +1,20 @@
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
       "format": "uuid",
@@ -170,6 +185,17 @@
             "string",
             "null"
           ]
+        },
+        "error_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",

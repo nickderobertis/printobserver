@@ -94,6 +94,31 @@ pub struct PrinterSnapshot {
     pub observed_at: Timestamp,
 }
 
+/// Whose error a job's error is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum ErrorSource {
+    /// The printer's own message: its firmware stopped the job.
+    Printer,
+    /// The host's: it lost the line to the printer, or failed in itself.
+    Host,
+}
+
+impl Sample for ErrorSource {
+    fn sample_full() -> Self {
+        Self::Printer
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Host]
+    }
+}
+
 /// The job a printer reports it is running.
 ///
 /// Every field but `state` is optional: an absent one means the source did not
@@ -134,6 +159,10 @@ pub struct JobSnapshot {
     /// The error the source reports, when it reports one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Whose error it is, when the source reported one and its adapter could
+    /// tell: the printer's own message, or the host's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_source: Option<ErrorSource>,
     /// How far into the file the printer has read, in bytes, when the source
     /// reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -250,7 +279,8 @@ impl Sample for JobSnapshot {
             print_time_s: Some(3024),
             print_time_left_s: Some(4176),
             state: PrinterState::Printing,
-            error: Some("none".to_owned()),
+            error: Some("Thermal Runaway, system stopped!".to_owned()),
+            error_source: Some(ErrorSource::Printer),
             file_position_bytes: Some(1_761_607),
             filament: vec![ToolFilament::sample_full()],
         }
@@ -267,6 +297,7 @@ impl Sample for JobSnapshot {
             print_time_left_s: None,
             state: PrinterState::Printing,
             error: None,
+            error_source: None,
             file_position_bytes: None,
             filament: Vec::new(),
         }

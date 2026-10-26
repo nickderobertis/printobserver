@@ -364,7 +364,7 @@ export interface ContextAnswer {
 
 /** The failure detector's health, and since when it has been so. */
 export interface DetectorHealth {
-  /** When the status became what it is, `null` while it is unchecked. */
+  /** When the status became what it is, `null` exactly while unchecked. */
   since?: Timestamp | null;
   /** What the last check found. */
   status: DetectorHealthStatus;
@@ -406,6 +406,9 @@ export interface ErrorAnswer {
   /** One line saying why, in the words of whatever refused it. */
   error: string;
 }
+
+/** Whose error a job's error is. */
+export type ErrorSource = "printer" | "host";
 
 /** A lowercase hyphenated version 7 UUID identifying one event. */
 export type EventId = string;
@@ -745,6 +748,11 @@ export interface JobSnapshot {
   completion?: Reported | null;
   /** The error the source reports, when it reports one. */
   error?: string | null;
+  /**
+   * Whose error it is, when the source reported one and its adapter could
+   * tell: the printer's own message, or the host's.
+   */
+  error_source?: ErrorSource | null;
   /** The whole print's estimated duration, in whole seconds. */
   estimated_print_time_s?: number | null;
   /**

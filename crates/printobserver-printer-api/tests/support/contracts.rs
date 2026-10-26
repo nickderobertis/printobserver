@@ -7,7 +7,8 @@
 //! at its boundary — so the two read one list rather than each keeping its own.
 
 use printobserver_printer_api::{
-    Adjustable, FileFacts, FilePrint, HeaterSnapshot, JobSnapshot, PrinterSnapshot, ToolFilament,
+    Adjustable, ErrorSource, FileFacts, FilePrint, HeaterSnapshot, JobSnapshot, PrinterSnapshot,
+    ToolFilament,
 };
 use printobserver_types::contract::TypeContract;
 
@@ -15,6 +16,7 @@ use printobserver_types::contract::TypeContract;
 pub fn declared() -> Vec<TypeContract> {
     vec![
         TypeContract::of::<Adjustable>("Adjustable"),
+        TypeContract::of::<ErrorSource>("ErrorSource"),
         TypeContract::of::<FileFacts>("FileFacts"),
         TypeContract::of::<FilePrint>("FilePrint"),
         TypeContract::of::<HeaterSnapshot>("HeaterSnapshot"),

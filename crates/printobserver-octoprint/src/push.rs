@@ -9,9 +9,11 @@
 //! The socket is spoken with the standard library and `serde_json` alone,
 //! frames held to RFC 6455: a server's frame is never masked and carries no
 //! reserved bit; a control frame is final and at most 125 bytes; a message is
-//! one text frame and the continuations after it, and is UTF-8; a ping is
-//! answered with a pong carrying its own payload; a close ends the stream. A
-//! frame or a message past [`FRAME_LIMIT`] is refused rather than held.
+//! one text frame and the continuations after it, and is UTF-8; a length is in
+//! its shortest encoding; a ping is answered with a pong carrying its own
+//! payload; a close ends the stream, and says why when its payload is a status
+//! and UTF-8 text. A frame or a message past [`FRAME_LIMIT`] is refused rather
+//! than held.
 //!
 //! One thread reads the socket and hands what it read to the
 //! [`PushStream`] the port answers. The stream ends when the socket does —
@@ -25,7 +27,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-use printobserver_printer_api::{PrinterError, PrinterPush, Stream};
+use printobserver_printer_api::{PrinterError, PrinterErrorReason, PrinterPush, Stream};
 use serde::Deserialize;
 
 use crate::config::OctoPrintConfig;
@@ -64,6 +66,9 @@ const RESET_EVENT: &str = "PrinterReset";
 
 /// The event type `OctoPrint` pushes when the printer reported an error.
 const ERROR_EVENT: &str = "Error";
+
+/// The reason `OctoPrint` gives an error the printer's firmware reported.
+const FIRMWARE_REASON: &str = "firmware";
 
 /// What a passive login answers.
 #[derive(Deserialize)]
@@ -240,8 +245,9 @@ fn read_until_ended(mut socket: TcpStream, shared: &Mutex<Shared>) {
 /// What one pushed message says the printer did.
 ///
 /// A `current` message's `logs` are terminal lines; an `event` of type
-/// [`RESET_EVENT`] is a reset, and one of type [`ERROR_EVENT`] an error,
-/// carrying the reason `OctoPrint` gave. The `history` sent on connect is the
+/// [`RESET_EVENT`] is a reset, and one of type [`ERROR_EVENT`] an error — the
+/// firmware's when `OctoPrint` gives [`FIRMWARE_REASON`], and otherwise
+/// carrying the reason it gave. The `history` sent on connect is the
 /// past, not something the printer did now, and is read as nothing.
 #[must_use]
 pub fn pushes_of(text: &str) -> Vec<PrinterPush> {
@@ -252,14 +258,20 @@ pub fn pushes_of(text: &str) -> Vec<PrinterPush> {
     if let Some(event) = value.get("event") {
         match event.get("type").and_then(serde_json::Value::as_str) {
             Some(RESET_EVENT) => pushes.push(PrinterPush::Reset),
-            Some(ERROR_EVENT) => pushes.push(PrinterPush::Error {
-                reason: event
+            Some(ERROR_EVENT) => {
+                let reason = event
                     .get("payload")
                     .and_then(|payload| payload.get("reason"))
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned(),
-            }),
+                    .unwrap_or_default();
+                pushes.push(PrinterPush::Error {
+                    reason: if reason == FIRMWARE_REASON {
+                        PrinterErrorReason::Firmware
+                    } else {
+                        PrinterErrorReason::Other(reason.to_owned())
+                    },
+                });
+            }
             _ => {}
         }
     }
@@ -351,11 +363,23 @@ fn message(stream: &mut TcpStream) -> Result<String, String> {
         if length == 126 {
             let extended = exact(stream, 2)?;
             length = u64::from(u16::from_be_bytes([extended[0], extended[1]]));
+            if length < 126 {
+                return Err(format!(
+                    "the push socket sent a {length}-byte length in two bytes, where RFC 6455 \
+                     requires the shortest encoding"
+                ));
+            }
         } else if length == 127 {
             let extended: [u8; 8] = exact(stream, 8)?
                 .try_into()
                 .map_err(|_| "a frame length is eight bytes".to_owned())?;
             length = u64::from_be_bytes(extended);
+            if u16::try_from(length).is_ok() || length >> 63 != 0 {
+                return Err(format!(
+                    "the push socket sent a {length}-byte length in eight bytes, where RFC 6455 \
+                     requires the shortest encoding and a clear top bit"
+                ));
+            }
         }
         if length > FRAME_LIMIT {
             return Err(format!(
@@ -375,7 +399,7 @@ fn message(stream: &mut TcpStream) -> Result<String, String> {
         match (opcode, whole.as_mut()) {
             (0x9, _) => send_frame(stream, Outgoing::Pong, &payload)?,
             (0xA, _) => {}
-            (0x8, _) => return Err("the push socket closed".to_owned()),
+            (0x8, _) => return Err(closed(&payload)),
             (0x1, None) => whole = Some(payload),
             (0x0, Some(begun)) => {
                 if u64::try_from(begun.len() + payload.len()).unwrap_or(u64::MAX) > FRAME_LIMIT {
@@ -405,6 +429,28 @@ fn message(stream: &mut TcpStream) -> Result<String, String> {
                 format!("the push socket sent a message that is not UTF-8: {error}")
             });
         }
+    }
+}
+
+/// Why a close frame ended the socket: its status and reason when it carries a
+/// well-formed one — none, or a status and UTF-8 text — and that it was
+/// malformed otherwise.
+fn closed(payload: &[u8]) -> String {
+    match payload {
+        [] => "the push socket closed".to_owned(),
+        [high, low, reason @ ..] => match core::str::from_utf8(reason) {
+            Ok(reason) => format!(
+                "the push socket closed with status {}{}",
+                u16::from_be_bytes([*high, *low]),
+                if reason.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {reason}")
+                }
+            ),
+            Err(_) => "the push socket closed with a reason that is not UTF-8".to_owned(),
+        },
+        [_] => "the push socket closed with a one-byte payload, which no close carries".to_owned(),
     }
 }
 

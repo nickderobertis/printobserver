@@ -438,7 +438,7 @@ pub struct ContextAnswer {
 /// The failure detector's health, and since when it has been so.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DetectorHealth {
-    /// When the status became what it is, `null` while it is unchecked.
+    /// When the status became what it is, `null` exactly while unchecked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<Timestamp>,
     /// What the last check found.
@@ -499,6 +499,17 @@ pub struct EffectiveBounds {
 pub struct ErrorAnswer {
     /// One line saying why, in the words of whatever refused it.
     pub error: String,
+}
+
+/// Whose error a job's error is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ErrorSource {
+    /// The printer's own message: its firmware stopped the job.
+    #[serde(rename = "printer")]
+    Printer,
+    /// The host's: it lost the line to the printer, or failed in itself.
+    #[serde(rename = "host")]
+    Host,
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one event.
@@ -881,6 +892,10 @@ pub struct JobSnapshot {
     /// The error the source reports, when it reports one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Whose error it is, when the source reported one and its adapter could
+    /// tell: the printer's own message, or the host's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_source: Option<ErrorSource>,
     /// The whole print's estimated duration, in whole seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimated_print_time_s: Option<i64>,

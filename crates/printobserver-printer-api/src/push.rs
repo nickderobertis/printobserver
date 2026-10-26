@@ -41,16 +41,27 @@ pub enum PrinterPush {
     /// The printer reset: its firmware restarted, and every state it held —
     /// the job, the position, the heaters — is gone.
     Reset,
-    /// The printer reported an error, in the source's own word for its kind.
+    /// The printer reported an error.
     Error {
-        /// The kind of error the source reported, such as `firmware`.
-        reason: String,
+        /// What kind of error the source reported.
+        reason: PrinterErrorReason,
     },
     /// One line of the printer's terminal, as the source shows it.
     Log {
         /// The line.
         line: String,
     },
+}
+
+/// What kind of error a printer pushed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrinterErrorReason {
+    /// The printer's own firmware reported it: a thermal runaway, a kill, a
+    /// halt. What ends a print `failed`.
+    Firmware,
+    /// Anything else the source reported, in its own word for it: a resend it
+    /// could not satisfy, the host losing the line.
+    Other(String),
 }
 
 /// A command a printer may be sent: a closed vocabulary, each variant rendered

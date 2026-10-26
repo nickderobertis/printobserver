@@ -459,7 +459,7 @@ class DetectorHealth(TypedDict):
     The failure detector's health, and since when it has been so.
     """
 
-    # When the status became what it is, `null` while it is unchecked.
+    # When the status became what it is, `null` exactly while unchecked.
     since: NotRequired[Timestamp | None]
     # What the last check found.
     status: DetectorHealthStatus
@@ -510,6 +510,10 @@ class ErrorAnswer(TypedDict):
 
     # One line saying why, in the words of whatever refused it.
     error: str
+
+
+# Whose error a job's error is.
+ErrorSource: TypeAlias = Literal["printer", "host"]
 
 
 # A lowercase hyphenated version 7 UUID identifying one event.
@@ -954,6 +958,9 @@ class JobSnapshot(TypedDict):
     completion: NotRequired[Reported | None]
     # The error the source reports, when it reports one.
     error: NotRequired[str | None]
+    # Whose error it is, when the source reported one and its adapter could
+    # tell: the printer's own message, or the host's.
+    error_source: NotRequired[ErrorSource | None]
     # The whole print's estimated duration, in whole seconds.
     estimated_print_time_s: NotRequired[int | None]
     # The filament the source's analysis of the file says each tool uses;

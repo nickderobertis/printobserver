@@ -45,7 +45,9 @@
 
 use std::time::Duration;
 
-use printobserver_printer_api::{BoxFuture, PrinterPush, PrinterSnapshot, PrinterState};
+use printobserver_printer_api::{
+    BoxFuture, PrinterErrorReason, PrinterPush, PrinterSnapshot, PrinterState,
+};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
@@ -70,9 +72,6 @@ pub const DEFAULT_PRINTER_POLL: Duration = Duration::from_secs(15);
 /// How long after an `interrupted` or `failed` ending the printer acting on
 /// its own is recorded, when nothing configures it.
 pub const DEFAULT_UNATTENDED_WINDOW: Duration = Duration::from_secs(3600);
-
-/// The push reason a printer's own error is reported under.
-pub const FIRMWARE_ERROR_REASON: &str = "firmware";
 
 /// What a detail says while the push channel is down.
 pub const PUSH_CHANNEL_DOWN: &str =
@@ -134,27 +133,130 @@ pub enum DetectorHealthStatus {
 }
 
 /// The failure detector's health, and since when it has been so.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
-pub struct DetectorHealth {
+///
+/// Three states and no fourth: a detector nobody has checked has no "since",
+/// and one that was checked always has one. On the wire it is the object the
+/// status and context reads answer — `status`, and `since` that is `null`
+/// exactly when the status is `unchecked` — and an object pairing them any
+/// other way is refused rather than read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DetectorHealth {
+    /// Nothing checks it: no detector health address is configured, or no
+    /// check has been made yet.
+    #[default]
+    Unchecked,
+    /// It answered its health check, from this instant on.
+    Available {
+        /// When it was first found answering.
+        since: Timestamp,
+    },
+    /// It did not, from this instant on.
+    Unavailable {
+        /// When it was first found not answering.
+        since: Timestamp,
+    },
+}
+
+impl DetectorHealth {
     /// What the last check found.
-    pub status: DetectorHealthStatus,
-    /// When the status became what it is, `null` while it is unchecked.
+    #[must_use]
+    pub const fn status(&self) -> DetectorHealthStatus {
+        match self {
+            Self::Unchecked => DetectorHealthStatus::Unchecked,
+            Self::Available { .. } => DetectorHealthStatus::Available,
+            Self::Unavailable { .. } => DetectorHealthStatus::Unavailable,
+        }
+    }
+}
+
+/// The failure detector's health, and since when it has been so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars", rename = "DetectorHealth")]
+struct DetectorHealthWire {
+    /// What the last check found.
+    status: DetectorHealthStatus,
+    /// When the status became what it is, `null` exactly while unchecked.
     #[serde(default)]
-    pub since: Option<Timestamp>,
+    since: Option<Timestamp>,
+}
+
+impl From<DetectorHealth> for DetectorHealthWire {
+    fn from(health: DetectorHealth) -> Self {
+        let since = match health {
+            DetectorHealth::Unchecked => None,
+            DetectorHealth::Available { since } | DetectorHealth::Unavailable { since } => {
+                Some(since)
+            }
+        };
+        Self {
+            status: health.status(),
+            since,
+        }
+    }
+}
+
+impl TryFrom<DetectorHealthWire> for DetectorHealth {
+    type Error = &'static str;
+
+    fn try_from(wire: DetectorHealthWire) -> Result<Self, Self::Error> {
+        match (wire.status, wire.since) {
+            (DetectorHealthStatus::Unchecked, None) => Ok(Self::Unchecked),
+            (DetectorHealthStatus::Available, Some(since)) => Ok(Self::Available { since }),
+            (DetectorHealthStatus::Unavailable, Some(since)) => Ok(Self::Unavailable { since }),
+            (DetectorHealthStatus::Unchecked, Some(_)) => {
+                Err("an unchecked detector has no instant it became so")
+            }
+            (_, None) => Err("a checked detector carries the instant it became so"),
+        }
+    }
+}
+
+impl Serialize for DetectorHealth {
+    fn serialize<S: printobserver_types::serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        DetectorHealthWire::from(*self).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for DetectorHealth {
+    fn deserialize<D: printobserver_types::serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        let wire = DetectorHealthWire::deserialize(deserializer)?;
+        Self::try_from(wire).map_err(printobserver_types::serde::de::Error::custom)
+    }
+}
+
+impl JsonSchema for DetectorHealth {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        DetectorHealthWire::schema_name()
+    }
+
+    fn json_schema(
+        generator: &mut printobserver_types::schemars::SchemaGenerator,
+    ) -> printobserver_types::schemars::Schema {
+        DetectorHealthWire::json_schema(generator)
+    }
 }
 
 impl Sample for DetectorHealth {
     fn sample_full() -> Self {
-        Self {
-            status: DetectorHealthStatus::Unavailable,
-            since: Some(Timestamp::sample_full()),
+        Self::Unavailable {
+            since: Timestamp::sample_full(),
         }
     }
 
     fn sample_minimal() -> Self {
-        Self::default()
+        Self::Unchecked
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Available {
+            since: Timestamp::sample_full(),
+        }]
     }
 }
 
@@ -213,10 +315,8 @@ pub(crate) struct WatchState {
     last_state: Option<PrinterState>,
     /// What the printer pushed since the last print started or was closed out.
     pushes: PushFacts,
-    /// Why the push channel is down, absent while it is up.
-    channel_down: Option<String>,
-    /// Whether the push channel has ever been reported on.
-    channel_known: bool,
+    /// The push channel.
+    channel: Channel,
     /// The unattended window, while one is open.
     unattended: Option<Unattended>,
     /// The detector's health.
@@ -226,10 +326,22 @@ pub(crate) struct WatchState {
 }
 
 impl WatchState {
-    /// Whether the push channel is down now.
-    fn channel_is_down(&self) -> bool {
-        !self.channel_known || self.channel_down.is_some()
+    /// Whether the push channel is anything but open now.
+    const fn channel_is_down(&self) -> bool {
+        !matches!(self.channel, Channel::Open)
     }
+}
+
+/// The printer's push channel, as the server last reported it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+enum Channel {
+    /// Nothing has reported on it yet.
+    #[default]
+    Unknown,
+    /// It is open.
+    Open,
+    /// It is down, and why.
+    Down(String),
 }
 
 /// What one round of the watch claimed.
@@ -343,11 +455,10 @@ impl Supervisor {
     /// and every event the watch writes says so.
     pub fn note_push_channel(&self, open: Result<(), String>) {
         let mut state = self.watch_state();
-        state.channel_known = true;
         match open {
-            Ok(()) => state.channel_down = None,
+            Ok(()) => state.channel = Channel::Open,
             Err(detail) => {
-                state.channel_down = Some(detail);
+                state.channel = Channel::Down(detail);
                 state.pushes.gap = true;
             }
         }
@@ -383,13 +494,16 @@ impl Supervisor {
                 self.stores().events.append_event(draft).await?;
                 Ok(())
             }
-            PrinterPush::Error { reason } => {
-                if reason == FIRMWARE_ERROR_REASON {
-                    self.watch_state().pushes.firmware_error = true;
-                }
+            PrinterPush::Error {
+                reason: PrinterErrorReason::Firmware,
+            } => {
+                self.watch_state().pushes.firmware_error = true;
                 Ok(())
             }
-            PrinterPush::Log { .. } => Ok(()),
+            PrinterPush::Error {
+                reason: PrinterErrorReason::Other(_),
+            }
+            | PrinterPush::Log { .. } => Ok(()),
         }
     }
 
@@ -654,13 +768,14 @@ impl Supervisor {
         };
         {
             let mut held = self.watch_state();
-            let previous = held.detector.status;
+            let previous = held.detector.status();
             if previous == health {
                 return Ok(None);
             }
-            held.detector = DetectorHealth {
-                status: health,
-                since: Some(self.clock().now()),
+            let since = self.clock().now();
+            held.detector = match status {
+                DetectorStatus::Available => DetectorHealth::Available { since },
+                DetectorStatus::Unavailable => DetectorHealth::Unavailable { since },
             };
             // The first check finding the detector up is where watching it
             // begins, not a change in it.

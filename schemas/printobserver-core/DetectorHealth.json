@@ -41,7 +41,7 @@
         }
       ],
       "default": null,
-      "description": "When the status became what it is, `null` while it is unchecked."
+      "description": "When the status became what it is, `null` exactly while unchecked."
     },
     "status": {
       "$ref": "#/$defs/DetectorHealthStatus",

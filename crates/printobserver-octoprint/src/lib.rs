@@ -60,6 +60,8 @@ pub mod push;
 pub mod standin;
 mod wire;
 
+pub use wire::error_source_of;
+
 pub use client::OctoPrintPrinter;
 pub use config::{
     ApiKey, ConfigError, DEFAULT_TIMEOUT, Endpoint, FanSupport, OctoPrintConfig, REDACTED, SCHEME,

@@ -99,6 +99,14 @@ struct Script {
     job_commands: Vec<String>,
     /// Every request received, as its method and path.
     requests: Vec<String>,
+    /// The status the passive login is answered with.
+    login_status: u16,
+    /// Whether the upgrade is answered with an accept that matches no key.
+    bad_accept: bool,
+    /// The reply an `M114` is answered with in place of the head's position.
+    position_reply: Option<String>,
+    /// The opcode of every frame the client sent on a push socket.
+    client_opcodes: Vec<u8>,
 }
 
 /// A scripted `OctoPrint` on a loopback socket.
@@ -145,6 +153,10 @@ impl ScriptedOctoPrint {
             commands: Vec::new(),
             job_commands: Vec::new(),
             requests: Vec::new(),
+            login_status: 200,
+            bad_accept: false,
+            position_reply: None,
+            client_opcodes: Vec::new(),
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -208,6 +220,33 @@ impl ScriptedOctoPrint {
     /// Answer `M114` on the push socket, or not.
     pub fn answers_position(&self, answers: bool) {
         self.held().answers_position = answers;
+    }
+
+    /// Answer the passive login with this status from now on.
+    pub fn answers_login_with(&self, status: u16) {
+        self.held().login_status = status;
+    }
+
+    /// Answer the upgrade with an accept matching no key, or with the right one.
+    pub fn answers_a_wrong_accept(&self, wrong: bool) {
+        self.held().bad_accept = wrong;
+    }
+
+    /// Answer `M114` with this terminal line rather than the head's position.
+    pub fn answers_position_with(&self, line: &str) {
+        self.held().position_reply = Some(line.to_owned());
+    }
+
+    /// Write these bytes, exactly, on every open push socket: a frame of the
+    /// journey's own making, well-formed or not.
+    pub fn pushes_raw(&self, bytes: &[u8]) {
+        lock(&self.sockets).retain_mut(|socket| socket.write_all(bytes).is_ok());
+    }
+
+    /// The opcode of every frame a client sent on a push socket, in order.
+    #[must_use]
+    pub fn client_opcodes(&self) -> Vec<u8> {
+        self.held().client_opcodes.clone()
     }
 
     /// Refuse the push socket's upgrade from now on, or admit it again.
@@ -421,10 +460,13 @@ fn answer(
     let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
     let mut held = lock(script);
     match (request.method.as_str(), request.path.as_str()) {
-        ("POST", "/api/login") => (
-            200,
-            json!({ "name": "standin", "session": "a-scripted-session" }).to_string(),
-        ),
+        ("POST", "/api/login") => match held.login_status {
+            200 => (
+                200,
+                json!({ "name": "standin", "session": "a-scripted-session" }).to_string(),
+            ),
+            status => (status, r#"{"error":"refused"}"#.to_owned()),
+        },
         ("GET", "/api/connection") => (
             200,
             json!({ "current": { "state": held.connection, "port": "VIRTUAL" } }).to_string(),
@@ -482,12 +524,14 @@ fn answer(
                 .unwrap_or_default();
             let answer = lines.iter().any(|line| line == "M114") && held.answers_position;
             let [x, y, z] = held.position;
+            let reply = held.position_reply.clone().unwrap_or_else(|| {
+                format!("Recv: X:{x:.2} Y:{y:.2} Z:{z:.2} E:0.00 Count X:0 Y:0 Z:0")
+            });
             for line in lines {
                 held.commands.push((line, printing));
             }
             drop(held);
             if answer {
-                let reply = format!("Recv: X:{x:.2} Y:{y:.2} Z:{z:.2} E:0.00 Count X:0 Y:0 Z:0");
                 broadcast_to(sockets, &current_with(&["Send: M114", &reply]));
             }
             (204, String::new())
@@ -551,9 +595,14 @@ fn upgrade(
         );
         return;
     }
+    let accept = if lock(script).bad_accept {
+        "bm90IHRoZSBhY2NlcHQgZm9yIHRoaXMga2V5"
+    } else {
+        SOCKET_ACCEPT
+    };
     let accepted = format!(
         "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
-         Sec-WebSocket-Accept: {SOCKET_ACCEPT}\r\n\r\n"
+         Sec-WebSocket-Accept: {accept}\r\n\r\n"
     );
     if connection.write_all(accepted.as_bytes()).is_err() {
         return;
@@ -569,10 +618,36 @@ fn upgrade(
         return;
     };
     lock(sockets).push(held);
-    // What the client sends — its authentication — is read and set aside;
-    // the read ends when the socket does.
-    let mut sink = [0_u8; 1024];
-    while matches!(connection.read(&mut sink), Ok(read) if read > 0) {}
+    // What the client sends — its authentication, a pong — is read frame by
+    // frame and its opcode kept; the read ends when the socket does.
+    while let Some(opcode) = client_frame(&mut connection) {
+        lock(script).client_opcodes.push(opcode);
+    }
+}
+
+/// The opcode of one masked frame a client sent, its payload read and set
+/// aside; nothing once the socket ends.
+fn client_frame(connection: &mut TcpStream) -> Option<u8> {
+    let mut header = [0_u8; 2];
+    connection.read_exact(&mut header).ok()?;
+    let length = match header[1] & 0x7F {
+        126 => {
+            let mut extended = [0_u8; 2];
+            connection.read_exact(&mut extended).ok()?;
+            u64::from(u16::from_be_bytes(extended))
+        }
+        127 => {
+            let mut extended = [0_u8; 8];
+            connection.read_exact(&mut extended).ok()?;
+            u64::from_be_bytes(extended)
+        }
+        short => u64::from(short),
+    };
+    let mut mask = [0_u8; 4];
+    connection.read_exact(&mut mask).ok()?;
+    let mut payload = vec![0_u8; usize::try_from(length).ok()?];
+    connection.read_exact(&mut payload).ok()?;
+    Some(header[0] & 0x0F)
 }
 
 /// A real `OctoPrint`'s terminal and serial connection, for the live tiers

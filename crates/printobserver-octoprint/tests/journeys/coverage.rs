@@ -15,13 +15,15 @@ use crate::surface::{
     trait_methods, variants_named,
 };
 
-/// The methods of the printer port that read rather than act.
-const READING_METHODS: [&str; 5] = [
+/// The methods of the printer port that read rather than act: the push
+/// channel is driven by `journeys/pushing.rs` against the scripted instance.
+const READING_METHODS: [&str; 6] = [
     "snapshot",
     "job",
     "file_facts",
     "printed_files",
     "extruded_to",
+    "push_events",
 ];
 
 /// Everything declared that the journey does not cover.

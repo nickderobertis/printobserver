@@ -78,7 +78,7 @@ pub mod unobserved;
 pub mod upgrade;
 pub mod watch;
 
-pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule, is_printer_message};
+pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule};
 pub use actions::{ActionOutcome, reported_value};
 pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
@@ -137,6 +137,5 @@ pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};
 pub use watch::{
     DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth, DetectorHealthStatus,
-    DetectorProbe, FIRMWARE_ERROR_REASON, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN,
-    PositionProbe, Watched,
+    DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN, PositionProbe, Watched,
 };

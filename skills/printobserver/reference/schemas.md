@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-158 types. The set is every type any crate declares under
+159 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -6751,7 +6751,7 @@ Declared by `printobserver-server`.
             }
           ],
           "default": null,
-          "description": "When the status became what it is, `null` while it is unchecked."
+          "description": "When the status became what it is, `null` exactly while unchecked."
         },
         "status": {
           "$ref": "#/$defs/DetectorHealthStatus",
@@ -6802,6 +6802,21 @@ Declared by `printobserver-server`.
         "allowed"
       ],
       "type": "object"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
     },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
@@ -7164,6 +7179,17 @@ Declared by `printobserver-server`.
             "string",
             "null"
           ]
+        },
+        "error_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -7754,7 +7780,7 @@ Declared by `printobserver-core`.
         }
       ],
       "default": null,
-      "description": "When the status became what it is, `null` while it is unchecked."
+      "description": "When the status became what it is, `null` exactly while unchecked."
     },
     "status": {
       "$ref": "#/$defs/DetectorHealthStatus",
@@ -8179,6 +8205,30 @@ Declared by `printobserver-server`.
   ],
   "title": "ErrorAnswer",
   "type": "object"
+}
+```
+
+### ErrorSource
+
+Declared by `printobserver-printer-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whose error a job's error is.",
+  "oneOf": [
+    {
+      "const": "printer",
+      "description": "The printer's own message: its firmware stopped the job.",
+      "type": "string"
+    },
+    {
+      "const": "host",
+      "description": "The host's: it lost the line to the printer, or failed in itself.",
+      "type": "string"
+    }
+  ],
+  "title": "ErrorSource"
 }
 ```
 
@@ -10623,6 +10673,21 @@ Declared by `printobserver-printer-api`.
 ```json
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "PrinterState": {
       "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
       "oneOf": [
@@ -10740,6 +10805,17 @@ Declared by `printobserver-printer-api`.
         "string",
         "null"
       ]
+    },
+    "error_source": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ErrorSource"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
     },
     "estimated_print_time_s": {
       "description": "The whole print's estimated duration, in whole seconds.",
@@ -10860,6 +10936,21 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
       "format": "uuid",
@@ -11030,6 +11121,17 @@ Declared by `printobserver-core`.
             "string",
             "null"
           ]
+        },
+        "error_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -12992,6 +13094,21 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "HeaterSnapshot": {
       "additionalProperties": false,
       "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
@@ -13053,6 +13170,17 @@ Declared by `printobserver-core`.
             "string",
             "null"
           ]
+        },
+        "error_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -18372,7 +18500,7 @@ Declared by `printobserver-core`.
             }
           ],
           "default": null,
-          "description": "When the status became what it is, `null` while it is unchecked."
+          "description": "When the status became what it is, `null` exactly while unchecked."
         },
         "status": {
           "$ref": "#/$defs/DetectorHealthStatus",
@@ -18423,6 +18551,21 @@ Declared by `printobserver-core`.
         "allowed"
       ],
       "type": "object"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
     },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
@@ -18785,6 +18928,17 @@ Declared by `printobserver-core`.
             "string",
             "null"
           ]
+        },
+        "error_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -29404,7 +29558,7 @@ Declared by `printobserver-server`.
             }
           ],
           "default": null,
-          "description": "When the status became what it is, `null` while it is unchecked."
+          "description": "When the status became what it is, `null` exactly while unchecked."
         },
         "status": {
           "$ref": "#/$defs/DetectorHealthStatus",
@@ -29432,6 +29586,21 @@ Declared by `printobserver-server`.
         {
           "const": "unchecked",
           "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
           "type": "string"
         }
       ]
@@ -29639,6 +29808,17 @@ Declared by `printobserver-server`.
             "string",
             "null"
           ]
+        },
+        "error_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",

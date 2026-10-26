@@ -277,9 +277,10 @@ fn a_failed_print_whose_file_cannot_be_read_charges_a_file_fraction() {
             detail: "the file is gone".to_owned(),
         },
     );
-    world.printer.reports_error(Some(
+    world.printer.reports_error(Some((
         "Thermal Runaway, system stopped! Printer halted. kill() called!",
-    ));
+        printobserver_printer_api::ErrorSource::Printer,
+    )));
     ends(&world, PrinterState::Error);
 
     assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Failed);
@@ -310,9 +311,10 @@ fn a_print_that_went_offline_is_interrupted_and_charges_the_extrusion() {
     world
         .printer
         .extrudes(FILE, 100_000, vec![on_tool(0, 512.0)]);
-    world
-        .printer
-        .reports_error(Some("SerialTimeoutException: "));
+    world.printer.reports_error(Some((
+        "SerialTimeoutException: ",
+        printobserver_printer_api::ErrorSource::Host,
+    )));
     ends(&world, PrinterState::Offline);
     assert_eq!(
         ended_of(&world, print_id).outcome,

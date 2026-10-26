@@ -469,3 +469,42 @@ fn the_history_query_carries_exactly_the_stated_fields() {
     ];
     assert_eq!(wire_fields(&schema_of::<HistoryQuery>()), expected);
 }
+
+/// The detector's health is three states on the wire, as the status and
+/// context reads answer it: `since` is `null` exactly when the status is
+/// `unchecked`. Each state round-trips to that object and back, and an object
+/// pairing them any other way is refused rather than read.
+#[test]
+fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
+    use printobserver_types::serde_json::{self, json};
+    let since = printobserver_types::Timestamp::sample_full();
+    let at = serde_json::to_value(since).expect("an instant renders");
+    for (health, wire) in [
+        (
+            DetectorHealth::Unchecked,
+            json!({ "status": "unchecked", "since": null }),
+        ),
+        (
+            DetectorHealth::Available { since },
+            json!({ "status": "available", "since": at }),
+        ),
+        (
+            DetectorHealth::Unavailable { since },
+            json!({ "status": "unavailable", "since": at }),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(health).expect("it renders"), wire);
+        let read: DetectorHealth = serde_json::from_value(wire).expect("it reads back");
+        assert_eq!(read, health);
+    }
+    for refused in [
+        json!({ "status": "unchecked", "since": at }),
+        json!({ "status": "available", "since": null }),
+        json!({ "status": "unavailable" }),
+    ] {
+        assert!(
+            serde_json::from_value::<DetectorHealth>(refused.clone()).is_err(),
+            "{refused} was read"
+        );
+    }
+}

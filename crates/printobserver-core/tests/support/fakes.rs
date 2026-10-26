@@ -252,9 +252,12 @@ impl FakePrinter {
         });
     }
 
-    /// Report the job's error text, or none.
-    pub fn reports_error(&self, error: Option<&str>) {
-        self.job.lock().expect("the printer holds").error = error.map(str::to_owned);
+    /// Report the job's error text and whose its adapter says it is, or
+    /// none.
+    pub fn reports_error(&self, error: Option<(&str, printobserver_printer_api::ErrorSource)>) {
+        let mut job = self.job.lock().expect("the printer holds");
+        job.error = error.map(|(text, _)| text.to_owned());
+        job.error_source = error.map(|(_, source)| source);
     }
 
     /// Report this snapshot from now on.
@@ -1983,6 +1986,7 @@ pub fn job_snapshot() -> JobSnapshot {
         print_time_left_s: Some(4176),
         state: PrinterState::Printing,
         error: None,
+        error_source: None,
         file_position_bytes: None,
         filament: Vec::new(),
     }

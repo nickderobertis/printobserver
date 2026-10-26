@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whose error a job's error is.",
+  "oneOf": [
+    {
+      "const": "printer",
+      "description": "The printer's own message: its firmware stopped the job.",
+      "type": "string"
+    },
+    {
+      "const": "host",
+      "description": "The host's: it lost the line to the printer, or failed in itself.",
+      "type": "string"
+    }
+  ],
+  "title": "ErrorSource"
+}

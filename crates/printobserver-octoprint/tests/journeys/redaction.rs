@@ -20,7 +20,7 @@
 //! not drive, or the error vocabulary a variant this file does not name.
 
 use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter, REDACTED};
-use printobserver_printer_api::Adjustable;
+use printobserver_printer_api::{Adjustable, PrinterCommand};
 use printobserver_printer_api::{PrinterError, PrinterPort as _};
 use printobserver_types::FileName;
 
@@ -93,6 +93,10 @@ fn drive_every_method(printer: &OctoPrintPrinter) {
         FileName::new("hold.gcode").expect("a file name"),
         8,
     )));
+    drop(block_on(printer.push_events()));
+    drop(block_on(
+        printer.send_command(PrinterCommand::ReportPosition),
+    ));
 }
 
 /// A value of every variant `PrinterError` declares, constructed in turn.

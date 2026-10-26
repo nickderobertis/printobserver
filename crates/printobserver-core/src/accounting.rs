@@ -39,7 +39,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use printobserver_printer_api::{FileFacts, JobSnapshot, PrinterState, ToolFilament};
+use printobserver_printer_api::{ErrorSource, FileFacts, JobSnapshot, PrinterState, ToolFilament};
 use printobserver_types::{
     EventBody, EventKind, EventPayload, EventSource, FileName, PrintId, Timestamp,
 };
@@ -490,9 +490,8 @@ impl Ending<'_> {
     ///
     /// The push channel says so outright: the printer pushes an error of its
     /// own for exactly that stop, and for no serial drop or reset. Only when
-    /// the channel was down during the stop is the job's error text read
-    /// instead — a printer's own message there is its error, and an exception
-    /// name is the host losing the line.
+    /// the channel was down during the stop is the job's error read instead,
+    /// by whose its adapter says it is.
     fn printer_errored(&self) -> bool {
         if self.pushes.firmware_error {
             return true;
@@ -500,34 +499,8 @@ impl Ending<'_> {
         self.pushes.gap
             && self
                 .job
-                .and_then(|job| job.error.as_deref())
-                .is_some_and(is_printer_message)
+                .is_some_and(|job| job.error_source == Some(ErrorSource::Printer))
     }
-}
-
-/// Whether a job's error text is a printer's own message rather than the name
-/// of an exception the host raised, such as `SerialTimeoutException: `.
-#[must_use]
-pub fn is_printer_message(error: &str) -> bool {
-    let text = error.trim();
-    !text.is_empty() && !is_exception_name(text)
-}
-
-/// Whether text begins with an exception name and its colon: an identifier,
-/// dotted or not, ending `Exception` or `Error`.
-fn is_exception_name(text: &str) -> bool {
-    let Some((name, _)) = text.split_once(':') else {
-        return false;
-    };
-    let mut characters = name.chars();
-    let starts = characters
-        .next()
-        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_');
-    starts
-        && name
-            .chars()
-            .all(|each| each.is_ascii_alphanumeric() || each == '_' || each == '.')
-        && (name.ends_with("Exception") || name.ends_with("Error"))
 }
 
 impl Supervisor {
