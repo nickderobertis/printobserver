@@ -17,7 +17,7 @@
 # macOS is the one exception, and it is a consolidation rather than a
 # narrowing: the account's few macOS slots are shared with other repositories,
 # so the gate's and the integration tier's `macos-aarch64` cells run as ONE job,
-# `macos`, that runs both recipes in turn, and only on a pull request the
+# `macos`, that runs both recipes side by side, and only on a pull request the
 # classifier (`.github/macos-policy.mjs`) says owes it. Two Linux jobs carry the
 # required contexts `gate (macos-aarch64)` and `integration (macos-aarch64)`,
 # each reporting exactly what that one job's own step for its lane did.
