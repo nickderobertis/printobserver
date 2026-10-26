@@ -39,7 +39,8 @@ PARSE_ERROR = """error: Unknown start of token '-'
 65 │     uv run -q python -m repo_checks install-tools {{TOOL}}
    │            ^"""
 
-# A `just` that answers `--version` with JUST_STANDIN_RELEASE and, asked for
+# A `just` that answers `--version` with JUST_STANDIN_RELEASE — exiting 1 instead
+# where that is FAILS, as a build that cannot report itself does — and, asked for
 # anything else, either says PARSE_ERROR and exits 1, as a release that cannot
 # read the file does, or lists nothing and exits 0. Each invocation is recorded
 # to JUST_STANDIN_RECORD.
@@ -50,6 +51,8 @@ import sys
 with open(os.environ["JUST_STANDIN_RECORD"], "a", encoding="utf-8") as record:
     record.write("just " + " ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1:] == ["--version"]:
+    if os.environ["JUST_STANDIN_RELEASE"] == "FAILS":
+        raise SystemExit(1)
     print("just " + os.environ["JUST_STANDIN_RELEASE"])
     raise SystemExit(0)
 if os.environ.get("JUST_STANDIN_ERROR"):
@@ -175,6 +178,26 @@ def test_a_release_that_cannot_parse_the_justfile_is_refused_by_the_pinned_relea
     contains(said, f"uv tool install rust-just=={HELD}")
     contains(said, PARSE_ERROR)
     contains(record.read_text(encoding="utf-8"), f"--justfile {copy.root / 'justfile'}")
+
+
+@pytest.mark.parametrize("answer", ["FAILS", "a build naming no release"])
+def test_a_refusing_just_that_cannot_say_its_release_is_still_refused_by_the_pinned_one(
+    tree: Callable[[], Tree],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    answer: str,
+) -> None:
+    """A `just` whose `--version` fails or names nothing is refused for its parse all the same."""
+    copy = tree()
+    standin_just(tmp_path, monkeypatch, release=answer, refuses=True)
+
+    equal(main(["check-justfile", "--root", str(copy.root)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, "just (no release it names) at ")
+    contains(said, f"`.tool-versions` pins just {HELD}")
+    contains(said, PARSE_ERROR)
 
 
 def test_a_newer_release_that_parses_the_justfile_is_accepted(
