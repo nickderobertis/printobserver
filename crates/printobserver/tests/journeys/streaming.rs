@@ -329,7 +329,54 @@ fn ending(lines: &[Value]) -> Value {
         last.get("watch_ended").is_some(),
         "the ending was not the last line: {lines:#?}"
     );
+    held_to_the_documents(&last["watch_ended"], "watch_ended");
     last["watch_ended"].clone()
+}
+
+/// The documents that state what a `--json` stream's own lines carry.
+const STATING_THE_LINES: [&str; 2] = [
+    "skills/printobserver/reference/command-surface.md",
+    "README.md",
+];
+
+/// Hold the fields of one of the stream's own lines — `object`, printed as
+/// `{"<object>": {...}}` — to the fields each document stating it names, so
+/// a field the stream gains, loses or renames fails here naming the document.
+fn held_to_the_documents(line: &Value, object: &str) {
+    let printed: Vec<&str> = line
+        .as_object()
+        .unwrap_or_else(|| panic!("`{object}` is an object: {line}"))
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for document in STATING_THE_LINES {
+        let text = std::fs::read_to_string(root.join(document))
+            .unwrap_or_else(|error| panic!("{document} reads: {error}"));
+        let opener = format!("{{\"{object}\": {{");
+        let start = text
+            .find(&opener)
+            .unwrap_or_else(|| panic!("{document} states `{object}`"))
+            + opener.len();
+        let end = text[start..]
+            .find("}}")
+            .unwrap_or_else(|| panic!("{document} closes its `{object}`"));
+        let shape = &text[start..start + end];
+        let mut documented: Vec<&str> = shape
+            .split('"')
+            .collect::<Vec<_>>()
+            .windows(2)
+            .filter(|pair| pair[1].trim_start().starts_with(':'))
+            .map(|pair| pair[0])
+            .collect();
+        documented.sort_unstable();
+        let mut printed = printed.clone();
+        printed.sort_unstable();
+        assert_eq!(
+            printed, documented,
+            "the stream's `{object}` fields, against what {document} states"
+        );
+    }
 }
 
 /// The events of a print's scope that pass a filter, up to and including the
@@ -1271,6 +1318,7 @@ fn a_heartbeat_comes_an_interval_after_the_last_line() {
         .unwrap_or_else(|| panic!("the event line: {lines:#?}"));
     let documents = documents(&lines[event_at..]);
     let beat = earliest_beat(&documents);
+    held_to_the_documents(beat, "watch_heartbeat");
     let (since, second_beat) = (instant(beat, "since"), instant(beat, "at"));
     assert!(
         since >= recorded[0].received_at && since > first_beat,
