@@ -13,9 +13,10 @@
 
 #[path = "support/traced.rs"]
 mod traced;
+#[path = "support/unreachable.rs"]
+mod unreachable;
 
 use std::io::Write as _;
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -24,6 +25,7 @@ use printobserver_server::{
     CLIENT_CONFIG_FILE, HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS, plainly_written,
 };
 use tempfile::TempDir;
+use unreachable::Unreachable;
 
 /// What the operator types at the harness's prompt.
 const TYPED: &str = "the-code-from-the-link";
@@ -248,12 +250,10 @@ fn names_in(directory: &Path) -> Vec<String> {
     names
 }
 
-/// An address on loopback nothing is listening on.
-fn nothing_listening() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a free loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    address.to_string()
+/// An address on loopback nothing is listening on, held bound and unlistened
+/// for as long as the answer lives so nothing else can come to listen there.
+fn nothing_listening() -> Unreachable {
+    Unreachable::held()
 }
 
 /// Everything a run said, on either stream.
@@ -358,8 +358,9 @@ fn signing_in_runs_the_harnesss_own_sign_in_on_the_callers_terminal() {
 fn signing_in_reaches_no_printer_and_no_failure_detector() {
     let host = Host::with_stand_ins(0);
     let entry = &SIGN_INS[0];
-    let octoprint = nothing_listening();
-    let listen = nothing_listening();
+    // Both are held for the whole journey, so neither can come to be listened on.
+    let (no_octoprint, no_listener) = (nothing_listening(), nothing_listening());
+    let (octoprint, listen) = (no_octoprint.address(), no_listener.address());
     // Every value but the two signing in reads either names an address nothing
     // is listening on or is one the server itself would refuse to start under.
     let config = host.configuration(

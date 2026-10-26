@@ -63,6 +63,9 @@ toml = { version = "0.9", default-features = false, features = ["display", "pars
 rusqlite = { version = "0.37", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
 tempfile = "3"
+# A socket bound and never listened on: the address a journey hands out as
+# unreachable stays held for the journey's lifetime, which `std` cannot bind.
+socket2 = "0.6"
 
 [[bin]]
 name = "printobserver-server-responder"

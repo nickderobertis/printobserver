@@ -27,7 +27,7 @@ use printobserver_server::{ConfigField, ConfigFile, Server};
 use printobserver_types::serde_json::Value;
 use tempfile::TempDir;
 
-use crate::probes::{base_url, silent_host, unreachable_address};
+use crate::probes::{Unreachable, base_url, silent_host};
 use crate::world::{document, remove, set, write};
 
 /// The fields this program is required to take, whatever else it declares.
@@ -62,7 +62,12 @@ fn uncreatable(root: &std::path::Path) -> PathBuf {
 /// One configuration in which exactly `field` is unacceptable.
 ///
 /// Answers the document, and the path of anything it had to put on disk first.
-async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &str) -> toml::Value {
+fn unacceptable(
+    field: ConfigField,
+    root: &std::path::Path,
+    reachable: &str,
+    unreachable: &Unreachable,
+) -> toml::Value {
     let mut document = document(root, reachable);
     match field {
         ConfigField::StateDir => set(
@@ -79,7 +84,7 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
         ConfigField::OctoprintUrl => set(
             &mut document,
             "octoprint.url",
-            toml::Value::String(format!("http://{}", unreachable_address().await)),
+            toml::Value::String(format!("http://{}", unreachable.address())),
         ),
         ConfigField::OctoprintApiKey => remove(&mut document, "octoprint.api_key"),
         ConfigField::OctoprintFan => set(
@@ -234,10 +239,12 @@ async fn every_declared_field_is_refused_naming_itself() {
     // OctoPrint-address journey for the wrong reason on every other one.
     let reachable = silent_host().await;
     let base = base_url(&reachable);
+    // And one held, never listened on, for the whole walk.
+    let unreachable = Unreachable::held();
 
     for field in ConfigField::ALL {
         let root = TempDir::new().expect("a journey's own root");
-        let document = unacceptable(field, root.path(), &base).await;
+        let document = unacceptable(field, root.path(), &base, &unreachable);
         let path = write(root.path(), &document);
 
         let refusal = Server::start(&path)

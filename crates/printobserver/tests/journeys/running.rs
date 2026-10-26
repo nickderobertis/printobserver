@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use printobserver_types::serde_json::{self, Value};
 
 use crate::traced::{Ran, traced};
+use crate::unreachable::Unreachable;
 use crate::walk::Invocation;
 use crate::world::World;
 
@@ -76,19 +77,16 @@ pub fn read(world: &World, arguments: &[&str]) -> Value {
 
 /// One command run against a supervisor that is not there.
 pub fn against_nothing(world: &World, arguments: &[String], credential: &str) -> Ran {
-    // A port is bound to learn one that is free and then released, so what the
-    // command meets is a refused connection rather than a served refusal.
-    let nowhere = {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-        listener.local_addr().expect("the bound address")
-    };
+    // A port held bound and never listened on for the whole command, so what it
+    // meets is a refused connection rather than whatever else came to listen.
+    let nowhere = Unreachable::held();
     with(
         world,
         arguments,
         &[
             (
                 "PRINTOBSERVER_SERVER".to_owned(),
-                format!("http://{nowhere}"),
+                format!("http://{}", nowhere.address()),
             ),
             ("PRINTOBSERVER_CREDENTIAL".to_owned(), credential.to_owned()),
         ],

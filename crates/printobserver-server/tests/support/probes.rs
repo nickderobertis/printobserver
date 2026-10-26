@@ -6,9 +6,9 @@
 //! `OctoPrint`: nothing here carries an `OctoPrint` path, header or response
 //! shape, because only the adapter crate may construct one.
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 
-use tokio::net::TcpListener;
+use socket2::{Domain, Socket, Type};
 
 use crate::http_host::Host;
 
@@ -29,15 +29,39 @@ pub fn base_url(host: &Host) -> String {
     format!("http://{}", host.address)
 }
 
-/// An address nothing is listening on.
+/// An address nothing is listening on, for as long as this lives.
 ///
-/// A port is bound to learn one that is free and then released, so what a
-/// caller meets is a refused connection rather than a served refusal.
-pub async fn unreachable_address() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    address
+/// The port is bound and never listened on, so what a caller meets is a
+/// refused connection rather than a served refusal; and while the socket lives
+/// no other socket can bind the port, however many listeners the suite binds
+/// beside it.
+pub struct Unreachable {
+    /// Held only so the port stays bound.
+    _socket: Socket,
+    address: SocketAddr,
+}
+
+impl Unreachable {
+    /// Bind a free loopback port and hold it without listening.
+    pub fn held() -> Self {
+        let socket =
+            Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
+        socket
+            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
+            .expect("a loopback port binds");
+        let address = socket
+            .local_addr()
+            .expect("the bound address reads")
+            .as_socket()
+            .expect("the bound address is an internet address");
+        Self {
+            _socket: socket,
+            address,
+        }
+    }
+
+    /// The address, as `host:port`.
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
 }

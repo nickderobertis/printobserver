@@ -36,6 +36,7 @@ use printobserver::failure::Exit;
 
 use crate::announced;
 use crate::machine::Reports;
+use crate::unreachable::Unreachable;
 use crate::walk;
 use crate::world::{CREDENTIAL, OTHER_CREDENTIAL, World};
 
@@ -162,15 +163,17 @@ fn printed_by(output: &std::process::Output) -> String {
 fn the_issued_credential_is_printed_by_nothing(world: &World) {
     let home = world.root.path().join("issuing-home");
     std::fs::create_dir_all(&home).expect("the operator's own home");
-    let listen = {
-        let free = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-        free.local_addr().expect("the bound address").to_string()
-    };
-    let server = format!("http://{listen}");
+    // The verifier has to be in the server's configuration before it starts,
+    // so the credential is issued before anything listens: against an address
+    // held bound and never listened on. The server then takes a port of its
+    // own and says which, so no port is released for another process to take
+    // first; every read below names that one, as an operator's environment
+    // naming the supervisor does.
+    let issued_against = Unreachable::held();
+    let (line, credential, client_config) =
+        issued_at(&home, &format!("http://{}", issued_against.address()));
 
-    let (line, credential, client_config) = issued_at(&home, &server);
-
-    let (configuration, state) = world.unverified_server_config("issued", &listen);
+    let (configuration, state) = world.unverified_server_config("issued", "127.0.0.1:0");
     let held = std::fs::read_to_string(&configuration).expect("the configuration reads");
     std::fs::write(&configuration, format!("{line}\n{held}"))
         .expect("the configuration is writable");
@@ -182,7 +185,8 @@ fn the_issued_credential_is_printed_by_nothing(world: &World) {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the command that runs the server runs");
-    let (_, stream) = announced::serving(&mut serving, "the issued supervisor did not start");
+    let (address, stream) = announced::serving(&mut serving, "the issued supervisor did not start");
+    let server = format!("http://{address}");
 
     let read = at_home(
         &home,

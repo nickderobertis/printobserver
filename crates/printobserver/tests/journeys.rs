@@ -85,6 +85,8 @@ mod spooling;
 mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
+#[path = "support/unreachable.rs"]
+mod unreachable;
 
 use world::World;
 

@@ -9,6 +9,11 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
 
+#[path = "support/unreachable.rs"]
+mod unreachable;
+
+use unreachable::Unreachable;
+
 use printobserver::failure::Exit;
 use printobserver::surface::{MAX_DURATION_SECONDS, MIN_DURATION_SECONDS};
 
@@ -41,14 +46,42 @@ fn running(arguments: &[&str], environment: &[(&str, &str)]) -> (Option<i32>, St
     )
 }
 
-/// An address nothing is listening on.
+/// An address nothing is listening on, for as long as the answer lives.
 ///
-/// A port is bound to learn one that is free and then released, so what a read
-/// meets is a refused connection rather than a served refusal.
-fn nothing_listening() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    format!("http://{address}")
+/// The port stays bound and is never listened on, so what a read meets is a
+/// refused connection rather than a served refusal, however many listeners the
+/// suite binds beside it.
+fn nothing_listening() -> Unreachable {
+    Unreachable::held()
+}
+
+/// An address handed out as unreachable stays refused for as long as it is
+/// held, while listeners on ephemeral ports come and go beside it, because the
+/// held socket keeps the port: nothing can bind it until it is let go.
+#[test]
+fn a_held_unreachable_address_is_refused_while_listeners_come_and_go() {
+    let nowhere = nothing_listening();
+    let address = nowhere.address();
+    let binding = std::thread::spawn(|| {
+        for _ in 0..2000 {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("an ephemeral listener");
+            drop(listener);
+        }
+    });
+    loop {
+        let refused = TcpStream::connect(address).expect_err("nothing answers there");
+        assert_eq!(
+            refused.kind(),
+            std::io::ErrorKind::ConnectionRefused,
+            "{address} answered something other than a refusal: {refused}"
+        );
+        let taken = TcpListener::bind(address).expect_err("the held port cannot be bound");
+        assert_eq!(taken.kind(), std::io::ErrorKind::AddrInUse, "{taken}");
+        if binding.is_finished() {
+            break;
+        }
+    }
+    binding.join().expect("the binding thread finishes");
 }
 
 /// The program prints its surface and exits zero.
@@ -320,7 +353,8 @@ fn the_environment_names_the_server_and_wins_over_the_file() {
         "pointed.toml",
         "[client]\nserver = \"http://127.0.0.1:1\"\n",
     );
-    let elsewhere = nothing_listening();
+    let nowhere = nothing_listening();
+    let elsewhere = format!("http://{}", nowhere.address());
 
     let (code, said) = running(
         &[
@@ -344,7 +378,8 @@ fn the_environment_names_the_server_and_wins_over_the_file() {
 #[test]
 fn the_servers_own_configuration_file_configures_a_client() {
     let root = tempfile::TempDir::new().expect("a journey's own root");
-    let address = nothing_listening();
+    let nowhere = nothing_listening();
+    let address = format!("http://{}", nowhere.address());
     let served = write(
         root.path(),
         "config.toml",
@@ -377,7 +412,8 @@ fn the_servers_own_configuration_file_configures_a_client() {
 /// rather than from the ones it could have been.
 #[test]
 fn a_read_of_a_supervisor_that_is_not_there_says_where_it_looked() {
-    let address = nothing_listening();
+    let nowhere = nothing_listening();
+    let address = format!("http://{}", nowhere.address());
 
     let (code, said) = running(
         &["history", "--print-id", A_PRINT],
