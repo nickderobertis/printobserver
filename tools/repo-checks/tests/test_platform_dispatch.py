@@ -954,6 +954,88 @@ def test_a_job_level_literal_environment_is_carried_and_an_expression_is_not(
     )
 
 
+def _exporting(recording: Recording, exports: str) -> None:
+    """A stand-in `just` whose `runner-temp` appends `exports` to `$GITHUB_ENV`.
+
+    Every call records the platform and the exported scratch directory it was
+    handed. The export is written byte for byte as given, so a caller can hand
+    it the CRLF line endings PowerShell's `Out-File` writes on Windows, which
+    is how the committed setup writes its own.
+    """
+    written = recording.programs.parent / "exports"
+    written.write_bytes(exports.encode("utf-8"))
+    script = recording.programs / JUST
+    script.write_text(
+        "#!/bin/sh\n"
+        'echo "just $* platform=${PRINTOBSERVER_PLATFORM-unset}'
+        " scratch=${PRINTOBSERVER_JOB_SCRATCH-unset}"
+        ' owner=${PRINTOBSERVER_JOB_SCRATCH_OWNER-unset}" >> "$RECORD"\n'
+        f'if [ "$*" = "runner-temp" ]; then cat "{written.as_posix()}" >> "$GITHUB_ENV"; fi\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+
+def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """The gate's setup exports its scratch directory, and the steps after it run in it.
+
+    The job's `PRINTOBSERVER_PLATFORM` is `${{ matrix.platform.id }}`, which a
+    dispatch reads as the platform it names; and what `runner-temp` appends to
+    `$GITHUB_ENV` is what every later step runs with — an empty value included —
+    and not what the step itself ran with.
+    """
+    copy = tree()
+    recording = Recording(tmp_path)
+    _exporting(
+        recording,
+        "PRINTOBSERVER_JOB_SCRATCH=D:/printobserver-1\r\nPRINTOBSERVER_JOB_SCRATCH_OWNER=\r\n",
+    )
+
+    code, said = _run(copy, "gate", "linux-aarch64", recording)
+
+    equal(code, 0, describing=f"the exit of a gate whose commands all passed:\n{said}")
+    exported = "platform=linux-aarch64 scratch=D:/printobserver-1 owner="
+    equal(
+        recording.recorded(),
+        [
+            "just runner-temp platform=linux-aarch64 scratch=unset owner=unset",
+            f"just bootstrap {exported}",
+            f"just gate-tier {exported}",
+            f"just check  {exported}",
+            f"just budgets-release-pr {exported}",
+            f"just runner-temp cleanup {exported}",
+        ],
+        describing="what ran, and what it was handed",
+    )
+
+
+def test_an_export_in_a_form_no_source_job_writes_is_refused_by_name(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """The multi-line form stops the job naming it, and the teardown still runs."""
+    copy = tree()
+    recording = Recording(tmp_path)
+    _exporting(recording, "PRINTOBSERVER_JOB_SCRATCH<<EOF\nsomewhere\nEOF\n")
+
+    code, said = _run(copy, "gate", "linux-x86_64", recording)
+
+    equal(
+        code, REFUSED, describing=f"the exit of a job whose setup exported a refused form:\n{said}"
+    )
+    contains(said, "platform-dispatch: refused: `just runner-temp`", describing=said)
+    contains(said, "multi-line `NAME<<DELIMITER` form", describing=said)
+    equal(
+        recording.recorded(),
+        [
+            "just runner-temp platform=linux-x86_64 scratch=unset owner=unset",
+            "just runner-temp cleanup platform=linux-x86_64 scratch=unset owner=unset",
+        ],
+        describing="what ran: the setup, and then only the teardown",
+    )
+
+
 def test_the_script_refuses_an_unknown_pair_before_anything_runs(
     tree: Callable[[], Tree], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
