@@ -177,9 +177,7 @@ format-check tier="affected":
 lint tier="affected":
     just node-modules
     uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} lint
-    if [ "${PRINTOBSERVER_HOST_INDEPENDENT:-here}" = here ]; then \
-    uv run -q python -m repo_checks lint-windows-target; \
-    fi
+    uv run -q python -m repo_checks lint-windows-target
 
 # Type-check every project with its language's type checker — every Python
 # project for this host and for each platform `repo-policy.toml` declares, so a

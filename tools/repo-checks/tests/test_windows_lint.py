@@ -316,3 +316,29 @@ def test_the_compiler_wrapper_drops_the_rust_triple_and_names_zigs_own_target(
     equal(
         shlex.split(archived.stdout), ["ar", "cq", "lib.a", "out.o"], describing="what zig archived"
     )
+
+
+def test_a_cell_leaving_the_pass_to_the_others_runs_nothing(
+    stand_ins: Path,
+    committed: Repo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The macOS gate leaves it to the Linux cells, which lint the same tree for Windows."""
+    monkeypatch.setenv(windows_lint.HOST_INDEPENDENT, windows_lint.ELSEWHERE)
+
+    equal(windows_lint.lint_windows_target(committed, host="Darwin"), 0)
+
+    equal(recorded(stand_ins / "cargo"), [], describing="no clippy run on a cell leaving it")
+    contains(capsys.readouterr().out, "left to the gate cells of this run that lint it")
+
+
+def test_any_other_value_still_runs_the_pass(
+    stand_ins: Path, committed: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the one value leaves the pass elsewhere; anything else lints."""
+    monkeypatch.setenv(windows_lint.HOST_INDEPENDENT, "here")
+
+    equal(windows_lint.lint_windows_target(committed, host="Linux"), 0)
+
+    equal(len(recorded(stand_ins / "cargo")), len(committed.crate_names))
