@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-145 types. The set is every type any crate declares under
+146 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -7934,22 +7934,37 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PositionFreshness": {
+      "description": "How fresh the position a filament change charged up to is.",
+      "oneOf": [
+        {
+          "const": "read_at_signal",
+          "description": "Read from the job as the signal was handled: where the spool stopped.",
+          "type": "string"
+        },
+        {
+          "const": "last_recorded",
+          "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+          "type": "string"
+        }
+      ]
+    },
     "SignalPosition": {
       "additionalProperties": false,
-      "description": "The position a filament change charged up to, and whether it was read at\nthe signal.",
+      "description": "The position a filament change charged up to, and how fresh it is.",
       "properties": {
+        "freshness": {
+          "$ref": "#/$defs/PositionFreshness",
+          "description": "Whether it was read when the signal was handled, or is the last one\nrecorded before it."
+        },
         "position": {
           "$ref": "#/$defs/FilePosition",
           "description": "The position."
-        },
-        "read_at_signal": {
-          "description": "Whether it was read when the signal was handled, rather than being the\nlast one recorded.",
-          "type": "boolean"
         }
       },
       "required": [
         "position",
-        "read_at_signal"
+        "freshness"
       ],
       "type": "object"
     },
@@ -13425,6 +13440,30 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PortFailureSite"
+}
+```
+
+### PositionFreshness
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How fresh the position a filament change charged up to is.",
+  "oneOf": [
+    {
+      "const": "read_at_signal",
+      "description": "Read from the job as the signal was handled: where the spool stopped.",
+      "type": "string"
+    },
+    {
+      "const": "last_recorded",
+      "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+      "type": "string"
+    }
+  ],
+  "title": "PositionFreshness"
 }
 ```
 
@@ -21250,6 +21289,21 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PositionFreshness": {
+      "description": "How fresh the position a filament change charged up to is.",
+      "oneOf": [
+        {
+          "const": "read_at_signal",
+          "description": "Read from the job as the signal was handled: where the spool stopped.",
+          "type": "string"
+        },
+        {
+          "const": "last_recorded",
+          "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+          "type": "string"
+        }
+      ]
+    },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
       "format": "date-time",
@@ -21259,20 +21313,20 @@ Declared by `printobserver-core`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "The position a filament change charged up to, and whether it was read at\nthe signal.",
+  "description": "The position a filament change charged up to, and how fresh it is.",
   "properties": {
+    "freshness": {
+      "$ref": "#/$defs/PositionFreshness",
+      "description": "Whether it was read when the signal was handled, or is the last one\nrecorded before it."
+    },
     "position": {
       "$ref": "#/$defs/FilePosition",
       "description": "The position."
-    },
-    "read_at_signal": {
-      "description": "Whether it was read when the signal was handled, rather than being the\nlast one recorded.",
-      "type": "boolean"
     }
   },
   "required": [
     "position",
-    "read_at_signal"
+    "freshness"
   ],
   "title": "SignalPosition",
   "type": "object"

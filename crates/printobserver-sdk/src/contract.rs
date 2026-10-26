@@ -1084,6 +1084,18 @@ pub enum PortFailureSite {
     DetectorAcknowledgement,
 }
 
+/// How fresh the position a filament change charged up to is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PositionFreshness {
+    /// Read from the job as the signal was handled: where the spool stopped.
+    #[serde(rename = "read_at_signal")]
+    ReadAtSignal,
+    /// The last position recorded before the signal, the job reporting none
+    /// as it was handled: the spool may have fed past it.
+    #[serde(rename = "last_recorded")]
+    LastRecorded,
+}
+
 /// What a filament check found for one print.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Preflight {
@@ -1775,15 +1787,14 @@ pub struct Reported {
     pub value: f64,
 }
 
-/// The position a filament change charged up to, and whether it was read at
-/// the signal.
+/// The position a filament change charged up to, and how fresh it is.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SignalPosition {
+    /// Whether it was read when the signal was handled, or is the last one
+    /// recorded before it.
+    pub freshness: PositionFreshness,
     /// The position.
     pub position: FilePosition,
-    /// Whether it was read when the signal was handled, rather than being the
-    /// last one recorded.
-    pub read_at_signal: bool,
 }
 
 /// A spool's remaining figure was corrected.

@@ -34,22 +34,37 @@
       ],
       "type": "object"
     },
+    "PositionFreshness": {
+      "description": "How fresh the position a filament change charged up to is.",
+      "oneOf": [
+        {
+          "const": "read_at_signal",
+          "description": "Read from the job as the signal was handled: where the spool stopped.",
+          "type": "string"
+        },
+        {
+          "const": "last_recorded",
+          "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+          "type": "string"
+        }
+      ]
+    },
     "SignalPosition": {
       "additionalProperties": false,
-      "description": "The position a filament change charged up to, and whether it was read at\nthe signal.",
+      "description": "The position a filament change charged up to, and how fresh it is.",
       "properties": {
+        "freshness": {
+          "$ref": "#/$defs/PositionFreshness",
+          "description": "Whether it was read when the signal was handled, or is the last one\nrecorded before it."
+        },
         "position": {
           "$ref": "#/$defs/FilePosition",
           "description": "The position."
-        },
-        "read_at_signal": {
-          "description": "Whether it was read when the signal was handled, rather than being the\nlast one recorded.",
-          "type": "boolean"
         }
       },
       "required": [
         "position",
-        "read_at_signal"
+        "freshness"
       ],
       "type": "object"
     },

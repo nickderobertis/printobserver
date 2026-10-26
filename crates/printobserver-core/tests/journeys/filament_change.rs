@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use printobserver_core::kinds::{
     ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
-    PrintEndedPayload, SpoolAdjustedPayload, SpoolLoadedPayload,
+    PositionFreshness, PrintEndedPayload, SpoolAdjustedPayload, SpoolLoadedPayload,
 };
 use printobserver_core::store::StoreError;
 use printobserver_core::{
@@ -212,7 +212,7 @@ fn an_obico_filament_change_charges_the_spool_to_the_stop_point_read_at_the_sign
         signals[0]
             .position
             .as_ref()
-            .is_some_and(|signal| signal.read_at_signal)
+            .is_some_and(|signal| signal.freshness == PositionFreshness::ReadAtSignal)
     );
     assert_eq!(
         signals[0]
@@ -481,7 +481,7 @@ fn a_change_whose_position_could_not_be_read_charges_the_last_position_and_says_
         signals[0]
             .position
             .as_ref()
-            .is_some_and(|signal| !signal.read_at_signal)
+            .is_some_and(|signal| signal.freshness == PositionFreshness::LastRecorded)
     );
     assert_eq!(
         signals[0]
@@ -859,7 +859,7 @@ fn a_change_with_no_spool_loaded_charges_nothing() {
         signals[0]
             .position
             .as_ref()
-            .is_some_and(|signal| signal.read_at_signal)
+            .is_some_and(|signal| signal.freshness == PositionFreshness::ReadAtSignal)
     );
     assert!(every_of::<FilamentConsumedPayload>(&world, print_id).is_empty());
 }

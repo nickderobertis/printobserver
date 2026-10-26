@@ -100,11 +100,11 @@ pub use kinds::{
     CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
     FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload,
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
-    PortFailureSite, PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
-    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
-    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
-    agent_source, operator_source, system_source,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, RebaselineDisposition, SignalPosition,
+    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
+    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
+    UnaccountedPrintPayload, agent_source, operator_source, system_source,
 };
 pub use look::Look;
 pub use observation::Observed;

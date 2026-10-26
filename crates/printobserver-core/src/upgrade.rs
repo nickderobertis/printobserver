@@ -13,7 +13,7 @@
 //! * `filament_consumed` with the charge's spool, grams, diameter, density and
 //!   figures as independent fields, now one `charged` calculation;
 //! * `filament_change_signalled` with `position_read_at_signal` beside its
-//!   position, now one `position` carrying both;
+//!   position, now one `position` carrying its `freshness`;
 //! * `spool_registered` whose spool carries `loaded_on_tool`, now a
 //!   `lifecycle`;
 //! * `charge_pended` whose pending charge repeats its print and tool beside a
@@ -145,16 +145,23 @@ fn filament_change_signalled(payload: Value) -> Value {
     let Value::Object(mut object) = payload.clone() else {
         return payload;
     };
-    let Some(read_at_signal) = object
+    let Some(freshness) = object
         .remove("position_read_at_signal")
-        .filter(Value::is_boolean)
+        .and_then(|read| read.as_bool())
+        .map(|read| {
+            if read {
+                "read_at_signal"
+            } else {
+                "last_recorded"
+            }
+        })
     else {
         return payload;
     };
     if let Some(position) = object.remove("position") {
         object.insert(
             "position".to_owned(),
-            json!({ "position": position, "read_at_signal": read_at_signal }),
+            json!({ "position": position, "freshness": freshness }),
         );
     }
     Value::Object(object)

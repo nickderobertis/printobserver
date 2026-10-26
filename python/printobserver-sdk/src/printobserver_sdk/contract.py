@@ -1176,6 +1176,10 @@ PortFailureSite: TypeAlias = Literal[
 ]
 
 
+# How fresh the position a filament change charged up to is.
+PositionFreshness: TypeAlias = Literal["read_at_signal", "last_recorded"]
+
+
 class Preflight(TypedDict):
     """`Preflight`, as the contracts declare it.
 
@@ -2069,16 +2073,14 @@ class Reported(TypedDict):
 class SignalPosition(TypedDict):
     """`SignalPosition`, as the contracts declare it.
 
-    The position a filament change charged up to, and whether it was read
-    at
-    the signal.
+    The position a filament change charged up to, and how fresh it is.
     """
 
+    # Whether it was read when the signal was handled, or is the last one
+    # recorded before it.
+    freshness: PositionFreshness
     # The position.
     position: FilePosition
-    # Whether it was read when the signal was handled, rather than being the
-    # last one recorded.
-    read_at_signal: bool
 
 
 class SpoolAdjustedPayload(TypedDict):

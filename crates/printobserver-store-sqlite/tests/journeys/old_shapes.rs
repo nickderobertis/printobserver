@@ -9,7 +9,7 @@
 
 use printobserver_core::kinds::{
     ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
-    PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
+    PositionFreshness, PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
     SpoolRegisteredPayload,
 };
 use printobserver_core::{
@@ -113,7 +113,7 @@ fn a_filament_change_reads_with_its_position_carrying_its_freshness() {
         "spool_id": SPOOL, "tool": 1,
     }));
     let position = fresh.position.expect("a position");
-    assert!(position.read_at_signal);
+    assert_eq!(position.freshness, PositionFreshness::ReadAtSignal);
     assert_eq!(position.position.bytes, 40_960);
     let none: FilamentChangeSignalledPayload = read_as(json!({
         "position_read_at_signal": false, "source_kind": "obico_printer_notification",

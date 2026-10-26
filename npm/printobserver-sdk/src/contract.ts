@@ -946,6 +946,9 @@ export type PortFailureSite =
   | "camera_look"
   | "detector_acknowledgement";
 
+/** How fresh the position a filament change charged up to is. */
+export type PositionFreshness = "read_at_signal" | "last_recorded";
+
 /** What a filament check found for one print. */
 export interface Preflight {
   /** When the check was made. */
@@ -1362,18 +1365,15 @@ export interface Reported {
   value: number;
 }
 
-/**
- * The position a filament change charged up to, and whether it was read at
- * the signal.
- */
+/** The position a filament change charged up to, and how fresh it is. */
 export interface SignalPosition {
+  /**
+   * Whether it was read when the signal was handled, or is the last one
+   * recorded before it.
+   */
+  freshness: PositionFreshness;
   /** The position. */
   position: FilePosition;
-  /**
-   * Whether it was read when the signal was handled, rather than being the
-   * last one recorded.
-   */
-  read_at_signal: boolean;
 }
 
 /** A spool's remaining figure was corrected. */

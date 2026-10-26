@@ -836,17 +836,28 @@ pub struct FilamentChangeSignalledPayload {
     pub position: Option<SignalPosition>,
 }
 
-/// The position a filament change charged up to, and whether it was read at
-/// the signal.
+/// The position a filament change charged up to, and how fresh it is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct SignalPosition {
     /// The position.
     pub position: FilePosition,
-    /// Whether it was read when the signal was handled, rather than being the
-    /// last one recorded.
-    pub read_at_signal: bool,
+    /// Whether it was read when the signal was handled, or is the last one
+    /// recorded before it.
+    pub freshness: PositionFreshness,
+}
+
+/// How fresh the position a filament change charged up to is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum PositionFreshness {
+    /// Read from the job as the signal was handled: where the spool stopped.
+    ReadAtSignal,
+    /// The last position recorded before the signal, the job reporting none
+    /// as it was handled: the spool may have fed past it.
+    LastRecorded,
 }
 
 impl EventPayload for FilamentChangeSignalledPayload {
@@ -861,7 +872,7 @@ impl Sample for FilamentChangeSignalledPayload {
             source_kind: EventKind::new("obico_printer_notification").expect("a kind name"),
             position: Some(SignalPosition {
                 position: FilePosition::sample_full(),
-                read_at_signal: true,
+                freshness: PositionFreshness::ReadAtSignal,
             }),
         }
     }

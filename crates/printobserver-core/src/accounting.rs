@@ -49,7 +49,7 @@ use crate::error::CoreError;
 use crate::filament::grams_for_length;
 use crate::kinds::{
     ActionExecutedPayload, ActionRequestedPayload, ChargePendedPayload,
-    FilamentChangeSignalledPayload, FilamentConsumedPayload, PrintEndedPayload,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, PositionFreshness, PrintEndedPayload,
     PrintStartedPayload, PrintUntrackedPayload, SignalPosition, SpoolUnverifiedPayload,
     system_source,
 };
@@ -1143,7 +1143,11 @@ impl Supervisor {
         let position = whereabouts.position().cloned();
         let signal_position = position.clone().map(|position| SignalPosition {
             position,
-            read_at_signal: read_now,
+            freshness: if read_now {
+                PositionFreshness::ReadAtSignal
+            } else {
+                PositionFreshness::LastRecorded
+            },
         });
         let file_name = file_of(print);
         let analysis = match &file_name {

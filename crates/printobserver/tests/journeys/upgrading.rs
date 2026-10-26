@@ -131,7 +131,7 @@ pub fn a_store_0_4_3_wrote_is_migrated_and_every_event_still_reads(world: &str) 
             payload.get("position_read_at_signal").is_none()
                 && payload
                     .get("position")
-                    .is_none_or(|position| position.get("read_at_signal").is_some()),
+                    .is_none_or(|position| position.get("freshness").is_some()),
             "a filament change reads in 0.4.3's shape: {signal}"
         );
     }

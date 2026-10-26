@@ -27,11 +27,11 @@ use printobserver_core::{
     CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
     FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload, Look,
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
-    PortFailureSite, PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
-    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
-    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
-    agent_source, operator_source, system_source,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, RebaselineDisposition, SignalPosition,
+    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
+    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
+    UnaccountedPrintPayload, agent_source, operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -140,6 +140,10 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((
         "RebaselineDisposition.json".to_owned(),
         schema_of::<RebaselineDisposition>(),
+    ));
+    entries.push((
+        "PositionFreshness.json".to_owned(),
+        schema_of::<PositionFreshness>(),
     ));
     entries.push((
         "SignalPosition.json".to_owned(),

@@ -163,7 +163,7 @@ async fn retiring_a_loaded_spool_leaves_it_retired_and_on_no_tool() {
 }
 
 /// A filament change signalled with a fresh position records that position
-/// with `read_at_signal`; one signalled with none records no position and no
+/// as `read_at_signal`; one signalled with none records no position and no
 /// claim about one. A second signal of the same change marks nothing again,
 /// and confirming the spool in place clears its mark with no event of the
 /// clearing's own.
@@ -185,7 +185,11 @@ async fn a_filament_change_records_its_position_whole_or_not_at_all() {
         first.get("position_read_at_signal").is_none(),
         "the freshness is still a field of its own: {first}"
     );
-    assert_eq!(first["position"]["read_at_signal"], json!(true), "{first}");
+    assert_eq!(
+        first["position"]["freshness"],
+        json!("read_at_signal"),
+        "{first}"
+    );
     assert_eq!(
         first["position"]["position"]["bytes"],
         json!(SIZE_BYTES / 4),
@@ -258,7 +262,7 @@ async fn a_filament_change_records_its_position_whole_or_not_at_all() {
 }
 
 /// A filament change signalled while the job reports no position, after one
-/// was recorded, records that recorded position with `read_at_signal` false,
+/// was recorded, records that recorded position as `last_recorded`,
 /// and marks the spool as one whose figure may be overstated.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_filament_change_with_only_a_recorded_position_says_it_is_not_fresh() {
@@ -273,8 +277,8 @@ async fn a_filament_change_with_only_a_recorded_position_says_it_is_not_fresh() 
     let events = the_whole_history(&world).await;
     let signalled = of_kind(&events, "filament_change_signalled");
     assert_eq!(
-        signalled[0]["payload"]["position"]["read_at_signal"],
-        json!(false),
+        signalled[0]["payload"]["position"]["freshness"],
+        json!("last_recorded"),
         "{}",
         signalled[0]
     );

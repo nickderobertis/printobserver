@@ -14,7 +14,7 @@ use crate::block_on::block_on;
 use crate::fixture::Store;
 use printobserver_core::kinds::{
     ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
-    PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
+    PositionFreshness, PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
     SpoolRegisteredPayload,
 };
 use printobserver_core::store::{HistoryQuery, StoreError, TimelineQuery};
@@ -198,7 +198,7 @@ fn every_event_0_4_3_wrote_reads_back_in_this_builds_shapes() {
         .iter()
         .find_map(|signal| signal.position.as_ref())
         .expect("one signal had a position");
-    assert!(fresh.read_at_signal);
+    assert_eq!(fresh.freshness, PositionFreshness::ReadAtSignal);
     assert_eq!(fresh.position.bytes, 40_960);
     assert!(signals.iter().any(|signal| signal.position.is_none()));
 
