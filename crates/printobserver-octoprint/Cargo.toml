@@ -26,5 +26,12 @@ serde_json = "1"
 quote = "1"
 syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
 
+# The journeys that need no printer drive the push socket against the scripted
+# `OctoPrint` the `standin` feature compiles; the graph's own targets pass it.
+[[test]]
+name = "octoprint"
+path = "tests/octoprint.rs"
+required-features = ["standin"]
+
 [lints]
 workspace = true

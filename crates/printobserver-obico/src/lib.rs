@@ -55,6 +55,8 @@
 
 pub mod events;
 mod fetch;
+pub mod frame;
+pub mod health;
 mod ingress;
 mod normalize;
 mod vision;
@@ -64,6 +66,10 @@ pub use events::{
     OBICO_SOURCE, ObicoFailureAlertPayload, ObicoNotificationType, ObicoPrinterNotificationPayload,
     obico_source,
 };
+pub use frame::{
+    DEFAULT_BLANK_FRAME_MAX_STDDEV, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, judge,
+};
+pub use health::{DetectorHealthCheck, HEALTH_PATH, HEALTH_TIMEOUT};
 pub use ingress::{IngressError, ObicoIngress, Receipt};
 pub use vision::{
     AccessToken, DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, ObicoApi,

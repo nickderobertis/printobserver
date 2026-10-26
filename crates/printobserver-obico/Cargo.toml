@@ -18,6 +18,10 @@ reqwest = { version = "0.13", default-features = false, features = ["http2", "ru
 # driver asks for one: that thread polls a port's futures with no reactor of its
 # own, and the HTTP client above needs Tokio's.
 tokio = { version = "1", features = ["rt"] }
+# The strict JPEG decoder a camera frame is judged by: a truncated frame is
+# refused rather than padded grey, which is what tells an undecodable frame
+# from a dim one.
+zune-jpeg = "0.5"
 
 [dev-dependencies]
 jsonschema.workspace = true

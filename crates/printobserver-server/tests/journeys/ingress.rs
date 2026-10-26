@@ -30,9 +30,11 @@ const DWELL: Duration = Duration::from_secs(2);
 
 /// The bytes a journey's own image host serves.
 pub fn snapshot_bytes() -> Vec<u8> {
-    let mut bytes = vec![0xff, 0xd8, 0xff];
-    bytes.extend(b"printobserver-journey-snapshot".repeat(8));
-    bytes
+    // A recorded frame of a real print: a camera frame is judged before it is
+    // kept, and bytes that are no picture are refused as the camera degraded.
+    let frame = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/real-prints/filament-stall-air-print/01-last-frame-extruding-p76.jpg");
+    std::fs::read(&frame).expect("the recorded frame reads")
 }
 
 /// Post one body to the real ingress, with the token given.

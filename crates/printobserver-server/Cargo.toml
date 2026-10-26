@@ -63,6 +63,10 @@ toml = { version = "0.9", default-features = false, features = ["display", "pars
 rusqlite = { version = "0.37", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
 tempfile = "3"
+# The scripted `OctoPrint` the printer-watch journeys drive the real adapter
+# against: its REST reads and its push socket, spelt in the one crate that may
+# spell them.
+printobserver-octoprint = { workspace = true, features = ["standin"] }
 
 [[bin]]
 name = "printobserver-server-responder"

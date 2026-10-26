@@ -279,6 +279,22 @@ pub fn pushes_of(text: &str) -> Vec<PrinterPush> {
     pushes
 }
 
+/// The X, Y and Z one terminal line states, when it is the reply to `M114`
+/// that `OctoPrint` shows as received: a `Recv:` line naming each axis as a
+/// finite number. Nothing for any other line.
+#[must_use]
+pub fn position_of(line: &str) -> Option<[f64; 3]> {
+    let reply = line.strip_prefix("Recv:")?;
+    let axis = |name: &str| {
+        reply
+            .split_whitespace()
+            .find_map(|word| word.strip_prefix(name))
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite())
+    };
+    Some([axis("X:")?, axis("Y:")?, axis("Z:")?])
+}
+
 /// Refuse an upgrade answer RFC 6455 does not accept: a status other than 101,
 /// or a missing `Upgrade`, `Connection` or matching `Sec-WebSocket-Accept`.
 fn upgraded(head: &str) -> Result<(), String> {

@@ -13,6 +13,52 @@
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "additionalProperties": false,
+      "description": "The failure detector's health, and since when it has been so.",
+      "properties": {
+        "since": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the status became what it is, `null` while it is unchecked."
+        },
+        "status": {
+          "$ref": "#/$defs/DetectorHealthStatus",
+          "description": "What the last check found."
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "DetectorHealthStatus": {
+      "description": "The failure detector's health, as the last check found it.",
+      "oneOf": [
+        {
+          "const": "available",
+          "description": "It answered its health check.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "It did not.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
+          "type": "string"
+        }
+      ]
+    },
     "EffectiveBounds": {
       "additionalProperties": false,
       "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
@@ -497,6 +543,14 @@
         "bounds": {
           "$ref": "#/$defs/EffectiveBounds",
           "description": "The limits in force, so that the agent can see them before it asks."
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorHealth",
+          "default": {
+            "since": null,
+            "status": "unchecked"
+          },
+          "description": "The failure detector's health, and since when it has been so."
         },
         "interventions": {
           "description": "The interventions still active.",

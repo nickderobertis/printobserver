@@ -647,13 +647,21 @@ impl Supervisor {
         };
         {
             let mut held = self.watch_state();
-            if held.detector.status == health {
+            let previous = held.detector.status;
+            if previous == health {
                 return Ok(None);
             }
             held.detector = DetectorHealth {
                 status: health,
                 since: Some(self.clock().now()),
             };
+            // The first check finding the detector up is where watching it
+            // begins, not a change in it.
+            if previous == DetectorHealthStatus::Unchecked
+                && health == DetectorHealthStatus::Available
+            {
+                return Ok(None);
+            }
         }
         let draft = self.draft_of(
             None,

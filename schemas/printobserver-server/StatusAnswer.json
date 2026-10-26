@@ -13,6 +13,52 @@
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "additionalProperties": false,
+      "description": "The failure detector's health, and since when it has been so.",
+      "properties": {
+        "since": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the status became what it is, `null` while it is unchecked."
+        },
+        "status": {
+          "$ref": "#/$defs/DetectorHealthStatus",
+          "description": "What the last check found."
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "DetectorHealthStatus": {
+      "description": "The failure detector's health, as the last check found it.",
+      "oneOf": [
+        {
+          "const": "available",
+          "description": "It answered its health check.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "It did not.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
+          "type": "string"
+        }
+      ]
+    },
     "HeaterSnapshot": {
       "additionalProperties": false,
       "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
@@ -663,6 +709,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What a status read answers.",
   "properties": {
+    "detector": {
+      "$ref": "#/$defs/DetectorHealth",
+      "description": "The failure detector's health, and since when it has been so."
+    },
     "interventions": {
       "description": "The bounded interventions still in force.",
       "items": {
@@ -710,7 +760,8 @@
   },
   "required": [
     "print",
-    "interventions"
+    "interventions",
+    "detector"
   ],
   "title": "StatusAnswer",
   "type": "object"

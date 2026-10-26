@@ -21,7 +21,8 @@
 //! versioned prefix admits a request by the operator's credential or a live
 //! supervision turn's alone, and holds it to the identity that credential
 //! authenticated. [`turns`] is where each turn's credential is minted and held.
-//! [`server`] is the composition root: the one place an implementation crate is
+//! [`watch`] drives the printer watch, and holds the printer's push channel
+//! and the one command the watch sends. [`server`] is the composition root: the one place an implementation crate is
 //! named, and the only file here that knows there is an `OctoPrint` at all.
 //!
 //! # Images are a path, never bytes
@@ -45,6 +46,7 @@ pub mod operations;
 pub mod reconcile;
 pub mod server;
 pub mod turns;
+pub mod watch;
 pub mod wire;
 
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
