@@ -53,6 +53,8 @@ pub struct Watch {
     pub agent: Arc<StandInAgent>,
     /// What stands between the server and its event log.
     pub held: Arc<crate::held_events::HeldEvents>,
+    /// What stands between the server and its print store.
+    pub prints: Arc<crate::refusing_prints::RefusingPrints>,
     /// The client, presenting the operator's credential.
     pub client: reqwest::Client,
 }
@@ -78,9 +80,11 @@ impl Watch {
         let path = write(root.path(), &configured);
         let mut config = ServerConfig::load(&path).expect("the configuration is accepted");
         tune(&mut config);
-        let (stores, held) = crate::held_events::HeldEvents::over(Stores::of(Arc::new(
+        let (mut stores, held) = crate::held_events::HeldEvents::over(Stores::of(Arc::new(
             SqliteStore::open(&config.state_dir).expect("the store opens"),
         )));
+        let prints = crate::refusing_prints::RefusingPrints::over(Arc::clone(&stores.prints));
+        stores.prints = Arc::clone(&prints) as Arc<dyn printobserver_core::store::PrintStore>;
         let agent = StandInAgent::new();
         let server = Server::start_with(
             config.clone(),
@@ -99,6 +103,7 @@ impl Watch {
             octoprint,
             agent,
             held,
+            prints,
             client: presenting(OPERATOR),
         }
     }
@@ -1041,4 +1046,70 @@ async fn a_stopped_server_closes_its_push_socket_and_reads_nothing_more() {
         "{:?}",
         octoprint.requests()
     );
+}
+
+/// A reset pushed while the store will not say which print is running is
+/// still recorded, saying it could not tell.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reset_is_recorded_when_the_running_print_cannot_be_read() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    watch.prints.refusing(true);
+
+    watch.octoprint.pushes_event("PrinterReset", &json!({}));
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    let reset = loop {
+        if let Some(found) = watch.of_kind("printer_reset").await.into_iter().next() {
+            break found;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the reset was never recorded"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    watch.prints.refusing(false);
+
+    assert_eq!(reset["payload"]["during_print"], Value::Null);
+    let detail = reset["payload"]["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("could not be read"), "{detail}");
+}
+
+/// An activity turn the store would not look its print up for is claimed by
+/// the next read once it does, rather than lost.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_activity_turn_the_store_would_not_claim_is_claimed_by_the_next_read() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let print_id = interrupted(&watch).await;
+    watch.turns(1).await;
+    watch.prints.refusing_lookups(true);
+
+    watch.octoprint.targets(200.0, 0.0);
+    watch.until("unattended_printer_activity", 1).await;
+    tokio::time::sleep(POLL * 4).await;
+    let on_activity = |turns: Vec<TurnRequest>| {
+        turns
+            .into_iter()
+            .filter(|turn| turn.event.kind().as_str() == "unattended_printer_activity")
+            .count()
+    };
+    assert_eq!(on_activity(watch.agent.turns()), 0);
+    watch.prints.refusing_lookups(false);
+
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while on_activity(watch.agent.turns()) == 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the activity turn was lost"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let turn = watch
+        .agent
+        .turns()
+        .into_iter()
+        .find(|turn| turn.event.kind().as_str() == "unattended_printer_activity")
+        .expect("the turn");
+    assert_eq!(turn.print_id.to_string(), print_id);
 }

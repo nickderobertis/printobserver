@@ -679,12 +679,15 @@ fn upgrade(
     let Ok(held) = connection.try_clone() else {
         return;
     };
+    let peer = connection.peer_addr().ok();
     lock(sockets).push(held);
     // What the client sends — its authentication, a pong — is read frame by
-    // frame and its opcode kept; the read ends when the socket does.
+    // frame and its opcode kept; the read ends when the socket does, and the
+    // socket is no longer one of the open ones.
     while let Some(opcode) = client_frame(&mut connection) {
         lock(script).client_opcodes.push(opcode);
     }
+    lock(sockets).retain(|socket| socket.peer_addr().ok() != peer);
 }
 
 /// The opcode of one masked frame a client sent, its payload read and set

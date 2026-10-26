@@ -394,6 +394,9 @@ pub(crate) struct WatchState {
     /// Prints closed out whose ending was not yet followed up, because the
     /// store would not answer, for the next round to follow up.
     pending_ends: Vec<PrintId>,
+    /// Activity turns the store would not answer for, for the next round to
+    /// claim.
+    pending_claims: Vec<(PrintId, EventRecord)>,
 }
 
 impl WatchState {
@@ -622,8 +625,8 @@ impl Supervisor {
     }
 
     /// Write down what an earlier round could not: the resets the store
-    /// refused, and the follow-up of endings it would not answer for. Each
-    /// still refused is kept for the round after.
+    /// refused, the follow-up of endings and the activity turns it would not
+    /// answer for. Each still refused is kept for the round after.
     async fn catch_up(&self) {
         let resets = std::mem::take(&mut self.watch_state().pending_resets);
         for payload in resets {
@@ -636,6 +639,10 @@ impl Supervisor {
             if self.after_close_out(print_id).await.is_err() {
                 self.watch_state().pending_ends.push(print_id);
             }
+        }
+        let claims = std::mem::take(&mut self.watch_state().pending_claims);
+        for (print_id, event) in claims {
+            self.claim_activity_turn(print_id, event).await;
         }
     }
 
@@ -871,18 +878,32 @@ impl Supervisor {
             // Remembered only once it is written down: activity the store
             // refused is found again by the next read.
             open.recorded = Some(activity.clone());
-            let due = open
-                .turned_at
-                .is_none_or(|turned| now.saturating_sub(turned) >= interval);
-            if due {
-                open.turned_at = Some(now);
-            }
-            due
+            open.turned_at
+                .is_none_or(|turned| now.saturating_sub(turned) >= interval)
         };
         if turn_due {
-            self.claim_after_end(print_id, event).await?;
+            self.claim_activity_turn(print_id, event).await;
         }
         Ok(())
+    }
+
+    /// Claim the turn one activity owes its print's agent, counting it against
+    /// the interval once it is claimed; one the store would not answer for is
+    /// kept for the next round to claim.
+    async fn claim_activity_turn(&self, print_id: PrintId, event: EventRecord) {
+        if self.claim_after_end(print_id, event.clone()).await.is_err() {
+            self.watch_state().pending_claims.push((print_id, event));
+            return;
+        }
+        let now = self.clock().elapsed();
+        if let Some(open) = self
+            .watch_state()
+            .unattended
+            .as_mut()
+            .filter(|open| open.print_id == print_id)
+        {
+            open.turned_at = Some(now);
+        }
     }
 
     /// Ask the failure detector whether it is answering, during a print, and
