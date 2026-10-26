@@ -158,7 +158,9 @@ impl Sample for DetectorHealth {
     }
 }
 
-/// What the printer pushed since its job was last seen running.
+/// What the printer pushed since the last print started or was closed out:
+/// a stop's push and the read that finds the stop can arrive in either order,
+/// so what a print's run pushed is kept for its whole run.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct PushFacts {
     /// It pushed a reset.
@@ -209,7 +211,7 @@ struct Unattended {
 pub(crate) struct WatchState {
     /// The printer's state the last read found.
     last_state: Option<PrinterState>,
-    /// What the printer pushed since its job was last seen running.
+    /// What the printer pushed since the last print started or was closed out.
     pushes: PushFacts,
     /// Why the push channel is down, absent while it is up.
     channel_down: Option<String>,
@@ -305,7 +307,7 @@ impl Supervisor {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// What the printer pushed since its job was last seen running.
+    /// What the printer pushed since the last print started or was closed out.
     pub(crate) fn push_facts(&self) -> PushFacts {
         let state = self.watch_state();
         let mut facts = state.pushes;
@@ -313,16 +315,20 @@ impl Supervisor {
         facts
     }
 
-    /// Forget what the printer pushed before this sighting of its job
-    /// running, and close any unattended window: a job is running.
+    /// Close any unattended window: a job is running.
     pub(crate) fn note_job_running(&self) {
+        self.watch_state().unattended = None;
+    }
+
+    /// Forget what the printer pushed: a print starts, or one's close-out has
+    /// read it.
+    pub(crate) fn forget_pushes(&self) {
         let mut state = self.watch_state();
         let gap = state.channel_is_down();
         state.pushes = PushFacts {
             gap,
             ..PushFacts::default()
         };
-        state.unattended = None;
     }
 
     /// The failure detector's health, as the last check found it.
@@ -470,6 +476,7 @@ impl Supervisor {
     /// opens the unattended window and claims its agent a turn on the
     /// `print_ended`; any other ending closes the window.
     pub(crate) async fn after_close_out(&self, print_id: PrintId) -> Result<(), CoreError> {
+        self.forget_pushes();
         let Some(ended) = self
             .stores()
             .events

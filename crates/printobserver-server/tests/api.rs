@@ -68,3 +68,5 @@ mod skilled;
 mod spooling;
 #[path = "journeys/surface.rs"]
 mod surface;
+#[path = "journeys/watching.rs"]
+mod watching;

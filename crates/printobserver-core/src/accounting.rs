@@ -724,6 +724,7 @@ impl Supervisor {
         started_by: Option<ActionId>,
         preflight: Option<Preflight>,
     ) -> Result<(), CoreError> {
+        self.forget_pushes();
         let loaded = self
             .stores()
             .filament
