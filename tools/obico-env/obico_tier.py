@@ -49,7 +49,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, NewType, NotRequired, TypedDict
 
 from obico_env import (
     ACCOUNT_EMAIL,
@@ -73,6 +73,22 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 AGREES = "agrees"
 DIFFERS = "differs"
+
+
+class Reconciliation(TypedDict):
+    """The verdict the tier reports, and everything it was reached from."""
+
+    verdict: str
+    differences: list[str]
+    sample: str
+    webhook_url: str
+    configured_webhook_url: str
+    trigger: str
+    caused: str
+    captured: object
+    captured_bytes: int
+    image: dict[str, Any]
+    seconds: NotRequired[float]
 
 
 class TierError(Exception):
@@ -528,14 +544,17 @@ def cause_alert(trigger: str, webhook_url: str) -> str:
     Raises:
         TierError: If the trigger is not one this tier knows.
     """
-    kind, _, rest = trigger.partition(":")
-    if kind == "compose":
-        point_stack_at(Path(rest), webhook_url)
-        return cause_alert_on_stack(Path(rest))
-    if kind == "post":
-        return ask_to_post(rest, webhook_url)
-    message = f"`{trigger}` is not a trigger this tier knows (expected `compose:` or `post:`)"
-    raise TierError(message)
+    match trigger.partition(":"):
+        case ("compose", _, rest):
+            point_stack_at(Path(rest), webhook_url)
+            return cause_alert_on_stack(Path(rest))
+        case ("post", _, rest):
+            return ask_to_post(rest, webhook_url)
+        case _:
+            message = (
+                f"`{trigger}` is not a trigger this tier knows (expected `compose:` or `post:`)"
+            )
+            raise TierError(message)
 
 
 # ~~ the image the captured body points at
@@ -612,7 +631,7 @@ def held_at(webhook_url: str, port: int) -> str:
     return urllib.parse.urlunsplit(parts._replace(netloc=f"{user}{at}{host}:{port}"))
 
 
-def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> dict[str, Any]:
+def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> Reconciliation:
     """Walk the whole path and answer with the verdict.
 
     Raises:
@@ -707,7 +726,7 @@ def resolved(arguments: argparse.Namespace) -> tuple[str, str]:
     return str(arguments.webhook_url), str(arguments.trigger)
 
 
-def report(verdict: dict[str, Any]) -> None:
+def report(verdict: Reconciliation) -> None:
     """Say the verdict on stdout, and name every field that moved on stderr."""
     print(json.dumps(verdict, indent=2))
     if verdict["verdict"] == AGREES:
