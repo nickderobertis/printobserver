@@ -216,7 +216,12 @@ as; and the two **credential commands** — `credential issue`, which draws the
 operator's credential into their own client configuration and prints the
 `api.credential_verifier` line the server's configuration takes, and
 `credential verifier`, which prints the verifier of a credential handed to it on
-standard input.
+standard input. One more is a request to a running server without being one
+operation: the **watch command** asks `events` again from its own cursor until
+the watched print ends, a signal stops it, or the server is unreachable or
+refuses it, and ends every stream with one `watch_ended` line saying which. Its
+options are `events`' own beside the three that are the stream's alone, and
+`crates/printobserver/tests/surface.rs` fixes them.
 
 <!-- llmlint: ignore[instruction_layer_localized] The task that added the sign-in command requires this section to describe it beside the server command, and this section is the root's one statement of the program's whole surface, which spans the adapter, server and command-line crates; no one crate's subtree owns it. suppressions.toml has the full reason. -->
 The sign-in command exists because the service runs as a system user whose unit

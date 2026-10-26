@@ -519,6 +519,62 @@ Give every change a `--reason`. See
 of every command, including a temporary adjustment with `--duration-s`, and
 its output.
 
+### Following a print as it runs
+
+`printobserver watch` streams what the supervisor records, filtered by the
+supervisor, so nothing beside it has to poll the printer, the detector or the
+camera. Every flag is optional:
+
+```console
+printobserver watch --json --print-id PRINT_ID --sample periodic_observation=300 --heartbeat-s 60
+```
+
+- `--print-id ID` follows that print's events and every event that belongs to no
+  print — connection changes, detector health, camera trouble — replayed from
+  the print's first event, and ends when the print ends. Without it, every event
+  from now on.
+- `--kind K` passes only that kind and `--exclude-kind K` never passes it; give
+  either again for another kind.
+- `--sample K=SECONDS` passes the first event of kind K and then at most one per
+  SECONDS by `received_at`, dropping the rest: the example keeps everything but
+  routine observations, plus one observation every five minutes.
+- `--after EVENT_ID` starts after that event.
+- `--heartbeat-s N` prints a heartbeat after N seconds with nothing else to
+  print; the default, 0, prints none.
+- `--reconnect-s N` keeps retrying from where the stream got to for N seconds
+  while the supervisor cannot be reached; 30 by default.
+
+With `--json` every line is one JSON object:
+
+- each passing event, exactly as `history --json` prints it;
+- `{"watch_heartbeat": {"at": "<timestamp>", "cursor": "<event id>" | null}}`
+  with `--heartbeat-s`;
+- and always, last, `{"watch_ended": {"reason": "print_ended" | "interrupted" |
+  "unreachable" | "refused", "detail": "<text>", "cursor": "<event id>" | null}}`.
+
+The ending is how a consumer tells a stream that ended or failed from a quiet
+print:
+
+| Reason | When | Exit |
+| --- | --- | --- |
+| `print_ended` | the watched print ended — every passing event stored before its end is printed first, and the `print_ended` event only when the filters pass it | 0 |
+| `interrupted` | SIGINT or SIGTERM | 0 |
+| `unreachable` | the supervisor has not answered for longer than `--reconnect-s` | 3 |
+| `refused` | the supervisor refused the credential or the request, such as a malformed `--kind`; never retried | 7 |
+
+A malformed `--sample` exits 2, and a missing configuration 4, before the
+stream starts and with no ending line. Without `--json`, `watch` prints one line
+per event and the same ending in words; that rendering is not a contract.
+
+`watch` is built on one read, `printobserver events` (`GET /v1/events`), which a
+client can use directly: it answers the events stored after `--after` that pass
+`--kinds` and `--exclude-kinds`, oldest first, waiting up to `--wait-s` seconds
+(at most 60) for one; the `cursor` to read on from, which skips events the
+filters dropped; and, with `--print-id`, `print_ended` — the print's end
+whatever the filters say, or `null` while it is open. The
+[API reference](./skills/printobserver/reference/api-and-clients.md#events)
+states every value.
+
 ## Upgrading from 0.3.0 or earlier
 
 Earlier versions generated the API credential into the state directory as

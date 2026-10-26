@@ -131,6 +131,61 @@
       "answers": [
         "success"
       ],
+      "command": "events",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "events",
+      "options": [
+        {
+          "field": "after",
+          "located": "query",
+          "option": "--after",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "print_id",
+          "located": "query",
+          "option": "--print-id",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "kinds",
+          "located": "query",
+          "option": "--kinds",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "exclude_kinds",
+          "located": "query",
+          "option": "--exclude-kinds",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "wait_s",
+          "located": "query",
+          "option": "--wait-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "limit",
+          "located": "query",
+          "option": "--limit",
+          "required": false,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/events"
+    },
+    {
+      "answers": [
+        "success"
+      ],
       "command": "manifest-get",
       "image_path_field": null,
       "method": "GET",
@@ -1148,6 +1203,61 @@
         }
       ],
       "path": "/v1/spools/{spool_id}/actions/retire_spool"
+    },
+    {
+      "command": "watch",
+      "operation": null,
+      "options": [
+        {
+          "field": "after",
+          "located": "query",
+          "option": "--after",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "print_id",
+          "located": "query",
+          "option": "--print-id",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "kind",
+          "located": "query",
+          "option": "--kind",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "exclude_kind",
+          "located": "query",
+          "option": "--exclude-kind",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "sample",
+          "located": "query",
+          "option": "--sample",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "heartbeat_s",
+          "located": "query",
+          "option": "--heartbeat-s",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reconnect_s",
+          "located": "query",
+          "option": "--reconnect-s",
+          "required": false,
+          "supply": "value"
+        }
+      ]
     }
   ],
   "exits": [

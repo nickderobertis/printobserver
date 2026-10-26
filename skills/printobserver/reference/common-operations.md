@@ -234,6 +234,27 @@ events.0.received_at: TIMESTAMP
 events.0.source: system
 ```
 
+### events
+
+The event log in the order it was stored, after a cursor: this print's events
+and the printer's, filtered by kind, waiting up to `--wait-s` seconds for one to
+pass. Give the answer's `cursor` as `--after` to read on; `print_ended` is the
+print's end, whatever the filters say, and `null` while it runs. `watch` follows
+this read as one stream until the print ends.
+
+```console
+$ printobserver events --print-id PRINT_ID --kinds startup_reconciliation --limit 1
+cursor: ID
+events.0.id: ID
+events.0.kind: startup_reconciliation
+events.0.payload.outcome: print_adopted
+events.0.payload.print_id: PRINT_ID
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: system
+print_ended: null
+```
+
 ### manifest_get
 
 The manifest the print is running under, and every range it asked wider than the

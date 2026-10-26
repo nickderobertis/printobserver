@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-132 types. The set is every type any crate declares under
+134 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -6731,6 +6731,226 @@ Declared by `printobserver-types`.
   "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
   "title": "EventSource",
   "type": "string"
+}
+```
+
+### EventsAnswer
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventRecord": {
+      "description": "One event, as the store holds it and the server serves it.\n\n`raw` holds the bytes exactly as received for an externally sourced event\nand is absent for an internally raised one \u2014 it is what makes the history\nauditable when a normalization turns out to be wrong. `print_id` is\noptional, because an externally sourced event may name no print this system\nknows.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "This event's identifier, minted by the store."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The image it arrived with, when it arrived with one."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "Which event this is."
+        },
+        "payload": {
+          "description": "What it carries, in the form its kind declares."
+        },
+        "print_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one."
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RawBytes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bytes exactly as received, for an externally sourced event."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource",
+          "description": "Where it came from."
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "received_at",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "PrintEnded": {
+      "description": "One print's end, as its `print_ended` event stored it.",
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/EventId",
+          "description": "The `print_ended` event."
+        },
+        "outcome": {
+          "$ref": "#/$defs/PrintOutcome",
+          "description": "How the print ended."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When that event was received."
+        }
+      },
+      "required": [
+        "event_id",
+        "received_at",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        }
+      ]
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What an events read answers: the events stored after its cursor that pass\nits filters, oldest first, and where the next read picks up.",
+  "properties": {
+    "cursor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The last event this read examined, whether or not it passed the\nfilters, given as `after` to read on from it; null when the log held\nnothing to start after. Always sent, as null when it is that."
+    },
+    "events": {
+      "description": "The events, oldest first in the order they were stored, each exactly as\na history read serves it.",
+      "items": {
+        "$ref": "#/$defs/EventRecord"
+      },
+      "type": "array"
+    },
+    "print_ended": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintEnded"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The watched print's end as stored, whatever the filters said, and null\nwhile it is open. Absent from a read that names no print."
+    }
+  },
+  "required": [
+    "events"
+  ],
+  "title": "EventsAnswer",
+  "type": "object"
 }
 ```
 
@@ -14757,6 +14977,73 @@ Declared by `printobserver-core`.
     "recent_events"
   ],
   "title": "PrintContext",
+  "type": "object"
+}
+```
+
+### PrintEnded
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One print's end, as its `print_ended` event stored it.",
+  "properties": {
+    "event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The `print_ended` event."
+    },
+    "outcome": {
+      "$ref": "#/$defs/PrintOutcome",
+      "description": "How the print ended."
+    },
+    "received_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When that event was received."
+    }
+  },
+  "required": [
+    "event_id",
+    "received_at",
+    "outcome"
+  ],
+  "title": "PrintEnded",
   "type": "object"
 }
 ```
@@ -24505,6 +24792,89 @@ Declared by `printobserver-server`.
         {
           "answer": "success",
           "type": "HistoryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "events",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "after",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "print_id",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "kinds",
+          "repeated": true,
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "exclude_kinds",
+          "repeated": true,
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "wait_s",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "limit",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/events",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "EventsAnswer"
         }
       ]
     },

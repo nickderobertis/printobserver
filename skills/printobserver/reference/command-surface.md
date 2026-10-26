@@ -34,9 +34,10 @@ that turn's print, and no other. No command takes either as an option, because
 the closure that matters is the closure of the action surface: a path to a file
 reaches no printer.
 
-**A value that may be given more than once says so.** `printer-history`'s
-`--kinds` is the one: each `--kinds` names one more kind to read. Every other
-option is given at most once, and one given twice is refused.
+**A value that may be given more than once says so.** `printer-history`'s and
+`events`' `--kinds`, `events`' `--exclude-kinds`, and `watch`'s `--kind`,
+`--exclude-kind` and `--sample` are those: each one given names one more value.
+Every other option is given at most once, and one given twice is refused.
 
 **Every change carries a reason, and an empty one is none.** A command that
 changes something takes `--reason`, and one given nothing but whitespace is
@@ -73,7 +74,7 @@ class has a status of its own.
 
 ### server
 
-Runs the supervisor. This, `sign-in` and the two `credential` commands are the four commands that are not requests to an already-running one.
+Runs the supervisor. This, `sign-in` and the two `credential` commands are the four commands that are not requests to an already-running one. `watch` is the one command that is requests to a running one without being one operation: it asks `events` again and again.
 
 **Arguments.** None of its own; the four global options are the whole of it.
 
@@ -183,6 +184,25 @@ Reached at `GET /v1/prints/{print_id}/history`.
 **Output.** Every event of the print, newest first, each with its kind and its payload.
 
 **Failures.** `unreachable` and `refused` as for every command.
+
+### events
+
+The event log after a cursor, oldest first in the order it was stored, waiting for an event to pass. `watch` follows it as one stream.
+
+Reached at `GET /v1/events`.
+
+**Arguments.**
+
+- `--after` — the event to read after; without it the read starts after the newest event stored, or with `--print-id` at that print's first event (optional).
+- `--print-id` — scope the read to that print's events and every event belonging to no print (optional).
+- `--kinds` — one kind to pass; give it again for another (optional, repeatable).
+- `--exclude-kinds` — one kind never to pass; give it again for another (optional, repeatable).
+- `--wait-s` — how many seconds to wait, 0 to 60, for an event to pass, answering the moment one is stored (optional; 0 by default).
+- `--limit` — how many events to answer, 1 to 500 (optional; 100 by default).
+
+**Output.** `events`, each exactly as `history` prints it; `cursor`, the last event the read examined, passing or not, to give as `--after` next; and with `--print-id`, `print_ended` — the print's end as stored, its `print_ended` event's `event_id`, `received_at` and `outcome`, whatever the kind filters say — or `null` while the print is open.
+
+**Failures.** `refused` for a malformed kind, a `--wait-s` or `--limit` out of range, an `--after` naming no event and a `--print-id` naming no print, each named; for a supervision turn's credential, a read naming no print or another print. `unreachable` and `refused` as for every command.
 
 ### look
 
@@ -574,3 +594,23 @@ Reached at `POST /v1/spools/{spool_id}/actions/retire_spool`.
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
 **Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+
+### watch
+
+Follows what the supervisor records as one stream, filtered by the supervisor rather than by the caller, until the watched print ends, a signal stops it, the supervisor cannot be reached, or the supervisor refuses it. It asks `events` again from its own cursor for as long as it runs, so a consumer runs no polling loop of its own.
+
+Composes `GET /v1/events`.
+
+**Arguments.**
+
+- `--print-id` — follow that print's events and every event belonging to no print, replayed from the print's first event, and end when the print ends (optional; without it, every event from now on, and the stream ends only by a signal or a failure).
+- `--after` — start after this event rather than where `--print-id` or now would (optional).
+- `--kind` — one kind to pass; give it again for another (optional, repeatable).
+- `--exclude-kind` — one kind never to pass; give it again for another (optional, repeatable).
+- `--sample` — `KIND=SECONDS`: pass the first event of that kind and then at most one per that many seconds by `received_at`, dropping the rest — `--sample periodic_observation=300` keeps one routine observation every five minutes (optional, repeatable).
+- `--heartbeat-s` — with nothing else to print for that many seconds, print a heartbeat (optional; 0, the default, prints none).
+- `--reconnect-s` — how long to keep retrying from the cursor while the supervisor cannot be reached (optional; 30 by default).
+
+**Output.** With `--json`, every line is one JSON object: each passing event exactly as `history --json` prints it; `{"watch_heartbeat": {"at": "<timestamp>", "cursor": "<event id>" | null}}` each `--heartbeat-s` seconds with nothing else to print; and always, as the last line, `{"watch_ended": {"reason": "print_ended" | "interrupted" | "unreachable" | "refused", "detail": "<text>", "cursor": "<event id>" | null}}`. Watching a print, every passing event stored before its end is printed before the ending, and no event the filters exclude is printed — the `print_ended` event included, which is printed only when the filters pass it. A watch started or reconnected after the print ended replays what is left and then ends. Without `--json`, one line per event and the same ending in words; that rendering is not a contract.
+
+**Failures.** Each is its own ending line and exit: `print_ended` and `interrupted` (SIGINT or SIGTERM) exit `success`; `unreachable` once the supervisor has not answered for longer than `--reconnect-s`; `refused`, at once and never retried, when the supervisor refuses the credential or the request — a malformed `--kind` among them. A malformed `--sample` or a negative number of seconds is refused with `usage`, and a configuration this program cannot read with `unconfigured`, before any stream starts and without an ending line.
