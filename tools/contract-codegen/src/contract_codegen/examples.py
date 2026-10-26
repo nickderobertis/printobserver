@@ -181,7 +181,7 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
     in its record, and its refusal is the one that carries a value asked for
     and a range allowed, because that is the one a caller acts on. A spool
     command's answer carries its decision at the top, and its refusal is the
-    ledger's, which says why in words.
+    ledger's, which says why as a tagged cause beside a sentence.
     """
     answered = answer_of(operation, contract)
     if not isinstance(answered, dict):
@@ -205,7 +205,8 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
                 },
             }
         case {"decision": _}:
-            return {**answered, "decision": {"rejected": {"spool_refused": {"detail": TEXT}}}}
+            refusal = {"cause": {"cause": "unknown_spool", "spool_id": TEXT}, "message": TEXT}
+            return {**answered, "decision": {"rejected": {"spool_refused": refusal}}}
     msg = f"`{operation.name}` answers no record and no decision for a refusal to be taken on"
     raise ExampleError(msg)
 

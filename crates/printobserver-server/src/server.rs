@@ -425,11 +425,13 @@ impl Server {
     /// variants for a host that will not let this server come up.
     pub async fn start(config_path: impl AsRef<Path>) -> Result<Running, StartError> {
         let config = ServerConfig::load(config_path)?;
-        let stores = Stores::of(Arc::new(SqliteStore::open(&config.state_dir).map_err(
-            |error| StartError::Store {
-                detail: error.to_string(),
-            },
-        )?));
+        let store = SqliteStore::open(&config.state_dir).map_err(|error| StartError::Store {
+            detail: error.to_string(),
+        })?;
+        // A row a migration could not carry forward as it was is said once, as
+        // the start that migrated it comes up, beside the store's own record.
+        let migrated: Vec<String> = store.migrated().iter().map(ToString::to_string).collect();
+        let stores = Stores::of(Arc::new(store));
         let printer = Arc::new(OctoPrintPrinter::new(config.octoprint.clone()));
         probe(printer.as_ref()).await?;
         let vision = Arc::new(
@@ -440,7 +442,7 @@ impl Server {
                 .with_api(config.obico_api.clone()),
         );
         let agent = Arc::new(agent_for(&config)?);
-        Self::start_with(
+        let mut running = Self::start_with(
             config,
             Ports {
                 printer,
@@ -449,7 +451,9 @@ impl Server {
                 agent,
             },
         )
-        .await
+        .await?;
+        running.warnings.extend(migrated);
+        Ok(running)
     }
 
     /// Serve over ports a caller composed.

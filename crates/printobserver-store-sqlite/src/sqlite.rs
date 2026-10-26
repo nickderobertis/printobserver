@@ -27,11 +27,11 @@ use crate::rows::{
     action_from_row, event_from_row, image_from_row, intervention_from_row, print_from_row,
     session_from_row,
 };
-use crate::schema::{DATABASE_FILE_NAME, connect, open_database};
+use crate::schema::{DATABASE_FILE_NAME, MigrationNote, connect, migration_report, open_database};
 use crate::stored::{Signals, note_appended, take_appended};
 use crate::values::{
-    database_error, instant_text, is_constraint_violation, json_text, not_found, parsed, refused,
-    tag_text,
+    database_error, instant_text, is_constraint_violation, json_text, not_found, parsed, raised,
+    refused, tag_text,
 };
 
 mod filament;
@@ -51,6 +51,8 @@ pub struct SqliteStore {
     idle: Mutex<Vec<Connection>>,
     /// The two places this store's own tests hold a call at.
     points: HoldPoints,
+    /// What the migrations this open applied wrote down.
+    migrated: Vec<MigrationNote>,
     /// What is raised once a write that stored an event has committed.
     signals: Signals,
 }
@@ -65,13 +67,32 @@ impl SqliteStore {
     /// from a later schema version than this build understands.
     pub fn open(state_dir: impl AsRef<Path>) -> Result<Self, StoreError> {
         let state_dir = state_dir.as_ref().to_path_buf();
-        let connection = open_database(&state_dir)?;
+        let (connection, migrated) = open_database(&state_dir)?;
         Ok(Self {
             state_dir,
             idle: Mutex::new(vec![connection]),
             points: HoldPoints::default(),
+            migrated,
             signals: Signals::default(),
         })
+    }
+
+    /// What the migrations this open applied wrote down: each row one of them
+    /// could not carry forward as it was, and what it did instead. Empty for a
+    /// database that was already current.
+    #[must_use]
+    pub fn migrated(&self) -> &[MigrationNote] {
+        &self.migrated
+    }
+
+    /// Everything every migration of this database ever wrote down, in the
+    /// order written.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Database`] when the report cannot be read.
+    pub fn migration_report(&self) -> Result<Vec<MigrationNote>, StoreError> {
+        self.on_connection(|connection| migration_report(connection))
     }
 
     /// The state directory every stored path is relative to.
@@ -129,6 +150,9 @@ impl SqliteStore {
     ) -> StoreError {
         if !is_constraint_violation(error) {
             return database_error(error);
+        }
+        if let Some(constraint) = raised(error) {
+            return refused(constraint);
         }
         for (constraint, table, identifier) in candidates {
             let query = format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE id = ?1)");

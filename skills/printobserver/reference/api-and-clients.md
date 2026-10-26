@@ -82,8 +82,8 @@ policy refused it. A rejection is not a transport failure — the body is the sa
 action record, carrying the rejection's own reason, the value asked for and the
 range allowed. A spool command's answer is `SpoolCommandAnswer` either way, and
 carries its `decision` at the top rather than in a record: `actor_may_not_request`
-when the grants refuse it and `spool_refused`, with a `detail`, when the ledger
-cannot carry it out.
+when the grants refuse it and `spool_refused`, with a tagged `cause` and a
+`message`, when the ledger cannot carry it out.
 
 ## The operations
 

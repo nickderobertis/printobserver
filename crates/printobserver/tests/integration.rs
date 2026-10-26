@@ -63,6 +63,8 @@ mod running;
 mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
+#[path = "journeys/upgrading.rs"]
+mod upgrading;
 
 use world::World;
 
@@ -81,6 +83,14 @@ fn a_short_spool_is_refused_overridden_and_charged_against_a_real_octoprint() {
     let world = World::open(world::SCRIPTED);
 
     filament::a_short_spool_is_refused_overridden_and_charged(&world);
+}
+
+/// A supervisor started over the store a published release wrote migrates it,
+/// says what it changed, and reads every event that release wrote, with a real
+/// `OctoPrint` on the far side of its printer port.
+#[test]
+fn a_store_a_published_release_wrote_is_migrated_and_still_reads_beside_a_real_octoprint() {
+    upgrading::a_store_0_4_3_wrote_is_migrated_and_every_event_still_reads(world::SCRIPTED);
 }
 
 /// The documented operator workflow, carried out from the documentation alone,

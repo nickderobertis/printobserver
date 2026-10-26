@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use printobserver_core::kinds::PreflightCheckedPayload;
 use printobserver_core::{
-    ActionOutcome, Actor, PolicyDecision, PreflightMode, PreflightVerdict, RejectionReason,
-    SpoolCommand, SpoolRecord, UnverifiedReasonKind, block_on, buffer_g,
+    ActionOutcome, Actor, PolicyDecision, PreflightMode, PreflightToolResult, PreflightVerdict,
+    RejectionReason, SpoolCommand, SpoolRecord, UnverifiedReasonKind, block_on, buffer_g,
 };
 use printobserver_printer_api::FileFacts;
 use printobserver_types::FileName;
@@ -97,7 +97,7 @@ fn a_short_spool_refuses_the_start_naming_what_it_needs_and_holds() {
         let checked = checked_for(&world, &outcome);
         assert_eq!(checked.preflight.verdict, PreflightVerdict::Insufficient);
         assert_eq!(
-            checked.preflight.tools[0].verdict,
+            checked.preflight.tools[0].result.verdict(),
             PreflightVerdict::Insufficient
         );
         world.journal.assert_no_violations();
@@ -167,7 +167,7 @@ fn only_an_operator_may_override_the_check() {
         let checked = checked_for(&world, &overridden);
         assert_eq!(checked.preflight.verdict, PreflightVerdict::Overridden);
         assert_eq!(
-            checked.preflight.tools[0].verdict,
+            checked.preflight.tools[0].result.verdict(),
             PreflightVerdict::Overridden
         );
     }
@@ -332,11 +332,13 @@ fn a_short_spool_in_doubt_says_both_in_one_refusal() {
         &Some(printobserver_core::UnverifiedReason::UnchargedPrint { print_id: earlier })
     );
     let checked = checked_for(&world, &outcome);
-    let tool = &checked.preflight.tools[0];
-    assert_eq!(tool.spool_id, Some(spool.id));
-    assert_eq!(tool.marks.len(), 1);
+    let PreflightToolResult::Insufficient(short) = &checked.preflight.tools[0].result else {
+        panic!("the short tool's result is not insufficient: {checked:?}");
+    };
+    assert_eq!(short.spool.id, spool.id);
+    assert_eq!(short.marks.len(), 1);
     assert_eq!(
-        tool.marks[0].reason.kind(),
+        short.marks[0].reason.kind(),
         UnverifiedReasonKind::UnchargedPrint
     );
     assert!(!printer_asked_to_start(&world));
@@ -364,9 +366,11 @@ fn the_check_read_reports_each_tool_and_records_nothing() {
         .expect("the check is read");
 
     assert_eq!(preflight.tools.len(), 2);
-    let zero = &preflight.tools[0];
-    assert_eq!(zero.spool_id, Some(spool.id));
-    assert_eq!(zero.spool_name.as_deref(), Some("Tool Zero"));
+    let PreflightToolResult::UnverifiedSpool(zero) = &preflight.tools[0].result else {
+        panic!("tool 0 is not reported unverified: {preflight:?}");
+    };
+    assert_eq!(zero.spool.id, spool.id);
+    assert_eq!(zero.spool.name, "Tool Zero");
     assert_eq!(
         zero.marks
             .iter()
@@ -374,11 +378,11 @@ fn the_check_read_reports_each_tool_and_records_nothing() {
             .collect::<Vec<_>>(),
         vec![printobserver_core::UnverifiedReason::UnchargedPrint { print_id: earlier }]
     );
-    assert_eq!(zero.verdict, PreflightVerdict::UnverifiedSpool);
-    assert_close(zero.required_g.expect("figured"), grams(&spool, 3_000.0));
-    let one = &preflight.tools[1];
-    assert_eq!(one.spool_id, None);
-    assert_eq!(one.verdict, PreflightVerdict::Unchecked);
+    assert_close(
+        zero.need.as_ref().expect("figured").required_g,
+        grams(&spool, 3_000.0),
+    );
+    assert_eq!(preflight.tools[1].result, PreflightToolResult::Unchecked);
     assert_eq!(preflight.verdict, PreflightVerdict::UnverifiedSpool);
     assert_eq!(timeline(&world).len(), events_before);
     assert_eq!(world.journal.store_writes().len(), writes_before);
@@ -400,8 +404,10 @@ fn a_file_that_cannot_be_read_is_checked_as_having_no_analysis() {
         .expect("the check is read");
     assert_eq!(preflight.verdict, PreflightVerdict::NoAnalysis);
     assert_eq!(preflight.tools.len(), 1);
-    assert_eq!(preflight.tools[0].spool_id, Some(spool.id));
-    assert_eq!(preflight.tools[0].required_g, None);
+    let PreflightToolResult::NoAnalysis(unanalysed) = &preflight.tools[0].result else {
+        panic!("an unread file's tool is not reported unanalysed: {preflight:?}");
+    };
+    assert_eq!(unanalysed.spool.id, spool.id);
 }
 
 /// An analysis naming a tool below zero, a length that is negative or not a
@@ -427,8 +433,8 @@ fn an_analysis_s_impossible_entries_are_left_out_of_the_check() {
         .expect("the check is read");
     assert_eq!(preflight.tools.len(), 1);
     assert_eq!(preflight.tools[0].tool, 0);
-    assert_close(
-        preflight.tools[0].required_g.expect("figured"),
-        grams(&spool, 3_000.0),
-    );
+    let PreflightToolResult::Passed { need, .. } = &preflight.tools[0].result else {
+        panic!("tool 0 did not pass: {preflight:?}");
+    };
+    assert_close(need.required_g, grams(&spool, 3_000.0));
 }

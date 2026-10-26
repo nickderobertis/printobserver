@@ -174,7 +174,8 @@ def type_of(schema: dict[str, Any] | bool) -> TypeExpr:
         if not isinstance(items, dict):
             msg = "an array property declares no item shape"
             raise ContractError(msg)
-        return ListOf(type_of(items))
+        least = schema.get("minItems", 0)
+        return ListOf(type_of(items), non_empty=isinstance(least, int) and least >= 1)
     if declared == "object":
         return MapOf(_map_value(schema))
     if isinstance(declared, str):

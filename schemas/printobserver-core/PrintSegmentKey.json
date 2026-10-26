@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+  "properties": {
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print."
+    },
+    "segment": {
+      "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "print_id",
+    "tool",
+    "segment"
+  ],
+  "title": "PrintSegmentKey",
+  "type": "object"
+}

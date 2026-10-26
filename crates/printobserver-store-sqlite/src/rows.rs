@@ -4,12 +4,13 @@
 //! so a column added to the schema without being read shows up as a mapper that
 //! no longer matches rather than as a value silently dropped.
 
-use printobserver_core::store::{ChargeRecord, FileTally};
+use printobserver_core::store::{ChargeIdentity, ChargeRecord, FileTally};
 use printobserver_core::{
-    ActionRecord, ActionRequest, ImageRecord, Intervention, PrintRecord, SpoolRecord,
+    ActionRecord, ActionRequest, ChargedFilament, ImageRecord, Intervention, PrintRecord, SpoolId,
+    SpoolLifecycle, SpoolRecord,
 };
 use printobserver_supervisor_api::SupervisionSession;
-use printobserver_types::{EventRecord, ImageRef};
+use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
 use rusqlite::Row;
 use rusqlite::types::Type;
 
@@ -76,7 +77,7 @@ pub(crate) fn event_from_row(row: &Row<'_>) -> rusqlite::Result<EventRecord> {
         source: from_tag(row, 2)?,
         received_at: parsed(row, 3)?,
         image,
-        body: from_json(row, 4)?,
+        body: printobserver_core::upgrade::upgraded(from_json::<EventBody>(row, 4)?),
         raw: row
             .get::<_, Option<Vec<u8>>>(5)?
             .map(printobserver_types::RawBytes::new),
@@ -150,14 +151,31 @@ pub(crate) const SPOOL_SELECT: &str = "SELECT id, name, material, color, diamete
 
 /// Every column of one charge, in the order [`charge_from_row`] reads them.
 pub(crate) const CHARGE_SELECT: &str = "SELECT charge_key, tool, print_id, spool_id, length_mm, \
-     grams, charged_at, event_id FROM charges";
+     grams, charged_at, event_id, diameter_mm, density_g_cm3, remaining_before_g, \
+     remaining_after_g FROM charges";
 
 /// Every column of one file's tally, in the order [`tally_from_row`] reads them.
 pub(crate) const TALLY_SELECT: &str = "SELECT file_name, origin, generation, successes, failures, \
      observed_at FROM file_tallies";
 
 /// One spool, as [`SPOOL_SELECT`] answers it.
+///
+/// The loaded tool and the retirement are two columns held to one state by the
+/// schema's triggers; a row holding both is reported rather than read.
 pub(crate) fn spool_from_row(row: &Row<'_>) -> rusqlite::Result<SpoolRecord> {
+    let id: String = row.get(0)?;
+    let lifecycle = match (row.get::<_, Option<i64>>(9)?, parsed_option(row, 13)?) {
+        (None, None) => SpoolLifecycle::Shelved,
+        (Some(tool), None) => SpoolLifecycle::Loaded { tool },
+        (None, Some(at)) => SpoolLifecycle::Retired { at },
+        (Some(tool), Some(_)) => {
+            return Err(reported(
+                9,
+                Type::Integer,
+                format!("spool {id} is held both retired and loaded on tool {tool}"),
+            ));
+        }
+    };
     Ok(SpoolRecord {
         id: parsed(row, 0)?,
         name: row.get(1)?,
@@ -168,31 +186,109 @@ pub(crate) fn spool_from_row(row: &Row<'_>) -> rusqlite::Result<SpoolRecord> {
         initial_g: row.get(6)?,
         remaining_g: row.get(7)?,
         tare_g: row.get(8)?,
-        loaded_on_tool: row.get(9)?,
+        lifecycle,
         trust: from_json(row, 10)?,
         registered_at: parsed(row, 11)?,
         updated_at: parsed(row, 12)?,
-        retired_at: parsed_option(row, 13)?,
     })
 }
 
+/// A row this store reads back that is not one its records can hold.
+fn reported(column: usize, kind: Type, detail: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(column, kind, detail.into())
+}
+
 /// One charge, as [`CHARGE_SELECT`] answers it.
+///
+/// The key is the debit's identity and the print and tool columns are its
+/// projection, so a row whose projection disagrees with its key — or that
+/// names a spool with half a calculation — is reported rather than read.
 pub(crate) fn charge_from_row(row: &Row<'_>) -> rusqlite::Result<ChargeRecord> {
     let canonical: String = row.get(0)?;
     let key = key_from_canonical(&canonical).ok_or_else(|| {
-        rusqlite::Error::FromSqlConversionFailure(
+        reported(
             0,
             Type::Text,
-            format!("{canonical} is no charge key's canonical spelling").into(),
+            format!("{canonical} is no charge key's canonical spelling"),
         )
     })?;
+    let tool: i64 = row.get(1)?;
+    if tool != key.tool() {
+        return Err(reported(
+            1,
+            Type::Integer,
+            format!("charge {canonical} stores tool {tool}, which its key does not name"),
+        ));
+    }
+    let print_id: Option<PrintId> = parsed_option(row, 2)?;
+    let identity = match (key.watched_print(), print_id) {
+        (Some(named), Some(stored)) if named == stored => ChargeIdentity::of(key),
+        (None, None) => ChargeIdentity::of(key),
+        (None, Some(linked)) => ChargeIdentity::linked(key, linked).map_err(|_| {
+            reported(
+                2,
+                Type::Text,
+                format!("charge {canonical} cannot be linked"),
+            )
+        })?,
+        (Some(_), stored) => {
+            let stored = stored.map_or_else(|| "none".to_owned(), |id| id.to_string());
+            return Err(reported(
+                2,
+                Type::Text,
+                format!("charge {canonical} stores print {stored}, which its key does not name"),
+            ));
+        }
+    };
+    let spool_id: Option<SpoolId> = parsed_option(row, 3)?;
+    let figures = (
+        row.get::<_, Option<f64>>(5)?,
+        row.get::<_, Option<f64>>(8)?,
+        row.get::<_, Option<f64>>(9)?,
+        row.get::<_, Option<f64>>(10)?,
+        row.get::<_, Option<f64>>(11)?,
+    );
+    let charged = match (spool_id, figures) {
+        (None, (None, None, None, None, None)) => None,
+        (None, _) => {
+            return Err(reported(
+                3,
+                Type::Null,
+                format!("charge {canonical} names no spool and still holds part of a calculation"),
+            ));
+        }
+        (
+            Some(spool_id),
+            (
+                Some(grams),
+                Some(diameter_mm),
+                Some(density_g_cm3),
+                Some(remaining_before_g),
+                Some(remaining_after_g),
+            ),
+        ) => Some(ChargedFilament {
+            spool_id,
+            grams,
+            diameter_mm,
+            density_g_cm3,
+            remaining_before_g,
+            remaining_after_g,
+        }),
+        (Some(spool_id), _) => {
+            return Err(reported(
+                3,
+                Type::Text,
+                format!(
+                    "charge {canonical} names spool {spool_id} without the whole calculation of \
+                     what it took"
+                ),
+            ));
+        }
+    };
     Ok(ChargeRecord {
-        key,
-        tool: row.get(1)?,
-        print_id: parsed_option(row, 2)?,
-        spool_id: parsed_option(row, 3)?,
+        identity,
         length_mm: row.get(4)?,
-        grams: row.get(5)?,
+        charged,
         at: parsed(row, 6)?,
         event_id: parsed(row, 7)?,
     })

@@ -14,6 +14,64 @@
       "title": "SpoolId",
       "type": "string"
     },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "SpoolTrust": {
       "description": "How far a spool's remaining figure can be trusted.",
       "oneOf": [
@@ -222,13 +280,9 @@
       "format": "double",
       "type": "number"
     },
-    "loaded_on_tool": {
-      "description": "The tool the spool is loaded on, when it is loaded.",
-      "format": "int64",
-      "type": [
-        "integer",
-        "null"
-      ]
+    "lifecycle": {
+      "$ref": "#/$defs/SpoolLifecycle",
+      "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired — and never both of the last two."
     },
     "material": {
       "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -246,17 +300,6 @@
       "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
       "format": "double",
       "type": "number"
-    },
-    "retired_at": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Timestamp"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "When the spool was retired, if it has been."
     },
     "tare_g": {
       "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -283,6 +326,7 @@
     "density_g_cm3",
     "initial_g",
     "remaining_g",
+    "lifecycle",
     "trust",
     "registered_at",
     "updated_at"

@@ -200,7 +200,7 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
             file_name,
             waited_s,
         } => format!("{file_name} had no analysis after waiting {waited_s}s for one"),
-        RejectionReason::SpoolRefused { detail } => detail.clone(),
+        RejectionReason::SpoolRefused { message, .. } => message.clone(),
     }
 }
 

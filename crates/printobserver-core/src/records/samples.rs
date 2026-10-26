@@ -17,17 +17,24 @@ use super::action::{
     ExecutionOutcome, PrintAction,
 };
 use super::charge::{
-    ChargeKey, ChargeMethod, FilePosition, PendingCharge, PendingTaken, PrintOutcome,
+    ChargeKey, ChargeMethod, ChargedFilament, FilePosition, PendingCharge, PendingTaken,
+    PrintOutcome, PrintSegmentKey,
 };
 use super::ids::{ActionId, InterventionId, SpoolId};
 use super::image::ImageRecord;
 use super::intervention::{Intervention, InterventionOutcome};
 use super::manifest::JobManifest;
-use super::policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
-use super::preflight::{Preflight, PreflightTool, PreflightVerdict};
+use super::policy::{
+    EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
+};
+use super::preflight::{
+    DoubtedSpool, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    PreflightToolResult, PreflightVerdict, ShortSpool, UnanalysedSpool,
+};
 use super::print::{ManifestNarrowing, PrintRecord};
 use super::spool::{
-    ClearedMark, LoadedSpool, SpoolRecord, SpoolTrust, UnverifiedMark, UnverifiedReason,
+    ClearedMark, LoadedSpool, SpoolLifecycle, SpoolRecord, SpoolTrust, UnverifiedMark,
+    UnverifiedMarks, UnverifiedReason,
 };
 use super::spool_command::SpoolCommand;
 
@@ -380,8 +387,61 @@ impl Sample for RejectionReason {
                 waited_s: 300,
             },
             Self::SpoolRefused {
-                detail: "spool 0191f0a0 is retired, so it takes no command".to_owned(),
+                cause: SpoolRefusalCause::sample_full(),
+                message: "spool Galaxy black is retired, so it takes no command".to_owned(),
             },
+        ]
+    }
+}
+
+impl Sample for SpoolField {
+    fn sample_full() -> Self {
+        Self::GrossG
+    }
+}
+
+impl Sample for SpoolRefusalCause {
+    fn sample_full() -> Self {
+        Self::RetiredSpool {
+            spool_id: spool_id(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self::DensityRequired {
+            spool_id: None,
+            material: "PEEK".to_owned(),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::UnknownSpool {
+                spool_id: replaced_spool_id(),
+            },
+            Self::NothingToConfirm { tool: 0 },
+            Self::InvalidAdjustmentFigure {
+                field: SpoolField::GrossG,
+                value: -5.0,
+            },
+            Self::TareRequired {
+                spool_id: spool_id(),
+            },
+            Self::DensityRequired {
+                spool_id: Some(spool_id()),
+                material: "PEEK".to_owned(),
+            },
+            Self::MissingField {
+                field: SpoolField::Name,
+            },
+            Self::ConflictingFields {
+                fields: vec![SpoolField::RemainingG, SpoolField::GrossG],
+            },
+            Self::UnknownTool { tool: -1 },
+            Self::NotLoaded {
+                spool_id: spool_id(),
+            },
+            Self::LedgerRefused,
         ]
     }
 }
@@ -462,18 +522,25 @@ impl Sample for UnverifiedMark {
     }
 }
 
+impl Sample for UnverifiedMarks {
+    fn sample_full() -> Self {
+        Self::new(vec![
+            UnverifiedMark::sample_full(),
+            UnverifiedMark {
+                reason: UnverifiedReason::FilamentChangeUnconfirmed {
+                    print_id: PrintId::sample_full(),
+                },
+                since: later_instant(),
+            },
+        ])
+        .expect("two marks")
+    }
+}
+
 impl Sample for SpoolTrust {
     fn sample_full() -> Self {
         Self::Unverified {
-            marks: vec![
-                UnverifiedMark::sample_full(),
-                UnverifiedMark {
-                    reason: UnverifiedReason::FilamentChangeUnconfirmed {
-                        print_id: PrintId::sample_full(),
-                    },
-                    since: later_instant(),
-                },
-            ],
+            marks: UnverifiedMarks::sample_full(),
         }
     }
 
@@ -494,11 +561,10 @@ impl Sample for SpoolRecord {
             initial_g: 1_000.0,
             remaining_g: 742.5,
             tare_g: Some(250.0),
-            loaded_on_tool: Some(0),
+            lifecycle: SpoolLifecycle::sample_full(),
             trust: SpoolTrust::sample_full(),
             registered_at: Timestamp::sample_full(),
             updated_at: later_instant(),
-            retired_at: None,
         }
     }
 
@@ -506,9 +572,8 @@ impl Sample for SpoolRecord {
         Self {
             color: None,
             tare_g: None,
-            loaded_on_tool: None,
+            lifecycle: SpoolLifecycle::Shelved,
             trust: SpoolTrust::Verified,
-            retired_at: None,
             ..Self::sample_full()
         }
     }
@@ -516,10 +581,26 @@ impl Sample for SpoolRecord {
     fn sample_alternates() -> Vec<Self> {
         vec![Self {
             remaining_g: 12.5,
-            loaded_on_tool: None,
-            retired_at: Some(later_instant()),
+            lifecycle: SpoolLifecycle::Retired {
+                at: later_instant(),
+            },
             ..Self::sample_full()
         }]
+    }
+}
+
+impl Sample for SpoolLifecycle {
+    fn sample_full() -> Self {
+        Self::Loaded { tool: 0 }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Shelved,
+            Self::Retired {
+                at: later_instant(),
+            },
+        ]
     }
 }
 
@@ -592,12 +673,33 @@ impl Sample for FilePosition {
     }
 }
 
+impl Sample for PrintSegmentKey {
+    fn sample_full() -> Self {
+        Self {
+            print_id: PrintId::sample_full(),
+            tool: 0,
+            segment: 1,
+        }
+    }
+}
+
+impl Sample for ChargedFilament {
+    fn sample_full() -> Self {
+        Self {
+            spool_id: spool_id(),
+            grams: 2.98,
+            diameter_mm: 1.75,
+            density_g_cm3: 1.24,
+            remaining_before_g: 745.48,
+            remaining_after_g: 742.5,
+        }
+    }
+}
+
 impl Sample for PendingCharge {
     fn sample_full() -> Self {
         Self {
-            charge_key: ChargeKey::sample_full(),
-            print_id: PrintId::sample_full(),
-            tool: 0,
+            charge_key: PrintSegmentKey::sample_full(),
             length_mm: 1_204.5,
             method: ChargeMethod::GcodeExtrusion,
             analysed_length_mm: Some(5_120.0),
@@ -633,30 +735,126 @@ impl Sample for PreflightVerdict {
     }
 }
 
+impl Sample for PreflightSpool {
+    fn sample_full() -> Self {
+        Self {
+            id: spool_id(),
+            name: "Galaxy black".to_owned(),
+        }
+    }
+}
+
+impl Sample for PreflightNeed {
+    fn sample_full() -> Self {
+        Self {
+            required_g: 120.0,
+            buffer_g: 12.0,
+        }
+    }
+}
+
+impl Sample for ShortSpool {
+    fn sample_full() -> Self {
+        Self {
+            spool: PreflightSpool::sample_full(),
+            remaining_g: 80.0,
+            need: PreflightNeed::sample_full(),
+            marks: vec![UnverifiedMark::sample_full()],
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            marks: Vec::new(),
+            ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for DoubtedSpool {
+    fn sample_full() -> Self {
+        Self {
+            spool: PreflightSpool::sample_full(),
+            remaining_g: 742.5,
+            need: Some(PreflightNeed::sample_full()),
+            marks: UnverifiedMarks::sample_full(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            need: None,
+            ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for UnanalysedSpool {
+    fn sample_full() -> Self {
+        Self {
+            spool: PreflightSpool::sample_full(),
+            remaining_g: 742.5,
+        }
+    }
+}
+
+impl Sample for PreflightObjection {
+    fn sample_full() -> Self {
+        Self::Insufficient(ShortSpool::sample_full())
+    }
+
+    fn sample_minimal() -> Self {
+        Self::NoAnalysis(UnanalysedSpool::sample_full())
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Insufficient(ShortSpool::sample_minimal()),
+            Self::UnverifiedSpool(DoubtedSpool::sample_full()),
+        ]
+    }
+}
+
+impl Sample for PreflightToolResult {
+    fn sample_full() -> Self {
+        Self::Insufficient(ShortSpool::sample_full())
+    }
+
+    fn sample_minimal() -> Self {
+        Self::Unchecked
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Passed {
+                spool: PreflightSpool::sample_full(),
+                remaining_g: 742.5,
+                need: PreflightNeed::sample_full(),
+            },
+            Self::UnverifiedSpool(DoubtedSpool::sample_minimal()),
+            Self::NoAnalysis(UnanalysedSpool::sample_full()),
+            Self::Overridden {
+                objection: PreflightObjection::sample_full(),
+            },
+            Self::Warned {
+                objection: PreflightObjection::NoAnalysis(UnanalysedSpool::sample_full()),
+            },
+        ]
+    }
+}
+
 impl Sample for PreflightTool {
     fn sample_full() -> Self {
         Self {
             tool: 0,
-            spool_id: Some(spool_id()),
-            spool_name: Some("Galaxy black".to_owned()),
-            required_g: Some(120.0),
-            buffer_g: Some(12.0),
-            remaining_g: Some(80.0),
-            marks: vec![UnverifiedMark::sample_full()],
-            verdict: PreflightVerdict::Insufficient,
+            result: PreflightToolResult::sample_full(),
         }
     }
 
     fn sample_minimal() -> Self {
         Self {
             tool: 1,
-            spool_id: None,
-            spool_name: None,
-            required_g: None,
-            buffer_g: None,
-            remaining_g: None,
-            marks: Vec::new(),
-            verdict: PreflightVerdict::Unchecked,
+            result: PreflightToolResult::Unchecked,
         }
     }
 }

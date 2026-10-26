@@ -14,7 +14,7 @@ printobserver-core = { workspace = true }
 printobserver-printer-api = { workspace = true }
 printobserver-supervisor-api = { workspace = true }
 printobserver-types = { workspace = true }
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "functions"] }
 sha2 = "0.10"
 uuid = { version = "1", features = ["v7"] }
 

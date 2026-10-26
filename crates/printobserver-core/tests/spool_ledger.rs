@@ -15,9 +15,10 @@
 mod records;
 
 use printobserver_core::{
-    ActionKind, ChargeKey, CoreConfig, PreflightMode, PreflightTool, PreflightVerdict, PrintAction,
-    RejectionReason, SpoolCommand, SpoolId, SpoolPolicy, SpoolRecord, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, changes_the_machine, rejection_detail, valid_from,
+    ActionKind, ChargeKey, CoreConfig, PreflightMode, PreflightTool, PreflightToolResult,
+    PrintAction, RejectionReason, ShortSpool, SpoolCommand, SpoolId, SpoolPolicy, SpoolRecord,
+    SpoolTrust, UnverifiedMark, UnverifiedReason, changes_the_machine, rejection_detail,
+    valid_from,
 };
 use printobserver_printer_api::PrinterState;
 use printobserver_types::contract::{Sample, schema_of};
@@ -165,46 +166,43 @@ fn a_charge_key_has_one_canonical_spelling() {
 fn an_empty_spool_field_is_left_off_the_wire() {
     let spool = SpoolRecord::sample_minimal();
     let written = serde_json::to_value(&spool).expect("a spool writes");
-    for absent in ["loaded_on_tool", "retired_at", "tare_g", "color"] {
+    for absent in ["tare_g", "color"] {
         assert!(
             !keys(&written).iter().any(|key| key == absent),
             "an empty spool is written with {absent}: {written}"
         );
     }
     assert_eq!(written["trust"], json!({ "state": "verified" }));
+    assert_eq!(written["lifecycle"], json!({ "state": "shelved" }));
     let read: SpoolRecord = serde_json::from_value(written).expect("the spool reads back");
-    assert_eq!(read.loaded_on_tool, None);
-    assert_eq!(read.retired_at, None);
+    assert_eq!(read.loaded_tool(), None);
+    assert!(!read.is_retired());
     assert_eq!(read.tare_g, None);
     assert_eq!(read.color, None);
     assert_eq!(read, spool);
 }
 
-/// A tool whose spool holds no mark is written without `marks`, and one whose
-/// spool holds marks carries them oldest first.
+/// A short spool whose figure holds no mark is written without `marks`, and
+/// one whose spool holds marks carries them oldest first; each tool's result
+/// is tagged by its verdict and carries the spool by id and name.
 #[test]
 fn a_preflight_tool_with_no_marks_is_written_without_them() {
     let clean = PreflightTool {
         tool: 0,
-        spool_id: Some(SpoolId::sample_full()),
-        spool_name: Some("Galaxy black".to_owned()),
-        required_g: Some(40.0),
-        buffer_g: Some(5.0),
-        remaining_g: Some(700.0),
-        marks: Vec::new(),
-        verdict: PreflightVerdict::Passed,
+        result: PreflightToolResult::Insufficient(ShortSpool::sample_minimal()),
     };
     let written = serde_json::to_value(&clean).expect("a tool writes");
     assert!(
-        !keys(&written).iter().any(|key| key == "marks"),
+        !keys(&written["result"]).iter().any(|key| key == "marks"),
         "{written}"
     );
-    assert_eq!(written["verdict"], json!("passed"));
+    assert_eq!(written["result"]["verdict"], json!("insufficient"));
+    assert_eq!(written["result"]["spool"]["name"], json!("Galaxy black"));
 
     let marked = PreflightTool::sample_full();
     let written = serde_json::to_value(&marked).expect("a tool writes");
     assert_eq!(
-        written["marks"][0]["reason"]["reason"],
+        written["result"]["marks"][0]["reason"]["reason"],
         json!("uncharged_print")
     );
 }

@@ -68,12 +68,14 @@ struct Working<'r> {
 impl Working<'_> {
     /// Refuse a spool loaded onto a tool another unretired spool holds.
     fn refuse_occupied(&self, spool: &SpoolRecord) -> Result<(), StoreError> {
-        let Some(tool) = spool.loaded_on_tool.filter(|_| spool.retired_at.is_none()) else {
+        let Some(tool) = spool.loaded_tool() else {
             return Ok(());
         };
-        let occupied = self.filament.spools.iter().any(|held| {
-            held.id != spool.id && held.retired_at.is_none() && held.loaded_on_tool == Some(tool)
-        });
+        let occupied = self
+            .filament
+            .spools
+            .iter()
+            .any(|held| held.id != spool.id && held.loaded_tool() == Some(tool));
         if occupied {
             return Err(refused("spools.loaded_on_tool"));
         }
@@ -119,16 +121,20 @@ impl Ledger for Working<'_> {
             .filament
             .charges
             .iter()
-            .find(|charge| charge.key.canonical() == key)
+            .find(|charge| charge.identity.key().canonical() == key)
             .cloned())
     }
 
     fn insert_charge(&mut self, record: &ChargeRecord) -> Result<(), StoreError> {
-        if record.print_id.is_some_and(|id| !self.has_print(id)) {
+        if record
+            .identity
+            .print_id()
+            .is_some_and(|id| !self.has_print(id))
+        {
             return Err(refused("charges.print_id"));
         }
         if record
-            .spool_id
+            .spool_id()
             .is_some_and(|id| !self.filament.spools.iter().any(|spool| spool.id == id))
         {
             return Err(refused("charges.spool_id"));
@@ -151,11 +157,11 @@ impl Ledger for Working<'_> {
         pending: &PendingCharge,
         _event: &EventRecord,
     ) -> Result<(), StoreError> {
-        if !self.has_print(pending.print_id) {
+        if !self.has_print(pending.print_id()) {
             return Err(refused("pending_charges.print_id"));
         }
         self.filament.pending.push(Held {
-            key: pending.charge_key.canonical(),
+            key: pending.charge_key.charge_key().canonical(),
             pending: pending.clone(),
         });
         Ok(())
@@ -356,7 +362,7 @@ impl FilamentStore for MemoryStore {
                 filament
                     .charges
                     .iter()
-                    .filter(|charge| charge.print_id == Some(print_id))
+                    .filter(|charge| charge.identity.print_id() == Some(print_id))
                     .cloned()
                     .collect()
             });
@@ -376,7 +382,7 @@ impl FilamentStore for MemoryStore {
                 filament
                     .pending
                     .iter()
-                    .filter(|held| tool.is_none_or(|tool| held.pending.tool == tool)),
+                    .filter(|held| tool.is_none_or(|tool| held.pending.tool() == tool)),
             );
             found.sort_by(|left, right| {
                 (left.pending.pended_at, &left.key).cmp(&(right.pending.pended_at, &right.key))
@@ -399,7 +405,7 @@ impl FilamentStore for MemoryStore {
                 filament
                     .spools
                     .iter()
-                    .filter(|spool| include_retired || spool.retired_at.is_none())
+                    .filter(|spool| include_retired || !spool.is_retired())
                     .cloned()
                     .collect()
             });
@@ -414,11 +420,11 @@ impl FilamentStore for MemoryStore {
                 filament
                     .spools
                     .iter()
-                    .filter(|spool| spool.retired_at.is_none() && spool.loaded_on_tool.is_some())
+                    .filter(|spool| spool.loaded_tool().is_some())
                     .cloned()
                     .collect()
             });
-            found.sort_by_key(|spool| spool.loaded_on_tool);
+            found.sort_by_key(SpoolRecord::loaded_tool);
             Ok(found)
         })
     }

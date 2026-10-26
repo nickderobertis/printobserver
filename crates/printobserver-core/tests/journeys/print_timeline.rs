@@ -64,15 +64,17 @@ fn assert_charge(
     length_mm: f64,
 ) {
     let spool = spool_now(world, spool_id);
-    assert_eq!(charge.spool_id, Some(spool_id));
+    let charged = charge.charged.as_ref().expect("the charge names its spool");
+    assert_eq!(charged.spool_id, spool_id);
     assert_eq!(charge.method, method);
     assert_close(charge.length_mm, length_mm);
-    assert_close(charge.grams.expect("weighed"), grams(&spool, length_mm));
-    assert_eq!(charge.diameter_mm, Some(spool.diameter_mm));
-    assert_eq!(charge.density_g_cm3, Some(spool.density_g_cm3));
-    let before = charge.remaining_before_g.expect("a figure before");
-    let after = charge.remaining_after_g.expect("a figure after");
-    assert_close(after, before - grams(&spool, length_mm));
+    assert_close(charged.grams, grams(&spool, length_mm));
+    assert_close(charged.diameter_mm, spool.diameter_mm);
+    assert_close(charged.density_g_cm3, spool.density_g_cm3);
+    assert_close(
+        charged.remaining_after_g,
+        charged.remaining_before_g - grams(&spool, length_mm),
+    );
 }
 
 /// A completed print names its spool as it starts, ends `completed`, and
@@ -423,9 +425,10 @@ fn a_tool_with_no_tracked_spool_is_recorded_uncharged() {
         .iter()
         .find(|charge| charge.tool == 1)
         .expect("tool 1");
-    assert_eq!(untracked.spool_id, None);
-    assert_eq!(untracked.grams, None);
-    assert_eq!(untracked.remaining_before_g, None);
+    assert_eq!(
+        untracked.charged, None,
+        "an untracked tool's charge carries part of a calculation"
+    );
     assert_close(untracked.length_mm, 2_000.0);
 }
 

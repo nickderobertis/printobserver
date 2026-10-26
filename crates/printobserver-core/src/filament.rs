@@ -8,7 +8,9 @@
 use printobserver_types::serde::{Deserialize, Serialize};
 
 use crate::config::SpoolPolicy;
-use crate::records::{SpoolTrust, UnverifiedMark, UnverifiedReason, UnverifiedReasonKind};
+use crate::records::{
+    SpoolTrust, UnverifiedMark, UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind,
+};
 
 /// The diameter a spool is registered with when none is given, in millimetres.
 pub const DEFAULT_DIAMETER_MM: f64 = 1.75;
@@ -94,7 +96,7 @@ impl SpoolTrust {
             let place = marks.partition_point(|held| held.since <= mark.since);
             marks.insert(place, mark);
         }
-        Self::Unverified { marks }
+        UnverifiedMarks::new(marks).map_or(Self::Verified, |marks| Self::Unverified { marks })
     }
 
     /// This trust with every mark of these kinds removed, and the reasons it
@@ -105,11 +107,8 @@ impl SpoolTrust {
             .into_marks()
             .into_iter()
             .partition(|mark| kinds.contains(&mark.reason.kind()));
-        let trust = if kept.is_empty() {
-            Self::Verified
-        } else {
-            Self::Unverified { marks: kept }
-        };
+        let trust =
+            UnverifiedMarks::new(kept).map_or(Self::Verified, |marks| Self::Unverified { marks });
         (trust, removed.into_iter().map(|mark| mark.reason).collect())
     }
 
@@ -118,7 +117,7 @@ impl SpoolTrust {
     pub fn oldest_mark(&self) -> Option<&UnverifiedMark> {
         match self {
             Self::Verified => None,
-            Self::Unverified { marks } => marks.first(),
+            Self::Unverified { marks } => Some(marks.oldest()),
         }
     }
 
@@ -126,7 +125,7 @@ impl SpoolTrust {
     fn into_marks(self) -> Vec<UnverifiedMark> {
         match self {
             Self::Verified => Vec::new(),
-            Self::Unverified { marks } => marks,
+            Self::Unverified { marks } => marks.into_vec(),
         }
     }
 }

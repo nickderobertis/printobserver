@@ -522,7 +522,7 @@ Reached at `POST /v1/spools/actions/register_spool`.
 
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
-**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose tagged `cause` names why and the spool, tool, field or material it is about, and whose `message` says what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
 
 ### load-spool
 
@@ -540,7 +540,7 @@ Reached at `POST /v1/spools/{spool_id}/actions/load_spool`.
 
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
-**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose tagged `cause` names why and the spool, tool, field or material it is about, and whose `message` says what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
 
 ### unload-spool
 
@@ -557,7 +557,7 @@ Reached at `POST /v1/spools/{spool_id}/actions/unload_spool`.
 
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
-**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose tagged `cause` names why and the spool, tool, field or material it is about, and whose `message` says what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
 
 ### adjust-spool
 
@@ -576,7 +576,7 @@ Reached at `POST /v1/spools/{spool_id}/actions/adjust_spool`.
 
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
-**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. A command giving both figures or neither, and a scale reading of a spool registered with no tare, are `spool_refused`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose tagged `cause` names why and the spool, tool, field or material it is about, and whose `message` says what to do instead, and which the program prints beside the record. Both are recorded. A command giving both figures or neither, and a scale reading of a spool registered with no tare, are `spool_refused`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
 
 ### retire-spool
 
@@ -593,7 +593,7 @@ Reached at `POST /v1/spools/{spool_id}/actions/retire_spool`.
 
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
-**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose `detail` says why and what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose tagged `cause` names why and the spool, tool, field or material it is about, and whose `message` says what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
 
 ### watch
 
