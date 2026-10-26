@@ -64,10 +64,6 @@ pub const EXCLUDE_KIND_FIELD: &str = "exclude_kind";
 /// nothing else, in seconds.
 pub const DEFAULT_RECONNECT_S: u64 = 30;
 
-/// The longest heartbeat or retry a watch takes, in seconds: a day. Longer is
-/// no heartbeat and no retry anybody is waiting on.
-pub const MAX_WATCH_SECONDS: i64 = 86_400;
-
 /// How long one read waits on the server for an event to pass, in seconds.
 ///
 /// Well inside the server's own bound; a heartbeat is this program's own
@@ -104,12 +100,10 @@ pub struct Watch {
     /// that pass.
     pub samples: BTreeMap<EventKind, NonZeroU32>,
     /// How often to say the watch is still running with nothing to print, in
-    /// seconds; zero, never. At most [`MAX_WATCH_SECONDS`], which only
-    /// [`Watch::of`] can hold it to, so it is read through
-    /// [`Watch::heartbeat_s`].
+    /// seconds; zero, never. Never negative, which only [`Watch::of`] can
+    /// hold it to, so it is read through [`Watch::heartbeat_s`].
     heartbeat_s: u64,
-    /// How long to retry a server that cannot be reached, in seconds; at most
-    /// [`MAX_WATCH_SECONDS`].
+    /// How long to retry a server that cannot be reached, in seconds.
     reconnect_s: u64,
 }
 
@@ -141,12 +135,9 @@ impl Watch {
         let seconds = |name: &str, least: i64, otherwise: u64| -> Result<u64, String> {
             match values.get(name).and_then(Value::as_i64) {
                 None => Ok(otherwise),
-                Some(given) if (least..=MAX_WATCH_SECONDS).contains(&given) => {
-                    Ok(given.unsigned_abs())
-                }
+                Some(given) if given >= least => Ok(given.unsigned_abs()),
                 Some(given) => Err(format!(
-                    "`--{}` takes a whole number of seconds from {least} to {MAX_WATCH_SECONDS}, and \
-                     `{given}` is not one",
+                    "`--{}` takes a whole number of seconds from {least}, and `{given}` is not one",
                     name.replace('_', "-")
                 )),
             }
@@ -590,7 +581,9 @@ impl Stream<'_> {
         let heartbeat =
             (self.watch.heartbeat_s > 0).then(|| Duration::from_secs(self.watch.heartbeat_s));
         loop {
-            let beat = heartbeat.map(|every| self.last_line + every);
+            // A heartbeat further off than the timer can name is one that
+            // never comes, so the read is waited on alone.
+            let beat = heartbeat.and_then(|every| self.last_line.checked_add(every));
             tokio::select! {
                 done = &mut pending => {
                     return done.map_err(|error| {
@@ -761,14 +754,30 @@ mod tests {
             let said = watch(&[("sample", json!([refused]))]).expect_err(refused);
             assert!(said.contains("--sample"), "{refused}: {said}");
         }
-        for refused in [json!(-1), json!(86_401)] {
-            let said = watch(&[("reconnect_s", refused.clone())]).expect_err("out of range");
-            assert!(said.contains("--reconnect-s"), "{refused}: {said}");
+        for (field, flag) in [
+            ("reconnect_s", "--reconnect-s"),
+            ("heartbeat_s", "--heartbeat-s"),
+        ] {
+            let said = watch(&[(field, json!(-1))]).expect_err("a negative number of seconds");
+            assert!(said.contains(flag), "{said}");
         }
-        let said = watch(&[("heartbeat_s", json!(i64::MAX))]).expect_err("a heartbeat too long");
-        assert!(said.contains("--heartbeat-s"), "{said}");
         let said = watch(&[("print_id", json!("not-a-print"))]).expect_err("a malformed print");
         assert!(said.contains("--print-id"), "{said}");
+    }
+
+    /// Every number of seconds from zero up is taken, however long, because
+    /// the watch states no upper bound of its own.
+    #[test]
+    fn a_heartbeat_and_a_retry_take_any_whole_number_of_seconds() {
+        for seconds in [86_401, i64::MAX] {
+            let read = watch(&[
+                ("heartbeat_s", json!(seconds)),
+                ("reconnect_s", json!(seconds)),
+            ])
+            .expect("a long heartbeat and retry are taken");
+            assert_eq!(read.heartbeat_s(), seconds.unsigned_abs());
+            assert_eq!(read.reconnect_s(), seconds.unsigned_abs());
+        }
     }
 
     /// Watching a print, the read lets the print's end through whatever the

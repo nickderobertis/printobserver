@@ -608,8 +608,8 @@ Composes `GET /v1/events`.
 - `--kind` — one kind to pass; give it again for another (optional, repeatable).
 - `--exclude-kind` — one kind never to pass; give it again for another (optional, repeatable).
 - `--sample` — `KIND=SECONDS`: pass the first event of that kind and then at most one per that many seconds by `received_at`, dropping the rest — `--sample periodic_observation=300` keeps one routine observation every five minutes (optional, repeatable).
-- `--heartbeat-s` — with nothing else to print for that many seconds, print a heartbeat (optional; 0, the default, prints none; at most 86400).
-- `--reconnect-s` — how long to keep retrying from the cursor while the supervisor cannot be reached (optional; 30 by default; at most 86400).
+- `--heartbeat-s` — with nothing else to print for that many seconds, print a heartbeat (optional; 0, the default, prints none).
+- `--reconnect-s` — how long to keep retrying from the cursor while the supervisor cannot be reached (optional; 30 by default).
 
 **Output.** With `--json`, every line is one JSON object: each passing event exactly as `history --json` prints it; `{"watch_heartbeat": {"at": "<timestamp>", "cursor": "<event id>" | null}}` each `--heartbeat-s` seconds with nothing else to print; and always, as the last line, `{"watch_ended": {"reason": "print_ended" | "interrupted" | "unreachable" | "refused", "detail": "<text>", "cursor": "<event id>" | null}}`. Watching a print, every passing event stored before its end is printed before the ending, and no event the filters exclude is printed — the `print_ended` event included, which is printed only when the filters pass it. A watch started or reconnected after the print ended replays what is left and then ends. Without `--json`, one line per event and the same ending in words, on standard error for `unreachable` and `refused`; that rendering is not a contract.
 

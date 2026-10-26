@@ -929,8 +929,6 @@ fn a_watch_that_cannot_start_prints_no_line_and_exits_as_every_command_does() {
         ),
         (vec!["--json", "--sample", "Not-A-Kind=300"], &own.client, 2),
         (vec!["--json", "--reconnect-s", "-1"], &own.client, 2),
-        (vec!["--json", "--reconnect-s", "86401"], &own.client, 2),
-        (vec!["--json", "--heartbeat-s", "86401"], &own.client, 2),
         (vec!["--json"], &serverless, 4),
     ] {
         let (lines, status) = watch_with(&arguments, config).finished();
@@ -940,6 +938,40 @@ fn a_watch_that_cannot_start_prints_no_line_and_exits_as_every_command_does() {
             "{arguments:?} printed a stream: {lines:#?}"
         );
         assert_eq!(status.code(), Some(exit), "{arguments:?}");
+    }
+}
+
+/// A heartbeat and a retry take any whole number of seconds the option holds,
+/// a day and a second or the largest there is: the watch runs, and ends with
+/// the print, rather than refusing either or failing on a timer it cannot set.
+#[test]
+fn a_heartbeat_and_a_retry_of_any_length_are_taken() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    own.record(vec![ended(print(&watched))]);
+    for seconds in ["86401", &i64::MAX.to_string()] {
+        let (lines, status) = watch(
+            &own,
+            &[
+                "--json",
+                "--print-id",
+                &watched,
+                "--heartbeat-s",
+                seconds,
+                "--reconnect-s",
+                seconds,
+            ],
+        )
+        .finished();
+        let lines = documents(&lines);
+
+        assert_eq!(
+            ending(&lines)["reason"],
+            json!("print_ended"),
+            "{seconds}: {lines:#?}"
+        );
+        assert_eq!(status.code(), Some(0), "{seconds}: {lines:#?}");
     }
 }
 
