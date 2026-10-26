@@ -306,13 +306,6 @@ def run_program(
     return subprocess.CompletedProcess(argv, process.returncode, output, "")
 
 
-def free_port() -> int:
-    """A port nothing is listening on, so two runs on one host do not collide."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind((HOST, 0))
-        return int(probe.getsockname()[1])
-
-
 # ~~ provisioning the sources and the images
 
 
@@ -682,17 +675,20 @@ def provision(stack: Stack, *, site: str, webhook_url: str) -> dict[str, Any]:
 def webhook_address(named: str) -> str:
     """The address the notification plugin is configured to post to.
 
-    `auto` takes a free port on the host and names the alias a container reaches
-    the host by; anything else is the caller's own address, refused unless a
-    container could actually post to it.
+    `auto` names the alias a container reaches the host by, on port zero: the
+    port is the tier's to choose, which binds its capture on a port of its own
+    and points the plugin at that port before it causes an alert, so no port is
+    chosen here and released for the tier to take later. Anything else is the
+    caller's own address — port zero there too meaning the tier chooses —
+    refused unless a container could actually post to it.
 
     Raises:
         StartupError: If the named address is not one a container can post to.
     """
     if named == "auto":
-        return f"http://{CONTAINER_HOST_ALIAS}:{free_port()}/alert"
+        return f"http://{CONTAINER_HOST_ALIAS}:0/alert"
     parts = urllib.parse.urlsplit(named)
-    if parts.scheme not in {"http", "https"} or not parts.hostname or not parts.port:
+    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.port is None:
         raise StartupError(
             "webhook-address-unusable",
             f"`{named}` is not an absolute http URL carrying a host and a port",
@@ -827,7 +823,7 @@ def argument_parser() -> argparse.ArgumentParser:
         default=os.environ.get("OBICO_ENV_WEBHOOK_URL", "auto"),
         help=(
             "the address the notification plugin is configured to post to, or `auto` "
-            "for a free port on the host (default: %(default)s)"
+            "for the host alias on a port the tier chooses (default: %(default)s)"
         ),
     )
     parser.add_argument(

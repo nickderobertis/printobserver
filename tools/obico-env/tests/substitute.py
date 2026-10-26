@@ -15,7 +15,9 @@ to the webhook address, and it serves the image that body points at.
 from __future__ import annotations
 
 import json
+import socket
 import threading
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler
 from typing import Any
@@ -24,6 +26,17 @@ from repo_checks.loopback import LoopbackServer
 
 CONTROL_PATH = "/control/alert"
 IMAGE_PATH = "/snapshot.jpg"
+
+
+def _free(url: str) -> bool:
+    """Whether anything but the one holding it could bind the port `url` names now."""
+    parts = urllib.parse.urlsplit(url)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taker:
+        try:
+            taker.bind((parts.hostname or "", parts.port or 0))
+        except OSError:
+            return False
+    return True
 
 
 class Substitute:
@@ -35,6 +48,8 @@ class Substitute:
         self.image = image
         self.body: bytes | None = b"{}"
         self.posted: list[int] = []
+        self.posted_to: list[str] = []
+        self.free_when_told: list[bool] = []
         stand_in = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -45,10 +60,13 @@ class Substitute:
                 if self.path != CONTROL_PATH:
                     self._answer(404, b"no", "text/plain")
                     return
-                # A stand-in told to post nothing answers as a stack that took
-                # the request and raised no alert, which is what the tier's own
-                # timeout is for.
-                status = stand_in.post_now() if stand_in.body is not None else 0
+                # The address to post to comes with the request, as the stack's
+                # plugin is pointed at the one the tier holds. A stand-in told
+                # to post nothing answers as a stack that took the request and
+                # raised no alert, which is what the tier's own timeout is for.
+                length = int(self.headers.get("Content-Length", "0"))
+                named = self.rfile.read(length).decode("utf-8")
+                status = stand_in.post_now(named) if stand_in.body is not None else 0
                 self._answer(200, json.dumps({"posted": status}).encode(), "application/json")
 
             def do_GET(self) -> None:
@@ -103,10 +121,13 @@ class Substitute:
         """Set the body it posts when it is next asked, or nothing to post nothing."""
         self.body = None if body is None else json.dumps(body).encode("utf-8")
 
-    def post_now(self) -> int:
-        """Post the prepared body to the webhook address, as Obico's plugin does."""
+    def post_now(self, named: str = "") -> int:
+        """Post the prepared body to the address named, or the one it was given, as Obico does."""
+        to = named or self.webhook_url
+        self.posted_to.append(to)
+        self.free_when_told.append(_free(to))
         request = urllib.request.Request(  # noqa: S310
-            self.webhook_url,
+            to,
             data=self.body,
             method="POST",
             headers={"Content-Type": "application/json"},

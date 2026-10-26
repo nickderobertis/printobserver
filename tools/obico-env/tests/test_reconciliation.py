@@ -19,7 +19,15 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
-from harness import SAMPLE, SNAPSHOT, answer, free_port, said, tier
+from harness import (
+    SAMPLE,
+    SNAPSHOT,
+    TIER_CHOOSES_ON_LOOPBACK,
+    answer,
+    held_by_the_tier,
+    said,
+    tier,
+)
 from repo_checks.expect import contains, equal, failing, passing, refused_naming, truth
 from substitute import Substitute
 
@@ -57,7 +65,7 @@ def _run_over_a_substitute(
     sample's, which is what makes the shape comparison meaningful.
     """
     body = json.loads(SAMPLE.read_text(encoding="utf-8"))
-    webhook = f"http://127.0.0.1:{free_port()}/alert"
+    webhook = TIER_CHOOSES_ON_LOOPBACK
     with Substitute(webhook, SNAPSHOT.read_bytes()) as stand_in:
         body[image_url_field] = stand_in.image_url
         if alter is not None:
@@ -139,9 +147,40 @@ def test_a_field_the_producer_retyped_fails_the_tier_naming_it() -> None:
     refused_naming(verdict["differences"], "printer.id", "changed type")
 
 
+def test_the_tier_holds_a_port_of_its_own_from_before_anything_is_told_to_post_there() -> None:
+    """Configured with port zero, the tier binds its own and only then names it.
+
+    The stand-in is told where to post with the request to post, and tries to
+    bind that port the moment it is told: the tier already holds it, so nothing
+    else could have taken it between the tier choosing it and the post arriving.
+    """
+    body = json.loads(SAMPLE.read_text(encoding="utf-8"))
+    with Substitute(TIER_CHOOSES_ON_LOOPBACK, SNAPSHOT.read_bytes()) as stand_in:
+        body["img_url"] = stand_in.image_url
+        stand_in.will_post(body)
+        result = tier(
+            "reconcile",
+            "--webhook-url",
+            TIER_CHOOSES_ON_LOOPBACK,
+            "--trigger",
+            f"post:{stand_in.control_url}",
+            "--sample",
+            str(SAMPLE),
+            "--timeout",
+            "60",
+        )
+    passing(result, describing="the tier over a stand-in told where to post")
+    verdict = answer(result)
+
+    held_by_the_tier(verdict, TIER_CHOOSES_ON_LOOPBACK)
+    equal(stand_in.posted_to, [verdict["webhook_url"]], describing="where the stand-in posted")
+    equal(stand_in.free_when_told, [False], describing="whether that port was free when told")
+    equal(stand_in.posted, [200], describing="what the tier's capture answered the post")
+
+
 def test_the_tier_reports_no_verdict_when_nothing_posts() -> None:
     """A stack that raised no alert is an error, not a verdict of agreement."""
-    webhook = f"http://127.0.0.1:{free_port()}/alert"
+    webhook = TIER_CHOOSES_ON_LOOPBACK
     with Substitute(webhook, SNAPSHOT.read_bytes()) as stand_in:
         # A stack that takes the request and raises no alert: the tier waits its
         # own timeout out and must say so rather than call the silence agreement.

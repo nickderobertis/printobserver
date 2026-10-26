@@ -389,8 +389,8 @@ reason = "The second half of the same one site: S310 flags both building the req
 [[suppression]]
 rule = "S310"
 file = "tools/obico-env/tests/substitute.py"
-site = "self.webhook_url,"
-reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically. This is the stand-in posting to the webhook address the journey that built it named, which is always a loopback `http://127.0.0.1:<free port>/alert` composed in the journey itself."
+site = "            to,"
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically. This is the stand-in posting to the webhook address it is told to post to: the loopback `http://127.0.0.1:<port>/alert` the tier's own capture holds, handed over with the request to post, or the one the journey that built it named."
 
 [[suppression]]
 rule = "S310"

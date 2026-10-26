@@ -19,11 +19,12 @@ import sys
 from pathlib import Path
 
 from harness import (
+    TIER_CHOOSES,
     answer,
     ask_the_stack,
     containers,
     environment,
-    free_port,
+    held_by_the_tier,
     printer_over_the_api,
     said,
     tier,
@@ -91,7 +92,7 @@ def test_the_bring_up_says_what_it_starts_and_how_long_before_it_starts_anything
     state_dir: str,
 ) -> None:
     """Read what it emits before its first container starts, and find both statements."""
-    webhook = f"http://host.docker.internal:{free_port()}/alert"
+    webhook = TIER_CHOOSES
 
     result = environment("up", "--state-dir", state_dir, "--webhook-url", webhook)
 
@@ -118,7 +119,7 @@ def test_the_stack_carries_the_account_the_printer_and_the_configured_webhook(
     state_dir: str,
 ) -> None:
     """Unattended: an account, a registered printer, and a plugin posting where told."""
-    webhook = f"http://host.docker.internal:{free_port()}/alert"
+    webhook = TIER_CHOOSES
 
     brought_up = environment("up", "--state-dir", state_dir, "--webhook-url", webhook)
 
@@ -147,9 +148,16 @@ def test_the_stack_carries_the_account_the_printer_and_the_configured_webhook(
 
     # And the plugin posts *there*: read out of a body arriving at the address
     # the caller named, rather than out of the setting asserted above.
+    # The tier held a port of its own and pointed the plugin there before it
+    # caused the alert, so the setting now names that address.
     verdict = _reconciled(state_dir, webhook)
-    equal(verdict["webhook_url"], webhook, describing="the address the body arrived on")
-    truth(verdict["captured"], describing="a body the stack posted to the caller's own address")
+    held_by_the_tier(verdict, webhook)
+    equal(
+        _asked(state_dir)["webhook_url"],
+        verdict["webhook_url"],
+        describing="the address Obico's plugin was pointed at by the tier",
+    )
+    truth(verdict["captured"], describing="a body the stack posted to the tier's own address")
 
 
 def _reconciled(state_dir: str, webhook: str) -> dict[str, object]:
@@ -176,7 +184,7 @@ def _reconciled(state_dir: str, webhook: str) -> dict[str, object]:
 
 def test_the_bring_down_leaves_no_container_of_the_stack_running(state_dir: str) -> None:
     """Whatever the bring-up created, the bring-down stops — asked of Docker itself."""
-    webhook = f"http://host.docker.internal:{free_port()}/alert"
+    webhook = TIER_CHOOSES
     brought_up = environment("up", "--state-dir", state_dir, "--webhook-url", webhook)
     passing(brought_up, describing="the bring-up")
     project = str(answer(brought_up)["project"])

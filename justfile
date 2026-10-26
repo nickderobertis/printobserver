@@ -516,7 +516,8 @@ release-program-key:
 
 # Bring up the scripted OctoPrint environment the integration tier drives.
 #
-# The virtual printer, a free port and the hold print, under `.octoprint-env`.
+# The virtual printer, a port OctoPrint binds itself and the hold print, under
+# `.octoprint-env`.
 # `OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE=/dev/ttyACM0` is the same
 # environment against the machine beside the printer, the device named the
 # way that host names one; a refusal says what that is.
@@ -614,7 +615,8 @@ release-dry-run:
 # revision. It says on stderr what it is about to start and roughly how long that
 # takes before it starts anything: about 25 minutes the first time and about 3
 # once the images are built. `OBICO_ENV_WEBHOOK_URL` names the address the
-# notification plugin is configured to post to; `auto` takes a free port.
+# notification plugin is configured to post to; `auto` leaves the port to the
+# tier, which binds one of its own and points the plugin at it.
 obico-up:
     uv run -q python tools/obico-env/obico_env.py up
 

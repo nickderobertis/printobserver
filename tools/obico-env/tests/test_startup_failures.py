@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from harness import ENVIRONMENT, environment, free_port, said, timed
+from harness import ENVIRONMENT, TIER_CHOOSES, environment, said, timed
 from obico_env import FAILURE_CLASSES, SERVICES, Stack, StartupError, override, published_ports
 from repo_checks.expect import contains, equal, refused_naming, truth
 from repo_checks.shell import run as shell_run
@@ -98,7 +98,7 @@ def _bring_up(
     state_dir: str, timeout: str = HELD_BACK_TIMEOUT
 ) -> tuple[float, subprocess.CompletedProcess[str]]:
     """Run the real bring-up, timed, with a webhook address of this journey's own."""
-    webhook = f"http://host.docker.internal:{free_port()}/alert"
+    webhook = TIER_CHOOSES
     return timed(
         environment,
         "up",
