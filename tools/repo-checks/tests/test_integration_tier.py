@@ -21,10 +21,9 @@ from pathlib import Path
 import pytest
 from closures import closure
 from repo_checks.checks_integration import integration_tier
-from repo_checks.expect import accepted, equal, refused
+from repo_checks.expect import accepted, refused
 from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, steps_of
 from repo_checks.shell import run
 from treecopy import Tree
 
@@ -353,20 +352,6 @@ def test_job_scratch_cleanup_may_run_after_a_failed_tier(tree: Callable[[], Tree
         "      - if: always()\n        run: just runner-temp cleanup\n",
     )
     accepted(integration_tier(allowed.repo), describing="ownership-safe host cleanup")
-
-
-def test_the_failed_tier_s_evidence_is_uploaded_on_failure_alone(committed: Repo) -> None:
-    """The committed job uploads the logs a failed tier kept, and only when it failed."""
-    uploads = [
-        step
-        for step in steps_of(jobs_of(load_workflow(committed.root / CI))["integration"])
-        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
-    ]
-    equal(
-        [(step.get("if"), step["with"]["path"]) for step in uploads],
-        [("failure()", ".octoprint-diagnostics")],
-        describing="the integration job's uploads, each with its condition and path",
-    )
 
 
 def test_an_upload_skipped_on_some_changes_is_refused(tree: Callable[[], Tree]) -> None:

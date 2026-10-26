@@ -551,7 +551,7 @@ jobs:
       - if: always()
         run: just octoprint-down
       # The logs a failed tier kept before that bring-down.
-      - if: ${{ !cancelled() && steps.integration.outcome == 'failure' }}
+      - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: octoprint-diagnostics-macos-aarch64
