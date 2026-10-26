@@ -49,7 +49,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, NewType, NotRequired, TypedDict
+from typing import Final, Literal, NewType, NotRequired, TypedDict
 
 from obico_env import (
     ACCOUNT_EMAIL,
@@ -71,14 +71,32 @@ SNAPSHOT = Path(__file__).resolve().parent / "snapshot" / "spaghetti.jpg"
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
-AGREES = "agrees"
-DIFFERS = "differs"
+AGREES: Final = "agrees"
+DIFFERS: Final = "differs"
+
+
+class ImageRetrieved(TypedDict):
+    """The image the captured body points at, fetched."""
+
+    url: str
+    retrieved: Literal[True]
+    status: int
+    bytes: int
+    content_type: str
+
+
+class ImageMissed(TypedDict):
+    """Why the image the captured body points at could not be fetched."""
+
+    url: str | None
+    retrieved: Literal[False]
+    why: str
 
 
 class Reconciliation(TypedDict):
     """The verdict the tier reports, and everything it was reached from."""
 
-    verdict: str
+    verdict: Literal["agrees", "differs"]
     differences: list[str]
     sample: str
     webhook_url: str
@@ -87,7 +105,7 @@ class Reconciliation(TypedDict):
     caused: str
     captured: object
     captured_bytes: int
-    image: dict[str, Any]
+    image: ImageRetrieved | ImageMissed
     seconds: NotRequired[float]
 
 
@@ -560,7 +578,7 @@ def cause_alert(trigger: str, webhook_url: str) -> str:
 # ~~ the image the captured body points at
 
 
-def fetch_image(body: object) -> dict[str, Any]:
+def fetch_image(body: object) -> ImageRetrieved | ImageMissed:
     """Retrieve the image the captured body points at, and read its bytes.
 
     A body that carries no reachable `img_url` is reported rather than raised
@@ -651,11 +669,10 @@ def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> R
     # and what the comparison is given. Nothing below re-reads the stack.
     body = captured.json()
     image = fetch_image(body)
-    note(
-        f"the image the captured body points at: {image.get('bytes', 0)} bytes"
-        if image["retrieved"]
-        else f"the image could not be retrieved: {image['why']}"
-    )
+    if image["retrieved"]:
+        note(f"the image the captured body points at: {image['bytes']} bytes")
+    else:
+        note(f"the image could not be retrieved: {image['why']}")
     found = differences(expected, body)
     return {
         "verdict": DIFFERS if found else AGREES,
