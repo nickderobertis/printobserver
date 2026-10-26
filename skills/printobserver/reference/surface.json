@@ -155,6 +155,7 @@
           "field": "kinds",
           "located": "query",
           "option": "--kinds",
+          "repeated": true,
           "required": false,
           "supply": "value"
         },
@@ -162,6 +163,7 @@
           "field": "exclude_kinds",
           "located": "query",
           "option": "--exclude-kinds",
+          "repeated": true,
           "required": false,
           "supply": "value"
         },
@@ -324,6 +326,7 @@
           "field": "kinds",
           "located": "query",
           "option": "--kinds",
+          "repeated": true,
           "required": false,
           "supply": "value"
         },
@@ -1226,6 +1229,7 @@
           "field": "kind",
           "located": "query",
           "option": "--kind",
+          "repeated": true,
           "required": false,
           "supply": "value"
         },
@@ -1233,6 +1237,7 @@
           "field": "exclude_kind",
           "located": "query",
           "option": "--exclude-kind",
+          "repeated": true,
           "required": false,
           "supply": "value"
         },
@@ -1240,6 +1245,7 @@
           "field": "sample",
           "located": "query",
           "option": "--sample",
+          "repeated": true,
           "required": false,
           "supply": "value"
         },

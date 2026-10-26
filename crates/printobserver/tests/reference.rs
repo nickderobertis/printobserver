@@ -53,7 +53,7 @@ fn command_entry(command: &Command) -> Value {
         .iter()
         .flat_map(|field| {
             field.forms.iter().map(move |form| {
-                json!({
+                let mut entry = json!({
                     "option": form.option,
                     "field": field.parameter.name,
                     "required": field.required() && form.supply == Supply::Value,
@@ -62,7 +62,13 @@ fn command_entry(command: &Command) -> Value {
                         Supply::File => "file",
                     },
                     "located": located(field.parameter.located),
-                })
+                });
+                // Carried only by an option that may be given more than once,
+                // so an entry that may not reads as it always did.
+                if field.parameter.repeated {
+                    entry["repeated"] = Value::Bool(true);
+                }
+                entry
             })
         })
         .chain(command.flags.iter().map(|flag| {
