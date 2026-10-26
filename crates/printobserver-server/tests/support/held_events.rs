@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use printobserver_core::ImageRecord;
 use printobserver_core::store::{
     AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
-    StoreError, Stores,
+    StoreError, StoredQuery, StoredSignal, Stores,
 };
 use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes};
 use tokio::sync::Notify;
@@ -134,6 +134,21 @@ impl EventStore for HeldEvents {
         page_size: u32,
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
         self.events.audit_page(print_id, after, page_size)
+    }
+
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        self.events.stored_after(query)
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        self.events.newest_stored()
+    }
+
+    fn on_stored(&self, signal: StoredSignal) {
+        self.events.on_stored(signal);
     }
 }
 

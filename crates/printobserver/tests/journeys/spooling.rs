@@ -397,3 +397,255 @@ pub fn the_listing_and_the_start_say_what_each_spool_holds(world: &World) {
 
 /// How long a start in the world these journeys run in waits for an analysis.
 pub const ANALYSIS_WAIT_S: u64 = 1;
+
+/// Run one statement on the database the running supervisor holds, over a
+/// connection of the store's own, as a second writer would.
+fn in_the_database(world: &World, statement: &str) {
+    let path = world
+        .root
+        .path()
+        .join("state")
+        .join(printobserver_store_sqlite::DATABASE_FILE_NAME);
+    printobserver_store_sqlite::connect(&path)
+        .expect("the database opens")
+        .execute_batch(statement)
+        .unwrap_or_else(|error| panic!("`{statement}` was refused: {error}"));
+}
+
+/// Run one command the ledger refuses, and answer the tagged cause of its
+/// refusal: exited `rejected`, with a `message` beside the cause.
+fn cause_of(world: &World, asked: &[&str]) -> Value {
+    let mut given = asked.to_vec();
+    given.push("--json");
+    let ran = changed(world, &given);
+    assert_eq!(
+        ran.code,
+        Some(i32::from(Exit::Rejected.status())),
+        "{asked:?} was not refused: {}",
+        ran.said()
+    );
+    let answer: Value = printobserver_types::serde_json::from_str(&ran.out)
+        .unwrap_or_else(|error| panic!("{asked:?} answered {error}: {}", ran.out));
+    let refused = answer
+        .pointer("/decision/rejected/spool_refused")
+        .unwrap_or_else(|| panic!("{asked:?} was refused other than by the ledger: {answer}"));
+    assert!(
+        refused["message"]
+            .as_str()
+            .is_some_and(|message| !message.is_empty()),
+        "{asked:?}'s refusal carries no message: {answer}"
+    );
+    refused["cause"].clone()
+}
+
+/// What an automation that never reads a refusal's message asks next, from
+/// the cause alone: the scale reading it could not use given as the figure
+/// instead, and a spool nothing registered replaced by the first one listed.
+fn next_after(world: &World, cause: &Value, figure_g: &str) -> Vec<String> {
+    let named = |field: &str| cause[field].as_str().unwrap_or_default().to_owned();
+    match cause["cause"].as_str() {
+        Some("tare_required") => [
+            "adjust-spool",
+            "--spool-id",
+            &named("spool_id"),
+            "--remaining-g",
+            figure_g,
+        ]
+        .map(str::to_owned)
+        .to_vec(),
+        Some("unknown_spool") => {
+            let first = running::read(world, &["spools"])["spools"][0]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            ["load-spool", "--spool-id", &first, "--tool", "1"]
+                .map(str::to_owned)
+                .to_vec()
+        }
+        other => panic!("no next request is chosen for {other:?}"),
+    }
+}
+
+/// Every refusal the ledger makes is answered through this program with its
+/// tagged cause and the fields that cause names — an unknown or retired spool,
+/// nothing to confirm, a tool the printer cannot have, a spool on no tool, a
+/// missing tare or density, an impossible figure, a missing or conflicting
+/// field, and a write the ledger itself refused — and an automation acting on
+/// the cause alone, never the message, makes the next request that succeeds.
+pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
+    let (unknown, loaded, shelved) = lifecycle_refusals(world);
+    figure_and_field_refusals(world, &loaded);
+    ledger_refusal(world, &loaded);
+    acting_on_the_cause_alone(world, &unknown, &shelved);
+}
+
+/// The refusals a spool's place in its lifecycle earns: an unknown or retired
+/// spool, nothing to confirm, a tool the printer cannot have, a spool on no
+/// tool and a missing tare. Answers the unknown id, a spool loaded on tool 0
+/// and a shelved spool with no tare, for the refusals that follow.
+fn lifecycle_refusals(world: &World) -> (String, String, String) {
+    let unknown = printobserver_types::EventId::new().to_string();
+    assert_eq!(
+        cause_of(
+            world,
+            &["load-spool", "--spool-id", &unknown, "--tool", "0"]
+        ),
+        json!({ "cause": "unknown_spool", "spool_id": unknown })
+    );
+    let retired = registered(world, "PLA used up", &[]);
+    done(world, &["retire-spool", "--spool-id", &retired]);
+    assert_eq!(
+        cause_of(
+            world,
+            &["load-spool", "--spool-id", &retired, "--tool", "0"]
+        ),
+        json!({ "cause": "retired_spool", "spool_id": retired })
+    );
+    let loaded = registered(world, "PLA on tool 0", &["--tare-g", "250"]);
+    done(world, &["load-spool", "--spool-id", &loaded, "--tool", "0"]);
+    assert_eq!(
+        cause_of(world, &["load-spool", "--spool-id", &loaded, "--tool", "0"]),
+        json!({ "cause": "nothing_to_confirm", "tool": 0 })
+    );
+    assert_eq!(
+        cause_of(
+            world,
+            &["load-spool", "--spool-id", &loaded, "--tool", "-1"]
+        ),
+        json!({ "cause": "unknown_tool", "tool": -1 })
+    );
+    let shelved = registered(world, "PLA untared", &[]);
+    assert_eq!(
+        cause_of(world, &["unload-spool", "--spool-id", &shelved]),
+        json!({ "cause": "not_loaded", "spool_id": shelved })
+    );
+    assert_eq!(
+        cause_of(
+            world,
+            &["adjust-spool", "--spool-id", &shelved, "--gross-g", "900"]
+        ),
+        json!({ "cause": "tare_required", "spool_id": shelved })
+    );
+    (unknown, loaded, shelved)
+}
+
+/// The refusals of what a request says rather than of the spool it names: a
+/// missing density, an impossible figure, and a missing or conflicting field.
+fn figure_and_field_refusals(world: &World, loaded: &str) {
+    let register = |also: &[&str]| {
+        let mut asked = vec!["register-spool"];
+        asked.extend_from_slice(also);
+        cause_of(world, &asked)
+    };
+    assert_eq!(
+        register(&[
+            "--name",
+            "Exotic",
+            "--material",
+            "PEEK",
+            "--initial-g",
+            "500"
+        ]),
+        json!({ "cause": "density_required", "material": "PEEK" })
+    );
+    assert_eq!(
+        register(&["--name", "Empty", "--material", "PLA", "--initial-g", "0"]),
+        json!({ "cause": "invalid_adjustment_figure", "field": "initial_g", "value": 0.0 })
+    );
+    for (option, figure, field, value) in [
+        ("--diameter-mm", "0", "diameter_mm", 0.0),
+        ("--density-g-cm3", "-1", "density_g_cm3", -1.0),
+        ("--tare-g", "-5", "tare_g", -5.0),
+    ] {
+        assert_eq!(
+            register(&[
+                "--name",
+                "Odd",
+                "--material",
+                "PLA",
+                "--initial-g",
+                "1000",
+                option,
+                figure
+            ]),
+            json!({ "cause": "invalid_adjustment_figure", "field": field, "value": value }),
+            "{option} {figure}"
+        );
+    }
+    assert_eq!(
+        register(&["--name", "Bare", "--material", " ", "--initial-g", "1000"]),
+        json!({ "cause": "missing_field", "field": "material" })
+    );
+    assert_eq!(
+        cause_of(
+            world,
+            &["adjust-spool", "--spool-id", loaded, "--gross-g", "-10"]
+        ),
+        json!({ "cause": "invalid_adjustment_figure", "field": "gross_g", "value": -10.0 })
+    );
+    assert_eq!(
+        register(&["--name", " ", "--material", "PLA", "--initial-g", "1000"]),
+        json!({ "cause": "missing_field", "field": "name" })
+    );
+    assert_eq!(
+        cause_of(world, &["adjust-spool", "--spool-id", loaded]),
+        json!({ "cause": "missing_field", "field": "remaining_g" })
+    );
+    assert_eq!(
+        cause_of(
+            world,
+            &[
+                "adjust-spool",
+                "--spool-id",
+                loaded,
+                "--remaining-g",
+                "10",
+                "--gross-g",
+                "300",
+            ]
+        ),
+        json!({ "cause": "conflicting_fields", "fields": ["remaining_g", "gross_g"] })
+    );
+}
+
+/// A write the ledger itself refused is answered as that, naming no storage
+/// constraint, and leaves the spool where it was.
+fn ledger_refusal(world: &World, loaded: &str) {
+    // The ledger refusing a write is the database refusing it: a rule put on
+    // the spools table from outside, as a second writer racing this one would
+    // leave the table, is one the store meets mid-write.
+    in_the_database(
+        world,
+        "CREATE TRIGGER a_journey_refuses_every_spool_write BEFORE UPDATE ON spools \
+         BEGIN SELECT RAISE(ABORT, 'spools.loaded_on_tool'); END",
+    );
+    let raced = cause_of(world, &["unload-spool", "--spool-id", loaded]);
+    in_the_database(world, "DROP TRIGGER a_journey_refuses_every_spool_write");
+    assert_eq!(raced, json!({ "cause": "ledger_refused" }));
+    assert_eq!(
+        running::read(world, &["spool", "--spool-id", loaded])["spool"]["lifecycle"],
+        json!({ "state": "loaded", "tool": 0 }),
+        "a refused write moved the spool"
+    );
+}
+
+/// An automation reading only the cause makes the next request that succeeds.
+fn acting_on_the_cause_alone(world: &World, unknown: &str, shelved: &str) {
+    for (asked, figure) in [
+        (
+            vec!["adjust-spool", "--spool-id", shelved, "--gross-g", "900"],
+            "650",
+        ),
+        (vec!["load-spool", "--spool-id", unknown, "--tool", "1"], ""),
+    ] {
+        let cause = cause_of(world, &asked);
+        let next = next_after(world, &cause, figure);
+        let next: Vec<&str> = next.iter().map(String::as_str).collect();
+        done(world, &next);
+    }
+    assert_eq!(
+        running::read(world, &["spool", "--spool-id", shelved])["spool"]["remaining_g"],
+        json!(650.0),
+        "the automation's next request did not correct the spool"
+    );
+}

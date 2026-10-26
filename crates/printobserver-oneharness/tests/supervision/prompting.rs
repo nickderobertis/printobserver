@@ -12,7 +12,7 @@ use printobserver_oneharness::{
     SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
-use printobserver_types::{PrintId, serde_json};
+use printobserver_types::{PrintId, PrinterState, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
@@ -114,7 +114,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         // event its print's previous turn never took; the others knew nothing.
         if index == 0 {
             request.situation = TurnSituation {
-                printer_state: Some("paused".to_owned()),
+                printer_state: Some(PrinterState::Paused),
                 detector_warned: Some(false),
                 detector_paused_the_print: Some(true),
                 arrived_while_busy: vec![event(print_id, unreadable("an earlier alert"))],

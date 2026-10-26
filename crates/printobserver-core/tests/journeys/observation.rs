@@ -122,7 +122,7 @@ fn a_running_job_nobody_opened_is_adopted_and_observed() {
     );
     assert_eq!(turn.situation.detector_warned, None);
     assert_eq!(turn.situation.detector_paused_the_print, None);
-    assert_eq!(turn.situation.printer_state.as_deref(), Some("printing"));
+    assert_eq!(turn.situation.printer_state, Some(PrinterState::Printing));
 }
 
 /// Where the printer's job is known, only the print it is is observed: an open

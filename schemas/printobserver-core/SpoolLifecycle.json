@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Registered, and loaded on no tool.",
+      "properties": {
+        "state": {
+          "const": "shelved",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Loaded on one tool.",
+      "properties": {
+        "state": {
+          "const": "loaded",
+          "type": "string"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "state",
+        "tool"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Retired: it takes no further command, and is on no tool.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was retired."
+        },
+        "state": {
+          "const": "retired",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "at"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SpoolLifecycle"
+}

@@ -75,6 +75,25 @@ fn an_instant_is_the_utc_instant_it_was_built_from() {
     );
 }
 
+/// The latest instant is the last one written as a string that reads back:
+/// one nanosecond later is written as nothing an instant parses from.
+#[test]
+fn the_latest_instant_is_the_last_one_that_reads_back() {
+    let latest = Timestamp::latest();
+    assert_eq!(latest.to_string(), "9999-12-31T23:59:59.999999999Z");
+    assert_eq!(Timestamp::from_str(&latest.to_string()), Ok(latest));
+
+    let beyond: Timestamp = (*latest.as_utc() + chrono::TimeDelta::nanoseconds(1)).into();
+    assert!(
+        Timestamp::from_str(&beyond.to_string()).is_err(),
+        "{beyond} read back, so a later instant than the latest is writable"
+    );
+    assert!(
+        beyond.to_string() < latest.to_string(),
+        "{beyond} orders after {latest} as text"
+    );
+}
+
 /// A refused instant says what was wrong with it.
 #[test]
 fn a_refused_instant_says_what_was_wrong() {

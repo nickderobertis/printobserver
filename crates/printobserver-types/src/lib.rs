@@ -5,8 +5,9 @@
 //! error, the UUID-v7 rule, and the three identifiers the envelope reaches),
 //! the representation rules ([`Timestamp`], [`RawBytes`], [`FileName`],
 //! [`Reported`] and [`Range`]), the event log's envelope ([`event`], with the
-//! image handle [`ImageRef`] it carries), and the schema toolkit
-//! ([`contract`]). It holds data and total functions over that data, never
+//! image handle [`ImageRef`] it carries), the state a printer reports
+//! ([`PrinterState`], which two ports speak and neither may take from the
+//! other), and the schema toolkit ([`contract`]). It holds data and total functions over that data, never
 //! I/O.
 //!
 //! A type belongs here only if adding or changing one domain's concept does
@@ -72,6 +73,7 @@ pub mod event;
 pub mod file_name;
 pub mod ids;
 pub mod image;
+pub mod printer_state;
 pub mod raw;
 pub mod reported;
 pub mod timestamp;
@@ -86,6 +88,7 @@ pub use event::{
 pub use file_name::{FileName, FileNameError, FileNameRefusal, SEPARATORS};
 pub use ids::{EventId, IdentifierError, ImageId, PrintId};
 pub use image::ImageRef;
+pub use printer_state::PrinterState;
 pub use raw::RawBytes;
 pub use reported::{Range, Reported};
 pub use timestamp::{Timestamp, TimestampError};

@@ -17,8 +17,8 @@ use printobserver_core::store::{
     SpoolMutation, SpoolWrite, StoreError, TimelineQuery,
 };
 use printobserver_core::{
-    Actor, ChargeKey, FilePosition, PendingCharge, PrintOutcome, PrintRecord, SpoolId, SpoolRecord,
-    SpoolTrust, UnverifiedMark,
+    Actor, ChargeKey, FilePosition, PendingCharge, PrintOutcome, PrintRecord, SpoolId,
+    SpoolLifecycle, SpoolRecord, SpoolTrust, UnverifiedMark,
 };
 use printobserver_types::serde_json::Value;
 use printobserver_types::{EventBody, EventId, EventRecord, EventSource, PrintId, Timestamp};
@@ -63,7 +63,7 @@ impl FakeLedger {
         let mut found: Vec<SpoolRecord> = self
             .spools
             .iter()
-            .filter(|spool| include_retired || spool.retired_at.is_none())
+            .filter(|spool| include_retired || !spool.is_retired())
             .cloned()
             .collect();
         found.sort_by_key(|spool| core::cmp::Reverse((spool.registered_at, spool.id)));
@@ -75,10 +75,10 @@ impl FakeLedger {
         let mut found: Vec<SpoolRecord> = self
             .spools
             .iter()
-            .filter(|spool| spool.retired_at.is_none() && spool.loaded_on_tool.is_some())
+            .filter(|spool| spool.loaded_tool().is_some())
             .cloned()
             .collect();
-        found.sort_by_key(|spool| spool.loaded_on_tool);
+        found.sort_by_key(SpoolRecord::loaded_tool);
         found
     }
 
@@ -87,15 +87,16 @@ impl FakeLedger {
         let mut found: Vec<ChargeRecord> = self
             .charges
             .iter()
-            .filter(|charge| charge.print_id == Some(print_id))
+            .filter(|charge| charge.identity.print_id() == Some(print_id))
             .cloned()
             .collect();
         found.sort_by_cached_key(|charge| {
-            let segment = match &charge.key {
+            let key = charge.identity.key();
+            let segment = match key {
                 ChargeKey::Print { segment, .. } => *segment,
                 ChargeKey::Unobserved { .. } => 0,
             };
-            (charge.tool, segment, charge.at, charge.key.canonical())
+            (charge.identity.tool(), segment, charge.at, key.canonical())
         });
         found
     }
@@ -105,10 +106,15 @@ impl FakeLedger {
         let mut found: Vec<PendingCharge> = self
             .pending
             .iter()
-            .filter(|pending| tool.is_none_or(|tool| pending.tool == tool))
+            .filter(|pending| tool.is_none_or(|tool| pending.tool() == tool))
             .cloned()
             .collect();
-        found.sort_by_cached_key(|pending| (pending.pended_at, pending.charge_key.canonical()));
+        found.sort_by_cached_key(|pending| {
+            (
+                pending.pended_at,
+                pending.charge_key.charge_key().canonical(),
+            )
+        });
         found
     }
 
@@ -204,12 +210,12 @@ impl<'a> LedgerWrite<'a> {
 
     /// Write one spool, refusing it onto a tool another unretired spool holds.
     fn put_spool(&mut self, spool: SpoolRecord) -> Result<(), StoreError> {
-        if let Some(tool) = spool.loaded_on_tool.filter(|_| spool.retired_at.is_none())
-            && self.ledger.spools.iter().any(|held| {
-                held.id != spool.id
-                    && held.retired_at.is_none()
-                    && held.loaded_on_tool == Some(tool)
-            })
+        if let Some(tool) = spool.loaded_tool()
+            && self
+                .ledger
+                .spools
+                .iter()
+                .any(|held| held.id != spool.id && held.loaded_tool() == Some(tool))
         {
             return Err(refused("spools.loaded_on_tool"));
         }
@@ -250,11 +256,14 @@ impl<'a> LedgerWrite<'a> {
             initial_g: spool.initial_g,
             remaining_g: spool.remaining_g,
             tare_g: spool.tare_g,
-            loaded_on_tool: spool.loaded_on_tool,
+            lifecycle: spool
+                .loaded_on_tool
+                .map_or(SpoolLifecycle::Shelved, |tool| SpoolLifecycle::Loaded {
+                    tool,
+                }),
             trust: spool.trust,
             registered_at: spool.registered_at,
             updated_at: spool.registered_at,
-            retired_at: None,
         };
         self.put_spool(record.clone())?;
         let body = EventBody::of(&SpoolRegisteredPayload {
@@ -277,46 +286,42 @@ impl<'a> LedgerWrite<'a> {
 
     /// One charge, under the replay rules.
     fn charge(&mut self, charge: Charge, written: &mut Written) -> Result<(), StoreError> {
-        let key = charge.key.canonical();
+        let key = charge.identity.key().canonical();
         if let Some(existing) = self
             .ledger
             .charges
             .iter()
-            .find(|held| held.key.canonical() == key)
+            .find(|held| held.identity.key().canonical() == key)
             .cloned()
         {
-            if let Some(spool_id) = existing.spool_id {
+            if let Some(spool_id) = existing.spool_id() {
                 written.name(spool_id);
             }
             written.charges.push(existing);
             return Ok(());
         }
-        if let Some(spool_id) = charge.spool_id {
-            let mut spool = self.require_spool(spool_id)?;
-            written.name(spool_id);
-            if let Some(grams) = charge.grams {
-                spool.remaining_g -= grams;
-            }
+        if let Some(charged) = &charge.charged {
+            let mut spool = self.require_spool(charged.spool_id)?;
+            written.name(charged.spool_id);
+            spool.remaining_g -= charged.grams;
             spool.updated_at = spool.updated_at.max(charge.at);
             self.put_spool(spool)?;
         }
         self.ledger
             .pending
-            .retain(|pending| pending.charge_key.canonical() != key);
+            .retain(|pending| pending.charge_key.charge_key().canonical() != key);
         let event = self.append(charge.event)?;
         if charge
-            .print_id
+            .identity
+            .print_id()
             .is_some_and(|id| !self.prints.contains_key(&id))
         {
             return Err(refused("charges.print_id"));
         }
         let record = ChargeRecord {
-            key: charge.key,
-            tool: charge.tool,
-            print_id: charge.print_id,
-            spool_id: charge.spool_id,
+            identity: charge.identity,
             length_mm: charge.length_mm,
-            grams: charge.grams,
+            charged: charge.charged,
             at: charge.at,
             event_id: event.id,
         };
@@ -328,22 +333,22 @@ impl<'a> LedgerWrite<'a> {
 
     /// One pend, under the replay rules.
     fn pend(&mut self, pend: Pend, written: &mut Written) -> Result<(), StoreError> {
-        let key = pend.pending.charge_key.canonical();
+        let key = pend.pending.charge_key.charge_key().canonical();
         let held = self
             .ledger
             .pending
             .iter()
-            .any(|pending| pending.charge_key.canonical() == key)
+            .any(|pending| pending.charge_key.charge_key().canonical() == key)
             || self
                 .ledger
                 .charges
                 .iter()
-                .any(|charge| charge.key.canonical() == key);
+                .any(|charge| charge.identity.key().canonical() == key);
         if held {
             return Ok(());
         }
         let event = self.append(pend.event)?;
-        if !self.prints.contains_key(&pend.pending.print_id) {
+        if !self.prints.contains_key(&pend.pending.print_id()) {
             return Err(refused("pending_charges.print_id"));
         }
         self.ledger.pending.push(pend.pending.clone());
@@ -352,25 +357,31 @@ impl<'a> LedgerWrite<'a> {
         Ok(())
     }
 
-    /// One mutation, with its event when it writes one.
+    /// One mutation, with the event its change carries when it carries one.
     fn mutate(&mut self, mutation: SpoolMutation, written: &mut Written) -> Result<(), StoreError> {
         let spool = self.require_spool(mutation.spool_id)?;
         written.name(spool.id);
         let marking = matches!(mutation.change, SpoolChange::MarkUnverified { .. });
-        if spool.retired_at.is_some() && !marking {
+        if spool.is_retired() && !marking {
             return Err(refused("spools.retired_at"));
         }
         let mut next = spool.clone();
         next.updated_at = mutation.at;
-        let mut writes_event = true;
-        match mutation.change {
-            SpoolChange::Load { tool } => next.loaded_on_tool = Some(tool),
-            SpoolChange::Unload => next.loaded_on_tool = None,
-            SpoolChange::SetRemaining { remaining_g } => {
+        let event = match mutation.change {
+            SpoolChange::Load { tool, event } => {
+                next.lifecycle = SpoolLifecycle::Loaded { tool };
+                Some(event)
+            }
+            SpoolChange::Unload { event } => {
+                next.lifecycle = SpoolLifecycle::Shelved;
+                Some(event)
+            }
+            SpoolChange::SetRemaining { remaining_g, event } => {
                 next.remaining_g = remaining_g;
                 next.trust = SpoolTrust::Verified;
+                Some(event)
             }
-            SpoolChange::MarkUnverified { reason } => {
+            SpoolChange::MarkUnverified { reason, event } => {
                 next.trust = spool.trust.clone().marked(UnverifiedMark {
                     reason,
                     since: mutation.at,
@@ -378,6 +389,7 @@ impl<'a> LedgerWrite<'a> {
                 if next.trust == spool.trust {
                     return Ok(());
                 }
+                Some(event)
             }
             SpoolChange::ClearMarks { kinds } => {
                 let (trust, removed) = spool.trust.clone().cleared(&kinds);
@@ -385,13 +397,16 @@ impl<'a> LedgerWrite<'a> {
                     return Ok(());
                 }
                 next.trust = trust;
-                writes_event = false;
+                None
             }
-            SpoolChange::Retire => next.retired_at = Some(mutation.at),
-        }
+            SpoolChange::Retire { event } => {
+                next.lifecycle = SpoolLifecycle::Retired { at: mutation.at };
+                Some(event)
+            }
+        };
         self.put_spool(next)?;
-        if writes_event {
-            written.events.push(self.append(mutation.event)?);
+        if let Some(event) = event {
+            written.events.push(self.append(event)?);
         }
         Ok(())
     }

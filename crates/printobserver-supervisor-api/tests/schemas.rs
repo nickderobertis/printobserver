@@ -142,7 +142,7 @@ fn turn_situation_carries_exactly_the_stated_fields() {
         field("arrived_while_busy", "array:EventRecord", false),
         field("detector_paused_the_print", "boolean", false),
         field("detector_warned", "boolean", false),
-        field("printer_state", "string", false),
+        field("printer_state", "PrinterState", false),
     ];
     assert_eq!(wire_fields(&schema_of::<TurnSituation>()), expected);
 }

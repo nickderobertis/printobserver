@@ -14,7 +14,7 @@ printobserver-server.workspace = true
 printobserver-types.workspace = true
 # `sync` for the one channel the Windows service's stop control is handed to
 # the server through.
-tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 # The one document format this program's own configuration is written in. It
 # reads a file the operator wrote, which may be the server's own.
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }

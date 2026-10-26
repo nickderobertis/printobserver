@@ -68,6 +68,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "context",
     "image",
     "history",
+    "events",
     "manifest_get",
     "look",
     "manifest_set",
@@ -365,6 +366,33 @@ class ChargePendedPayload(TypedDict):
     pending: PendingCharge
 
 
+class ChargedFilament(TypedDict):
+    """`ChargedFilament`, as the contracts declare it.
+
+    What a charge took from a spool, and the whole calculation behind it.
+
+    Present or absent as one: a debit names its spool exactly when it
+    carries
+    the grams, the figures they were worked out with, and the spool's
+    figure
+    either side of them.
+    """
+
+    # The density the grams were worked out with, in grams per cubic
+    # centimetre.
+    density_g_cm3: float
+    # The diameter the grams were worked out with, in millimetres.
+    diameter_mm: float
+    # What the length weighs, in grams; what is subtracted from the spool.
+    grams: float
+    # The spool's figure after it, in grams.
+    remaining_after_g: float
+    # The spool's figure before the charge, in grams.
+    remaining_before_g: float
+    # The spool charged.
+    spool_id: SpoolId
+
+
 class ClearedMark(TypedDict):
     """`ClearedMark`, as the contracts declare it.
 
@@ -477,6 +505,27 @@ class EventRecord(TypedDict):
 EventSource: TypeAlias = str
 
 
+class EventsAnswer(TypedDict):
+    """`EventsAnswer`, as the contracts declare it.
+
+    What an events read answers: the events stored after its cursor that
+    pass
+    its filters, oldest first, and where the next read picks up.
+    """
+
+    # The last event this read examined, whether or not it passed the
+    # filters, given as `after` to read on from it; null when the log held
+    # nothing to start after. Always sent, as null when it is that.
+    cursor: EventId | None
+    # The events, oldest first in the order they were stored, each exactly
+    # as
+    # a history read serves it.
+    events: list[EventRecord]
+    # The watched print's end as stored, whatever the filters said, and null
+    # while it is open. Absent from a read that names no print.
+    print_ended: NotRequired[PrintEnded | None]
+
+
 class ExecutionOutcomeFailedPayload(TypedDict):
     """What the `failed` arm of `ExecutionOutcome` carries.
 
@@ -506,12 +555,10 @@ class FilamentChangeSignalledPayload(TypedDict):
     A filament change was signalled during a print.
     """
 
-    # The position the spool was charged up to, when one was known.
-    position: NotRequired[FilePosition | None]
-    # Whether that position was read when the signal was handled, rather
-    # than
-    # being the last one recorded; never with no position at all.
-    position_read_at_signal: bool
+    # The position the spool was charged up to, and how fresh it is, when
+    # one
+    # was known; absent, there is no position and so no claim about one.
+    position: NotRequired[SignalPosition | None]
     # The kind of the alert that carried the signal.
     source_kind: EventKind
     # The spool that was on it, when one was tracked.
@@ -531,14 +578,10 @@ class FilamentConsumedPayload(TypedDict):
     analysed_length_mm: NotRequired[float | None]
     # The durable identity of this debit.
     charge_key: ChargeKey
-    # The density the grams were worked out with, in grams per cubic
-    # centimetre.
-    density_g_cm3: NotRequired[float | None]
-    # The diameter the grams were worked out with, in millimetres.
-    diameter_mm: NotRequired[float | None]
-    # What that length weighs, in grams, when a spool gave its diameter and
-    # density.
-    grams: NotRequired[float | None]
+    # The spool charged and the whole calculation of what it was charged;
+    # absent when nothing was tracked on the tool, and the filament was
+    # recorded uncharged.
+    charged: NotRequired[ChargedFilament | None]
     # How much was fed, in millimetres.
     length_mm: float
     # How the length was worked out.
@@ -547,15 +590,7 @@ class FilamentConsumedPayload(TypedDict):
     note: NotRequired[str | None]
     # How far into the file the charge runs, when that was read.
     position: NotRequired[FilePosition | None]
-    # The spool's figure after it, in grams.
-    remaining_after_g: NotRequired[float | None]
-    # The spool's figure before the charge, in grams.
-    remaining_before_g: NotRequired[float | None]
-    # The spool charged; absent when nothing was tracked on the tool, and
-    # the
-    # filament was recorded uncharged.
-    spool_id: NotRequired[SpoolId | None]
-    # The tool that fed it.
+    # The tool that fed it, as its key names it.
     tool: int
 
 
@@ -1051,8 +1086,9 @@ class PendingCharge(TypedDict):
     # The file's analysed length for the tool, in millimetres, when it had
     # one.
     analysed_length_mm: NotRequired[float | None]
-    # The key of the print segment the filament was fed in.
-    charge_key: ChargeKey
+    # The print segment the filament was fed in, which names the print and
+    # the tool that fed it.
+    charge_key: PrintSegmentKey
     # How much was fed, in millimetres.
     length_mm: float
     # How that length was worked out.
@@ -1063,10 +1099,6 @@ class PendingCharge(TypedDict):
     pended_at: Timestamp
     # How far into the file the segment ran, when that was read.
     position: NotRequired[FilePosition | None]
-    # The print it was fed in.
-    print_id: PrintId
-    # The tool that fed it.
-    tool: int
 
 
 class PendingTaken(TypedDict):
@@ -1166,6 +1198,10 @@ PortFailureSite: TypeAlias = Literal[
 ]
 
 
+# How fresh the position a filament change charged up to is.
+PositionFreshness: TypeAlias = Literal["read_at_signal", "last_recorded"]
+
+
 class Preflight(TypedDict):
     """`Preflight`, as the contracts declare it.
 
@@ -1205,30 +1241,203 @@ class PreflightCheckedPayload(TypedDict):
     preflight: Preflight
 
 
+class PreflightNeed(TypedDict):
+    """`PreflightNeed`, as the contracts declare it.
+
+    What a print needs from one spool, in grams: both figures a comparison
+    with what the spool holds uses, or neither.
+    """
+
+    # The margin asked for beyond that.
+    buffer_g: float
+    # What the print needs from the spool, by the file's analysis and the
+    # spool's own diameter and density.
+    required_g: float
+
+
+class PreflightObjectionInsufficient(TypedDict):
+    """The `insufficient` arm of `PreflightObjection`.
+
+    The spool holds less than the print needs and its buffer.
+    """
+
+    verdict: Literal["insufficient"]
+    # The spool's marks at the check, oldest first, so a spool both short
+    # and unverified says both.
+    marks: NotRequired[list[UnverifiedMark]]
+    # What the print needs from it.
+    need: PreflightNeed
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+class PreflightObjectionUnverifiedSpool(TypedDict):
+    """The `unverified_spool` arm of `PreflightObjection`.
+
+    The spool's figure is in doubt.
+    """
+
+    verdict: Literal["unverified_spool"]
+    # Every reason the spool's figure is in doubt, oldest first; never
+    # empty.
+    marks: list[UnverifiedMark]
+    # What the print needs from it, when the file's analysis says.
+    need: NotRequired[PreflightNeed | None]
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+class PreflightObjectionNoAnalysis(TypedDict):
+    """The `no_analysis` arm of `PreflightObjection`.
+
+    The file has no analysis, so what the spool must hold is unknown.
+    """
+
+    verdict: Literal["no_analysis"]
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+# What a check that refuses a start found for one tool.
+PreflightObjection: TypeAlias = (
+    PreflightObjectionInsufficient
+    | PreflightObjectionUnverifiedSpool
+    | PreflightObjectionNoAnalysis
+)
+
+
+class PreflightSpool(TypedDict):
+    """`PreflightSpool`, as the contracts declare it.
+
+    The spool a check judged, named beside its identifier so a reader need
+    not look it up.
+    """
+
+    # The spool's identifier.
+    id: SpoolId
+    # The spool's name.
+    name: str
+
+
 class PreflightTool(TypedDict):
     """`PreflightTool`, as the contracts declare it.
 
     What a filament check found for one tool.
     """
 
-    # The margin asked for beyond that, in grams.
-    buffer_g: NotRequired[float | None]
-    # The loaded spool's marks at the check, oldest first, whatever the
-    # verdict, so a spool both short and unverified says both.
-    marks: NotRequired[list[UnverifiedMark]]
-    # What the spool holds, in grams.
-    remaining_g: NotRequired[float | None]
-    # What the print needs from it, in grams, when the file's analysis says.
-    required_g: NotRequired[float | None]
-    # The spool loaded on it, when one is.
-    spool_id: NotRequired[SpoolId | None]
-    # That spool's name, beside its identifier, so a reader need not look it
-    # up.
-    spool_name: NotRequired[str | None]
+    # What the check found for it, with the evidence that finding rests on.
+    result: PreflightToolResult
     # The tool, in the printer's own numbering.
     tool: int
-    # What the check found for this tool.
-    verdict: PreflightVerdict
+
+
+class PreflightToolResultPassed(TypedDict):
+    """The `passed` arm of `PreflightToolResult`.
+
+    The spool holds what the print needs and its buffer, and its figure is
+    not in doubt.
+    """
+
+    verdict: Literal["passed"]
+    # What the print needs from it.
+    need: PreflightNeed
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+class PreflightToolResultInsufficient(TypedDict):
+    """The `insufficient` arm of `PreflightToolResult`.
+
+    The spool holds less than the print needs and its buffer.
+    """
+
+    verdict: Literal["insufficient"]
+    # The spool's marks at the check, oldest first, so a spool both short
+    # and unverified says both.
+    marks: NotRequired[list[UnverifiedMark]]
+    # What the print needs from it.
+    need: PreflightNeed
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+class PreflightToolResultUnverifiedSpool(TypedDict):
+    """The `unverified_spool` arm of `PreflightToolResult`.
+
+    The spool's figure is in doubt.
+    """
+
+    verdict: Literal["unverified_spool"]
+    # Every reason the spool's figure is in doubt, oldest first; never
+    # empty.
+    marks: list[UnverifiedMark]
+    # What the print needs from it, when the file's analysis says.
+    need: NotRequired[PreflightNeed | None]
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+class PreflightToolResultNoAnalysis(TypedDict):
+    """The `no_analysis` arm of `PreflightToolResult`.
+
+    `OctoPrint`'s analysis of the file had not appeared, so what the spool
+    must hold is unknown.
+    """
+
+    verdict: Literal["no_analysis"]
+    # What the spool holds, in grams.
+    remaining_g: float
+    # The spool.
+    spool: PreflightSpool
+
+
+class PreflightToolResultOverridden(TypedDict):
+    """The `overridden` arm of `PreflightToolResult`.
+
+    The start went ahead despite this objection, because an operator said
+    so.
+    """
+
+    verdict: Literal["overridden"]
+    # What the check objected to.
+    objection: PreflightObjection
+
+
+class PreflightToolResultWarned(TypedDict):
+    """The `warned` arm of `PreflightToolResult`.
+
+    The check is set to warn, and let the start go ahead despite this
+    objection.
+    """
+
+    verdict: Literal["warned"]
+    # What the check objected to.
+    objection: PreflightObjection
+
+
+# What a filament check found for one tool, tagged by its verdict, each
+# verdict carrying exactly the evidence it rests on.
+PreflightToolResult: TypeAlias = (
+    PreflightToolResultPassed
+    | PreflightToolResultInsufficient
+    | PreflightToolResultUnverifiedSpool
+    | PreflightToolResultNoAnalysis
+    | PreflightToolResultOverridden
+    | PreflightToolResultWarned
+    | Literal["unchecked"]
+)
 
 
 # What a filament check found, for one tool or for a whole print.
@@ -1440,6 +1649,20 @@ class PrintContext(TypedDict):
     recent_events: list[EventRecord]
 
 
+class PrintEnded(TypedDict):
+    """`PrintEnded`, as the contracts declare it.
+
+    One print's end, as its `print_ended` event stored it.
+    """
+
+    # The `print_ended` event.
+    event_id: EventId
+    # How the print ended.
+    outcome: PrintOutcome
+    # When that event was received.
+    received_at: Timestamp
+
+
 class PrintEndedPayload(TypedDict):
     """`PrintEndedPayload`, as the contracts declare it.
 
@@ -1513,6 +1736,23 @@ class PrintRecord(TypedDict):
     provider_print_id: NotRequired[int | None]
     # The state the print is in.
     state: PrinterState
+
+
+class PrintSegmentKey(TypedDict):
+    """`PrintSegmentKey`, as the contracts declare it.
+
+    One segment of a print this system watched, on one tool: the key of a
+    `ChargeKey::Print` debit, and the only key filament held pending can
+    be
+    under.
+    """
+
+    # The print.
+    print_id: PrintId
+    # Which segment, numbered as `ChargeKey::Print` numbers it.
+    segment: int
+    # The tool, in the printer's own numbering.
+    tool: int
 
 
 class PrintStartedPayload(TypedDict):
@@ -1820,8 +2060,10 @@ class RejectionReasonSpoolRefusedPayload(TypedDict):
     A spool command could not be carried out.
     """
 
-    # Why, in a sentence naming what to do instead.
-    detail: str
+    # Why, in a form a client acts on without reading `message`.
+    cause: SpoolRefusalCause
+    # Why, in a sentence naming what to do instead, for a person.
+    message: str
 
 
 class RejectionReasonSpoolRefused(TypedDict):
@@ -1862,6 +2104,19 @@ class Reported(TypedDict):
     out_of_range: bool
     # One shape of the contracts, which say nothing more about it.
     value: float
+
+
+class SignalPosition(TypedDict):
+    """`SignalPosition`, as the contracts declare it.
+
+    The position a filament change charged up to, and how fresh it is.
+    """
+
+    # Whether it was read when the signal was handled, or is the last one
+    # recorded before it.
+    freshness: PositionFreshness
+    # The position.
+    position: FilePosition
 
 
 class SpoolAdjustedPayload(TypedDict):
@@ -2049,8 +2304,50 @@ class SpoolCommandRejectedPayload(TypedDict):
     decision: PolicyDecision
 
 
+# One field of a spool command, as the command names it.
+SpoolField: TypeAlias = Literal[
+    "name",
+    "material",
+    "diameter_mm",
+    "density_g_cm3",
+    "initial_g",
+    "remaining_g",
+    "tare_g",
+    "gross_g",
+]
+
+
 # A lowercase hyphenated version 7 UUID identifying one registered spool.
 SpoolId: TypeAlias = str
+
+
+class SpoolLifecycleLoaded(TypedDict):
+    """The `loaded` arm of `SpoolLifecycle`.
+
+    Loaded on one tool.
+    """
+
+    state: Literal["loaded"]
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+class SpoolLifecycleRetired(TypedDict):
+    """The `retired` arm of `SpoolLifecycle`.
+
+    Retired: it takes no further command, and is on no tool.
+    """
+
+    state: Literal["retired"]
+    # When it was retired.
+    at: Timestamp
+
+
+# Where a spool is in its life.
+#
+# One state rather than a loaded tool beside a retirement instant, because a
+# retired spool is on no tool: retiring a loaded spool takes it off.
+SpoolLifecycle: TypeAlias = SpoolLifecycleLoaded | SpoolLifecycleRetired | Literal["shelved"]
 
 
 class SpoolLoadedPayload(TypedDict):
@@ -2092,8 +2389,9 @@ class SpoolRecord(TypedDict):
     id: SpoolId
     # The net filament on the spool when it was full, in grams; above zero.
     initial_g: float
-    # The tool the spool is loaded on, when it is loaded.
-    loaded_on_tool: NotRequired[int | None]
+    # Where the spool is in its life: on the shelf, loaded on a tool, or
+    # retired — and never both of the last two.
+    lifecycle: SpoolLifecycle
     # The material, as given and trimmed, such as `PLA`; never empty.
     material: str
     # The operator's own label for the spool; never empty.
@@ -2105,14 +2403,151 @@ class SpoolRecord(TypedDict):
     # Always the initial figure less every charge plus every correction. A
     # charge is never refused or clamped, so this may go below zero.
     remaining_g: float
-    # When the spool was retired, if it has been.
-    retired_at: NotRequired[Timestamp | None]
     # The empty spool's own weight, in grams, when the operator gave it.
     tare_g: NotRequired[float | None]
     # How far the remaining figure can be trusted.
     trust: SpoolTrust
     # When anything about the spool last changed.
     updated_at: Timestamp
+
+
+class SpoolRefusalCauseUnknownSpool(TypedDict):
+    """The `unknown_spool` arm of `SpoolRefusalCause`.
+
+    No spool was ever registered under this identifier.
+    """
+
+    cause: Literal["unknown_spool"]
+    # The identifier the command named.
+    spool_id: SpoolId
+
+
+class SpoolRefusalCauseRetiredSpool(TypedDict):
+    """The `retired_spool` arm of `SpoolRefusalCause`.
+
+    The spool is retired, and takes no further command.
+    """
+
+    cause: Literal["retired_spool"]
+    # The retired spool.
+    spool_id: SpoolId
+
+
+class SpoolRefusalCauseNothingToConfirm(TypedDict):
+    """The `nothing_to_confirm` arm of `SpoolRefusalCause`.
+
+    The spool named is already on the tool, and nothing is pending there
+    or
+    marked on it for a load to confirm.
+    """
+
+    cause: Literal["nothing_to_confirm"]
+    # The tool the spool is already on.
+    tool: int
+
+
+class SpoolRefusalCauseInvalidAdjustmentFigure(TypedDict):
+    """The `invalid_adjustment_figure` arm of `SpoolRefusalCause`.
+
+    A figure the command gave is not one the field can hold: not a number,
+    or out of the field's range.
+    """
+
+    cause: Literal["invalid_adjustment_figure"]
+    # The field the figure was given for.
+    field: SpoolField
+    # The figure given; always a number, because a figure JSON cannot
+    # carry is refused as it would be written rather than written as
+    # `null`.
+    value: float
+
+
+class SpoolRefusalCauseTareRequired(TypedDict):
+    """The `tare_required` arm of `SpoolRefusalCause`.
+
+    A scale reading was given for a spool with no tare, so it cannot be
+    turned into a figure.
+    """
+
+    cause: Literal["tare_required"]
+    # The spool with no tare.
+    spool_id: SpoolId
+
+
+class SpoolRefusalCauseDensityRequired(TypedDict):
+    """The `density_required` arm of `SpoolRefusalCause`.
+
+    The material has no known density, so the command needs one.
+    """
+
+    cause: Literal["density_required"]
+    # The material, as given and trimmed.
+    material: str
+    # The spool, when the command was about one that exists; absent for
+    # a registration.
+    spool_id: NotRequired[SpoolId | None]
+
+
+class SpoolRefusalCauseMissingField(TypedDict):
+    """The `missing_field` arm of `SpoolRefusalCause`.
+
+    A field the command needs was empty or absent.
+    """
+
+    cause: Literal["missing_field"]
+    # The field; for a correction naming neither figure, `remaining_g`,
+    # which `gross_g` may stand in for.
+    field: SpoolField
+
+
+class SpoolRefusalCauseConflictingFields(TypedDict):
+    """The `conflicting_fields` arm of `SpoolRefusalCause`.
+
+    The command gave fields only one of which it may carry.
+    """
+
+    cause: Literal["conflicting_fields"]
+    # Every field given that conflicts, in the command's own order.
+    fields: list[SpoolField]
+
+
+class SpoolRefusalCauseUnknownTool(TypedDict):
+    """The `unknown_tool` arm of `SpoolRefusalCause`.
+
+    The command named a tool the printer cannot have.
+    """
+
+    cause: Literal["unknown_tool"]
+    # The tool named.
+    tool: int
+
+
+class SpoolRefusalCauseNotLoaded(TypedDict):
+    """The `not_loaded` arm of `SpoolRefusalCause`.
+
+    The spool is loaded on no tool, so there is nothing to unload.
+    """
+
+    cause: Literal["not_loaded"]
+    # The spool.
+    spool_id: SpoolId
+
+
+# Why the spool ledger refused a command, each cause carrying what a client
+# needs to choose the next valid request.
+SpoolRefusalCause: TypeAlias = (
+    SpoolRefusalCauseUnknownSpool
+    | SpoolRefusalCauseRetiredSpool
+    | SpoolRefusalCauseNothingToConfirm
+    | SpoolRefusalCauseInvalidAdjustmentFigure
+    | SpoolRefusalCauseTareRequired
+    | SpoolRefusalCauseDensityRequired
+    | SpoolRefusalCauseMissingField
+    | SpoolRefusalCauseConflictingFields
+    | SpoolRefusalCauseUnknownTool
+    | SpoolRefusalCauseNotLoaded
+    | Literal["ledger_refused"]
+)
 
 
 class SpoolRegisteredPayload(TypedDict):
@@ -2828,6 +3263,48 @@ class GeneratedClient(GeneratedSurface):
         # type `operations.json` declares for it, so this cast names that type.
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(HistoryAnswer, answered)
+
+    def events(
+        self,
+        after: str | None = None,
+        print_id: PrintId | None = None,
+        kinds: list[str] | None = None,
+        exclude_kinds: list[str] | None = None,
+        wait_s: int | None = None,
+        limit: int | None = None,
+    ) -> EventsAnswer:
+        """Call `events` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/events"
+        asked: list[tuple[str, str]] = []
+        if after is not None:
+            asked.append(("after", str(after)))
+        if print_id is not None:
+            asked.append(("print_id", str(print_id)))
+        if kinds is not None:
+            for value in kinds:
+                asked.append(("kinds", str(value)))
+        if exclude_kinds is not None:
+            for value in exclude_kinds:
+                asked.append(("exclude_kinds", str(value)))
+        if wait_s is not None:
+            asked.append(("wait_s", str(wait_s)))
+        if limit is not None:
+            asked.append(("limit", str(limit)))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(EventsAnswer, answered)
 
     def manifest_get(self, print_id: PrintId) -> ManifestAnswer:
         """Call `manifest_get` on the configured supervisor.

@@ -30,7 +30,8 @@ use std::process::Command as Process;
 
 use printobserver::surface::{
     CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, Field, Form, GLOBAL_OPTIONS,
-    LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, command_for, option_for, surface,
+    LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, WATCH_COMMAND, command_for, option_for,
+    surface,
 };
 use printobserver_server::operations::{ActionKind, PrintAction, SpoolCommand};
 use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, ValueKind};
@@ -38,19 +39,20 @@ use printobserver_types::serde_json::Value;
 
 /// The reads this program has beside the two vocabularies, as its own tasks
 /// name them: the prints listing, status, context, the image read and
-/// materialization, history, a fresh look, the manifest's read and write, and
-/// the spool ledger's four reads — the spools, one spool, the printer's own
-/// history and a filament check.
+/// materialization, history, the event log after a cursor, a fresh look, the
+/// manifest's read and write, and the spool ledger's four reads — the spools,
+/// one spool, the printer's own history and a filament check.
 ///
 /// Written out here rather than read from the server, and then held against
 /// what the server declares — so a server that grew another read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 12] = [
+const READS: [&str; 13] = [
     "prints",
     "status",
     "context",
     "image",
     "history",
+    "events",
     "look",
     "manifest_get",
     "manifest_set",
@@ -58,6 +60,19 @@ const READS: [&str; 12] = [
     "spool",
     "printer_history",
     "preflight",
+];
+
+/// Every option `watch` takes of its own, as its task fixes them: the print
+/// and the cursor its read names, a kind to pass and a kind never to pass, the
+/// sampling, the heartbeat and how long to retry an unreachable server.
+const WATCH_OPTIONS: [&str; 7] = [
+    "--print-id",
+    "--after",
+    "--kind",
+    "--exclude-kind",
+    "--sample",
+    "--heartbeat-s",
+    "--reconnect-s",
 ];
 
 /// The four options every command takes beside its own values, as this
@@ -291,6 +306,7 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
     wanted.insert("sign-in".to_owned());
     wanted.insert("credential issue".to_owned());
     wanted.insert("credential verifier".to_owned());
+    wanted.insert(WATCH_COMMAND.to_owned());
     let present: BTreeSet<String> = surface.iter().map(|command| command.name.clone()).collect();
     found.extend(
         wanted
@@ -347,6 +363,10 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
             }));
             continue;
         }
+        if command.name == WATCH_COMMAND {
+            found.extend(watch_findings(&taken));
+            continue;
+        }
         let Some(operation) = command.operation.as_ref() else {
             found.push(format!("`{}` names no operation", command.name));
             continue;
@@ -379,6 +399,17 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
         }));
     }
     found
+}
+
+/// What `watch` takes that its task does not fix, or lacks of what it does.
+fn watch_findings(taken: &BTreeSet<String>) -> Vec<String> {
+    let fixed: BTreeSet<String> = WATCH_OPTIONS.iter().map(|one| (*one).to_owned()).collect();
+    taken
+        .symmetric_difference(&fixed)
+        .map(|option| {
+            format!("`{WATCH_COMMAND}` takes `{option}` or lacks it, and its own options are fixed")
+        })
+        .collect()
 }
 
 /// The surface this program ships satisfies its own closed-surface rule.
@@ -611,8 +642,9 @@ fn the_parser_accepts_exactly_the_options_the_surface_declares() {
 }
 
 /// Every command of the surface names an operation, except the one that runs
-/// the server, the one that signs its harness in, and the two that issue and
-/// verify the operator's credential.
+/// the server, the one that signs its harness in, the two that issue and
+/// verify the operator's credential, and the one that composes the events read
+/// into a stream.
 #[test]
 fn only_the_commands_that_run_the_server_sign_it_in_and_handle_credentials_name_no_operation() {
     let without: Vec<String> = surface()
@@ -628,6 +660,7 @@ fn only_the_commands_that_run_the_server_sign_it_in_and_handle_credentials_name_
             SIGN_IN_COMMAND.to_owned(),
             CREDENTIAL_ISSUE_COMMAND.to_owned(),
             CREDENTIAL_VERIFIER_COMMAND.to_owned(),
+            WATCH_COMMAND.to_owned(),
         ]
     );
 }

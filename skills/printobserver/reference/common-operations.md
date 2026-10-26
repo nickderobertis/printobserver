@@ -234,6 +234,27 @@ events.0.received_at: TIMESTAMP
 events.0.source: system
 ```
 
+### events
+
+The event log in the order it was stored, after a cursor: this print's events
+and the printer's, filtered by kind, waiting up to `--wait-s` seconds for one to
+pass. Give the answer's `cursor` as `--after` to read on; `print_ended` is the
+print's end, whatever the filters say, and `null` while it runs. `watch` follows
+this read as one stream until the print ends.
+
+```console
+$ printobserver events --print-id PRINT_ID --kinds startup_reconciliation --limit 1
+cursor: ID
+events.0.id: ID
+events.0.kind: startup_reconciliation
+events.0.payload.outcome: print_adopted
+events.0.payload.print_id: PRINT_ID
+events.0.print_id: PRINT_ID
+events.0.received_at: TIMESTAMP
+events.0.source: system
+print_ended: null
+```
+
 ### manifest_get
 
 The manifest the print is running under, and every range it asked wider than the
@@ -601,6 +622,7 @@ events.0.payload.spool.density_g_cm3: 1.24
 events.0.payload.spool.diameter_mm: 1.75
 events.0.payload.spool.id: ID
 events.0.payload.spool.initial_g: 1000.0
+events.0.payload.spool.lifecycle.state: shelved
 events.0.payload.spool.material: PLA
 events.0.payload.spool.name: PLA white
 events.0.payload.spool.registered_at: TIMESTAMP
@@ -615,6 +637,7 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: ID
 spool.initial_g: 1000.0
+spool.lifecycle.state: shelved
 spool.material: PLA
 spool.name: PLA white
 spool.registered_at: TIMESTAMP
@@ -646,7 +669,8 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: SPOOL_ID
 spool.initial_g: 1000.0
-spool.loaded_on_tool: 0
+spool.lifecycle.state: loaded
+spool.lifecycle.tool: 0
 spool.material: PLA
 spool.name: PLA black
 spool.registered_at: TIMESTAMP
@@ -671,7 +695,8 @@ spools.0.density_g_cm3: 1.24
 spools.0.diameter_mm: 1.75
 spools.0.id: ID
 spools.0.initial_g: 1000.0
-spools.0.loaded_on_tool: 0
+spools.0.lifecycle.state: loaded
+spools.0.lifecycle.tool: 0
 spools.0.material: PLA
 spools.0.name: PLA black
 spools.0.registered_at: TIMESTAMP
@@ -684,6 +709,7 @@ spools.1.density_g_cm3: 1.24
 spools.1.diameter_mm: 1.75
 spools.1.id: ID
 spools.1.initial_g: 1000.0
+spools.1.lifecycle.state: shelved
 spools.1.material: PLA
 spools.1.name: PLA white
 spools.1.registered_at: TIMESTAMP
@@ -717,6 +743,7 @@ recent.1.payload.spool.density_g_cm3: 1.24
 recent.1.payload.spool.diameter_mm: 1.75
 recent.1.payload.spool.id: SPOOL_ID
 recent.1.payload.spool.initial_g: 1000.0
+recent.1.payload.spool.lifecycle.state: shelved
 recent.1.payload.spool.material: PLA
 recent.1.payload.spool.name: PLA black
 recent.1.payload.spool.registered_at: TIMESTAMP
@@ -730,7 +757,8 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: SPOOL_ID
 spool.initial_g: 1000.0
-spool.loaded_on_tool: 0
+spool.lifecycle.state: loaded
+spool.lifecycle.tool: 0
 spool.material: PLA
 spool.name: PLA black
 spool.registered_at: TIMESTAMP
@@ -765,7 +793,8 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: SPOOL_ID
 spool.initial_g: 1000.0
-spool.loaded_on_tool: 0
+spool.lifecycle.state: loaded
+spool.lifecycle.tool: 0
 spool.material: PLA
 spool.name: PLA black
 spool.registered_at: TIMESTAMP
@@ -789,11 +818,11 @@ anyway.
 $ printobserver preflight --file-name FILE
 preflight.checked_at: TIMESTAMP
 preflight.file_name: FILE
-preflight.tools.0.remaining_g: 650.0
-preflight.tools.0.spool_id: ID
-preflight.tools.0.spool_name: PLA black
+preflight.tools.0.result.remaining_g: 650.0
+preflight.tools.0.result.spool.id: ID
+preflight.tools.0.result.spool.name: PLA black
+preflight.tools.0.result.verdict: no_analysis
 preflight.tools.0.tool: 0
-preflight.tools.0.verdict: no_analysis
 preflight.verdict: no_analysis
 ```
 
@@ -817,6 +846,7 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: SPOOL_ID
 spool.initial_g: 1000.0
+spool.lifecycle.state: shelved
 spool.material: PLA
 spool.name: PLA black
 spool.registered_at: TIMESTAMP
@@ -849,8 +879,10 @@ next: ID
 
 ### retire_spool
 
-Retire a spool that is used up. It takes no further command: a load of it
-afterwards is the ledger's refusal, which says why, and exits with the rejected
+Retire a spool that is used up. A retired spool is on no tool: retiring one
+that is loaded takes it off, charging it first for what it fed of a print
+running now. It takes no further command: a load of it afterwards is the
+ledger's refusal, whose cause is `retired_spool`, and exits with the rejected
 status.
 
 ```console
@@ -869,16 +901,19 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: SPOOL_ID
 spool.initial_g: 1000.0
+spool.lifecycle.at: TIMESTAMP
+spool.lifecycle.state: retired
 spool.material: PLA
 spool.name: PLA black
 spool.registered_at: TIMESTAMP
 spool.remaining_g: 650.0
-spool.retired_at: TIMESTAMP
 spool.tare_g: 250.0
 spool.trust.state: verified
 spool.updated_at: TIMESTAMP
 $ printobserver load-spool --spool-id SPOOL_ID --tool 0 --actor operator --reason "putting it back on"
-decision.rejected.spool_refused.detail: spool PLA black is retired and takes no further command; register a new spool instead
+decision.rejected.spool_refused.cause.cause: retired_spool
+decision.rejected.spool_refused.cause.spool_id: SPOOL_ID
+decision.rejected.spool_refused.message: spool PLA black is retired and takes no further command; register a new spool instead
 events.0.id: ID
 events.0.kind: spool_command_rejected
 events.0.payload.command.actor: operator
@@ -886,7 +921,9 @@ events.0.payload.command.command: load_spool
 events.0.payload.command.reason: putting it back on
 events.0.payload.command.spool_id: SPOOL_ID
 events.0.payload.command.tool: 0
-events.0.payload.decision.rejected.spool_refused.detail: spool PLA black is retired and takes no further command; register a new spool instead
+events.0.payload.decision.rejected.spool_refused.cause.cause: retired_spool
+events.0.payload.decision.rejected.spool_refused.cause.spool_id: SPOOL_ID
+events.0.payload.decision.rejected.spool_refused.message: spool PLA black is retired and takes no further command; register a new spool instead
 events.0.print_id: PRINT_ID
 events.0.received_at: TIMESTAMP
 events.0.source: operator
@@ -894,15 +931,16 @@ spool.density_g_cm3: 1.24
 spool.diameter_mm: 1.75
 spool.id: SPOOL_ID
 spool.initial_g: 1000.0
+spool.lifecycle.at: TIMESTAMP
+spool.lifecycle.state: retired
 spool.material: PLA
 spool.name: PLA black
 spool.registered_at: TIMESTAMP
 spool.remaining_g: 650.0
-spool.retired_at: TIMESTAMP
 spool.tare_g: 250.0
 spool.trust.state: verified
 spool.updated_at: TIMESTAMP
-the supervisor's spool ledger refused this command: spool_refused. spool PLA black is retired and takes no further command; register a new spool instead
+the supervisor's spool ledger refused this command: spool_refused (retired_spool). spool PLA black is retired and takes no further command; register a new spool instead
 $ echo $?
 5
 ```

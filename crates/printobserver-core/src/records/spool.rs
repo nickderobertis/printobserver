@@ -42,20 +42,59 @@ pub struct SpoolRecord {
     /// The empty spool's own weight, in grams, when the operator gave it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tare_g: Option<f64>,
-    /// The tool the spool is loaded on, when it is loaded.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub loaded_on_tool: Option<i64>,
+    /// Where the spool is in its life: on the shelf, loaded on a tool, or
+    /// retired — and never both of the last two.
+    pub lifecycle: SpoolLifecycle,
     /// How far the remaining figure can be trusted.
     pub trust: SpoolTrust,
     /// When the spool was registered.
     pub registered_at: Timestamp,
     /// When anything about the spool last changed.
     pub updated_at: Timestamp,
-    /// When the spool was retired, if it has been.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retired_at: Option<Timestamp>,
+}
+
+impl SpoolRecord {
+    /// The tool the spool is loaded on, when it is loaded.
+    #[must_use]
+    pub const fn loaded_tool(&self) -> Option<i64> {
+        match self.lifecycle {
+            SpoolLifecycle::Loaded { tool } => Some(tool),
+            SpoolLifecycle::Shelved | SpoolLifecycle::Retired { .. } => None,
+        }
+    }
+
+    /// Whether the spool has been retired.
+    #[must_use]
+    pub const fn is_retired(&self) -> bool {
+        matches!(self.lifecycle, SpoolLifecycle::Retired { .. })
+    }
+}
+
+/// Where a spool is in its life.
+///
+/// One state rather than a loaded tool beside a retirement instant, because a
+/// retired spool is on no tool: retiring a loaded spool takes it off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    tag = "state",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum SpoolLifecycle {
+    /// Registered, and loaded on no tool.
+    Shelved,
+    /// Loaded on one tool.
+    Loaded {
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// Retired: it takes no further command, and is on no tool.
+    Retired {
+        /// When it was retired.
+        at: Timestamp,
+    },
 }
 
 /// How far a spool's remaining figure can be trusted.
@@ -74,26 +113,74 @@ pub enum SpoolTrust {
     Unverified {
         /// Every reason the figure is in doubt, oldest first, at most one per
         /// distinct reason; never empty.
-        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-        #[serde(deserialize_with = "at_least_one_mark")]
-        #[schemars(length(min = 1))]
-        marks: Vec<UnverifiedMark>,
+        marks: UnverifiedMarks,
     },
 }
 
-/// Read an unverified spool's marks, refusing none: a spool holding no mark is
-/// `verified`, and one written as unverified with nothing to say why is not a
-/// state this ledger has.
-fn at_least_one_mark<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<UnverifiedMark>, D::Error> {
-    let marks = Vec::<UnverifiedMark>::deserialize(deserializer)?;
-    if marks.is_empty() {
-        return Err(D::Error::custom(
-            "an unverified spool carries at least one mark; one with none is verified",
-        ));
+/// Every reason a spool's figure is in doubt, oldest first: never empty.
+///
+/// A spool holding no mark is verified, and one called unverified with nothing
+/// to say why is not a state this ledger has, so this list cannot be built
+/// empty and an empty one is refused on read. On the wire it is an array the
+/// schema bounds with `minItems: 1`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(crate = "printobserver_types::serde", transparent)]
+pub struct UnverifiedMarks(Vec<UnverifiedMark>);
+
+impl UnverifiedMarks {
+    /// These marks, when there is at least one.
+    #[must_use]
+    pub fn new(marks: Vec<UnverifiedMark>) -> Option<Self> {
+        (!marks.is_empty()).then_some(Self(marks))
     }
-    Ok(marks)
+
+    /// The mark held longest.
+    #[must_use]
+    pub fn oldest(&self) -> &UnverifiedMark {
+        &self.0[0]
+    }
+
+    /// Every mark, oldest first, as a list of its own.
+    #[must_use]
+    pub fn into_vec(self) -> Vec<UnverifiedMark> {
+        self.0
+    }
+}
+
+impl core::ops::Deref for UnverifiedMarks {
+    type Target = [UnverifiedMark];
+
+    fn deref(&self) -> &[UnverifiedMark] {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for UnverifiedMarks {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(Vec::<UnverifiedMark>::deserialize(deserializer)?).ok_or_else(|| {
+            D::Error::custom(
+                "an unverified spool carries at least one mark; one with none is verified",
+            )
+        })
+    }
+}
+
+impl JsonSchema for UnverifiedMarks {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "UnverifiedMarks".into()
+    }
+
+    fn json_schema(
+        generator: &mut printobserver_types::schemars::SchemaGenerator,
+    ) -> printobserver_types::schemars::Schema {
+        let mut schema = Vec::<UnverifiedMark>::json_schema(generator);
+        schema.insert("minItems".to_owned(), 1.into());
+        schema
+    }
 }
 
 /// One reason a spool's figure is in doubt, and since when.

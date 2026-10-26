@@ -82,6 +82,53 @@ def doc_lines(text: str, indent: str = "") -> list[str]:
     return [f"{indent}///{f' {line}' if line else ''}" for line in wrapped(text, indent)]
 
 
+#: The directive above a generated list the schema bounds as never empty.
+NON_EMPTY_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
+
+PRESENT = "present"
+"""The deserializer of a field whose null is sent: whatever was sent, as sent."""
+
+
+def _present() -> list[str]:
+    """The one helper a field whose null is sent deserializes through.
+
+    Serde reads a null into the outer option as absence; this reads it into the
+    inner one, since a field present at all is what calls it.
+    """
+    return [
+        *doc_lines("A field that was sent, null included, as what was sent."),
+        f"fn {PRESENT}<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>",
+        "where",
+        "    D: serde::Deserializer<'de>,",
+        "    T: Deserialize<'de>,",
+        "{",
+        "    T::deserialize(deserializer).map(Some)",
+        "}",
+        "",
+    ]
+
+
+def _declared_fields(declaration: Declaration) -> tuple[Field, ...]:
+    """Every field one declaration carries, its arms' own included."""
+    match declaration:
+        case Struct(_, _, fields, variants, _):
+            return fields + tuple(entry for variant in variants for entry in variant.fields)
+        case Union(_, _, variants, _):
+            return tuple(entry for variant in variants for entry in variant.fields)
+        case _:
+            return ()
+
+
+def _sends_null(contract: Contract) -> bool:
+    """Whether any field the contract declares is one whose null is sent."""
+    return any(
+        entry.null_is_sent
+        for declaration in contract.declarations
+        for entry in _declared_fields(declaration)
+    )
+
+
 def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
     """One property of an object, as a Rust field.
 
@@ -90,7 +137,19 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
     """
     declared = type_name(entry.type)
     lines = doc_lines(entry.doc, indent)
-    if not entry.required:
+    if isinstance(entry.type, ListOf) and entry.type.non_empty:
+        # A list the schema says is never empty is a `Vec` here, which can be:
+        # the generator has no non-empty type yet, and suppressions.toml says so.
+        lines.append(f"{indent}{NON_EMPTY_DIRECTIVE}")
+    if not entry.required and entry.null_is_sent:
+        # Absent, null and a value are three answers here, so the outer option
+        # is whether it was sent and the inner whether it was null.
+        declared = f"Option<{declared}>"
+        lines.append(
+            f'{indent}#[serde(default, skip_serializing_if = "Option::is_none", '
+            f'deserialize_with = "{PRESENT}")]'
+        )
+    elif not entry.required:
         # A value the answer did not carry has to come back out absent rather
         # than as null: a client whose re-serialization differs from what the
         # server sent is one that changed the answer on the way through.
@@ -407,6 +466,8 @@ def emit(contract: Contract) -> str:
         "];",
         "",
     ]
+    if _sends_null(contract):
+        lines.extend(_present())
     for declaration in contract.declarations:
         lines.extend(_declaration(declaration))
         lines.append("")

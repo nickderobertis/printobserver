@@ -247,8 +247,12 @@ fn spool_note(refusal: &Value) -> Option<String> {
                 .map_or_else(|| "?".to_owned(), ToString::to_string),
         ),
         "spool_refused" => format!(
-            "the supervisor's spool ledger refused this command: spool_refused. {}",
-            text("detail")
+            "the supervisor's spool ledger refused this command: spool_refused ({}). {}",
+            said.get("cause")
+                .and_then(|cause| cause.get("cause"))
+                .and_then(Value::as_str)
+                .unwrap_or("?"),
+            text("message")
         ),
         _ => return None,
     })

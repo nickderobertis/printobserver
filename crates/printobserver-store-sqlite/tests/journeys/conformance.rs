@@ -6,13 +6,14 @@
 //! about the tier that will run against the real one. A check in
 //! `port_coverage.rs` refuses a port method this suite does not exercise.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::block_on::block_on;
 use crate::fixture::{Fixture, Store, draft, instant, manifest, request, session};
 use printobserver_core::store::{
-    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome, StoreError,
+    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome,
+    StoreError, StoredQuery,
 };
 use printobserver_core::{
     ExecutionOutcome, InterventionId, InterventionOutcome, PolicyDecision, PrintRecord,
@@ -20,7 +21,7 @@ use printobserver_core::{
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_store_sqlite::settle_label;
-use printobserver_types::{EventKind, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
+use printobserver_types::{EventId, EventKind, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
 
 /// A history read of one print, with no filter and no limit.
 fn whole_window(print_id: PrintId) -> HistoryQuery {
@@ -818,6 +819,50 @@ fn an_action_binds_to_the_open_print_and_is_refused_without_one() {
     }
 }
 
+/// Every active intervention is due by the latest instant a timestamp writes,
+/// however far off its own deadline is, and a settled one is not.
+#[test]
+fn every_active_intervention_is_due_by_the_latest_instant() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        // The print the actions are requested against.
+        let _ = print_and_event(&port);
+        let mut opened = Vec::new();
+        for expires_at in ["2026-03-01T12:30:00Z", "9999-12-31T23:59:59Z"] {
+            let action = block_on(port.record_action(
+                request(instant("2026-03-01T12:00:00Z")),
+                PolicyDecision::Accepted,
+            ))
+            .expect("an action is recorded");
+            opened.push(
+                block_on(port.open_intervention(
+                    action.id,
+                    Adjustable::BedTarget,
+                    None,
+                    60.0,
+                    instant("2026-03-01T12:00:00Z"),
+                    instant(expires_at),
+                ))
+                .expect("an intervention opens"),
+            );
+        }
+
+        assert_eq!(
+            block_on(port.due_interventions(Timestamp::latest())),
+            Ok(opened.clone()),
+            "{name}: an active intervention was not due by the latest instant"
+        );
+        block_on(port.settle_intervention(opened[0].id, InterventionOutcome::Restored))
+            .expect("the first settles");
+        assert_eq!(
+            block_on(port.due_interventions(Timestamp::latest())),
+            Ok(vec![opened[1].clone()]),
+            "{name}: a settled intervention was still due"
+        );
+    }
+}
+
 /// One intervention, and the interventions due to expire at an instant.
 #[test]
 fn an_intervention_settles_once_and_says_which_outcome_won() {
@@ -1059,6 +1104,169 @@ fn events_a_fraction_of_a_second_apart_answer_newest_first() {
                 .map(|at| instant(at))
                 .collect::<Vec<_>>(),
             "{name}: an instant did not read back as the instant it was written"
+        );
+    }
+}
+
+/// A read of the log in stored order from a point.
+fn stored(after: Option<EventId>, print_id: Option<PrintId>, limit: Option<u32>) -> StoredQuery {
+    StoredQuery {
+        after,
+        print_id,
+        limit,
+    }
+}
+
+/// The identifiers of some events, in the order given.
+fn ids(events: &[EventRecord]) -> Vec<EventId> {
+    events.iter().map(|event| event.id).collect()
+}
+
+/// The log is read in the order it was stored, whatever instant each event
+/// carries: an event that arrives late, stamped before the one stored ahead of
+/// it, is still read after it.
+#[test]
+fn the_log_is_read_in_the_order_it_was_stored_whatever_each_event_carries() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let watched = block_on(port.open_print(None, None)).expect("a print opens");
+        let other = block_on(port.open_print(None, None)).expect("another print opens");
+        let append = |print_id: Option<PrintId>, kind: &str, at: &str| {
+            block_on(port.append_event(draft(print_id, kind, instant(at))))
+                .expect("an event is appended")
+        };
+        let before = append(None, "malformed_external_event", "2026-03-01T11:00:00Z");
+        let first = append(
+            Some(watched.id),
+            "supervision_session_opened",
+            "2026-03-01T12:00:00Z",
+        );
+        let elsewhere = append(
+            Some(other.id),
+            "supervision_session_opened",
+            "2026-03-01T12:01:00Z",
+        );
+        let printer = append(None, "malformed_external_event", "2026-03-01T12:02:00Z");
+        // Stamped before everything above, and stored after it.
+        let late = append(
+            Some(watched.id),
+            "obico_failure_alert",
+            "2026-03-01T10:00:00Z",
+        );
+
+        assert_eq!(
+            block_on(port.stored_after(stored(None, None, None))).map(|read| ids(&read)),
+            Ok(vec![before.id, first.id, elsewhere.id, printer.id, late.id]),
+            "{name}: the whole log is not in the order it was stored"
+        );
+        assert_eq!(
+            block_on(port.stored_after(stored(None, Some(watched.id), None)))
+                .map(|read| ids(&read)),
+            Ok(vec![first.id, printer.id, late.id]),
+            "{name}: a print's read starts at its first event and carries its own and the \
+             printer's events alone"
+        );
+        assert_eq!(
+            block_on(port.stored_after(stored(Some(first.id), None, Some(2))))
+                .map(|read| ids(&read)),
+            Ok(vec![elsewhere.id, printer.id]),
+            "{name}: a cursor and a limit are not honoured"
+        );
+        assert_eq!(
+            block_on(port.stored_after(stored(Some(late.id), Some(watched.id), None))),
+            Ok(Vec::new()),
+            "{name}: something is read after the newest event"
+        );
+        assert_eq!(
+            block_on(port.newest_stored()),
+            Ok(Some(late.id)),
+            "{name}: the newest event stored is not the last one appended"
+        );
+
+        // A print with no event of its own yet reads from now on.
+        let quiet = block_on(port.open_print(None, None)).expect("a quiet print opens");
+        assert_eq!(
+            block_on(port.stored_after(stored(None, Some(quiet.id), None))),
+            Ok(Vec::new()),
+            "{name}: a print with no event reads what was stored before it"
+        );
+
+        let unknown = EventId::new();
+        assert!(
+            matches!(
+                block_on(port.stored_after(stored(Some(unknown), None, None))),
+                Err(StoreError::NotFound { .. })
+            ),
+            "{name}: a cursor naming no event is not refused as not found"
+        );
+        assert_eq!(
+            block_on(port.stored_after(stored(None, None, Some(MAX_HISTORY_LIMIT + 1)))),
+            Err(StoreError::LimitRefused {
+                limit: MAX_HISTORY_LIMIT,
+                asked_for: MAX_HISTORY_LIMIT + 1,
+            }),
+            "{name}: a limit above the maximum is not refused"
+        );
+    }
+}
+
+/// An empty log has no newest event.
+#[test]
+fn an_empty_log_has_no_newest_event() {
+    for store in Fixture::both() {
+        let name = store.name();
+        assert_eq!(
+            block_on(store.port().newest_stored()),
+            Ok(None),
+            "{name}: an empty log names a newest event"
+        );
+    }
+}
+
+/// Every write that stores an event raises the store's signals once it is
+/// kept — an append and a ledger write alike — and the event is readable by
+/// the time the signal is raised.
+#[test]
+fn every_write_that_stores_an_event_raises_the_signal_once_it_is_kept() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let seen: Arc<Mutex<Vec<Option<EventId>>>> = Arc::default();
+        let reader = Arc::clone(&port);
+        let noted = Arc::clone(&seen);
+        port.on_stored(Arc::new(move || {
+            let newest = block_on(reader.newest_stored()).expect("the log reads");
+            noted.lock().expect("the list holds").push(newest);
+        }));
+
+        let print = block_on(port.open_print(None, None)).expect("a print opens");
+        assert!(
+            seen.lock().expect("the list holds").is_empty(),
+            "{name}: a write that stored no event raised the signal"
+        );
+        let appended = block_on(port.append_event(draft(
+            Some(print.id),
+            "obico_failure_alert",
+            instant("2026-03-01T12:00:00Z"),
+        )))
+        .expect("an event is appended");
+        let spool = crate::ledger_records::register(
+            &port,
+            "shelf PLA",
+            None,
+            800.0,
+            instant("2026-03-01T12:01:00Z"),
+        );
+        let registered = block_on(port.newest_stored())
+            .expect("the log reads")
+            .expect("the registration stored an event");
+
+        assert_ne!(registered, appended.id, "{name}: {spool:?} stored no event");
+        assert_eq!(
+            *seen.lock().expect("the list holds"),
+            vec![Some(appended.id), Some(registered)],
+            "{name}: each write's signal did not read back the event it stored"
         );
     }
 }
