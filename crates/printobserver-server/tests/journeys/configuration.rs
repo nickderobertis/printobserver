@@ -602,14 +602,35 @@ fn only_a_verbatim_drive_path_is_rewritten() {
     }
 }
 
-/// The configuration the PowerShell installer writes, as its committed script
-/// spells it, with the three values that script interpolates given a root of
-/// this journey's own and the two values it leaves for the operator filled in.
-fn the_powershell_installers_configuration(root: &std::path::Path) -> String {
-    let script = std::fs::read_to_string(
+/// The committed PowerShell installer.
+fn the_powershell_installer() -> String {
+    std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/install-service.ps1"),
     )
-    .expect("the committed PowerShell installer reads");
+    .expect("the committed PowerShell installer reads")
+}
+
+/// The line the PowerShell installer writes for the observation interval when
+/// it is given none, as its committed script spells it.
+fn the_powershell_installers_default_interval_line() -> String {
+    let script = the_powershell_installer();
+    let opened = "$Interval = '";
+    let start = script
+        .find(opened)
+        .expect("the installer names its default interval line")
+        + opened.len();
+    let length = script[start..]
+        .find('\'')
+        .expect("the default interval line closes");
+    script[start..start + length].to_owned()
+}
+
+/// The configuration the PowerShell installer writes, as its committed script
+/// spells it, with the values that script interpolates given a root of this
+/// journey's own and the interval line given, and the two values it leaves for
+/// the operator filled in.
+fn the_powershell_installers_configuration(root: &std::path::Path, interval: &str) -> String {
+    let script = the_powershell_installer();
     let opened = "$configuration = @\"\n";
     let start = script
         .find(opened)
@@ -628,6 +649,7 @@ fn the_powershell_installers_configuration(root: &std::path::Path) -> String {
         .replace("$InstalledSkills", &skills.display().to_string())
         .replace("$InstalledSkill", &skill.display().to_string())
         .replace("$InstalledState", &state.display().to_string())
+        .replace("$Interval", interval)
         .replace("api_key = \"\"", "api_key = \"a-provisioned-key\"")
         .replace(
             "shared_secret = \"\"",
@@ -666,6 +688,24 @@ fn with_the_examples_taken_up(configuration: &str) -> String {
     lines.join("\n")
 }
 
+/// The line the PowerShell installer writes for an interval it is given is
+/// the interval the server's own parser reads.
+#[test]
+fn the_powershell_installers_configuration_reads_the_interval_it_was_given() {
+    let root = TempDir::new().expect("a journey's own root");
+    let configuration =
+        the_powershell_installers_configuration(root.path(), "observation_interval_s = 60");
+
+    let read =
+        printobserver_server::ServerConfig::parse(&configuration, &root.path().join("config.toml"))
+            .expect("the installer's configuration reads");
+
+    assert_eq!(
+        read.observation_interval,
+        core::time::Duration::from_secs(60)
+    );
+}
+
 /// The PowerShell installer's configuration is one the server's own parser
 /// reads, before and after its `[camera]` and `[obico]` examples are taken up;
 /// it grants the system `resume`, and its `[safety]` table opens a line of its
@@ -673,7 +713,10 @@ fn with_the_examples_taken_up(configuration: &str) -> String {
 #[test]
 fn the_powershell_installers_configuration_reads_with_and_without_its_examples() {
     let root = TempDir::new().expect("a journey's own root");
-    let configuration = the_powershell_installers_configuration(root.path());
+    let configuration = the_powershell_installers_configuration(
+        root.path(),
+        &the_powershell_installers_default_interval_line(),
+    );
     assert!(
         configuration.lines().any(|line| line == "[safety]"),
         "the [safety] table does not open a line of its own"
@@ -689,6 +732,11 @@ fn the_powershell_installers_configuration_reads_with_and_without_its_examples()
     );
     assert!(as_written.camera_snapshot_url.is_none());
     assert!(as_written.obico_api.is_none());
+    assert_eq!(
+        as_written.observation_interval,
+        core::time::Duration::from_secs(printobserver_server::DEFAULT_OBSERVATION_INTERVAL_S),
+        "the installer's configuration given no interval does not take the default"
+    );
 
     let taken_up = printobserver_server::ServerConfig::parse(
         &with_the_examples_taken_up(&configuration),
