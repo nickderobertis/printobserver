@@ -8,6 +8,7 @@ host whose resolver happens to be quick.
 from __future__ import annotations
 
 import ast
+import os
 import socket
 import threading
 from collections.abc import Iterator
@@ -141,15 +142,21 @@ def test_the_release_stand_in_is_ready_with_every_lookup_refused() -> None:
 def test_a_held_unreachable_address_is_refused_while_listeners_come_and_go() -> None:
     """Refused for as long as it is held, however many ephemeral listeners come and go.
 
-    The held socket is what keeps it so: nothing can bind the port until the
-    block ends.
+    The held socket is what keeps it so: no listener asking for port zero is
+    handed the port — reusing addresses off Windows the way the standard
+    servers do — and
+    nothing binding it without `SO_REUSEADDR` can take it until the block ends.
     """
+    handed: list[int] = []
 
     def churn() -> None:
         for _ in range(2000):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+                if os.name != "nt":
+                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 listener.bind(("127.0.0.1", 0))
                 listener.listen()
+                handed.append(int(listener.getsockname()[1]))
 
     with unreachable() as (host, port):
         binding = threading.Thread(target=churn)
@@ -168,6 +175,8 @@ def test_a_held_unreachable_address_is_refused_while_listeners_come_and_go() -> 
             if not binding.is_alive():
                 break
         binding.join()
+    equal(len(handed), 2000, describing="how many listeners were handed a port")
+    truth(port not in handed, describing="no listener was handed the held port")
 
 
 def _builds_a_standard_server(source: str) -> list[int]:

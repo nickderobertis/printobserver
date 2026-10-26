@@ -22,7 +22,10 @@ another thread, or a client resolving a name beside it, is untouched.
 from __future__ import annotations
 
 import contextlib
+import errno
 import functools
+import itertools
+import os
 import socket
 import socketserver
 import threading
@@ -31,6 +34,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 #: The loopback address every stand-in binds unless it names another.
 LOOPBACK = "127.0.0.1"
+
+#: Where `unreachable` looks for a port off Windows, and across how many: every
+#: port in it lies below each supported host's ephemeral range — Linux's starts
+#: at 32768, Darwin's and Windows' at 49152 — so a listener asking for port zero
+#: is never handed one of them.
+RESERVED_FROM = 20_000
+RESERVED_SPAN = 12_000
+
+_reserved = itertools.count()
 
 #: The `socket` functions that consult a name service, refused while a
 #: stand-in is being built.
@@ -117,15 +129,18 @@ class LoopbackServer(ThreadingHTTPServer):
 def unreachable(host: str = LOOPBACK) -> Iterator[tuple[str, int]]:
     """A loopback address bound and never listened on, for as long as the block runs.
 
-    A connection to it is refused, and while the block runs no other socket
-    can bind the port — on Windows because the port is held exclusively, which
-    a later bind there could otherwise share.
+    A connection to it is refused, and while the block runs no listener asking
+    for port zero is handed the port and nothing binding it without
+    `SO_REUSEADDR` can take it — on Windows because the port is held
+    exclusively, which a later bind there could otherwise share.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as held:
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
         if exclusive is not None:
             held.setsockopt(socket.SOL_SOCKET, exclusive, 1)
-        held.bind((host, 0))
+            held.bind((host, 0))
+        else:
+            _bind_reserved(held, host)
         # Darwin drops SYNs matching an unconnected bound TCP socket. Keep an
         # established peer tuple instead: new callers match no connection and
         # receive a reset, while this socket still reserves the port.
@@ -136,3 +151,28 @@ def unreachable(host: str = LOOPBACK) -> Iterator[tuple[str, int]]:
             peer, _ = listener.accept()
         with peer:
             yield host, int(held.getsockname()[1])
+
+
+def _bind_reserved(held: socket.socket, host: str) -> None:
+    """Bind `held` to the first free port on `host` below every ephemeral range.
+
+    Darwin's bind for a socket setting `SO_REUSEADDR`, as the standard servers
+    do, looks only at unconnected sockets, so it would hand out a port the
+    connected reservation holds. A port below every ephemeral range is never
+    handed out, and binding one without `SO_REUSEADDR` is refused while any
+    socket holds it.
+
+    Raises:
+        OSError: If no port in the range is free, or a bind fails otherwise.
+    """
+    start = os.getpid() * 7919 + next(_reserved) * 131
+    for step in range(RESERVED_SPAN):
+        port = RESERVED_FROM + (start + step) % RESERVED_SPAN
+        try:
+            held.bind((host, port))
+        except OSError as refused:
+            if refused.errno != errno.EADDRINUSE:
+                raise
+        else:
+            return
+    raise OSError(errno.EADDRINUSE, f"no port from {RESERVED_FROM} is free on {host}")

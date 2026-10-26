@@ -6,7 +6,7 @@
 //! `OctoPrint`: nothing here carries an `OctoPrint` path, header or response
 //! shape, because only the adapter crate may construct one.
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use socket2::{Domain, Socket, Type};
 
@@ -33,8 +33,8 @@ pub fn base_url(host: &Host) -> String {
 ///
 /// The port is bound and never listened on, so what a caller meets is a
 /// refused connection rather than a served refusal; and while the socket lives
-/// no other socket can bind the port, however many listeners the suite binds
-/// beside it.
+/// nothing binding without `SO_REUSEADDR` can take the port, and no listener the
+/// suite binds beside it on port zero is handed it.
 pub struct Unreachable {
     /// Held only so the port stays bound.
     _socket: Socket,
@@ -48,9 +48,7 @@ impl Unreachable {
     pub fn held() -> Self {
         let socket =
             Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
-        socket
-            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
-            .expect("a loopback port binds");
+        bind_reserved(&socket, IpAddr::V4(Ipv4Addr::LOCALHOST));
         let address = socket
             .local_addr()
             .expect("the bound address reads")
@@ -77,4 +75,51 @@ impl Unreachable {
     pub fn address(&self) -> SocketAddr {
         self.address
     }
+}
+
+/// Where the reservation looks for a port, and across how many: every port in
+/// it lies below each supported host's ephemeral range — Linux's starts at
+/// 32768, Darwin's and Windows' at 49152 — so a listener asking for port zero
+/// is never handed one of them.
+#[cfg(not(windows))]
+const RESERVED_FROM: u16 = 20_000;
+#[cfg(not(windows))]
+const RESERVED_SPAN: u16 = 12_000;
+
+/// Bind `socket` to a port on `host` no listener asking for port zero can be
+/// handed.
+///
+/// Darwin's bind for a socket setting `SO_REUSEADDR`, as every standard
+/// listener does, looks only at unconnected sockets, so it would hand out a
+/// port the connected reservation holds. A port below every ephemeral range is
+/// never handed out, and binding one without `SO_REUSEADDR` is refused while
+/// any socket holds it, so the first free one is taken.
+#[cfg(not(windows))]
+fn bind_reserved(socket: &Socket, host: IpAddr) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static TAKEN: AtomicU32 = AtomicU32::new(0);
+    let span = u32::from(RESERVED_SPAN);
+    let start = std::process::id()
+        .wrapping_mul(7919)
+        .wrapping_add(TAKEN.fetch_add(1, Ordering::Relaxed).wrapping_mul(131));
+    for step in 0..span {
+        let offset = u16::try_from(start.wrapping_add(step) % span).expect("inside the span");
+        let port = RESERVED_FROM + offset;
+        match socket.bind(&SocketAddr::new(host, port).into()) {
+            Ok(()) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {}
+            Err(error) => panic!("{host}:{port} cannot be bound: {error}"),
+        }
+    }
+    panic!("no port from {RESERVED_FROM} for {RESERVED_SPAN} is free on {host}");
+}
+
+/// Bind `socket` to a free port on `host`: Windows hands no listener a port a
+/// socket still holds.
+#[cfg(windows)]
+fn bind_reserved(socket: &Socket, host: IpAddr) {
+    socket
+        .bind(&SocketAddr::new(host, 0).into())
+        .expect("a free port binds");
 }

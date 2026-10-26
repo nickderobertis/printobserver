@@ -9,6 +9,8 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
 
+use socket2::{Domain, Socket, Type};
+
 #[path = "support/unreachable.rs"]
 mod unreachable;
 
@@ -57,14 +59,21 @@ fn nothing_listening() -> Unreachable {
 
 /// An address handed out as unreachable stays refused for as long as it is
 /// held, while listeners on ephemeral ports come and go beside it, because the
-/// held socket keeps the port: nothing can bind it until it is let go.
+/// held socket keeps the port: no listener asking for port zero is handed it,
+/// and nothing binding it without `SO_REUSEADDR` can take it until it is let go.
 #[test]
 fn a_held_unreachable_address_is_refused_while_listeners_come_and_go() {
     let nowhere = nothing_listening();
     let address = nowhere.address();
-    let binding = std::thread::spawn(|| {
+    let binding = std::thread::spawn(move || {
         for _ in 0..2000 {
             let listener = TcpListener::bind("127.0.0.1:0").expect("an ephemeral listener");
+            let handed = listener.local_addr().expect("the listener's address");
+            assert_ne!(
+                handed.port(),
+                address.port(),
+                "a listener was handed {address}"
+            );
             drop(listener);
         }
     });
@@ -75,13 +84,18 @@ fn a_held_unreachable_address_is_refused_while_listeners_come_and_go() {
             std::io::ErrorKind::ConnectionRefused,
             "{address} answered something other than a refusal: {refused}"
         );
-        let taken = TcpListener::bind(address).expect_err("the held port cannot be bound");
+        let claimant = Socket::new(Domain::IPV4, Type::STREAM, None).expect("a socket opens");
+        let taken = claimant
+            .bind(&address.into())
+            .expect_err("the held port cannot be bound");
         assert_eq!(taken.kind(), std::io::ErrorKind::AddrInUse, "{taken}");
         if binding.is_finished() {
             break;
         }
     }
-    binding.join().expect("the binding thread finishes");
+    binding
+        .join()
+        .expect("no listener was handed the held port");
 }
 
 /// The program prints its surface and exits zero.
