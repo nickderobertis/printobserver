@@ -276,6 +276,13 @@ class Manager(Protocol):
     def runs_as_the_service_user(self, pid: int) -> Reported:
         """Whether `pid` runs as the account the service is installed to run as."""
 
+    def started(self, pid: int) -> str:
+        """When process `pid` started, as the host records it, or empty while there is none.
+
+        A host hands an ended process's id to the next process it starts —
+        Windows at once — so an id names one process only together with this.
+        """
+
     def listening_on(self, pid: int) -> list[str]:
         """Every loopback `host:port` process `pid` itself holds a listening socket on."""
 
@@ -529,6 +536,10 @@ class Systemd:
         """The process's user id against the id of the user the installer created."""
         return _compare_users(self._as_root, pid, SERVICE_USER)
 
+    def started(self, pid: int) -> str:
+        """Read inside the container, whose processes the unit's are."""
+        return _proc_started(self._as_root, pid)
+
     def listening_on(self, pid: int) -> list[str]:
         """Read inside the container, whose network is the host's."""
         return _proc_listening(self._as_root, pid)
@@ -662,6 +673,65 @@ def _lsof_listening(
     """The loopback addresses a macOS process listens on, as `lsof` names them."""
     printed = on_machine("lsof", "-nP", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-Fn").stdout
     return [line[1:] for line in printed.splitlines() if line.startswith("n127.0.0.1:")]
+
+
+def _started_from_stat(stat: str) -> str:
+    """The clock tick a process started at, field 22 of its `/proc/<pid>/stat`.
+
+    The command name before it is parenthesised and may itself hold spaces or
+    parentheses, so the fields are counted from after its last closing one.
+    """
+    _, closed, rest = stat.rpartition(")")
+    fields = rest.split()
+    return fields[19] if closed and len(fields) > 19 else ""
+
+
+def _proc_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int) -> str:
+    """When a Linux process started, or empty once it has ended."""
+    read = on_machine("cat", f"/proc/{pid}/stat")
+    return _started_from_stat(read.stdout) if read.returncode == 0 else ""
+
+
+def _ps_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int) -> str:
+    """When a macOS process started, as `ps` prints it, or empty once it has ended."""
+    read = on_machine("ps", "-o", "lstart=", "-p", str(pid))
+    return read.stdout.strip() if read.returncode == 0 else ""
+
+
+def _cim_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int) -> str:
+    """When a Windows process started, in the 100-nanosecond ticks Windows counts.
+
+    Empty once it has ended: `Get-CimInstance` then finds nothing, and nothing
+    is printed.
+    """
+    query = (
+        f'$process = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}"; '
+        "if ($process) { $process.CreationDate.ToFileTimeUtc() }"
+    )
+    read = on_machine(WindowsService.powershell(), "-NoProfile", "-Command", query)
+    return read.stdout.strip() if read.returncode == 0 else ""
+
+
+@dataclass(frozen=True, slots=True)
+class Process:
+    """One process for the whole of its life: its id, and when it started."""
+
+    pid: int
+    started: str
+
+
+def _service_process(manager: Manager) -> Process | None:
+    """The process the manager reports running as the service, or `None`."""
+    if not manager.is_running():
+        return None
+    pid = manager.main_pid()
+    started = manager.started(pid) if pid > 0 else ""
+    return Process(pid, started) if started else None
+
+
+def _another_process(before: Process, now: Process | None) -> bool:
+    """Whether `now` is a process other than `before`, its id reused or not."""
+    return now is not None and now != before
 
 
 @dataclass(frozen=True, slots=True)
@@ -952,6 +1022,12 @@ class Launchd:
         equal(named, self.user, describing="the user the installed property list runs it as")
         return _compare_users(self._on_machine, pid, self.user)
 
+    def started(self, pid: int) -> str:
+        """`ps` against the host's launchd; `/proc` on the stand-in's Linux machine."""
+        if sys.platform == "darwin":
+            return _ps_started(self._on_machine, pid)
+        return _proc_started(self._on_machine, pid)
+
     def listening_on(self, pid: int) -> list[str]:
         """`lsof` against the host's launchd; `/proc` on the stand-in's Linux machine."""
         if sys.platform == "darwin":
@@ -1063,7 +1139,12 @@ class WindowsService:
         self.root = WINDOWS_ROOT / f"journey-{os.getpid()}-{int(time.time())}"
 
     @staticmethod
-    def _powershell() -> str:
+    def powershell() -> str:
+        """The PowerShell this host has, a newer one before Windows PowerShell.
+
+        Raises:
+            AssertionError: If this host has neither on PATH.
+        """
         for candidate in ("pwsh", "powershell"):
             found = shutil.which(candidate)
             if found:
@@ -1125,7 +1206,7 @@ class WindowsService:
         """The committed PowerShell installer into the journey's own root."""
         self.root.mkdir(parents=True, exist_ok=True)
         result = self._run(
-            self._powershell(),
+            self.powershell(),
             "-NoProfile",
             "-File",
             str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.WINDOWS_SERVICE)),
@@ -1161,7 +1242,7 @@ class WindowsService:
     def activate(self) -> None:
         """Run the documented command verbatim, in PowerShell."""
         activation = _activation(self.manager)
-        result = self._run(self._powershell(), "-NoProfile", "-Command", activation)
+        result = self._run(self.powershell(), "-NoProfile", "-Command", activation)
         passing((result.returncode, _said(result)), describing=f"`{activation}`")
 
     def starts_automatically(self) -> Reported:
@@ -1190,7 +1271,7 @@ class WindowsService:
         _, listing = self._sc("qc", self.name)
         account = self._field(listing, "SERVICE_START_NAME")
         owner = self._run(
-            self._powershell(),
+            self.powershell(),
             "-NoProfile",
             "-Command",
             f'$owner = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}" | '
@@ -1201,6 +1282,10 @@ class WindowsService:
             bool(account) and owner.lower() == account.lower(),
             f"process {pid} runs as {owner or '(nobody)'}; the service is registered as {account}",
         )
+
+    def started(self, pid: int) -> str:
+        """`Win32_Process`'s creation time, read from the elevated shell."""
+        return _cim_started(self._run, pid)
 
     def listening_on(self, pid: int) -> list[str]:
         """`netstat`'s listening TCP sockets, by the process that owns each."""
@@ -1538,15 +1623,18 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     )
     _eventually(manager, "the service running", manager.is_running)
     _answered(manager, activated.served)
-    before = manager.main_pid()
-    truth(before > 0, describing="a process the manager reports as the service's")
+    before = _service_process(manager)
+    if before is None:
+        message = f"no process the manager reports as the service's:\n{manager.diagnosis()}"
+        raise AssertionError(message)
+    manager.end_abruptly(before.pid)
 
-    manager.end_abruptly(before)
-
+    # Another process rather than another id: the brought-back process may be
+    # handed the very id the ended one had, which Windows does at once.
     _eventually(
         manager,
         "the service brought back with a new process",
-        lambda: manager.is_running() and manager.main_pid() not in {0, before},
+        lambda: _another_process(before, _service_process(manager)),
     )
     # The process that answered before is gone, so an answer now is the
     # brought-back process's own.
@@ -1567,6 +1655,76 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         not manager.starts_automatically().held,
         describing="the manager no longer reporting a service switched off as one it starts",
     )
+
+
+#: In a process-id namespace of its own, a process that ends abruptly and a
+#: later one handed its very id, as Windows hands the service's brought-back
+#: process the ended one's; each's `/proc/<pid>/stat` is printed.
+REUSED_ID = (
+    'sleep 30 & first=$!; cat /proc/"$first"/stat; kill -KILL "$first"; wait "$first"; '
+    "sleep 0.1; echo $((first - 1)) > /proc/sys/kernel/ns_last_pid; "
+    'sleep 30 & later=$!; echo ---; cat /proc/"$later"/stat; kill -KILL "$later"'
+)
+
+
+def test_a_process_handed_an_ended_ones_id_is_another_process() -> None:
+    """A brought-back process given the ended one's id is still a new process.
+
+    The process-id namespace lets the host be told which id to hand out next,
+    which is the only way to make an id's reuse certain rather than likely.
+    """
+    unshare = shutil.which("unshare")
+    if sys.platform != "linux" or unshare is None:
+        pytest.skip("handing out a chosen process id needs Linux's `unshare`")
+    printed = shell_run(
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--pid",
+            "--fork",
+            "--mount-proc",
+            "sh",
+            "-c",
+            REUSED_ID,
+        ],
+        timeout=60,
+    )
+    if printed.returncode != 0 or "---" not in printed.stdout:
+        pytest.skip(f"this host refuses a process-id namespace of one's own: {_said(printed)}")
+    first_stat, _, later_stat = printed.stdout.partition("---")
+    ended = Process(int(first_stat.split()[0]), _started_from_stat(first_stat))
+    later = Process(int(later_stat.split()[0]), _started_from_stat(later_stat))
+
+    equal(later.pid, ended.pid, describing="the id the later process was handed")
+    truth(bool(ended.started), describing=f"a start read from {first_stat!r}")
+    truth(
+        _another_process(ended, later),
+        describing=f"{later} read as a process other than {ended}",
+    )
+    truth(not _another_process(ended, ended), describing="a process read as itself")
+    truth(not _another_process(ended, None), describing="no process read as another")
+
+
+def test_the_hosts_own_start_reader_names_a_live_process_and_none_once_it_ended() -> None:
+    """The reader this host's manager uses: one start while a process lives, none after."""
+    readers = {"linux": _proc_started, "darwin": _ps_started, "win32": _cim_started}
+    reader = readers.get(sys.platform)
+    if reader is None:
+        pytest.skip(f"no service manager this journey drives runs on {sys.platform}")
+
+    def on_host(*argv: str) -> subprocess.CompletedProcess[str]:
+        return shell_run(list(argv), timeout=120)
+
+    child = start([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        started = reader(on_host, child.pid)
+        truth(bool(started), describing=f"a start read for live process {child.pid}")
+        equal(reader(on_host, child.pid), started, describing="the same process read twice")
+    finally:
+        child.kill()
+        child.wait(timeout=60)
+    equal(reader(on_host, child.pid), "", describing=f"the start of ended process {child.pid}")
 
 
 @dataclass(frozen=True, slots=True)
