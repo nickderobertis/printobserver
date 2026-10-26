@@ -552,6 +552,30 @@ fn figure_and_field_refusals(world: &World, loaded: &str) {
         register(&["--name", "Empty", "--material", "PLA", "--initial-g", "0"]),
         json!({ "cause": "invalid_adjustment_figure", "field": "initial_g", "value": 0.0 })
     );
+    for (option, figure, field, value) in [
+        ("--diameter-mm", "0", "diameter_mm", 0.0),
+        ("--density-g-cm3", "-1", "density_g_cm3", -1.0),
+        ("--tare-g", "-5", "tare_g", -5.0),
+    ] {
+        assert_eq!(
+            register(&[
+                "--name",
+                "Odd",
+                "--material",
+                "PLA",
+                "--initial-g",
+                "1000",
+                option,
+                figure
+            ]),
+            json!({ "cause": "invalid_adjustment_figure", "field": field, "value": value }),
+            "{option} {figure}"
+        );
+    }
+    assert_eq!(
+        register(&["--name", "Bare", "--material", " ", "--initial-g", "1000"]),
+        json!({ "cause": "missing_field", "field": "material" })
+    );
     assert_eq!(
         cause_of(
             world,
