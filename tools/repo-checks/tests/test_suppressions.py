@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from repo_checks.checks_suppressions import scan, suppressions
 from repo_checks.expect import accepted, contains, refused
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -126,7 +127,7 @@ def test_a_change_adding_a_directive_without_its_entry_is_refused(
 ) -> None:
     """Against a base revision, the entry lands in the same change as the directive."""
     broken = tree()
-    _git(broken.root, "init", "-q", "-b", "main")
+    init_repository(broken.root)
     _git(broken.root, "config", "user.email", "test@example.com")
     _git(broken.root, "config", "user.name", "test")
     _git(broken.root, "add", "-A")
@@ -145,7 +146,7 @@ def test_a_change_adding_a_directive_without_its_entry_is_refused(
 def test_a_change_adding_both_together_is_accepted(tree: Callable[[], Tree]) -> None:
     """The same change carrying both is exactly what the rule asks for."""
     allowed = tree()
-    _git(allowed.root, "init", "-q", "-b", "main")
+    init_repository(allowed.root)
     _git(allowed.root, "config", "user.email", "test@example.com")
     _git(allowed.root, "config", "user.name", "test")
     _git(allowed.root, "add", "-A")

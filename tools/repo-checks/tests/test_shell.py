@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from repo_checks.expect import contains, equal, passing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import (
     DISCOVERY_CEILING,
     PROGRAM_NOT_FOUND,
@@ -72,9 +73,7 @@ def test_output_can_be_left_to_the_terminal() -> None:
 
 def _repository(root: Path) -> Path:
     """A real git repository, initialized the way the suites here make one."""
-    root.mkdir(parents=True, exist_ok=True)
-    run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
-    return root
+    return init_repository(root)
 
 
 def test_an_ambient_git_directory_does_not_move_a_subprocess(

@@ -54,7 +54,7 @@ from release_artifacts.registries import (
 from release_artifacts.standin import CRATES_PREFIX, FORGE_PREFIX, Registries
 from release_artifacts.targets import declared, named
 from repo_checks import platforms
-from repo_checks.expect import contains, equal, passing
+from repo_checks.expect import contains, equal, passing, truth
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from route_proof import ROUTE_PROOF, WITHOUT_ROUTE_PROOF
@@ -467,6 +467,98 @@ def _policy(repo: Repo, tree: Path, fact: str, without: str = "") -> None:
     if without:
         policy = policy.replace(without, "", 1)
     (tree / "repo-policy.toml").write_text(policy, encoding="utf-8")
+
+
+#: The client `cargo` takes from the crate registry.
+CRATE = "crate:printobserver-sdk"
+
+
+#: How `cargo` names what it keeps for a registry served on the loopback
+#: address: the host, then a hash of the whole URL, port included.
+LOOPBACK_SOURCE = "127.0.0.1-*"
+
+
+def _cached(home: Path) -> tuple[str, bytes]:
+    """The one packaged crate a proof's own Cargo home downloaded, and its source."""
+    cached = sorted(home.glob(f"registry/cache/{LOOPBACK_SOURCE}/printobserver-sdk-*.crate"))
+    equal(len(cached), 1, describing=f"the stand-in crates cached under {home}")
+    return cached[0].parent.name, cached[0].read_bytes()
+
+
+def _toolchains() -> str:
+    """The toolchains `rustup` has installed, which a proof must neither add nor remove."""
+    listed = run(["rustup", "toolchain", "list"], cwd=Path.cwd(), timeout=60)
+    passing(listed, describing="listing the installed toolchains")
+    return listed.stdout
+
+
+def test_two_stand_ins_on_one_port_each_have_their_own_crate_built(
+    repo: Repo, version: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A port handed out again is a different registry, and the proof builds what it served.
+
+    `cargo` names a registry by its URL, and a stand-in's URL is a loopback
+    port. The first stand-in serves a crate carrying no library and the second,
+    taking over the first's listener, the real client at the same name and
+    version on the same port, which stays bound throughout: a proof
+    that resolved through a cache the first one filled would build the hollow
+    crate and fail. The Cargo home this run would otherwise share is one of the
+    journey's own, so that it can say no proof kept a stand-in's crate in it;
+    the stand-in's own packaging of the crate is what writes anything there.
+    """
+    shared = tmp_path / "shared-cargo-home"
+    shared.mkdir()
+    monkeypatch.setenv("CARGO_HOME", str(shared))
+    toolchains = _toolchains()
+    served: dict[str, bytes] = {}
+    homes: dict[str, Path] = {}
+    stood: list[Registries] = []
+    #: How many reads each stand-in had answered when the next took over.
+    answered_by_then: list[int] = []
+    standing_in: Registries | None = None
+    try:
+        for proof, broken in (("first", True), ("second", False)):
+            # The second takes over the first's listener, which stays bound
+            # throughout: the address is handed out again with no moment in
+            # which another process could take it.
+            if standing_in is not None:
+                answered_by_then.append(len(standing_in.asked))
+            standing_in = Registries(repo, tmp_path / proof / "served", replacing=standing_in)
+            stood.append(standing_in)
+            served[proof] = standing_in.serve_clients(CRATE, broken=broken)[CRATE].read_bytes()
+            into = tmp_path / proof / "taken"
+            into.mkdir(parents=True)
+            reached = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: standing_in.base})
+            take = clients(repo)[CRATE]
+            if broken:
+                with pytest.raises(InstallError):
+                    take(repo, named(repo.root, CRATE), version, into, reached)
+            else:
+                take(repo, named(repo.root, CRATE), version, into, reached)
+            homes[proof] = into / "env" / "cargo-home"
+    finally:
+        if standing_in is not None:
+            standing_in.stop()
+
+    first, second = stood
+    equal(second.base, first.base, describing="the address the second stand-in answered under")
+    truth(bool(second.asked), describing="the second proof's reads answered by the second")
+    equal(
+        len(first.asked), answered_by_then[0], describing="reads the first answered after handover"
+    )
+    truth(served["first"] != served["second"], describing="the two stand-ins serve different bytes")
+    sources = set()
+    for proof, home in homes.items():
+        source, cached = _cached(home)
+        sources.add(source)
+        equal(cached, served[proof], describing=f"what the {proof} proof built against")
+    equal(len(sources), 1, describing=f"the registry `cargo` named both stand-ins as: {sources}")
+    equal(
+        sorted(shared.glob(f"registry/*/{LOOPBACK_SOURCE}")),
+        [],
+        describing="the stand-in registries kept in the Cargo home this run would have shared",
+    )
+    equal(_toolchains(), toolchains, describing="the installed toolchains after both proofs")
 
 
 def test_the_clients_taken_are_exactly_the_clients_declared(repo: Repo) -> None:

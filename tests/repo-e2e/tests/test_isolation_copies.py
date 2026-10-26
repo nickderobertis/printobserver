@@ -11,6 +11,7 @@ from pathlib import Path
 
 from journey import COMMIT_IDENTITY, copy_tracked, listed
 from repo_checks.expect import equal, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
 
 
@@ -22,7 +23,7 @@ def _source(root: Path) -> Path:
         (root / name).write_text(f"{name}\n", encoding="utf-8")
     (root / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
     (root / "link.txt").symlink_to("kept.txt")
-    run(["git", "init", "-q"], cwd=root, check=True)
+    init_repository(root)
     run(["git", "add", "-A"], cwd=root, check=True)
     run(["git", *COMMIT_IDENTITY, "commit", "-q", "-m", "c"], cwd=root, check=True)
     (root / "gone.txt").unlink()

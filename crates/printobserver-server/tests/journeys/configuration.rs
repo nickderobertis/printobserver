@@ -21,6 +21,7 @@
 //! than the fields this program is required to take.
 
 use std::collections::BTreeSet;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use printobserver_server::{ConfigField, ConfigFile, Server};
@@ -62,7 +63,12 @@ fn uncreatable(root: &std::path::Path) -> PathBuf {
 /// One configuration in which exactly `field` is unacceptable.
 ///
 /// Answers the document, and the path of anything it had to put on disk first.
-async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &str) -> toml::Value {
+fn unacceptable(
+    field: ConfigField,
+    root: &std::path::Path,
+    reachable: &str,
+    unreachable: SocketAddr,
+) -> toml::Value {
     let mut document = document(root, reachable);
     match field {
         ConfigField::StateDir => set(
@@ -79,7 +85,7 @@ async fn unacceptable(field: ConfigField, root: &std::path::Path, reachable: &st
         ConfigField::OctoprintUrl => set(
             &mut document,
             "octoprint.url",
-            toml::Value::String(format!("http://{}", unreachable_address().await)),
+            toml::Value::String(format!("http://{unreachable}")),
         ),
         ConfigField::OctoprintApiKey => remove(&mut document, "octoprint.api_key"),
         ConfigField::OctoprintFan => set(
@@ -280,10 +286,12 @@ async fn every_declared_field_is_refused_naming_itself() {
     // OctoPrint-address journey for the wrong reason on every other one.
     let reachable = silent_host().await;
     let base = base_url(&reachable);
+    // And one no server can be listening on.
+    let unreachable = unreachable_address();
 
     for field in ConfigField::ALL {
         let root = TempDir::new().expect("a journey's own root");
-        let document = unacceptable(field, root.path(), &base).await;
+        let document = unacceptable(field, root.path(), &base, unreachable);
         let path = write(root.path(), &document);
 
         let refusal = Server::start(&path)
@@ -301,6 +309,14 @@ async fn every_declared_field_is_refused_naming_itself() {
             refusal.to_string().contains(field.key()),
             "the refusal for `{field}` does not name it: {refusal}"
         );
+        // The address is one the start asked and found nothing at, rather than
+        // one it could not take.
+        if field == ConfigField::OctoprintUrl {
+            assert!(
+                refusal.to_string().contains("nothing answers there"),
+                "the start did not ask {unreachable} and find nothing: {refusal}"
+            );
+        }
     }
 }
 

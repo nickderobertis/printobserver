@@ -28,15 +28,17 @@
 
 #[path = "support/harness.rs"]
 mod harness;
+#[path = "support/unreachable.rs"]
+mod unreachable;
 
 use std::io::Write as _;
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use printobserver::failure::Exit;
 use printobserver_server::{CLIENT_CONFIG_FILE, HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 use tempfile::TempDir;
+use unreachable::Unreachable;
 
 use harness::{
     ANSWERED, SIGN_IN_SEEN, SIGN_IN_STATE, SIGNED_IN, TURN_SEEN, assessment_answer, forking,
@@ -212,13 +214,10 @@ fn names_in(directory: &Path) -> Vec<String> {
     names
 }
 
-/// An address on this host nothing is listening on.
-fn nothing_listening() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    listener
-        .local_addr()
-        .expect("the bound address")
-        .to_string()
+/// An address on loopback nothing can be listening on — port zero — so the
+/// control run's connection to it is refused, and the recorder sees it made.
+fn nothing_listening() -> Unreachable {
+    Unreachable::held()
 }
 
 /// The standard error of one run, as text.
@@ -399,8 +398,9 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
     let library = recorder(host.root.path());
     let recording = host.root.path().join("network");
     let entry = &SIGN_INS[0];
-    let octoprint = nothing_listening();
-    let listen = nothing_listening();
+    // Neither can come to be listened on.
+    let (no_octoprint, no_listener) = (nothing_listening(), nothing_listening());
+    let (octoprint, listen) = (no_octoprint.address(), no_listener.address());
     // Every value but the two signing in reads either names an address nothing
     // is listening on or is one the server itself would refuse to start under.
     let config = host.configuration(

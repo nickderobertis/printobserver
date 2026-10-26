@@ -21,6 +21,7 @@ from repo_checks.checks_ci import (
 )
 from repo_checks.checks_release import publish_credentials, release_automation, release_targets
 from repo_checks.expect import accepted, equal, refused, refused_naming
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree, copy_tree
@@ -93,7 +94,7 @@ def _commit(tree: Tree, message: str) -> None:
 
 def _committed(tree: Tree) -> None:
     """Make the copy a repository whose base branch carries what was copied."""
-    run(["git", "init", "-q", "-b", BASE], cwd=tree.root, check=True)
+    init_repository(tree.root, branch=BASE)
     _commit(tree, "chore: the committed tree, copied")
 
 

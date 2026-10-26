@@ -6,6 +6,7 @@
 //! what a command did by running another command, which is what "through this
 //! same surface" means.
 
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 use printobserver_types::serde_json::{self, Value};
@@ -74,21 +75,26 @@ pub fn read(world: &World, arguments: &[&str]) -> Value {
         .unwrap_or_else(|error| panic!("{arguments:?} answered {error}: {}", ran.out))
 }
 
+/// An address no supervisor can be answering at: port zero on IPv4 loopback.
+///
+/// Nothing can listen on port zero — a listener asking for it is handed some
+/// other port — so nothing is held and nothing can come to take it. Connecting
+/// there fails on every host, refused on Linux and refused before any packet is
+/// sent on Darwin and Windows, and the program reports every connect failure
+/// as unreachable.
+pub fn nowhere() -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+}
+
 /// One command run against a supervisor that is not there.
 pub fn against_nothing(world: &World, arguments: &[String], credential: &str) -> Ran {
-    // A port is bound to learn one that is free and then released, so what the
-    // command meets is a refused connection rather than a served refusal.
-    let nowhere = {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-        listener.local_addr().expect("the bound address")
-    };
     with(
         world,
         arguments,
         &[
             (
                 "PRINTOBSERVER_SERVER".to_owned(),
-                format!("http://{nowhere}"),
+                format!("http://{}", nowhere()),
             ),
             ("PRINTOBSERVER_CREDENTIAL".to_owned(), credential.to_owned()),
         ],

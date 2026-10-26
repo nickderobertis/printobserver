@@ -41,6 +41,7 @@ from release_artifacts.registries import (
 )
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
 
@@ -146,8 +147,7 @@ class Runs:
     def __init__(self, path: Path) -> None:
         """Make one commit per run, and tag it as release automation would."""
         self.path = path
-        self.path.mkdir(parents=True, exist_ok=True)
-        self._git("init", "--initial-branch", "main")
+        init_repository(self.path)
         self._git("config", "user.email", "release@example.invalid")
         self._git("config", "user.name", "release automation")
         #: The commit each run ran at, by the version it cut.

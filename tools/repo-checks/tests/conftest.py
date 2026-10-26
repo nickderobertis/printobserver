@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from repo_checks import gate_shards, workers
+from repo_checks import gate_shards, windows_lint, workers
 from repo_checks.model import Repo
 from repo_checks.shell import DISCOVERY_CEILING, discovered_no_higher_than
 from treecopy import REPO_ROOT, Closure, Tree, copy_tree, strayed
@@ -41,6 +41,18 @@ def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("NX_BASE", raising=False)
     monkeypatch.delenv("NX_HEAD", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_ambient_host_independence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the opt-out the macOS gate job sets before any test starts.
+
+    That job leaves the steps reading only the committed tree to the Linux
+    cells by `PRINTOBSERVER_HOST_INDEPENDENT`, and every test it runs would
+    inherit it, skipping the very pass a test drives. A test that means it
+    sets it itself.
+    """
+    monkeypatch.delenv(windows_lint.HOST_INDEPENDENT, raising=False)
 
 
 @pytest.fixture(autouse=True)

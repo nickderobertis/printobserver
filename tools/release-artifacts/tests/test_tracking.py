@@ -19,6 +19,7 @@ from release_artifacts.issues_standin import IssuesForge
 from release_artifacts.registries import RefusedError, Token, exchange
 from release_artifacts.tracking import LABEL, TITLE, outcomes
 from repo_checks.expect import contains, equal, truth
+from repo_checks.loopback import name_service_refused
 
 REPOSITORY = "nickderobertis/printobserver"
 #: What the stand-in authenticates the run by: minted per load, never a real token.
@@ -45,6 +46,21 @@ def broken(run: int, *jobs: str) -> int:
 def mended(run: int) -> int:
     """Run `release-mended` for run number `run`."""
     return main(["release-mended", "--run-url", RUN.format(run)])
+
+
+def test_the_forge_is_ready_with_every_lookup_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Started where nothing resolves, the stand-in forge serves the step pointed at it."""
+    with name_service_refused():
+        # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
+        standing = IssuesForge(REPOSITORY, CREDENTIAL)
+    try:
+        monkeypatch.setenv("GITHUB_API_URL", standing.api)
+        monkeypatch.setenv("GITHUB_REPOSITORY", REPOSITORY)
+        monkeypatch.setenv("GITHUB_TOKEN", CREDENTIAL)
+        equal(broken(1, "release=failure"), 0, describing="a failure reported to the forge")
+        equal(len(standing.open_labelled(LABEL)), 1, describing="the issues the forge opened")
+    finally:
+        standing.stop()
 
 
 def test_a_first_failure_opens_a_second_comments_and_a_success_closes(

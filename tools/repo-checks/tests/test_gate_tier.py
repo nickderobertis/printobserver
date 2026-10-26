@@ -18,6 +18,7 @@ import pytest
 from repo_checks.checks_ci import status_contexts
 from repo_checks.checks_shards import is_shard_job
 from repo_checks.expect import contains, equal, failing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
@@ -48,7 +49,7 @@ def repository(tmp_path: Path, *, branch: str = "main") -> Repo:
         )
         (root / name / "source.txt").write_text(f"{name}\n", encoding="utf-8")
     (root / "repo-policy.toml").write_text(POLICY, encoding="utf-8")
-    git(root, "init", "-q", "-b", branch)
+    init_repository(root, branch=branch)
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "chore: two projects")
     return Repo(root)
@@ -313,6 +314,13 @@ def test_an_empty_tier_from_a_selector_that_failed_is_refused_by_the_gate() -> N
     failing(ran, naming="unknown tier ''")
 
 
+#: The one condition a required macOS job runs under: the lane is owed, or a pull
+#: request's classification could not be read, since unknown is never omission.
+MACOS_OWED = (
+    "!cancelled() && (needs.classify.outputs.macos-required == 'true' || "
+    "(github.event_name == 'pull_request' && needs.classify.result != 'success'))"
+)
+
 #: The status contexts a pull request to the base branch must always report,
 #: whatever the affected set reaches — the fixed contract this repository's
 #: protection names, as the plan read it.
@@ -361,18 +369,38 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
         job = jobs[context.job]
         condition = job.get("if")
         needs = job.get("needs")
+        if needs == "classify":
+            # A macOS lane's job runs where the classifier owes the lane, and on
+            # a pull request it could not classify; where it is not owed the
+            # job is skipped, which the forge reports as a passing context.
+            equal(
+                " ".join(str(condition).split()),
+                MACOS_OWED,
+                describing=f"`{context.job}`'s condition, waiting on the classifier",
+            )
+            continue
         if needs is not None:
             # A carrier of a consolidated lane, or the aggregator of a sharded
             # context, waits on the jobs doing the work and reports whatever
             # they ended as: `always()` is what no result can skip. A shard it
-            # waits on is held to running on every pull request instead.
+            # waits on is held to running on every pull request instead — but
+            # the macOS gate's, which runs where the classifier owes the lane,
+            # and whose aggregator is skipped exactly where they all were.
+            waited = [needs] if isinstance(needs, str) else needs
+            owed = [key for key in waited if jobs[key].get("needs") == "classify"]
             equal(
-                condition,
-                "always()",
+                " ".join(str(condition).split()),
+                f"always() && needs.{owed[0]}.result != 'skipped'" if owed else "always()",
                 describing=f"`{context.job}`'s condition, waiting on {needs}",
             )
-            for key in [needs] if isinstance(needs, str) else needs:
-                if not is_shard_job(jobs[key]):
+            for key in owed:
+                equal(
+                    " ".join(str(jobs[key].get("if")).split()),
+                    MACOS_OWED,
+                    describing=f"`{key}`'s condition, waiting on the classifier",
+                )
+            for key in waited:
+                if not is_shard_job(jobs[key]) or key in owed:
                     continue
                 equal(jobs[key].get("needs"), None, describing=f"what `{key}` waits on")
                 truth(
@@ -423,7 +451,7 @@ def test_a_tree_with_no_history_inside_a_checkout_sweeps_as_it_does_outside_one(
 
     enclosing = tmp_path / "enclosing"
     copy = a_tree_with_no_history(enclosing / "scratch" / "copy")
-    git(enclosing, "init", "-q", "-b", "main")
+    init_repository(enclosing)
     git(enclosing, "add", "-A")
     git(enclosing, "commit", "-q", "-m", "chore: a checkout holding a scratch directory")
     equal(
@@ -440,7 +468,7 @@ def test_a_tree_with_no_history_inside_a_checkout_sweeps_as_it_does_outside_one(
     equal(scope.nx("lint"), swept, describing="the tier of the bounded copy")
     contains(scope.reason, "no merge base of HEAD with origin/main or main")
 
-    git(copy, "init", "-q", "-b", "main")
+    init_repository(copy)
     git(copy, "add", "-A")
     git(copy, "commit", "-q", "-m", "chore: the copy's own history")
     equal(

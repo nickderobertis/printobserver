@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -43,6 +44,7 @@ from release_artifacts.world import (
 )
 from repo_checks.expect import absent, contains, equal, truth
 from repo_checks.model import Repo
+from repo_checks.shell import run
 from route_proof import ROUTE_PROOF, SHARED_TOOL_DIRECTORY
 
 #: The three routes an end user gets the program by, each installed for real.
@@ -257,6 +259,107 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
             world.start()
     finally:
         world.stop()
+
+
+@pytest.mark.parametrize(
+    ("store", "last_seen"),
+    [
+        ("recorded", "1 prints, 0 images, 0 failure alerts, 0 finished supervision turns"),
+        ("absent", "no store at all"),
+        (
+            "tableless",
+            "0 prints, images unreadable (no such table: images), failure alerts unreadable "
+            "(no such table: events), finished supervision turns unreadable "
+            "(no such table: events)",
+        ),
+    ],
+)
+def test_an_ingress_that_never_prepares_the_print_ends_at_the_tier_s_own_timeout(
+    store: str,
+    last_seen: str,
+    repo: Repo,
+    into: Callable[[str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wait for the print and image is the tier's bound, and its failure says what it saw.
+
+    The stand-in supervisor accepts the alert and leaves its store short of a
+    prepared print in one of three ways — a print and nothing after it, no
+    store at all, or a store missing the tables a prepared print is read from —
+    and stays that way however long it is given.
+    """
+    root = into(f"unprepared-{store}")
+    accepting = _stand_in(
+        root,
+        "accepts-and-never-prepares",
+        (Path(__file__).parent / "unprepared_ingress.py").read_text(encoding="utf-8"),
+    )
+    monkeypatch.setenv("UNPREPARED_STORE", store)
+    tier_timeout = 3.0
+    world = World(accepting, root, ingress_timeout=tier_timeout)
+
+    began = time.monotonic()
+    try:
+        with pytest.raises(WorldError) as gave_up:
+            world.start()
+    finally:
+        world.stop()
+    waited = time.monotonic() - began
+
+    contains(str(gave_up.value), f"in {tier_timeout}s", describing="the bound the wait names")
+    contains(
+        str(gave_up.value),
+        f"the last state seen: {last_seen}",
+        describing="what the wait says it last saw",
+    )
+    truth(
+        tier_timeout <= waited < world_module.INGRESS_TIMEOUT_SECONDS,
+        describing=f"the wait to end at the tier's own {tier_timeout}s bound, not {waited:.1f}s",
+    )
+
+
+def test_stopping_a_world_ends_a_supervisor_reached_through_a_launcher(
+    repo: Repo, into: Callable[[str], Path]
+) -> None:
+    """Nothing the supervisor's program ran is left serving once the world stops.
+
+    On Windows the stand-in is a `.cmd` launcher whose child is the server, as a
+    package manager's shim is, so ending the launcher alone would leave the
+    server running and holding its directory open.
+    """
+    root = into("launched")
+    accepting = _stand_in(
+        root,
+        "serves-until-stopped",
+        (Path(__file__).parent / "unprepared_ingress.py").read_text(encoding="utf-8"),
+    )
+    world = World(accepting, root, ingress_timeout=1.0)
+
+    try:
+        with pytest.raises(WorldError):
+            world.start()
+    finally:
+        world.stop()
+
+    serving = int((root / "serving.pid").read_text(encoding="utf-8"))
+    truth(not _running(serving), describing=f"the server {serving} to be gone after the stop")
+    shutil.rmtree(root)
+    truth(not root.exists(), describing="its directory, removed once the world stopped")
+
+
+def _running(pid: int) -> bool:
+    """Whether process `pid` is still there, asked of the process table on Windows.
+
+    `os.kill` there ends a process whatever it is sent, so it cannot ask.
+    """
+    if sys.platform == "win32":
+        listed = run(["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"], timeout=60)
+        return f'"{pid}"' in (listed.stdout or "")
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
 
 
 def _announcing(root: Path, name: str, address: str) -> Path:

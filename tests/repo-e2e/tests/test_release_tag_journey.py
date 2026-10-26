@@ -36,7 +36,7 @@ import struct
 import threading
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import NamedTuple, NewType, Self
 
@@ -51,6 +51,7 @@ from journey import (
 )
 from release_artifacts.registries import released_by
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.shell import run as shell_run
 from test_release_path_journey import STANDIN, tagged, workspace_version
 from test_release_program import release_step_arguments
@@ -344,7 +345,7 @@ class _StandIn:
         """
         self.record = record
         self.who = who
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self._server = LoopbackServer(self._handler())
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

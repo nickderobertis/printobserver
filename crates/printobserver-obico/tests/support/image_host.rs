@@ -9,7 +9,7 @@
 
 use core::fmt::Write as _;
 use core::time::Duration;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -103,18 +103,20 @@ impl Drop for ImageHost {
     }
 }
 
-/// An address nothing is listening on.
+/// An address nothing is listening on, so what the fetch meets is a failed
+/// connection rather than a served refusal — the one failure no response a host
+/// can write will produce.
 ///
-/// A port is bound to learn one that is free and then released, so what the
-/// fetch meets is a refused connection rather than a served refusal — which is
-/// the one failure no response a host can write will produce.
-pub async fn unreachable_url() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    format!("http://{address}/snapshot.jpg")
+/// Port zero on IPv4 loopback: nothing can listen on port zero — a listener
+/// asking for it is handed some other port — so nothing is held and nothing can
+/// come to take it, whatever binds beside it. A connection there fails on every
+/// host: refused on Linux, and refused before any packet is sent on Darwin and
+/// Windows, where port zero is no address to connect to.
+pub fn unreachable_url() -> String {
+    format!(
+        "http://{}/snapshot.jpg",
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+    )
 }
 
 /// Read one request and write the answer.

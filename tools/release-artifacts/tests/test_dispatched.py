@@ -30,6 +30,7 @@ from release_artifacts.registries import (
     recorded,
 )
 from repo_checks.expect import contains, equal, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
 
@@ -68,7 +69,7 @@ def tagged(repo: Repo, tmp_path: Path) -> Tagged:
     root = tmp_path / "checkout"
     root.mkdir()
     checkout = Tagged(root, targets.workspace(repo.root)["version"])
-    checkout.git("init", "--initial-branch", "main")
+    init_repository(root)
     checkout.git("config", "user.email", "release@example.invalid")
     checkout.git("config", "user.name", "release automation")
     checkout.git("commit", "--allow-empty", "-m", "chore: before any manifest")

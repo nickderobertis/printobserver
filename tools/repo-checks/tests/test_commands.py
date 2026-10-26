@@ -28,8 +28,9 @@ from repo_checks.commands import (
     measured_sources,
 )
 from repo_checks.expect import absent, contains, equal, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.gate_tier import TierError
-from repo_checks.model import Repo
+from repo_checks.model import Repo, toolchain_tools
 from repo_checks.powershell_release import HASHES
 from repo_checks.powershell_release import archive_for as powershell_archive_for
 from repo_checks.shell import run
@@ -116,7 +117,7 @@ def test_install_hooks_points_git_at_the_committed_hooks(
 ) -> None:
     """A clean clone's bootstrap wires the hooks it ships with."""
     fresh = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=fresh.root, check=True)
+    init_repository(fresh.root)
 
     equal(install_hooks(fresh.repo), 0)
 
@@ -215,7 +216,8 @@ def toolchain(
     """A tree carrying the committed toolchain declaration, and a PATH of stand-ins alone.
 
     The PATH holds the stand-in `uv` and the directory it installs into — the
-    two cargo tools the policy holds at no release already there, a `rustup`
+    two cargo tools the policy holds at no release already there, onebudgetspec
+    there at the release the policy holds it at, a `rustup`
     answering that the Windows lint target's standard library is there too, and
     the PowerShell `provides` names at `provided_release`, so that a test about
     one tool decides nothing about another. `provides=None` is a host carrying
@@ -231,6 +233,10 @@ def toolchain(
     program(installs, "uv", uv)
     for present in ("cargo-nextest", "cargo-llvm-cov"):
         program(installs, present, f"print({f'{present} 0.0.1'!r})\n")
+    budgets = next(
+        tool for tool in toolchain_tools(Repo(REPO_ROOT)) if tool.command == "onebudgetspec"
+    )
+    program(installs, "onebudgetspec", f"print({f'onebudgetspec {budgets.version}'!r})\n")
     if provides is not None:
         program(installs, provides, f"print({f'PowerShell {provided_release}'!r})\n")
     windows_lint = Repo(REPO_ROOT).policy["toolchain"]["windows_lint"]["target"]

@@ -316,3 +316,35 @@ def test_the_compiler_wrapper_drops_the_rust_triple_and_names_zigs_own_target(
     equal(
         shlex.split(archived.stdout), ["ar", "cq", "lib.a", "out.o"], describing="what zig archived"
     )
+
+
+def test_a_cell_leaving_the_pass_to_the_others_runs_nothing(
+    stand_ins: Path,
+    committed: Repo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The macOS gate leaves it to the Linux cells, which lint the same tree for Windows."""
+    monkeypatch.setenv(windows_lint.HOST_INDEPENDENT, windows_lint.ELSEWHERE)
+
+    equal(windows_lint.lint_windows_target(committed, host="Darwin"), 0)
+
+    equal(recorded(stand_ins / "cargo"), [], describing="no clippy run on a cell leaving it")
+    contains(capsys.readouterr().out, "left to the gate cells of this run that lint it")
+
+
+@pytest.mark.parametrize("value", ["here", "elsewhere ", "Elsewhere"])
+def test_any_other_value_is_refused_naming_the_one_it_takes(
+    stand_ins: Path,
+    committed: Repo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
+) -> None:
+    """A misspelt opt-out neither skips the pass nor silently runs it: the gate fails here."""
+    monkeypatch.setenv(windows_lint.HOST_INDEPENDENT, value)
+
+    equal(windows_lint.lint_windows_target(committed, host="Linux"), 1)
+
+    equal(recorded(stand_ins / "cargo"), [], describing="no clippy run on an unknown value")
+    contains(capsys.readouterr().err, "is neither unset nor `elsewhere`")

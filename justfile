@@ -516,7 +516,8 @@ release-program-key:
 
 # Bring up the scripted OctoPrint environment the integration tier drives.
 #
-# The virtual printer, a free port and the hold print, under `.octoprint-env`.
+# The virtual printer, a port OctoPrint binds itself and the hold print, under
+# `.octoprint-env`.
 # `OCTOPRINT_ENV_MODE=serial OCTOPRINT_ENV_DEVICE=/dev/ttyACM0` is the same
 # environment against the machine beside the printer, the device named the
 # way that host names one; a refusal says what that is.
@@ -527,14 +528,22 @@ octoprint-up:
 octoprint-down:
     uv run -q python tools/octoprint-env/octoprint_env.py down
 
+# Keep the scripted OctoPrint's own logs — what the server said, OctoPrint's
+# log and the serial log — under `.octoprint-diagnostics`, with a record naming
+# the instance and every one of them it never wrote.
+octoprint-retain:
+    uv run -q python tools/octoprint-env/octoprint_env.py retain
+
 # The printer integration tier, against the environment `octoprint-up` started.
 #
 # Deliberately not one of `just check`'s tiers: it installs OctoPrint, starts
 # it, and waits a print out, so it is a continuous-integration job of its own
-# rather than something every gate run pays for.
+# rather than something every gate run pays for. A tier that fails keeps the
+# instance's logs before anything can tear it down, so the first failing run is
+# the one that is diagnosed.
 test-integration:
     just node-modules
-    bunx nx run-many -t test-integration --output-style=stream
+    if ! bunx nx run-many -t test-integration --output-style=stream; then just octoprint-retain; exit 1; fi
 
 # Rewrite every generated documentation artifact from what the tree declares.
 #
@@ -606,7 +615,8 @@ release-dry-run:
 # revision. It says on stderr what it is about to start and roughly how long that
 # takes before it starts anything: about 25 minutes the first time and about 3
 # once the images are built. `OBICO_ENV_WEBHOOK_URL` names the address the
-# notification plugin is configured to post to; `auto` takes a free port.
+# notification plugin is configured to post to; `auto` leaves the port to the
+# tier, which binds one of its own and points the plugin at it.
 obico-up:
     uv run -q python tools/obico-env/obico_env.py up
 
@@ -633,6 +643,14 @@ install-pool-maintenance:
 # `.cargo/config.toml` resolves every workspace's build output to root `target/`.
 pool-maintenance:
     cargo-prune-superseded --keep-within 2d target
+
+# The `gate-time` step every required gate and integration job ends with: the
+# onebudgetspec check of the root `budgets.yaml`'s `gate-time`, for the context
+# `GATE_TIME_KIND` and `PRINTOBSERVER_PLATFORM` name, read off the current run's
+# jobs. Over its threshold it fails that required context, except on the
+# release pull request's full sweep, where it reports the figure and passes.
+gate-time:
+    uv run -q python -m repo_checks gate_time_budget check
 
 # Whether this run owes the macOS lane, as the `name=value` lines the `classify`
 # job of `ci.yml` appends to its outputs: `macos-required` and `reason`. EVENT

@@ -29,7 +29,7 @@ import threading
 import tomllib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 import pytest
@@ -37,6 +37,7 @@ from journey import DEBUG_BUILD, REPO_ROOT, clean_environment, install_the_skill
 from repo_checks import install_path as ip
 from repo_checks.checks_service import installer_for
 from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager, descriptor, host
 from repo_checks.shell import run as shell_run
@@ -416,7 +417,7 @@ class _AnswersEveryRead(BaseHTTPRequestHandler):
 @pytest.fixture
 def octoprint() -> Iterator[str]:
     """Where a stand-in OctoPrint answers, for as long as the journey runs."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEveryRead)
+    server = LoopbackServer(_AnswersEveryRead)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

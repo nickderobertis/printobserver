@@ -30,7 +30,7 @@ import shutil
 import threading
 import tomllib
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
@@ -49,6 +49,7 @@ from journey import (
 from release_artifacts import arming, bumping
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 from test_release_program import step_arguments
@@ -73,9 +74,11 @@ WEDGED = "not found in the registry, but the git tag"
 #: What it says as it reaches the computation that state stops, once per crate.
 DETERMINING = "determining next version for"
 
-#: The drafting computation takes a few seconds over this workspace; this is a
-#: bound on a hang rather than a budget.
-DRAFT_TIMEOUT_SECONDS = 120
+#: A bound on a hang rather than a budget. Drafting every crate of this
+#: workspace downloads and diffs each published package, which took 282-333 s
+#: by hand on a loaded development host and 125 s on a base tree, so the bound
+#: sits well above the longest complete draft seen.
+DRAFT_TIMEOUT_SECONDS = 600
 
 pytestmark = [
     RELEASE_DRAFTING,
@@ -109,7 +112,7 @@ class EmptyIndex:
     def __init__(self) -> None:
         """Start answering on a port the operating system chooses."""
         self.asked: list[str] = []
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self._server = LoopbackServer(self._handler())
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 
@@ -632,7 +635,7 @@ class DraftingForge:
         self.owner, self.name = owner, name
         self.asked: list[str] = []
         self.opened: list[str] = []
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self._server = LoopbackServer(self._handler())
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

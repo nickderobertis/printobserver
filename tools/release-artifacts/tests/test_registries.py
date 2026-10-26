@@ -47,6 +47,7 @@ from release_artifacts.registries import (
     RegistryError,
     cut_at,
     forge_token,
+    npm_versions,
     ordered,
     prove,
     released,
@@ -58,6 +59,7 @@ from release_artifacts.registries import (
 from release_artifacts.standin import FORGE_PREFIX, NPM_PREFIX, PYPI_PREFIX, Registries
 from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from route_proof import ROUTE_PROOF, SHARED_TOOL_DIRECTORY
@@ -632,6 +634,38 @@ def test_the_stand_in_answers_nothing_for_a_path_it_does_not_serve(
 
     equal(answer.status, 404, describing="what a name nothing is published under answers")
     contains(answer.body.decode(), "not served here", describing="what it said")
+
+
+def test_a_replaced_stand_ins_stop_leaves_its_replacement_answering(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """Stopping the stand-in a later one took over stops nothing the later one answers.
+
+    The listener is the replacement's from the handover on, so a reader asking
+    after the replaced one was stopped is answered, and by the replacement
+    alone; only the replacement's own stop closes the address.
+    """
+    replaced = Registries(repo, tmp_path / "replaced")
+    replacement = Registries(repo, tmp_path / "replacement", replacing=replaced)
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: replacement.base})
+    try:
+        replaced.stop()
+        equal(
+            npm_versions(bases, "asked-after-the-stop"),
+            (),
+            describing="what the replacement answered for a name it serves nothing under",
+        )
+        equal(
+            replacement.asked,
+            ["/npm/asked-after-the-stop"],
+            describing="the reads the replacement answered",
+        )
+        equal(replaced.asked, [], describing="the reads the replaced stand-in answered")
+    finally:
+        replacement.stop()
+    with pytest.raises(RegistryError) as unreached:
+        npm_versions(bases, "asked-after-both-stopped")
+    contains(str(unreached.value), "could not be reached", describing="what it said")
 
 
 @ROUTE_PROOF
@@ -1275,7 +1309,7 @@ def checkout(tmp_path: Path) -> Checkout:
         truth(done.returncode == 0, describing=f"`git {' '.join(argv)}`:\n{done.stderr}")
         return done.stdout.strip()
 
-    git("init", "--initial-branch", "main")
+    init_repository(root)
     git("config", "user.email", "release@example.invalid")
     git("config", "user.name", "release automation")
     at: dict[str, str] = {}

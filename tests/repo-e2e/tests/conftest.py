@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from journey import REPO_ROOT, GateCopy
-from repo_checks import gate_shards, workers
+from repo_checks import gate_shards, windows_lint, workers
 
 
 @pytest.hookimpl(optionalhook=True)
@@ -68,6 +68,18 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         and session.config.stash.get(LEFT_TO_ANOTHER_PART, 0) > 0
     ):
         session.exitstatus = pytest.ExitCode.OK
+
+
+@pytest.fixture(autouse=True)
+def no_ambient_host_independence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the opt-out the macOS gate job sets before any test starts.
+
+    That job leaves the steps reading only the committed tree to the Linux
+    cells by `PRINTOBSERVER_HOST_INDEPENDENT`, and every test it runs would
+    inherit it, skipping the very pass a test drives. A test that means it
+    sets it itself.
+    """
+    monkeypatch.delenv(windows_lint.HOST_INDEPENDENT, raising=False)
 
 
 @pytest.fixture(autouse=True)

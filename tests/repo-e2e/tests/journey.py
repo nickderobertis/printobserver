@@ -22,6 +22,7 @@ from typing import Protocol
 
 import pytest
 from repo_checks import platforms
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 
@@ -265,8 +266,8 @@ class GateCopy:
         for itself.
         """
         self.root = copy_tracked(root)
+        init_repository(self.root)
         for args in (
-            ["init", "-q", "-b", "main"],
             ["add", "-A"],
             [*COMMIT_IDENTITY, "commit", "-q", "-m", "chore: the committed tree, copied"],
         ):

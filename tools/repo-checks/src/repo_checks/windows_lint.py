@@ -144,9 +144,19 @@ def crate_lints(repo: Repo) -> list[CrateLint]:
     return lints
 
 
+#: What a gate cell sets to leave the steps that read only the committed tree —
+#: this pass among them — to the other cells of its run, which run them.
+HOST_INDEPENDENT = "PRINTOBSERVER_HOST_INDEPENDENT"
+#: The value that leaves them there.
+ELSEWHERE = "elsewhere"
+
+
 def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
     """Run every crate's own `lint` target for the Windows target.
 
+    Its answer is the same from every Unix host, so a gate cell whose run has
+    another cell running it — `ci.yml`'s macOS gate, beside the Linux cells —
+    sets `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere` and nothing runs here.
     On a Windows host the native lint tier is this pass, so nothing runs. On a
     Unix host without the target's standard library the pass fails naming what
     installs it — the gate has no warnings-only mode, and a lint that ran over
@@ -165,6 +175,18 @@ def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
         print("no `toolchain.windows_lint` target declared; nothing linted for Windows")
         return 0
     target = declared.target
+    leaving = os.environ.get(HOST_INDEPENDENT, "")
+    if leaving == ELSEWHERE:
+        print(f"{target}: left to the gate cells of this run that lint it ({HOST_INDEPENDENT})")
+        return 0
+    if leaving:
+        print(
+            f"{HOST_INDEPENDENT}={leaving!r} is neither unset nor `{ELSEWHERE}`, so whether this "
+            f"cell runs the steps that read only the committed tree is not known. Unset it, or "
+            f"set it to `{ELSEWHERE}` where another cell of the run runs them.",
+            file=sys.stderr,
+        )
+        return 1
     if (host or host_platform.system()) == "Windows":
         print(f"{target}: this host's own; the native lint tier is the Windows-target pass")
         return 0

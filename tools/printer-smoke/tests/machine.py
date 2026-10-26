@@ -35,9 +35,11 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any, Final, Literal, NewType, TypedDict
 from urllib.parse import urlsplit
+
+from repo_checks.loopback import LoopbackServer
 
 HOST = "127.0.0.1"
 
@@ -180,7 +182,7 @@ class Machine:
         self.faults: set[str] = set()
         self.refusals: dict[str, tuple[int, int]] = {}
         self.lock = threading.Lock()
-        self.server = ThreadingHTTPServer((HOST, 0), _handler_for(self))
+        self.server = LoopbackServer(_handler_for(self), host=HOST)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 

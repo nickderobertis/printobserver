@@ -358,7 +358,11 @@ def _activity_type_findings(triggers: dict[str, Any], file_name: str, where: str
 
 
 def _step_condition_findings(repo: Repo, job: dict[str, Any], where: str) -> list[str]:
-    """Only printer teardown and always-running owned scratch cleanup may be conditional."""
+    """Only teardown, owned scratch cleanup and failure evidence may be conditional.
+
+    An upload under `failure()` runs only once the tier has already failed, so
+    it carries that failure's evidence out and skips no verification.
+    """
     bring_down = f"just {repo.policy['integration']['bring_down']}"
     findings: list[str] = []
     for step in steps_of(job):
@@ -367,6 +371,9 @@ def _step_condition_findings(repo: Repo, job: dict[str, Any], where: str) -> lis
         if condition is None or run_line == bring_down:
             continue
         if run_line == "just runner-temp cleanup" and condition == "always()":
+            continue
+        uses = str(step.get("uses", ""))
+        if uses.startswith("actions/upload-artifact@") and condition == "failure()":
             continue
         findings.append(
             f"{where} runs `{run_line or step.get('uses')}` under the condition "

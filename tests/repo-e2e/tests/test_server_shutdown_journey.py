@@ -24,12 +24,13 @@ import socket
 import sys
 import threading
 from collections.abc import Iterator
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 import pytest
 from journey import DEBUG_BUILD, REPO_ROOT, SKILL_DIRECTORY, clean_environment, run
 from repo_checks.expect import equal, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.model import Repo
 from repo_checks.platforms import host
 from repo_checks.shell import start
@@ -64,7 +65,7 @@ class _AnswersEverything(BaseHTTPRequestHandler):
 @pytest.fixture
 def octoprint() -> Iterator[str]:
     """Where a stand-in OctoPrint answers, for as long as the journey runs."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEverything)
+    server = LoopbackServer(_AnswersEverything)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

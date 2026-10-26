@@ -9,7 +9,7 @@
 //! JSON, a connection that is refused.
 
 use std::io::Write as _;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -138,17 +138,13 @@ impl Drop for Stub {
 
 /// A loopback address nothing is listening on.
 ///
-/// Bound and then released, so the port is one this host handed out rather than
-/// one this test hoped was free.
-///
-/// # Panics
-///
-/// Panics when no loopback socket can be bound, which is a broken host.
+/// Port zero on IPv4 loopback: nothing can listen on port zero — a listener
+/// asking for it is handed some other port — so nothing is held and nothing can
+/// come to take it, whatever binds beside it. A connection there fails on every
+/// host: refused on Linux, and refused before any packet is sent on Darwin and
+/// Windows, where port zero is no address to connect to.
 pub fn closed_address() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    format!("http://{address}")
+    format!("http://{}", SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 }
 
 /// The bytes one reply is written as.

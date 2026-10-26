@@ -65,6 +65,8 @@ mod running;
 mod tainting;
 #[path = "journeys/tier.rs"]
 mod tier;
+#[path = "support/unreachable.rs"]
+mod unreachable;
 #[path = "journeys/upgrading.rs"]
 mod upgrading;
 

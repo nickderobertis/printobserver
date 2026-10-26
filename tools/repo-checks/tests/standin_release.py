@@ -18,7 +18,9 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from repo_checks.loopback import LoopbackServer
 
 
 @dataclass(slots=True)
@@ -73,7 +75,7 @@ def serving(prefix: str, release: Release, *, tls: ssl.SSLContext | None = None)
         def log_message(self, format: str, *args: object) -> None:
             """Say nothing: the suite's own assertions are the signal."""
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackServer(Handler)
     if tls is not None:
         server.socket = tls.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

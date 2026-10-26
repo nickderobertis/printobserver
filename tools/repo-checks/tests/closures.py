@@ -55,6 +55,8 @@ CHECKS: dict[str, Closure] = {
             "crates/printobserver-oneharness/tests/",
             "crates/printobserver-supervisor-api/tests/",
             "tools/repo-checks/tests/treecopy.py",
+            "tools/repo-checks/src/repo_checks/scratch.py",
+            "tools/repo-checks/tests/test_cli.py",
         )
     ),
     "platforms": Closure((WORKFLOWS, AGENTS, JUSTFILE, RELEASE_TARGETS, POLICY)),

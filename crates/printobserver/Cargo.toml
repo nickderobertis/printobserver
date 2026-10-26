@@ -91,5 +91,10 @@ tempfile = "3"
 # matched as text.
 plist.workspace = true
 
+# A socket bound and never listened on, which `std` cannot bind: the port the
+# Windows tracing session watches the kernel refuse a connection to.
+[target.'cfg(windows)'.dev-dependencies]
+socket2 = "0.6"
+
 [lints]
 workspace = true
