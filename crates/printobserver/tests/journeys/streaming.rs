@@ -929,6 +929,8 @@ fn a_watch_that_cannot_start_prints_no_line_and_exits_as_every_command_does() {
         ),
         (vec!["--json", "--sample", "Not-A-Kind=300"], &own.client, 2),
         (vec!["--json", "--reconnect-s", "-1"], &own.client, 2),
+        (vec!["--json", "--reconnect-s", "86401"], &own.client, 2),
+        (vec!["--json", "--heartbeat-s", "86401"], &own.client, 2),
         (vec!["--json"], &serverless, 4),
     ] {
         let (lines, status) = watch_with(&arguments, config).finished();
@@ -1148,4 +1150,46 @@ fn every_value_of_a_repeated_option_rules_on_the_stream() {
             "two kinds excluded, and more with them: {lines:#?}"
         );
     }
+}
+
+/// A heartbeat comes the interval after the last line and no sooner, and an
+/// event printed puts the next one back a whole interval.
+#[test]
+fn a_heartbeat_comes_an_interval_after_the_last_line() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let interval = Duration::from_secs(2);
+    let started = Instant::now();
+    let mut stream = watch(&own, &["--json", "--kind", NOTABLE, "--heartbeat-s", "2"]);
+    let beats = |seen: &[String]| {
+        seen.iter()
+            .filter(|line| line.contains("watch_heartbeat"))
+            .count()
+    };
+    stream.until("a heartbeat", |seen| beats(seen) == 1);
+    assert!(
+        started.elapsed() >= interval,
+        "a heartbeat came before its interval: {:?}",
+        started.elapsed()
+    );
+
+    let recorded = own.record(vec![notable(None)]);
+    own.nudge(&world);
+    let printed = recorded[0].id.to_string();
+    stream.until("the event", |seen| {
+        seen.iter().any(|line| line.contains(&printed))
+    });
+    let after_the_event = Instant::now();
+    stream.until("the next heartbeat", |seen| beats(seen) == 2);
+    assert!(
+        after_the_event.elapsed() >= Duration::from_millis(1_800),
+        "the heartbeat after an event came before a whole interval: {:?}",
+        after_the_event.elapsed()
+    );
+    let lines = stream.seen.clone();
+    let event_at = lines.iter().position(|line| line.contains(&printed));
+    let second_beat = lines
+        .iter()
+        .rposition(|line| line.contains("watch_heartbeat"));
+    assert!(event_at < second_beat, "{lines:#?}");
 }
