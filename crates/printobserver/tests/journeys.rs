@@ -83,6 +83,8 @@ mod redaction;
 mod running;
 #[path = "journeys/spooling.rs"]
 mod spooling;
+#[path = "journeys/starting.rs"]
+mod starting;
 #[path = "journeys/tainting.rs"]
 mod tainting;
 #[path = "journeys/tier.rs"]
@@ -152,7 +154,7 @@ fn the_listing_and_a_refused_start_say_what_each_spool_holds() {
 /// is the operator's judgement that the print is over.
 #[test]
 fn a_configuration_granting_the_agent_close_print_is_refused_at_start() {
-    let said = world::refused_start(|document| {
+    let said = starting::refused_start(|document| {
         let agent = &mut document["safety"]["actions"]["agent"];
         *agent = printobserver_types::serde_json::json!(["pause", "close_print"]);
     });
