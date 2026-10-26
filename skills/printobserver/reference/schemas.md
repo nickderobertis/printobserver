@@ -15786,7 +15786,7 @@ Declared by `printobserver-printer-api`.
 
 ### PrinterState
 
-Declared by `printobserver-printer-api`.
+Declared by `printobserver-types`.
 
 ```json
 {
@@ -23751,6 +23751,54 @@ Declared by `printobserver-supervisor-api`.
       "title": "PrintId",
       "type": "string"
     },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "RawBytes": {
       "contentEncoding": "base64",
       "description": "Bytes exactly as received, base64-encoded.",
@@ -23792,12 +23840,16 @@ Declared by `printobserver-supervisor-api`.
           ]
         },
         "printer_state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrinterState"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "default": null,
-          "description": "The printer's state when the turn began, in the printer contract's own\nspelling, null when the printer could not be read.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "description": "The printer's state when the turn began, in the printer contract's own\nvocabulary \u2014 a state it does not name as `{\"unknown\": \"<the printer's\nword>\"}` \u2014 null when the printer could not be read."
         }
       },
       "type": "object"
@@ -23970,6 +24022,54 @@ Declared by `printobserver-supervisor-api`.
       "title": "PrintId",
       "type": "string"
     },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "RawBytes": {
       "contentEncoding": "base64",
       "description": "Bytes exactly as received, base64-encoded.",
@@ -24012,12 +24112,16 @@ Declared by `printobserver-supervisor-api`.
       ]
     },
     "printer_state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrinterState"
+        },
+        {
+          "type": "null"
+        }
+      ],
       "default": null,
-      "description": "The printer's state when the turn began, in the printer contract's own\nspelling, null when the printer could not be read.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "description": "The printer's state when the turn began, in the printer contract's own\nvocabulary \u2014 a state it does not name as `{\"unknown\": \"<the printer's\nword>\"}` \u2014 null when the printer could not be read."
     }
   },
   "title": "TurnSituation",

@@ -7,15 +7,17 @@
 //! instance on the machine's own network needs — and each of them is a place a
 //! key could be sent somewhere the configuration did not name.
 //!
-//! The body is read to end-of-stream and then framed, so a response is read
-//! whether the instance frames it by `Content-Length`, by chunked transfer or by
-//! closing. A frame this module cannot read is a [`Transport::Malformed`],
-//! never a silently truncated body.
+//! Every response is framed by one set of rules, whichever request carried it:
+//! a body framed by `Content-Length`, by chunked transfer or by closing is read
+//! to the end that framing names, and a header block, length, coding or chunk
+//! this module cannot read is a [`Transport::Malformed`], never a silently
+//! truncated body nor one read by a looser rule than another request's.
 //!
-//! One request is read differently: a file's download, which can be megabytes
-//! and of which the caller wants only a prefix. [`stream`] hands its body over a
-//! piece at a time, as it arrives, and stops reading — closing the connection —
-//! the moment the reader says it has enough, so the file is never held whole.
+//! What differs is only how a body is collected. [`send`] keeps all of it. A
+//! file's download, which can be megabytes and of which the caller wants only a
+//! prefix, is read by [`stream`], which hands its body over a piece at a time,
+//! as it arrives, and stops reading — closing the connection — the moment the
+//! reader says it has enough, so the file is never held whole.
 
 use core::fmt::Write as _;
 use core::ops::ControlFlow;
@@ -81,17 +83,9 @@ pub(crate) fn send(
     body: Option<&[u8]>,
     timeout: Duration,
 ) -> Result<Response, Transport> {
-    let mut stream = connect(endpoint, timeout)?;
-    let request = compose(endpoint, api_key, method, path, body);
-    stream
-        .write_all(&request)
-        .and_then(|()| stream.flush())
-        .map_err(|error| Transport::Unreachable(format!("writing to {endpoint}: {error}")))?;
-    let mut raw = Vec::new();
-    stream
-        .read_to_end(&mut raw)
-        .map_err(|error| Transport::Unreachable(format!("reading from {endpoint}: {error}")))?;
-    parse(&raw)
+    let mut source = Source::open(endpoint, api_key, method, path, body, timeout)?;
+    let (status, framing) = framing_of(&source.head()?)?;
+    source.whole(status, framing)
 }
 
 /// How much of a streamed body is read at a time.
@@ -117,42 +111,17 @@ pub(crate) fn stream(
     timeout: Duration,
     sink: &mut dyn Sink,
 ) -> Result<Option<Response>, Transport> {
-    let mut stream = connect(endpoint, timeout)?;
-    let request = compose(endpoint, api_key, Method::Get, path, None);
-    stream
-        .write_all(&request)
-        .and_then(|()| stream.flush())
-        .map_err(|error| Transport::Unreachable(format!("writing to {endpoint}: {error}")))?;
-    let mut source = Source {
-        stream,
-        endpoint,
-        buffered: Vec::new(),
-    };
-
-    let head = source.head()?;
-    let (status, framing) = framing_of(&head)?;
+    let mut source = Source::open(endpoint, api_key, Method::Get, path, None, timeout)?;
+    let (status, framing) = framing_of(&source.head()?)?;
     if !(200..300).contains(&status) {
-        let mut raw = head;
-        raw.extend_from_slice(b"\r\n\r\n");
-        raw.append(&mut source.buffered);
-        source
-            .stream
-            .read_to_end(&mut raw)
-            .map_err(|error| Transport::Unreachable(format!("reading from {endpoint}: {error}")))?;
-        return parse(&raw).map(Some);
+        return source.whole(status, framing).map(Some);
     }
-    let flow = match framing {
-        Framing::Length(length) => source.length(length, sink)?,
-        Framing::Chunked => source.chunked(sink)?,
-        Framing::Close => source.until_close(sink)?,
-    };
-    if flow.is_continue() {
-        sink.end();
-    }
+    source.body(framing, sink)?;
     Ok(None)
 }
 
 /// How a response says where its body ends.
+#[derive(Clone, Copy)]
 enum Framing {
     /// After this many bytes.
     Length(usize),
@@ -253,7 +222,29 @@ struct Source<'a> {
     buffered: Vec<u8>,
 }
 
-impl Source<'_> {
+impl<'a> Source<'a> {
+    /// Send one request, and hold the connection its response arrives on.
+    fn open(
+        endpoint: &'a Endpoint,
+        api_key: &ApiKey,
+        method: Method,
+        path: &str,
+        body: Option<&[u8]>,
+        timeout: Duration,
+    ) -> Result<Self, Transport> {
+        let mut stream = connect(endpoint, timeout)?;
+        let request = compose(endpoint, api_key, method, path, body);
+        stream
+            .write_all(&request)
+            .and_then(|()| stream.flush())
+            .map_err(|error| Transport::Unreachable(format!("writing to {endpoint}: {error}")))?;
+        Ok(Self {
+            stream,
+            endpoint,
+            buffered: Vec::new(),
+        })
+    }
+
     /// Read one more piece off the connection; `false` when it has closed.
     fn fill(&mut self) -> Result<bool, Transport> {
         let mut piece = [0_u8; STREAM_PIECE];
@@ -278,6 +269,30 @@ impl Source<'_> {
                 ));
             }
         }
+    }
+
+    /// The body, framed as its header block said, handed to a sink until the
+    /// sink has enough or the body ends — which the sink is then told.
+    fn body(&mut self, framing: Framing, sink: &mut dyn Sink) -> Result<(), Transport> {
+        let flow = match framing {
+            Framing::Length(length) => self.length(length, sink)?,
+            Framing::Chunked => self.chunked(sink)?,
+            Framing::Close => self.until_close(sink)?,
+        };
+        if flow.is_continue() {
+            sink.end();
+        }
+        Ok(())
+    }
+
+    /// The whole response, its body read to the end its framing names.
+    fn whole(&mut self, status: u16, framing: Framing) -> Result<Response, Transport> {
+        let mut body = Whole(Vec::new());
+        self.body(framing, &mut body)?;
+        Ok(Response {
+            status,
+            body: body.0,
+        })
     }
 
     /// A body framed by its length.
@@ -503,74 +518,16 @@ fn compose(
     request
 }
 
-/// The status and body of one response, however it was framed.
-fn parse(raw: &[u8]) -> Result<Response, Transport> {
-    let split = find(raw, b"\r\n\r\n")
-        .ok_or_else(|| Transport::Malformed("the response carries no header block".to_owned()))?;
-    let head = String::from_utf8_lossy(&raw[..split]).into_owned();
-    let rest = &raw[split + 4..];
+/// A sink that keeps every piece of a body it is handed.
+struct Whole(Vec<u8>);
 
-    let mut lines = head.split("\r\n");
-    let status_line = lines
-        .next()
-        .ok_or_else(|| Transport::Malformed("the response carries no status line".to_owned()))?;
-    let status = status_of(status_line)?;
-
-    let mut length = None;
-    let mut chunked = false;
-    for line in lines {
-        let Some((name, value)) = line.split_once(':') else {
-            continue;
-        };
-        let name = name.trim().to_ascii_lowercase();
-        let value = value.trim();
-        if name == "content-length" {
-            length = value.parse::<usize>().ok();
-        } else if name == "transfer-encoding" {
-            chunked = value.to_ascii_lowercase().contains("chunked");
-        }
+impl Sink for Whole {
+    fn take(&mut self, bytes: &[u8]) -> ControlFlow<()> {
+        self.0.extend_from_slice(bytes);
+        ControlFlow::Continue(())
     }
 
-    let body = if chunked {
-        dechunk(rest)?
-    } else if let Some(length) = length {
-        if rest.len() < length {
-            return Err(Transport::Unreachable(format!(
-                "the response promised {length} bytes and delivered {}",
-                rest.len()
-            )));
-        }
-        rest[..length].to_vec()
-    } else {
-        rest.to_vec()
-    };
-    Ok(Response { status, body })
-}
-
-/// The body of a chunked response.
-fn dechunk(raw: &[u8]) -> Result<Vec<u8>, Transport> {
-    let mut body = Vec::new();
-    let mut rest = raw;
-    loop {
-        let line_end = find(rest, b"\r\n")
-            .ok_or_else(|| Transport::Malformed("a chunk carries no size line".to_owned()))?;
-        let header = String::from_utf8_lossy(&rest[..line_end]).into_owned();
-        let size_text = header.split(';').next().unwrap_or_default().trim();
-        let size = usize::from_str_radix(size_text, 16)
-            .map_err(|_| Transport::Malformed(format!("{size_text:?} is no chunk size")))?;
-        rest = &rest[line_end + 2..];
-        if size == 0 {
-            return Ok(body);
-        }
-        if rest.len() < size + 2 {
-            return Err(Transport::Unreachable(format!(
-                "a chunk promised {size} bytes and delivered {}",
-                rest.len()
-            )));
-        }
-        body.extend_from_slice(&rest[..size]);
-        rest = &rest[size + 2..];
-    }
+    fn end(&mut self) {}
 }
 
 /// Where a needle first occurs in a haystack.

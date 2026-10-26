@@ -92,13 +92,6 @@ impl PendingTurn {
     }
 }
 
-/// One printer state in the printer contract's own spelling.
-fn state_name(state: &PrinterState) -> Option<String> {
-    printobserver_types::serde_json::to_value(state)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-}
-
 /// The print an alert belongs to, and whether resolving it opened one.
 enum Resolution {
     /// The alert is about no print.
@@ -419,7 +412,7 @@ impl Supervisor {
             None => None,
         };
         let situation = TurnSituation {
-            printer_state: printer_state.as_ref().and_then(state_name),
+            printer_state,
             detector_warned: arrival.detection.map(|detection| detection.warning),
             detector_paused_the_print: arrival
                 .detection

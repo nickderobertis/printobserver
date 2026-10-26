@@ -13,6 +13,8 @@
 
 #[path = "support/block_on.rs"]
 mod block_on;
+#[path = "support/misframed.rs"]
+mod misframed;
 #[path = "support/numbers.rs"]
 mod numbers;
 #[path = "support/received.rs"]

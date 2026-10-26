@@ -99,10 +99,10 @@ site = "identity: &'static str,"
 reason = "`HarnessIdentity` owns a `String`, so it cannot be built in the const `SIGN_INS` table the server and the command-line program both read. The field is private, so that table is the only place an entry is ever constructed, and `every_identity_is_one_oneharness_runs` holds each identity to one OneHarness's own registry runs — which is a stricter validation than `HarnessIdentity::new`, which admits any non-empty name."
 
 [[suppression]]
-rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-supervisor-api/src/lib.rs"
-site = "pub printer_state: Option<String>,"
-reason = "The printer contract's own state vocabulary, `PrinterState`, lives in `printobserver-printer-api`, and this port may depend on `printobserver-types` alone: `repo-policy.toml`'s `crates.may_depend_on` gives `printobserver-supervisor-api` that one edge, and its manifest and surface tier hold it there, so it cannot name the enum. The string is filled only from `PrinterState`'s own serialization, in `printobserver-core`'s loop, and `the_situations_printer_state_is_the_printer_contracts_own_spelling` in `crates/printobserver-core/tests/journeys/one_agent_per_print.rs` holds it to exactly that spelling for every state. Moving the state vocabulary into `printobserver-types`, so the port could carry the enum without a new edge, is drafted as a follow-up."
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/printer_state.rs"
+site = "pub enum PrinterState {"
+reason = "Two ports speak this vocabulary — the printer port's snapshots report it and the supervisor port's turn situation hands it to the agent — and `repo-policy.toml`'s `crates.may_depend_on` gives `printobserver-supervisor-api` an edge to `printobserver-types` alone, with a port-to-port edge ruled out, so `printobserver-types` is the one crate both may name it from. Declaring it here is the plan's agreed contract for this change, which other work builds against: the vocabulary is re-exported unchanged from `printobserver-printer-api`, so every user of the printer domain still names it there, and only the declaration moved. A printer-owned contract crate both ports could depend on would be a new crate and a new pair of edges in the dependency table, which is a change to that agreement rather than to this file."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
@@ -1466,6 +1466,12 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
 site = "def program() -> Path:"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The build is `cargo build` of a program every other journey in the tier has already built, so on any run but the first it costs nothing."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_service_installer_journey.py"
+site = "def program() -> Path:"
+reason = "The same ground the entry for this rule at `tests/repo-e2e/tests/test_windows_service_installer_journey.py` states: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The installer is handed the program it places, and the build is `cargo build` of a program every other journey in the tier has already built, so on any run but the first it costs nothing."
 
 [[suppression]]
 rule = "e2e_not_mocked"
