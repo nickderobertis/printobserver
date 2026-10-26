@@ -232,25 +232,10 @@ fn holdings(world: &World) -> Vec<(Value, Value)> {
         .collect()
 }
 
-/// The whole journey, over one world, whose print it takes somewhere else: it
-/// runs after every other journey of the tier.
-///
-/// # Panics
-///
-/// Panics at the first thing a close or a refusal did that it owed otherwise.
-pub fn an_operator_closes_a_record_left_open(world: &World) {
-    if !world.machine_is_unreachable(false) {
-        // Only a socket can be told to be off, or to be cancelling.
-        return;
-    }
-    world.wants(Reports::Printing);
-    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
-    let running_one = world.open_record_with_a_session(Some(RUNNING_FILE), None);
-    let spools = holdings(world);
-
-    // A blank reason is refused before anything reaches the supervisor.
+/// A blank reason is refused before anything reaches the supervisor.
+fn blank_reasons_are_refused(world: &World, left: &str) {
     for blank in ["", "   "] {
-        let ran = close(world, &left, "interrupted", blank);
+        let ran = close(world, left, "interrupted", blank);
         assert_eq!(
             ran.code,
             Some(i32::from(Exit::Usage.status())),
@@ -261,11 +246,15 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
             world.proxy.received().is_empty(),
             "a blank reason reached the server"
         );
-        assert!(of_kind(world, &left, "action_requested").is_empty());
-        still_open(world, &left);
+        assert!(of_kind(world, left, "action_requested").is_empty());
+        still_open(world, left);
     }
+}
 
-    // A job of the record's own file printing, paused or cancelling holds it
+/// A job of the record's own file printing, paused or cancelling holds it
+/// open, and the rejection names the state; so does any running job for a
+/// record naming no file, which cannot be told apart from it.
+fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
     // open, and the rejection names the state.
     for (state, word) in [
         (Reports::Printing, "printing"),
@@ -275,11 +264,11 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         world.wants(state);
         let cancelling = word == "cancelling";
         world.machine_is_cancelling(cancelling);
-        let ran = close(world, &running_one, "cancelled", REASON);
+        let ran = close(world, running_one, "cancelled", REASON);
         world.machine_is_cancelling(false);
-        let refusal = rejected(world, &running_one, &ran, "print_still_active");
+        let refusal = rejected(world, running_one, &ran, "print_still_active");
         assert_eq!(refusal["state"], word, "{refusal}");
-        still_open(world, &running_one);
+        still_open(world, running_one);
     }
 
     // A record naming no file cannot be told apart from the job the machine
@@ -290,8 +279,10 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
     let refusal = rejected(world, &nameless, &ran, "print_still_active");
     assert_eq!(refusal["state"], "printing", "{refusal}");
     still_open(world, &nameless);
+}
 
-    // A session already closed keeps the closure it has.
+/// A session already closed keeps the closure it has.
+fn a_closed_session_keeps_its_closure(world: &World) {
     let watched_before = world.open_record_with_a_session(Some(STALE_FILE), Some(EARLIER_CLOSE));
     let session_before = status(world, &watched_before)["session"].clone();
     let ran = close(world, &watched_before, "cancelled", REASON);
@@ -311,8 +302,10 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         "{after}"
     );
     assert_eq!(after["session"]["close_reason"], EARLIER_CLOSE, "{after}");
+}
 
-    // An adjustment of the record still standing holds it open, naming it.
+/// An adjustment of the record still standing holds it open, naming it.
+fn an_adjustment_holds_its_record_open(world: &World) {
     // The store files an action under the most recently opened open record,
     // so the record the adjustment is about is opened last.
     world.wants(Reports::Printing);
@@ -340,6 +333,28 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         "{refusal}"
     );
     still_open(world, &adjusted);
+}
+
+/// The whole journey, over one world, whose print it takes somewhere else: it
+/// runs after every other journey of the tier.
+///
+/// # Panics
+///
+/// Panics at the first thing a close or a refusal did that it owed otherwise.
+pub fn an_operator_closes_a_record_left_open(world: &World) {
+    if !world.machine_is_unreachable(false) {
+        // Only a socket can be told to be off, or to be cancelling.
+        return;
+    }
+    world.wants(Reports::Printing);
+    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
+    let running_one = world.open_record_with_a_session(Some(RUNNING_FILE), None);
+    let spools = holdings(world);
+
+    blank_reasons_are_refused(world, &left);
+    a_running_job_holds_its_record_open(world, &running_one);
+    a_closed_session_keeps_its_closure(world);
+    an_adjustment_holds_its_record_open(world);
 
     // A machine that does not answer refuses no close: the record ends in the
     // state it last knew.
