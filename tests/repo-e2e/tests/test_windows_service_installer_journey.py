@@ -259,6 +259,7 @@ def installer(tmp_path: Path) -> Callable[..., Ran]:
         registered: bool = False,
         refuses: str | None = None,
         path: str | None = None,
+        interval: str | None = None,
     ) -> Ran:
         counter["n"] += 1
         root = root or tmp_path / f"root{counter['n']}"
@@ -266,6 +267,8 @@ def installer(tmp_path: Path) -> Callable[..., Ran]:
         arguments = ["-Root", str(root)]
         if binary is not None:
             arguments += ["-Binary", str(binary)]
+        if interval is not None:
+            arguments += ["-ObservationIntervalSeconds", interval]
         environment = clean_environment(**{RECORDING: str(recording)})
         if registered:
             # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
@@ -423,11 +426,20 @@ def octoprint() -> Iterator[str]:
         server.server_close()
 
 
+@pytest.mark.parametrize("interval", [None, "60"])
 def test_the_configuration_it_writes_is_one_the_server_starts_under(
-    installer: Callable[..., Ran], program: Path, octoprint: str, tmp_path: Path
+    installer: Callable[..., Ran],
+    program: Path,
+    octoprint: str,
+    tmp_path: Path,
+    interval: str | None,
 ) -> None:
-    """Filled in as an operator would, the template is a document the real server accepts."""
-    ran = installer(binary=program)
+    """Filled in as an operator would, the template is a document the real server accepts.
+
+    With an observation interval given and without one, so that what the
+    installer accepts and writes is what the server reads.
+    """
+    ran = installer(binary=program, interval=interval)
     passing((ran.code, ran.said), describing="the installer under the fixture session")
     filled = (
         ran.configuration.read_text(encoding="utf-8")
@@ -462,6 +474,71 @@ def test_the_configuration_it_writes_is_one_the_server_starts_under(
     finally:
         server.kill()
         server.wait()
+
+
+def test_an_observation_interval_given_is_written_into_the_configuration(
+    installer: Callable[..., Ran], program: Path
+) -> None:
+    """`-ObservationIntervalSeconds 60` is the server's `supervisor.observation_interval_s`."""
+    ran = installer(binary=program, interval="60")
+
+    passing((ran.code, ran.said), describing="the installer given an observation interval")
+    written = tomllib.loads(ran.configuration.read_text(encoding="utf-8"))
+    equal(
+        written["supervisor"].get("observation_interval_s"),
+        60,
+        describing="the observation interval the configuration names",
+    )
+
+
+def test_with_no_observation_interval_the_configuration_keeps_the_default(
+    installer: Callable[..., Ran], program: Path
+) -> None:
+    """Left out, the configuration names no interval, so the server takes its own default."""
+    ran = installer(binary=program)
+
+    passing((ran.code, ran.said), describing="the installer given no observation interval")
+    written = tomllib.loads(ran.configuration.read_text(encoding="utf-8"))
+    truth(
+        "observation_interval_s" not in written["supervisor"],
+        describing=f"no observation interval in the configuration: {written['supervisor']}",
+    )
+
+
+@pytest.mark.parametrize("interval", ["0", "-5", "060", "sixty", "9223372036854775808"])
+def test_an_observation_interval_the_server_would_refuse_is_refused_naming_it(
+    installer: Callable[..., Ran], program: Path, interval: str
+) -> None:
+    """Zero, a negative, or anything no configuration holds as one is refused before placing."""
+    ran = installer(binary=program, interval=interval)
+
+    failing((ran.code, ran.said), naming="-ObservationIntervalSeconds")
+    contains(ran.said, f"'{interval}' is not one", describing="the value it refused, quoted")
+    truth(not ran.root.exists(), describing="nothing to have been placed")
+    equal(ran.recorded, [], describing="nothing asked of the manager")
+
+
+def test_a_reinstall_given_an_interval_leaves_the_configuration_alone_and_says_so(
+    installer: Callable[..., Ran], program: Path
+) -> None:
+    """A configuration already in place is the operator's; the interval not written is named."""
+    first = installer(binary=program)
+    passing((first.code, first.said), describing="the first install")
+    before = first.configuration.read_text(encoding="utf-8")
+
+    again = installer(binary=program, root=first.root, registered=True, interval="60")
+
+    passing((again.code, again.said), describing="the reinstall given an interval")
+    equal(
+        first.configuration.read_text(encoding="utf-8"),
+        before,
+        describing="the configuration after a reinstall given an interval",
+    )
+    contains(
+        again.said,
+        "-ObservationIntervalSeconds was not written into it",
+        describing="what the reinstall said of the interval it did not write",
+    )
 
 
 def test_a_reinstall_leaves_the_configuration_alone_and_updates_the_registration(
