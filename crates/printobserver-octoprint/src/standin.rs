@@ -574,3 +574,66 @@ fn upgrade(
     let mut sink = [0_u8; 1024];
     while matches!(connection.read(&mut sink), Ok(read) if read > 0) {}
 }
+
+/// A real `OctoPrint`'s terminal and serial connection, for the live tiers
+/// that put its virtual printer into a stop: a line typed at its terminal —
+/// one of the virtual printer's own `!!DEBUG:` triggers, or a move made while
+/// no job runs — and the reconnect a stop that went offline needs.
+///
+/// Compiled under `standin` alone, like the scripted printer: nothing but a
+/// test reaches a printer with a line of its own choosing, and the port's own
+/// [`PrinterCommand`](printobserver_printer_api::PrinterCommand) vocabulary is
+/// closed.
+#[derive(Debug, Clone)]
+pub struct Terminal {
+    /// The instance.
+    config: crate::OctoPrintConfig,
+}
+
+impl Terminal {
+    /// The terminal of the instance one configuration names.
+    #[must_use]
+    pub const fn new(config: crate::OctoPrintConfig) -> Self {
+        Self { config }
+    }
+
+    /// One request, answered with its status, or why it was not.
+    fn post(&self, path: &str, body: &Value) -> Result<u16, String> {
+        let encoded = body.to_string();
+        crate::http::send(
+            self.config.endpoint(),
+            self.config.api_key(),
+            crate::http::Method::Post,
+            &self.config.endpoint().path(path),
+            Some(encoded.as_bytes()),
+            self.config.timeout(),
+        )
+        .map(|response| response.status)
+        .map_err(|transport| format!("{transport:?}"))
+    }
+
+    /// Type one line at the terminal.
+    ///
+    /// # Errors
+    ///
+    /// Answers why the instance did not take it.
+    pub fn send(&self, line: &str) -> Result<(), String> {
+        match self.post("/api/printer/command", &json!({ "commands": [line] }))? {
+            204 => Ok(()),
+            status => Err(format!("the terminal answered {status}")),
+        }
+    }
+
+    /// Connect the printer again, on the connection the instance is
+    /// configured with.
+    ///
+    /// # Errors
+    ///
+    /// Answers why the instance did not take it.
+    pub fn connect(&self) -> Result<(), String> {
+        match self.post("/api/connection", &json!({ "command": "connect", "autoconnect": true }))? {
+            204 => Ok(()),
+            status => Err(format!("the connection answered {status}")),
+        }
+    }
+}

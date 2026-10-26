@@ -32,6 +32,10 @@ mod binding;
 mod coherent_ledger;
 #[path = "journeys/configuration.rs"]
 mod configuration;
+#[path = "journeys/degrading.rs"]
+mod degrading;
+#[path = "journeys/detecting.rs"]
+mod detecting;
 #[path = "journeys/failing.rs"]
 mod failing;
 #[path = "journeys/finding.rs"]
