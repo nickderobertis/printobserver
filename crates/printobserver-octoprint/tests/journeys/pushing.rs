@@ -8,7 +8,7 @@
 //! are the server's integration tier's.
 
 use std::pin::Pin;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
 use printobserver_octoprint::push::pushes_of;
@@ -31,18 +31,10 @@ fn adapter(standin: &ScriptedOctoPrint) -> OctoPrintPrinter {
     )
 }
 
-/// A waker that does nothing, so a journey can poll the stream in a loop.
-struct Idle;
-
-impl Wake for Idle {
-    fn wake(self: std::sync::Arc<Self>) {}
-}
-
 /// The next push, or `None` once the stream ended; panics when nothing arrives
 /// in time.
 fn next(stream: &mut BoxStream<'static, PrinterPush>) -> Option<PrinterPush> {
-    let waker = Waker::from(std::sync::Arc::new(Idle));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     let deadline = Instant::now() + PATIENCE;
     loop {
         if let Poll::Ready(item) = Pin::as_mut(stream).poll_next(&mut context) {
