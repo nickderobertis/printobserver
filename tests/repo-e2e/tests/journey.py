@@ -174,19 +174,43 @@ def copy_tracked(destination: Path, *, root: Path = REPO_ROOT) -> Path:
     return destination
 
 
+#: Every journey that runs Nx in a copy nobody will clean up after runs it
+#: without the daemon a local Nx would otherwise start for that copy and leave
+#: running once the journey is over.
+QUIET = {"NX_DAEMON": "false", "NX_NO_CLOUD": "true"}
+
+#: The `uv` settings that stop a copy's own commands from syncing the copy's own
+#: lock into the environment they run in: skipping the sync, discovering no
+#: project or another one, and leaving a dependency group out of it. A host may
+#: export any of them for its own work — one orchestrating agents exports
+#: `UV_NO_SYNC` — and inherited, the first `uv run` of a fresh environment finds
+#: none of the copy's dependencies and fails on a missing module.
+DEPENDENCY_SYNC_SUPPRESSION = (
+    "UV_NO_SYNC",
+    "UV_NO_PROJECT",
+    "UV_PROJECT",
+    "UV_WORKING_DIR",
+    "UV_NO_DEV",
+    "UV_NO_GROUP",
+    "UV_NO_DEFAULT_GROUPS",
+)
+
+
 def clean_environment(**extra: str) -> dict[str, str]:
     """The environment a journey's subprocesses run under.
 
-    The caller's, minus this checkout's own activated virtualenv, and with
-    colouring pinned on. `FORCE_COLOR` is not decoration: the publication
-    harness runs the gate under a terminal that colours it, so `bun` and `nx`
-    there emit exactly the escapes `capture` strips — while a run started by
-    hand from a plain pipe emits none. Pinning it makes the suite prove the
-    harder of the two outputs here as well as there, rather than passing on this
-    machine and failing on the one that pushes.
+    The caller's, minus this checkout's own activated virtualenv and every
+    setting in `DEPENDENCY_SYNC_SUPPRESSION`, and with colouring pinned on.
+    `FORCE_COLOR` is not decoration: the publication harness runs the gate under
+    a terminal that colours it, so `bun` and `nx` there emit exactly the escapes
+    `capture` strips — while a run started by hand from a plain pipe emits none.
+    Pinning it makes the suite prove the harder of the two outputs here as well
+    as there, rather than passing on this machine and failing on the one that
+    pushes.
     """
     environment = dict(os.environ)
-    environment.pop("VIRTUAL_ENV", None)
+    for name in ("VIRTUAL_ENV", *DEPENDENCY_SYNC_SUPPRESSION):
+        environment.pop(name, None)
     environment["FORCE_COLOR"] = "1"
     environment.update(extra)
     return environment
