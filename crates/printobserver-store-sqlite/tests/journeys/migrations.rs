@@ -79,8 +79,11 @@ fn text(value: &str) -> rusqlite::types::Value {
 }
 
 /// A database at one prior version, with the rows that version can hold.
+///
+/// Opened over this crate's own connection, which carries the readings of a
+/// charge key the latest step's triggers and report call.
 fn database_at(path: &Path, version: u32) -> Connection {
-    let connection = Connection::open(path).expect("a database opens");
+    let connection = printobserver_store_sqlite::connect(path).expect("a database opens");
     connection
         .pragma_update(None, "foreign_keys", "ON")
         .expect("the pragma sets");

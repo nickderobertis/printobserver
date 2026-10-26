@@ -18,7 +18,9 @@ use std::time::Duration;
 
 use printobserver_core::store::StoreError;
 use rusqlite::Connection;
+use rusqlite::functions::FunctionFlags;
 
+use crate::ledger::key_from_canonical;
 use crate::values::{database_error, io_error};
 
 /// The database's file name under the configured state directory.
@@ -250,10 +252,14 @@ CREATE INDEX events_by_kind_and_instant ON events(kind, received_at, id);
 /// A charge's diameter, density and the spool's figures either side of it were
 /// held only in its `filament_consumed` event, so they are read back from
 /// there. The triggers are the refusals the database makes from here on. A
-/// watched key spells its print and tool first, so those are held exactly;
-/// an unobserved key's origin and file name may each carry a colon, so the
-/// database holds only that its tool is one of the key's fields, and every
-/// read of the row holds it exactly.
+/// key's tool and watched print are read off it by
+/// `printobserver_charge_key_tool` and `printobserver_charge_key_print`, which
+/// [`connect`] registers on every connection: the store's own reading of a
+/// canonical key, the one every read of a row holds it to, so the database
+/// holds a row's projection to its key exactly — an unobserved key's origin
+/// and file name may each carry a colon, which no reading in SQL could tell
+/// from the separators. A connection that did not register them cannot write
+/// a charge at all, rather than write one unchecked.
 const V6_COHERENT_LEDGER: &str = "\
 CREATE TABLE migration_reports (
     version INTEGER NOT NULL,
@@ -293,9 +299,9 @@ INSERT INTO migration_reports (version, subject, detail)
     SELECT 6, 'charge ' || charge_key,
         'charge ' || charge_key || ' stores print ' || ifnull(print_id, 'none') || ' and tool '
         || tool || ', which its key does not name; every read of it reports so'
-    FROM charges WHERE charge_key LIKE 'print:%' AND (print_id IS NULL
-        OR substr(charge_key, 1, length('print:' || print_id || ':' || tool || ':'))
-            <> 'print:' || print_id || ':' || tool || ':');
+    FROM charges WHERE printobserver_charge_key_tool(charge_key) IS NOT tool
+        OR (charge_key LIKE 'print:%'
+            AND printobserver_charge_key_print(charge_key) IS NOT print_id);
 UPDATE pending_charges SET pending = json_remove(
     json_set(pending, '$.charge_key', json(json_remove(json_extract(pending, '$.charge_key'), '$.key'))),
     '$.print_id', '$.tool')
@@ -310,11 +316,9 @@ CREATE TRIGGER spools_retired_on_no_tool_update BEFORE UPDATE ON spools
     WHEN NEW.retired_at IS NOT NULL AND NEW.loaded_on_tool IS NOT NULL
     BEGIN SELECT RAISE(ABORT, 'spools.lifecycle'); END;
 CREATE TRIGGER charges_coherent_insert BEFORE INSERT ON charges
-    WHEN (NEW.charge_key LIKE 'print:%' AND (NEW.print_id IS NULL
-            OR substr(NEW.charge_key, 1, length('print:' || NEW.print_id || ':' || NEW.tool || ':'))
-                <> 'print:' || NEW.print_id || ':' || NEW.tool || ':'))
-        OR (NEW.charge_key LIKE 'unobserved:%' AND instr(NEW.charge_key, ':' || NEW.tool || ':') = 0)
-        OR (NEW.charge_key NOT LIKE 'print:%' AND NEW.charge_key NOT LIKE 'unobserved:%')
+    WHEN printobserver_charge_key_tool(NEW.charge_key) IS NOT NEW.tool
+        OR (NEW.charge_key LIKE 'print:%'
+            AND printobserver_charge_key_print(NEW.charge_key) IS NOT NEW.print_id)
         OR ((NEW.spool_id IS NULL) <> (NEW.grams IS NULL)
             OR (NEW.spool_id IS NULL) <> (NEW.diameter_mm IS NULL)
             OR (NEW.spool_id IS NULL) <> (NEW.density_g_cm3 IS NULL)
@@ -322,11 +326,9 @@ CREATE TRIGGER charges_coherent_insert BEFORE INSERT ON charges
             OR (NEW.spool_id IS NULL) <> (NEW.remaining_after_g IS NULL))
     BEGIN SELECT RAISE(ABORT, 'charges.coherent'); END;
 CREATE TRIGGER charges_coherent_update BEFORE UPDATE ON charges
-    WHEN (NEW.charge_key LIKE 'print:%' AND (NEW.print_id IS NULL
-            OR substr(NEW.charge_key, 1, length('print:' || NEW.print_id || ':' || NEW.tool || ':'))
-                <> 'print:' || NEW.print_id || ':' || NEW.tool || ':'))
-        OR (NEW.charge_key LIKE 'unobserved:%' AND instr(NEW.charge_key, ':' || NEW.tool || ':') = 0)
-        OR (NEW.charge_key NOT LIKE 'print:%' AND NEW.charge_key NOT LIKE 'unobserved:%')
+    WHEN printobserver_charge_key_tool(NEW.charge_key) IS NOT NEW.tool
+        OR (NEW.charge_key LIKE 'print:%'
+            AND printobserver_charge_key_print(NEW.charge_key) IS NOT NEW.print_id)
         OR ((NEW.spool_id IS NULL) <> (NEW.grams IS NULL)
             OR (NEW.spool_id IS NULL) <> (NEW.diameter_mm IS NULL)
             OR (NEW.spool_id IS NULL) <> (NEW.density_g_cm3 IS NULL)
@@ -398,7 +400,35 @@ pub fn connect(path: &Path) -> Result<Connection, StoreError> {
     connection
         .pragma_update(None, "synchronous", "NORMAL")
         .map_err(|error| database_error(&error))?;
+    register_key_readings(&connection)?;
     Ok(connection)
+}
+
+/// Register the two readings of a charge key the schema's triggers call: the
+/// tool a canonical key names, and the print a watched one names — each
+/// `NULL` for a text that is no key's canonical spelling, and the print `NULL`
+/// for an unobserved key.
+fn register_key_readings(connection: &Connection) -> Result<(), StoreError> {
+    let flags = FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC;
+    connection
+        .create_scalar_function("printobserver_charge_key_tool", 1, flags, |call| {
+            let text: Option<String> = call.get(0)?;
+            Ok(text
+                .as_deref()
+                .and_then(key_from_canonical)
+                .map(|key| key.tool()))
+        })
+        .map_err(|error| database_error(&error))?;
+    connection
+        .create_scalar_function("printobserver_charge_key_print", 1, flags, |call| {
+            let text: Option<String> = call.get(0)?;
+            Ok(text
+                .as_deref()
+                .and_then(key_from_canonical)
+                .and_then(|key| key.watched_print())
+                .map(|print_id| print_id.to_string()))
+        })
+        .map_err(|error| database_error(&error))
 }
 
 /// The version a database is at.

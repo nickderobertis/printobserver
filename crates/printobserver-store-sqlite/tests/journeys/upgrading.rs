@@ -359,3 +359,93 @@ fn an_incoherent_charge_0_4_3_held_is_reported_by_the_migration_and_every_read()
         );
     }
 }
+
+/// The unobserved charge's own event, which a hand-written charge row names.
+fn unobserved_event(connection: &rusqlite::Connection) -> String {
+    connection
+        .query_row(
+            "SELECT event_id FROM charges WHERE charge_key LIKE 'unobserved:%'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the 0.4.3 database holds an unobserved charge")
+}
+
+/// Write one uncharged charge row under `key` and `tool`, as any writer could.
+fn insert_charge(
+    connection: &rusqlite::Connection,
+    key: &str,
+    tool: i64,
+) -> rusqlite::Result<usize> {
+    let event = unobserved_event(connection);
+    connection.execute(
+        "INSERT INTO charges (charge_key, print_id, tool, spool_id, length_mm, grams, event_id, \
+         charged_at) VALUES (?1, NULL, ?2, NULL, 10.0, NULL, ?3, '2026-03-01T12:00:00.000000000Z')",
+        rusqlite::params![key, tool, event],
+    )
+}
+
+/// An unobserved key's tool is held exactly on write: a row whose stored tool
+/// is the key's generation, its print number or a number its file name
+/// carries — each a field the key spells beside its tool — is refused on
+/// insert and on update, while a row whose tool is the key's own is written,
+/// an origin carrying a colon included.
+#[test]
+fn an_unobserved_charge_is_refused_any_tool_but_the_one_its_key_names() {
+    let dir = copied();
+    drop(SqliteStore::open(dir.path()).expect("the 0.4.3 database opens"));
+    let connection = connect(&dir.path().join(DATABASE_FILE_NAME)).expect("the database opens");
+    let refused = |answer: rusqlite::Result<usize>, what: &str| {
+        let said = answer
+            .err()
+            .unwrap_or_else(|| panic!("the database wrote {what}"))
+            .to_string();
+        assert!(said.contains("charges.coherent"), "{what}: {said}");
+    };
+
+    // 0.4.3's own row: `unobserved:local:0:3:0:benchy.gcode`, tool 0.
+    let update = |tool: i64| {
+        connection.execute(
+            "UPDATE charges SET tool = ?1 WHERE charge_key LIKE 'unobserved:%'",
+            [tool],
+        )
+    };
+    refused(update(3), "the print number as the tool, on update");
+    refused(update(7), "a tool the key does not spell, on update");
+    assert_eq!(update(0), Ok(1), "the key's own tool was refused on update");
+
+    let key = "unobserved:local:5:3:0:v:7:part.gcode";
+    for (tool, what) in [
+        (5, "the generation as the tool, on insert"),
+        (3, "the print number as the tool, on insert"),
+        (7, "a number of the file name as the tool, on insert"),
+    ] {
+        refused(insert_charge(&connection, key, tool), what);
+    }
+    assert_eq!(insert_charge(&connection, key, 0), Ok(1));
+    let colon = "unobserved:sd:card:5:3:2:benchy.gcode";
+    refused(
+        insert_charge(&connection, colon, 3),
+        "a tool after an origin with a colon",
+    );
+    assert_eq!(insert_charge(&connection, colon, 2), Ok(1));
+    for (tool, what) in [
+        (5, "the generation as the tool, on update"),
+        (7, "a number of the file name as the tool, on update"),
+    ] {
+        refused(
+            connection.execute(
+                "UPDATE charges SET tool = ?1 WHERE charge_key = ?2",
+                rusqlite::params![tool, key],
+            ),
+            what,
+        );
+    }
+
+    let store = SqliteStore::open(dir.path()).expect("the database opens");
+    let port: &dyn Store = &store;
+    assert!(
+        block_on(port.charges(PRINT.parse().expect("an id"))).is_ok(),
+        "a refused write left a row this build cannot read"
+    );
+}
