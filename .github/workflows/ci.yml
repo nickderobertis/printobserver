@@ -16,13 +16,13 @@
 #
 # macOS is the one exception, and it is a consolidation rather than a
 # narrowing: the account's few macOS slots are shared with other repositories,
-# so the gate's and the integration tier's `macos-aarch64` cells run as ONE job,
-# `macos`, that runs both recipes in turn, and only on a pull request the
-# classifier (`.github/macos-policy.mjs`) says owes it. Two Linux jobs carry the
-# required contexts `gate (macos-aarch64)` and `integration (macos-aarch64)`,
-# each reporting exactly what that one job's own step for its lane did.
-# `repo-policy.toml`'s `[[workflows.carried]]` records the two cells as carried,
-# and AGENTS.md's "The consolidated macOS lanes" says why.
+# so the gate's and the integration tier's `macos-aarch64` cells run as jobs of
+# their own — the gate's two shards and `integration-macos` — and only on a
+# pull request the classifier (`.github/macos-policy.mjs`) says owes them.
+# `repo-policy.toml`'s `[[workflows.carried]]` records the integration cell
+# as carried by `integration-macos`, the gate's cell is reported by its
+# aggregator `gate-macos`, and AGENTS.md's "The consolidated macOS lanes" says
+# why.
 
 name: ci
 
@@ -78,10 +78,14 @@ jobs:
       # runner here has its own, so on the merge path a missing one fails the
       # journey rather than skipping it.
       PRINTOBSERVER_SERVICE_JOURNEY: required
+      # What the `gate-time` step reads this run's jobs with. At job level
+      # because a dispatch by hand carries a step's literal environment alone,
+      # and leaves this out: that run reads the public jobs API unauthenticated.
+      GITHUB_TOKEN: ${{ github.token }}
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
-    # `macos-aarch64` is the `macos` job's below, under the same context.
+    # `macos-aarch64` is sharded below, `gate-macos` reporting its context.
     name: gate (${{ matrix.platform.id }})
     strategy:
       fail-fast: false
@@ -131,6 +135,11 @@ jobs:
       - run: just budgets-release-pr
       - if: always()
         run: just runner-temp cleanup
+      # The `gate-time` budget, last so that the span it reads ends here.
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
 
   # A platform whose gate does not fit one runner in the 30 minutes each
   # platform is held to is split: one matrix cell per shard, each running the
@@ -149,19 +158,23 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 1
-            shards: 4
+            shards: 5
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 2
-            shards: 4
+            shards: 5
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 3
-            shards: 4
+            shards: 5
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 4
-            shards: 4
+            shards: 5
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 5
+            shards: 5
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -181,7 +194,7 @@ jobs:
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
       # Rust crates' instrumented test builds, the second the lints, the debug
-      # program the Python suites run and the build tier, the last two the
+      # program the Python suites run and the build tier, the last three the
       # debug program the end-to-end tier runs — and one key shared by all
       # would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -211,6 +224,10 @@ jobs:
     needs: [gate-shard-windows-aarch64]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     steps:
       - uses: actions/checkout@v5
       - uses: extractions/setup-just@v3
@@ -218,6 +235,12 @@ jobs:
       - run: just shard-verdict gate windows-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: windows-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
 
   gate-shard-windows-x86_64:
     env:
@@ -231,19 +254,23 @@ jobs:
           - id: windows-x86_64
             runner: windows-2025
             shard: 1
-            shards: 4
+            shards: 5
           - id: windows-x86_64
             runner: windows-2025
             shard: 2
-            shards: 4
+            shards: 5
           - id: windows-x86_64
             runner: windows-2025
             shard: 3
-            shards: 4
+            shards: 5
           - id: windows-x86_64
             runner: windows-2025
             shard: 4
-            shards: 4
+            shards: 5
+          - id: windows-x86_64
+            runner: windows-2025
+            shard: 5
+            shards: 5
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -263,7 +290,7 @@ jobs:
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
       # Rust crates' instrumented test builds, the second the lints, the debug
-      # program the Python suites run and the build tier, the last two the
+      # program the Python suites run and the build tier, the last three the
       # debug program the end-to-end tier runs — and one key shared by all
       # would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -293,6 +320,10 @@ jobs:
     needs: [gate-shard-windows-x86_64]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     steps:
       - uses: actions/checkout@v5
       - uses: extractions/setup-just@v3
@@ -300,10 +331,19 @@ jobs:
       - run: just shard-verdict gate windows-x86_64
         env:
           NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: windows-x86_64
+          GITHUB_TOKEN: ${{ github.token }}
 
   integration:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      # What the `gate-time` step reads this run's jobs with, at job level for
+      # the reason the gate job's gives.
+      GITHUB_TOKEN: ${{ github.token }}
     # Named by platform id, not runner, so a new runner image renames no
     # required check; each cell reports the context AGENTS.md's required-checks
     # record names, and that record says how the live protection follows a rename.
@@ -313,7 +353,7 @@ jobs:
     # OctoPrint, starts it and waits a print out — but it runs on every change,
     # on every platform AGENTS.md's supported-platform list names for which its
     # "Virtual printer availability" block records no exclusion — `macos-aarch64`
-    # in the `macos` job below rather than in a cell of its own.
+    # in the `integration-macos` job below rather than in a cell of its own.
     strategy:
       fail-fast: false
       matrix:
@@ -327,6 +367,10 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
     runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
     # Git's own bash on the Windows runners rather than PowerShell, so that
     # every cell runs its steps, and `just` finds the bash its recipes name, the
     # same way.
@@ -371,31 +415,49 @@ jobs:
           if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: integration
 
-  # The gate and the printer integration tier for `macos-aarch64`, in one job:
-  # one shared macOS slot for a pull request rather than two. Each lane's own
-  # step publishes its outcome, and the integration lane runs whatever the gate
-  # answered, so each required context below reports its own lane's verdict.
-  macos:
-    name: macos-aarch64 (gate, integration)
-    needs: classify
-    # On a pull request the classifier could not answer, the lane runs anyway:
-    # unknown is never omission. No other event runs it.
-    if: >-
-      !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
-      (github.event_name == 'pull_request' && needs.classify.result != 'success'))
-    runs-on: macos-15
+  # The gate and the printer integration tier for `macos-aarch64`: the gate in
+  # two macOS shards behind an aggregator, and the integration tier in a macOS
+  # job of its own, all side by side and only on a pull request the classifier
+  # says owes the lane. On a pull request it could not answer they run anyway:
+  # unknown is never omission. No other event runs them, and a job its
+  # condition skips reports its context as a success, so a pull request owing no
+  # macOS lane still reports both. Three at once is the most
+  # `.github/budgets.yaml` lets one run ask for.
+  gate-shard-macos-aarch64:
     env:
-      PRINTOBSERVER_PLATFORM: macos-aarch64
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
       # As in the gate's own cells: on the merge path a service-manager case
       # whose prerequisite is missing fails rather than skipping.
       PRINTOBSERVER_SERVICE_JOURNEY: required
+      # The Windows-target lint reads the committed tree alone, and every Linux
+      # gate cell runs it.
+      PRINTOBSERVER_HOST_INDEPENDENT: elsewhere
+    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
+    needs: classify
+    if: >-
+      !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
+      (github.event_name == 'pull_request' && needs.classify.result != 'success'))
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: macos-aarch64
+            runner: macos-15
+            shard: 1
+            shards: 2
+          - id: macos-aarch64
+            runner: macos-15
+            shard: 2
+            shards: 2
+    runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
       actions: read
-    outputs:
-      gate: ${{ steps.gate.outcome }}
-      integration: ${{ steps.integration.outcome }}
     defaults:
       run:
         shell: bash
@@ -404,6 +466,71 @@ jobs:
         with:
           fetch-depth: 0
       - uses: nrwl/nx-set-shas@v4
+      # A cache per shard: the first compiles the debug program the end-to-end
+      # tier runs, the second the Rust crates' instrumented test builds, the
+      # lints, the debug program the Python suites run and the build tier.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
+      - run: just bootstrap
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
+        env:
+          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
+      - if: always()
+        run: just runner-temp cleanup
+
+  # The required `gate (macos-aarch64)` context: it waits on both shards
+  # whatever each concluded, and fails unless each succeeded — except where the
+  # classifier owed no macOS lane and skipped them, where it is skipped too.
+  gate-macos:
+    name: gate (macos-aarch64)
+    needs: [gate-shard-macos-aarch64]
+    if: always() && needs.gate-shard-macos-aarch64.result != 'skipped'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just shard-verdict gate macos-aarch64
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: macos-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
+
+  integration-macos:
+    name: integration (macos-aarch64)
+    needs: classify
+    if: >-
+      !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
+      (github.event_name == 'pull_request' && needs.classify.result != 'success'))
+    runs-on: macos-15
+    env:
+      PRINTOBSERVER_PLATFORM: macos-aarch64
+      GITHUB_TOKEN: ${{ github.token }}
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: taiki-e/install-action@v2
         with:
@@ -411,31 +538,16 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
       - run: just runner-temp
-      - id: bootstrap
-        run: just bootstrap
-      # The gate lane: the same recipe, at the same tier, as every gate cell.
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - id: gate
-        run: just check "$(just gate-tier)"
-      # The integration lane, after the gate whatever it answered: a failed gate
-      # is that lane's verdict, not this one's.
+      - run: just bootstrap
       - id: release-program
-        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: .release-program
           key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
-      - id: release-program-built
-        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
-        run: just release-program
-      - id: octoprint-up
-        if: ${{ !cancelled() && steps.release-program-built.outcome == 'success' }}
-        run: just octoprint-up
-      - id: integration
-        if: ${{ !cancelled() && steps.octoprint-up.outcome == 'success' }}
-        run: just test-integration
+      - run: just release-program
+      - run: just octoprint-up
+      - run: just test-integration
       - if: always()
         run: just octoprint-down
       # The logs a failed tier kept before that bring-down.
@@ -447,34 +559,10 @@ jobs:
           if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
-
-  # The two required macOS contexts, carried from Linux: each passes only when
-  # the `macos` job ran and its own lane's step succeeded, or when the
-  # classifier answered that this run owes no macOS lane and none ran — and
-  # says which, so a pass never claims macOS tests that did not run.
-  gate-macos:
-    name: gate (macos-aarch64)
-    needs: [classify, macos]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: extractions/setup-just@v3
-      - run: just macos-carry gate
+      - name: gate-time
+        run: just gate-time
         env:
-          NEEDS: ${{ toJSON(needs) }}
-
-  integration-macos:
-    name: integration (macos-aarch64)
-    needs: [classify, macos]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: extractions/setup-just@v3
-      - run: just macos-carry integration
-        env:
-          NEEDS: ${{ toJSON(needs) }}
+          GATE_TIME_KIND: integration
 
   llmlint:
     name: llmlint

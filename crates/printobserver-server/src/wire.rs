@@ -85,6 +85,9 @@ pub struct ActionBody {
     /// What an acknowledgement asks for next.
     #[serde(default)]
     pub disposition: Option<AcknowledgementDisposition>,
+    /// How a closed print ended, in the operator's judgement.
+    #[serde(default)]
+    pub outcome: Option<PrintOutcome>,
 }
 
 /// One value a request had to carry and did not.
@@ -92,6 +95,11 @@ fn missing<T>(named: &str) -> Result<T, BodyRefusal> {
     Err(BodyRefusal {
         detail: format!("this operation needs `{named}`, and the request carries none"),
     })
+}
+
+/// One value a request has to carry, refused naming it when it carries none.
+fn needed<T>(value: Option<T>, named: &str) -> Result<T, BodyRefusal> {
+    value.map_or_else(|| missing(named), Ok)
 }
 
 /// The reason a mutating request carries, refused when it carries none.
@@ -178,76 +186,51 @@ impl ActionBody {
             ActionKind::Resume => Action::Resume { reason, actor },
             ActionKind::Cancel => Action::Cancel { reason, actor },
             ActionKind::StartPrint => Action::StartPrint {
-                file_name: match self.file_name {
-                    Some(name) => name,
-                    None => return missing("file_name"),
-                },
-                manifest: match self.manifest {
-                    Some(manifest) => manifest,
-                    None => return missing("manifest"),
-                },
+                file_name: needed(self.file_name, "file_name")?,
+                manifest: needed(self.manifest, "manifest")?,
                 override_filament_check: self.override_filament_check,
                 reason,
                 actor,
             },
             ActionKind::SetFeedrateFactor => Action::SetFeedrateFactor {
-                factor: match self.factor {
-                    Some(factor) => factor,
-                    None => return missing("factor"),
-                },
+                factor: needed(self.factor, "factor")?,
                 duration_s,
                 reason,
                 actor,
             },
             ActionKind::SetFlowrateFactor => Action::SetFlowrateFactor {
-                factor: match self.factor {
-                    Some(factor) => factor,
-                    None => return missing("factor"),
-                },
+                factor: needed(self.factor, "factor")?,
                 duration_s,
                 reason,
                 actor,
             },
             ActionKind::SetToolTargetC => Action::SetToolTargetC {
-                tool: match self.tool {
-                    Some(tool) => tool,
-                    None => return missing("tool"),
-                },
-                target_c: match self.target_c {
-                    Some(target) => target,
-                    None => return missing("target_c"),
-                },
+                tool: needed(self.tool, "tool")?,
+                target_c: needed(self.target_c, "target_c")?,
                 duration_s,
                 reason,
                 actor,
             },
             ActionKind::SetBedTargetC => Action::SetBedTargetC {
-                target_c: match self.target_c {
-                    Some(target) => target,
-                    None => return missing("target_c"),
-                },
+                target_c: needed(self.target_c, "target_c")?,
                 duration_s,
                 reason,
                 actor,
             },
             ActionKind::SetFanPercent => Action::SetFanPercent {
-                percent: match self.percent {
-                    Some(percent) => percent,
-                    None => return missing("percent"),
-                },
+                percent: needed(self.percent, "percent")?,
                 duration_s,
                 reason,
                 actor,
             },
             ActionKind::AcknowledgeFailure => Action::AcknowledgeFailure {
-                event_id: match self.event_id {
-                    Some(event_id) => event_id,
-                    None => return missing("event_id"),
-                },
-                disposition: match self.disposition {
-                    Some(disposition) => disposition,
-                    None => return missing("disposition"),
-                },
+                event_id: needed(self.event_id, "event_id")?,
+                disposition: needed(self.disposition, "disposition")?,
+                reason,
+                actor,
+            },
+            ActionKind::ClosePrint => Action::ClosePrint {
+                outcome: needed(self.outcome, "outcome")?,
                 reason,
                 actor,
             },
@@ -705,6 +688,7 @@ mod tests {
             override_filament_check: false,
             event_id: None,
             disposition: None,
+            outcome: None,
         }
     }
 
@@ -723,6 +707,7 @@ mod tests {
             (ActionKind::SetBedTargetC, "target_c"),
             (ActionKind::SetFanPercent, "percent"),
             (ActionKind::AcknowledgeFailure, "event_id"),
+            (ActionKind::ClosePrint, "outcome"),
         ];
         for (kind, named) in needed {
             let refusal = bare()

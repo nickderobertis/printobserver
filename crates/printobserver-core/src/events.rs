@@ -36,9 +36,7 @@ use crate::records::PrintRecord;
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_printer_api::{JobSnapshot, PrinterState};
 use printobserver_supervisor_api::SessionPhase;
-use printobserver_supervisor_api::{
-    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnRequest, TurnSituation,
-};
+use printobserver_supervisor_api::{SupervisionSessionOpenedPayload, TurnRequest, TurnSituation};
 use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
 use printobserver_vision_api::NormalizedAlert;
 
@@ -648,20 +646,7 @@ impl Supervisor {
                 reason.to_owned(),
             )
             .await?;
-        let _ = self
-            .agent()
-            .close_session(print_id, reason.to_owned())
-            .await;
-        if let Some(session) = self.stores().sessions.session(print_id).await? {
-            self.append_system_event(
-                print_id,
-                EventBody::of(&SupervisionSessionClosedPayload {
-                    session_name: session.session_name,
-                    close_reason: reason.to_owned(),
-                })?,
-            )
-            .await?;
-        }
+        self.close_session_of(print_id, reason).await?;
         Ok(true)
     }
 

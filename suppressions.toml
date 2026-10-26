@@ -300,6 +300,12 @@ file = "tools/repo-checks/src/repo_checks/verified_download.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "The downloads `just install-tools` makes, run by one blocking command in one CI step: a release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
 
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/src/repo_checks/gate_time_budget.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "The one read the `gate-time` step makes, run by one blocking command at the end of a CI job: the current run's jobs, page after page, each page's `total_count` deciding whether the next is asked for, and then one figure handed to `onebudgetspec`. There is nothing to overlap, and no typed client for the jobs API this environment carries; the answer is narrowed field by field by `gate_jobs.platform_span`, which refuses whatever it cannot read. An event loop under a command whose whole contract is one reported number and one exit status would buy nothing. The boundary this rule is about is the product's, and the product makes no such request."
+
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 
 [[suppression]]
@@ -1657,6 +1663,12 @@ reason = "This environment's suites are already split by target and by file rath
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_package_isolation.py"
+site = "A second clean environment on the same cache receives the published file."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target names its fast suites file by file, and `test-integration` runs the whole `tests/` directory, where every journey that provisions a real OctoPrint already lives. This journey provisions through the same `install` command those journeys bring an instance up with, and proves a property of that command; moving it into a project of its own would split one script's provisioning tier across two and leave the install it exercises in neither alone."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/octoprint-env/tests/test_startup_failures.py"
 site = "A file put on an instance nothing started is refused naming what comes first."
 reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suite that already drives that instance for every way `up` can fail, beside the journeys for its other commands; moving one command's journey into a project of its own would split one script's integration tier across two."
@@ -2270,6 +2282,12 @@ rule = "modern_domain_modeling"
 file = "tests/skilltest/scenario.py"
 site = "def _spool_answers("
 reason = "This function composes the spool ledger's answers and events a stub hands the agent as the JSON documents the server would serve, and holds the spool, the preflight and every event payload to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the answer it returns is checked against each operation's answer schema by skilltest-wiring. A Python model would restate those schemas a second time beside the generated ones."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "return ["
+reason = "This method composes the answer a stub gives a refused close as the JSON document the server would serve, the module's convention its docstring states: it takes each document from the sibling `record` composer and changes only what a rejection changes (no execution or outcome, and the rejection's own decision), and skilltest-wiring holds every one to the server's generated `ActionAnswer` schema and to the field names of the documented example. A Python model would restate that schema a second time beside the generated one."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"

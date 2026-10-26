@@ -12,8 +12,11 @@ is the check holding the workflow to it:
   handed the cell's own `shard/shards`, so no two cells run one shard;
 * exactly one aggregating job reports that platform's `gate_jobs.GATE_JOB`: it
   `needs` the shard job, runs `if: always()` so a failed or cancelled shard
-  still reaches it, and runs nothing but `just shard-verdict` over the
-  workflow's own `needs`, handed over as `${{ toJSON(needs) }}`;
+  still reaches it — or, where the shard job carries a condition of its own,
+  `always()` unless that condition skipped the shard job outright — and runs
+  nothing but `just shard-verdict` over the workflow's own `needs`, handed over
+  as `${{ toJSON(needs) }}`, and then the `gate-time` budget step every required
+  job ends with;
 * and the unsharded gate job's matrix leaves the platform out, so no second job
   reports the same context.
 
@@ -38,6 +41,7 @@ from repo_checks.gate_shards import (
     ShardError,
     plan,
 )
+from repo_checks.gate_time_budget import STEP_RUN
 from repo_checks.model import Repo
 from repo_checks.parsing import (
     MarkerBlockMissingError,
@@ -65,6 +69,11 @@ SHARD_VALUE = "${{ matrix.platform.shard }}/${{ matrix.platform.shards }}"
 NEEDS_VALUE = "${{ toJSON(needs) }}"
 #: The condition that runs the aggregator whatever its shards concluded.
 ALWAYS = "always()"
+#: The one other condition an aggregator may carry, where its shard job is itself
+#: conditioned — the macOS gate's, on the classifier owing the lane: it runs
+#: whatever the shards concluded but where that condition skipped every one of
+#: them, so a lane nobody owes reports a skipped context rather than a refusal.
+UNLESS_SKIPPED = "always() && needs.{key}.result != 'skipped'"
 
 
 def is_shard_job(job: dict[str, Any]) -> bool:
@@ -167,21 +176,27 @@ def _shard_findings(
     return platform, findings
 
 
-def _aggregator_findings(where: str, key: str, job: dict[str, Any], platform: str) -> list[str]:
+def _aggregator_findings(
+    where: str, key: str, job: dict[str, Any], platform: str, shard_condition: object
+) -> list[str]:
     """The aggregating job waits on every shard and reaches its verdict over them alone."""
     findings: list[str] = []
     if key not in _needs(job):
         findings.append(f"{where} does not `needs` the shard job `{key}`")
-    if str(job.get("if", "")).strip().removeprefix("${{").removesuffix("}}").strip() != ALWAYS:
+    condition = " ".join(str(job.get("if", "")).removeprefix("${{").removesuffix("}}").split())
+    allowed = {ALWAYS}
+    if shard_condition is not None:
+        allowed.add(UNLESS_SKIPPED.format(key=key))
+    if condition not in allowed:
         findings.append(
             f"{where} does not run `if: {ALWAYS}`, so a shard that failed or was cancelled "
             f"skips the verdict rather than failing it"
         )
     verdict = f"just {VERDICT_RECIPE} gate {platform}"
-    if run_commands(job) != [verdict]:
+    if run_commands(job) != [verdict, STEP_RUN]:
         findings.append(
             f"{where} runs {run_commands(job)}, and the one thing an aggregating job runs "
-            f"is `{verdict}`"
+            f"is `{verdict}`, followed by the `{STEP_RUN}` budget step every required job ends with"
         )
     handed = [
         step.get("env", {}).get(NEEDS_VARIABLE)
@@ -251,6 +266,8 @@ def sharded_jobs(repo: Repo) -> list[str]:
                 )
                 continue
             findings.extend(
-                _aggregator_findings(f"{path.name}: job `{name}`", key, aggregator, platform)
+                _aggregator_findings(
+                    f"{path.name}: job `{name}`", key, aggregator, platform, job.get("if")
+                )
             )
     return findings

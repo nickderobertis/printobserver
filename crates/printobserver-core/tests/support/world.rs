@@ -32,7 +32,7 @@ pub const EPOCH_SECONDS: i64 = 1_700_000_000;
 ///
 /// The walk over the vocabulary asserts this is exactly what the contracts
 /// declare, so a variant added there cannot go undriven here.
-pub const ACTION_KINDS: [ActionKind; 10] = [
+pub const ACTION_KINDS: [ActionKind; 11] = [
     ActionKind::Pause,
     ActionKind::Resume,
     ActionKind::Cancel,
@@ -43,6 +43,7 @@ pub const ACTION_KINDS: [ActionKind; 10] = [
     ActionKind::SetBedTargetC,
     ActionKind::SetFanPercent,
     ActionKind::AcknowledgeFailure,
+    ActionKind::ClosePrint,
 ];
 
 /// The safety envelope every journey runs under unless it says otherwise.

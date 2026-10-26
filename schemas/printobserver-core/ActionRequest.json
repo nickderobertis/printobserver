@@ -466,6 +466,60 @@
             "actor"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Close a print record printobserver left open, with the outcome the\noperator judges it ended with. It asks nothing of the machine and\ncharges no spool: the record's consumption was never seen to end.",
+          "properties": {
+            "action": {
+              "const": "close_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "outcome": {
+              "$ref": "#/$defs/PrintOutcome",
+              "description": "How the print ended, in the operator's judgement."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "outcome",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
         }
       ]
     },

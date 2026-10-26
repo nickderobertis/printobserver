@@ -253,14 +253,18 @@ PowerShell on Windows:
   widen them.
 - The five spool commands are granted like any other action. The template
   grants all five to the operator and none to the agent, which reads what is
-  loaded and what a file needs but does not say which spool is on which tool:
+  loaded and what a file needs but does not say which spool is on which tool.
+  It grants `close_print` to the operator alone too, and a configuration
+  granting it to the agent is refused at start: closing a print record is the
+  operator's judgement that the print is over.
 
   ```toml
   [safety.actions]
   operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
               "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-              "set_fan_percent", "acknowledge_failure", "register_spool",
-              "load_spool", "unload_spool", "adjust_spool", "retire_spool"]
+              "set_fan_percent", "acknowledge_failure", "close_print",
+              "register_spool", "load_spool", "unload_spool", "adjust_spool",
+              "retire_spool"]
   ```
 
 - `[spools]` is optional, and the template carries it commented out with its
@@ -619,6 +623,22 @@ for is refused `actor_may_not_request`. Add `"register_spool"`,
 `"load_spool"`, `"unload_spool"`, `"adjust_spool"` and `"retire_spool"` to the
 `operator` row of `[safety.actions]`, and restart the service. Leave the agent's
 row as it is.
+
+### Closing a print record left open
+
+A print that stopped while nothing was watching can leave its record open, and
+every later preflight then warns about it. Close it with the outcome you judge
+it ended with — `completed`, `cancelled`, `failed` or `interrupted`:
+
+```console
+printobserver close-print --print-id <id> --outcome interrupted --reason "the printer lost power mid-print"
+```
+
+It is refused while the printer shows that record's file printing, paused or
+cancelling, and while an adjustment of it is still in force. A printer that is
+off refuses nothing. A close charges no spool. A configuration written before
+this command existed grants it to nobody, so add `"close_print"` to the
+`operator` row of `[safety.actions]` and restart the service.
 
 ## Reference documentation
 

@@ -35,6 +35,8 @@ INTEGRATION_AARCH64 = (
     AARCH64
     + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
+    + "    permissions:\n      contents: read\n"
+    + "      # The `gate-time` step reads this run's jobs.\n      actions: read\n"
     + "    # Git's own bash on the Windows runners rather than PowerShell, so that\n"
     + "    # every cell runs its steps, and `just` finds the bash its recipes name, the\n"
     + "    # same way.\n"
@@ -182,7 +184,7 @@ def test_a_policy_whose_table_is_not_a_table_is_refused(
     # reader calling `.get` on it without narrowing would trip over.
     broken.edit(POLICY, "schema_version = 1\n", 'schema_version = 1\nworkflows = "yes"\n')
     broken.edit(POLICY, "\n[workflows]\n", "\n[workflow-settings]\n")
-    for _ in range(2):
+    while "[[workflows.carried]]" in broken.read(POLICY):
         broken.edit(POLICY, "[[workflows.carried]]", "[[workflow-settings.carried]]")
 
     result = broken.just("check-repo")

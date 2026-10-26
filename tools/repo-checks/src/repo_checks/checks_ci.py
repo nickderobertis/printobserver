@@ -414,8 +414,8 @@ def _carried(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
     """Each cell `repo-policy.toml` records as carried by one consolidated job, and why.
 
     A carried cell is not a cell that does not run: it runs, inside another job
-    — the one macOS job a pull request occupies runs the gate and the printer
-    integration tier in turn, and the release's macOS build cell proves its own
+    — a pull request's macOS integration job runs the printer integration tier
+    as a job of its own, and the release's macOS build cell proves its own
     artifacts in place of the registry proofs — and the job it is carried for
     omits it so that one change does not occupy several of the few shared
     macOS slots. So a record is admitted only where its carrier verifiably

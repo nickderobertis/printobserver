@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { before, describe, test } from "node:test";
 import { condition, loadWorkflows, plan, Unresolved } from "../lib/graph.mjs";
 import { isObject } from "../lib/util.mjs";
-import { classified, fixture, history, outputsOf, policy, ROOT } from "./support/histories.mjs";
+import { classified, fixture, history, outputsOf, ROOT } from "./support/histories.mjs";
 import { dispatchRunner, pullRequestPayload, runsFor, WORKFLOWS } from "./support/lifecycle.mjs";
 
 const workflows = loadWorkflows(WORKFLOWS);
@@ -55,8 +55,18 @@ function macosJobs(runs) {
 }
 
 function displays(runs) {
-  return runs.flatMap(({ run }) => run.jobs.map((job) => job.display));
+  return runs.flatMap(({ file, run }) => [
+    ...run.jobs.map((job) => job.display),
+    // A job its own condition skips still reports its context, as a success.
+    ...run.skipped
+      .map((key) => workflows.get(file).jobs[key]?.name)
+      .filter((name) => typeof name === "string" && !name.includes("${")),
+  ]);
 }
+
+/** The jobs that run macOS's work, by the lane each runs, and the ones reporting each context. */
+const MACOS_JOBS = { gate: "gate-shard-macos-aarch64", integration: "integration-macos" };
+const MACOS_REPORTERS = { gate: "gate-macos", integration: "integration-macos" };
 
 /** The runs a pull request of one shape starts, its classification the real classifier's. */
 function pullRequest(diff, branch, results = {}) {
@@ -86,11 +96,15 @@ describe("an ordinary pull request", () => {
     ordinary = pullRequest("source", "ordinary");
   });
 
-  test("runs one macOS job: the gate and the integration tier, on the platform list's macOS runner", () => {
+  test("runs three macOS jobs side by side: the gate's two shards and the integration tier", () => {
     const mac = macosJobs(ordinary.runs);
     assert.deepEqual(
       mac.map((job) => [job.workflow, job.job, job.runner]),
-      [["ci.yml", "macos", [MACOS.runner]]],
+      [
+        ["ci.yml", "gate-shard-macos-aarch64", [MACOS.runner]],
+        ["ci.yml", "gate-shard-macos-aarch64", [MACOS.runner]],
+        ["ci.yml", "integration-macos", [MACOS.runner]],
+      ],
     );
   });
 
@@ -112,7 +126,9 @@ describe("release automation's version/changelog-only pull request", () => {
     assert.equal(release.classification.isReleaseOnly, true);
     assert.deepEqual(macosJobs(release.runs), []);
     const ci = release.runs.find(({ file }) => file === "ci.yml").run;
-    assert.ok(ci.skipped.includes("macos"));
+    for (const key of ["gate-shard-macos-aarch64", "gate-macos", "integration-macos"]) {
+      assert.ok(ci.skipped.includes(key), `${key} is skipped`);
+    }
   });
 
   test("still reports every required context exactly once", () => {
@@ -122,15 +138,15 @@ describe("release automation's version/changelog-only pull request", () => {
     }
   });
 
-  test("a release pull request smuggling a source change runs the macOS job", () => {
-    assert.equal(macosJobs(pullRequest("mixed", "release").runs).length, 1);
+  test("a release pull request smuggling a source change runs the macOS jobs", () => {
+    assert.equal(macosJobs(pullRequest("mixed", "release").runs).length, 3);
   });
 });
 
 describe("a pull request whose classification failed", () => {
-  test("runs the macOS lane anyway, and its carriers still report", () => {
+  test("runs the macOS lanes anyway, and each still reports its context", () => {
     const failed = pullRequest("version", "release", { classify: "failure" });
-    assert.equal(macosJobs(failed.runs).length, 1);
+    assert.equal(macosJobs(failed.runs).length, 3);
     const reported = displays(failed.runs);
     assert.ok(
       reported.includes("gate (macos-aarch64)") && reported.includes("integration (macos-aarch64)"),
@@ -138,72 +154,106 @@ describe("a pull request whose classification failed", () => {
   });
 });
 
-describe("the carriers", () => {
+describe("the macOS jobs", () => {
   const ci = workflows.get("ci.yml");
 
-  test("wait on the classifier and the macOS job, and report whatever they ended as", () => {
-    for (const name of ["gate (macos-aarch64)", "integration (macos-aarch64)"]) {
-      const [key, job] = Object.entries(ci.jobs).find(([, one]) => one.name === name);
-      assert.deepEqual(job.needs, ["classify", "macos"], `${key} needs`);
-      assert.equal(job.if, "always()", `${key} condition`);
-      assert.ok(!job["runs-on"].startsWith("macos"), `${key} runs off macOS`);
-      for (const result of ["failure", "cancelled", "skipped"]) {
-        assert.equal(
-          condition(
-            job.if,
-            { github: {}, inputs: null, needs: {}, vars: {} },
-            [result, result],
-            key,
-          ),
-          true,
-          `${key} runs after a ${result}`,
-        );
+  /** Whether a job runs, for one event, one classifier answer and the shards' result. */
+  function runs(job, event, result, required, shards = "success") {
+    return condition(
+      job.if,
+      {
+        github: { event_name: event },
+        inputs: null,
+        needs: {
+          classify: { result, outputs: { "macos-required": required } },
+          [MACOS_JOBS.gate]: { result: shards, outputs: {} },
+        },
+        vars: {},
+      },
+      [result],
+      "macos",
+    );
+  }
+
+  test("run on the macOS runner, waiting on the classifier alone", () => {
+    for (const key of Object.values(MACOS_JOBS)) {
+      const job = ci.jobs[key];
+      assert.deepEqual([job.needs].flat(), ["classify"], `${key} needs`);
+      const runners = job.strategy
+        ? job.strategy.matrix.platform.map((cell) => cell.runner)
+        : [job["runs-on"]];
+      for (const runner of runners) {
+        assert.equal(runner, MACOS.runner, `${key} runs on macOS`);
       }
     }
   });
 
-  test("each judges the lane its own context names, through the committed recipe", () => {
-    for (const lane of ["gate", "integration"]) {
-      const job = Object.values(ci.jobs).find((one) => one.name === `${lane} (macos-aarch64)`);
-      assert.deepEqual(
-        commands(job),
-        [`just macos-carry ${lane}`],
-        `${lane} (macos-aarch64)'s command`,
-      );
-      const step = job.steps.find((one) => one.run === `just macos-carry ${lane}`);
-      assert.equal(step.env.NEEDS, expression("toJSON(needs)"));
+  test("run where the classifier owes the lane or could not answer, and nowhere else", () => {
+    for (const key of Object.values(MACOS_JOBS)) {
+      const job = ci.jobs[key];
+      assert.equal(runs(job, "pull_request", "success", "true"), true, `${key}: owed`);
+      assert.equal(runs(job, "pull_request", "success", "false"), false, `${key}: not owed`);
+      assert.equal(runs(job, "pull_request", "failure", ""), true, `${key}: unknown`);
+      assert.equal(runs(job, "push", "failure", ""), false, `${key}: a push`);
     }
-    const justfile = readFileSync(join(ROOT, "justfile"), "utf8");
-    assert.match(
-      justfile,
-      /\nmacos-carry LANE:\n {4}@node \.github\/macos-policy\.mjs carry --lane \{\{quote\(LANE\)\}\}\n/,
-    );
   });
 
-  test("carry the lane each names to the step of the macOS job publishing its outcome", () => {
-    const outputs = ci.jobs.macos.outputs;
-    assert.equal(outputs.gate, expression("steps.gate.outcome"));
-    assert.equal(outputs.integration, expression("steps.integration.outcome"));
-    const ids = ci.jobs.macos.steps.map((step) => step.id);
-    assert.ok(ids.includes("gate") && ids.includes("integration"));
+  test("the gate's aggregator reports it over whatever its shards ended as, unless they were skipped", () => {
+    const aggregator = ci.jobs[MACOS_REPORTERS.gate];
+    assert.equal(aggregator.name, "gate (macos-aarch64)");
+    assert.deepEqual(aggregator.needs, [MACOS_JOBS.gate]);
+    assert.ok(!aggregator["runs-on"].startsWith("macos"), "the aggregator takes no macOS slot");
+    for (const shards of ["success", "failure", "cancelled"]) {
+      assert.equal(runs(aggregator, "pull_request", "success", "true", shards), true, shards);
+    }
+    assert.equal(runs(aggregator, "pull_request", "success", "false", "skipped"), false);
+    assert.equal(ci.jobs[MACOS_REPORTERS.integration].name, "integration (macos-aarch64)");
+  });
+
+  test("each context's reporting job ends with its `gate-time` budget", () => {
+    for (const [lane, key] of Object.entries(MACOS_REPORTERS)) {
+      const last = ci.jobs[key].steps.at(-1);
+      assert.equal(last.run, "just gate-time", `${key}'s last step`);
+      assert.equal(last.env.GATE_TIME_KIND, lane, `${key}'s kind`);
+    }
   });
 });
 
-describe("the macOS job carries what the two macOS cells ran", () => {
+describe("the macOS jobs run what the two macOS cells ran", () => {
   const ci = workflows.get("ci.yml");
 
   test("every command of the gate cell, and every command of the integration cell", () => {
-    const carried = new Set(commands(ci.jobs.macos));
     // The release pull request's maintenance measurement runs on linux-x86_64
     // alone; on every other cell, macOS's included, the recipe does nothing.
-    const gate = commands(ci.jobs.gate).filter((command) => command !== "just budgets-release-pr");
-    for (const command of [...gate, ...commands(ci.jobs.integration)]) {
-      assert.ok(carried.has(command), `the macOS job runs \`${command}\``);
+    // The gate cell's `just check` is the shards' `just check-shard`, which
+    // `just check-repo`'s `sharded-jobs` holds to running all of it, and its
+    // `gate-time` budget is the aggregator's.
+    const own = ["just budgets-release-pr", "just gate-time", 'just check "$(just gate-tier)"'];
+    const gate = commands(ci.jobs.gate).filter((command) => !own.includes(command));
+    const integration = commands(ci.jobs.integration).filter(
+      (command) => command !== "just gate-time",
+    );
+    for (const [cell, key] of [
+      [gate, MACOS_JOBS.gate],
+      [integration, MACOS_JOBS.integration],
+    ]) {
+      const ran = new Set(commands(ci.jobs[key]));
+      for (const command of cell) {
+        assert.ok(ran.has(command), `${key} runs \`${command}\``);
+      }
     }
+    assert.ok(
+      commands(ci.jobs[MACOS_JOBS.gate]).includes(
+        'just check-shard "$(just gate-tier)" "$GATE_SHARD"',
+      ),
+    );
     assert.equal(
-      ci.jobs.macos.env.PRINTOBSERVER_SERVICE_JOURNEY,
+      ci.jobs[MACOS_JOBS.gate].env.PRINTOBSERVER_SERVICE_JOURNEY,
       ci.jobs.gate.env.PRINTOBSERVER_SERVICE_JOURNEY,
     );
+    // The Windows-target lint reads the committed tree alone, and is left to the Linux cells.
+    assert.equal(ci.jobs[MACOS_JOBS.gate].env.PRINTOBSERVER_HOST_INDEPENDENT, "elsewhere");
+    assert.equal(ci.jobs.gate.env.PRINTOBSERVER_HOST_INDEPENDENT, undefined);
   });
 
   test("the gate and integration matrices are every other platform the list names", () => {
@@ -215,15 +265,15 @@ describe("the macOS job carries what the two macOS cells ran", () => {
       .filter((job) => typeof job.name === "string" && job.name.startsWith("gate-shard ("))
       .flatMap((job) => job.strategy.matrix.platform)
       .map(({ id, runner }) => ({ id, runner }));
-    const sharded = others.filter((platform) => shards.some(({ id }) => id === platform.id));
+    const sharded = PLATFORMS.filter((platform) => shards.some(({ id }) => id === platform.id));
     assert.deepEqual(
       ci.jobs.gate.strategy.matrix.platform,
-      others.filter((platform) => !sharded.includes(platform)),
+      PLATFORMS.filter((platform) => !sharded.includes(platform)),
     );
     for (const cell of shards) {
       assert.deepEqual(
         cell,
-        others.find((platform) => platform.id === cell.id),
+        PLATFORMS.find((platform) => platform.id === cell.id),
       );
     }
   });
@@ -595,90 +645,62 @@ describe("what the graph cannot resolve is an error, never zero", () => {
   });
 });
 
-describe("the macOS job's own steps, walked as the forge runs them", () => {
-  const job = workflows.get("ci.yml").jobs.macos;
-
+describe("the macOS jobs' own steps, walked as the forge runs them", () => {
   /**
-   * Each step in order, run or skipped by its own `if:` over what the steps
-   * before it ended as; the steps named in `failing` fail when they run.
+   * Each step of one job in order, run or skipped by its own `if:` over whether
+   * a step before it failed; the steps whose command is in `failing` fail.
    *
+   * @param {string} key
    * @param {string[]} failing
-   * @returns {{outcomes: Record<string, string>, result: string, ran: string[]}}
+   * @returns {{result: string, ran: string[]}}
    */
-  function walk(failing) {
-    /** @type {Record<string, string>} */
-    const outcomes = {};
+  function walk(key, failing) {
     const ran = [];
     let failed = false;
-    for (const [index, step] of job.steps.entries()) {
-      const id = step.id ?? `step ${index}`;
-      const steps = Object.fromEntries(
-        Object.entries(outcomes).map(([name, outcome]) => [
-          name,
-          { outcome, conclusion: outcome, outputs: {} },
-        ]),
-      );
+    for (const [index, step] of workflows.get("ci.yml").jobs[key].steps.entries()) {
       const contexts = {
         github: { event_name: "pull_request" },
         inputs: null,
         needs: {},
         vars: {},
-        steps,
       };
-      const runs = condition(step.if, contexts, [failed ? "failure" : "success"], `macos: ${id}`);
-      const outcome = !runs ? "skipped" : failing.includes(id) ? "failure" : "success";
-      failed ||= outcome === "failure";
-      outcomes[id] = outcome;
+      const runs = condition(
+        step.if,
+        contexts,
+        [failed ? "failure" : "success"],
+        `${key}: ${index}`,
+      );
       if (runs) {
         ran.push(step.run ?? step.uses);
+        failed ||= failing.includes(step.run);
       }
     }
-    return { outcomes, result: failed ? "failure" : "success", ran };
+    return { result: failed ? "failure" : "success", ran };
   }
 
-  /** What the two carriers say of one walk, through the committed command line. */
-  function carried(walked) {
-    const needs = {
-      classify: {
-        result: "success",
-        outputs: { "macos-required": "true", reason: "an ordinary pull request" },
-      },
-      macos: {
-        result: walked.result,
-        outputs: { gate: walked.outcomes.gate, integration: walked.outcomes.integration },
-      },
-    };
-    return Object.fromEntries(
-      ["gate", "integration"].map((lane) => [
-        lane,
-        policy(["carry", "--lane", lane], { env: { NEEDS: JSON.stringify(needs) } }).status === 0
-          ? "pass"
-          : "fail",
-      ]),
-    );
-  }
-
-  /** @type {[string[], string, string][]} */
+  /** @type {[string, string[]][]} */
   const STEP_FAILURES = [
-    [[], "pass", "pass"],
-    [["gate"], "fail", "pass"],
-    [["bootstrap"], "fail", "fail"],
-    [["octoprint-up"], "pass", "fail"],
-    [["integration"], "pass", "fail"],
+    [MACOS_JOBS.gate, []],
+    [MACOS_JOBS.gate, ['just check-shard "$(just gate-tier)" "$GATE_SHARD"']],
+    [MACOS_JOBS.gate, ["just bootstrap"]],
+    [MACOS_JOBS.integration, []],
+    [MACOS_JOBS.integration, ["just bootstrap"]],
+    [MACOS_JOBS.integration, ["just octoprint-up"]],
+    [MACOS_JOBS.integration, ["just test-integration"]],
   ];
-  for (const [failing, gate, integration] of STEP_FAILURES) {
-    const verb = (verdict) => (verdict === "pass" ? "passes" : "fails");
-    test(`with ${failing.join(", ") || "nothing"} failing, the gate context ${verb(gate)} and integration ${verb(integration)}`, () => {
-      const walked = walk(failing);
-      assert.deepEqual(carried(walked), { gate, integration });
-      // The bring-down and the temp cleanup run whatever failed before them.
-      assert.ok(walked.ran.includes("just octoprint-down"));
+  for (const [key, failing] of STEP_FAILURES) {
+    test(`${key} with ${failing.join(", ") || "nothing"} failing ${failing.length ? "fails" : "passes"}, and cleans up`, () => {
+      const walked = walk(key, failing);
+      assert.equal(walked.result, failing.length ? "failure" : "success");
+      // The temp cleanup, and the bring-down where there is one, run whatever failed.
       assert.ok(walked.ran.includes("just runner-temp cleanup"));
-      if (failing.includes("gate")) {
-        assert.ok(
-          walked.ran.includes("just test-integration"),
-          "the integration lane runs after a failed gate",
-        );
+      if (key === MACOS_JOBS.integration) {
+        assert.ok(walked.ran.includes("just octoprint-down"));
+      }
+      // The budget step, where the job carries one, reads a figure only where
+      // the job's own work succeeded.
+      if (key === MACOS_REPORTERS.integration) {
+        assert.equal(walked.ran.includes("just gate-time"), !failing.length);
       }
     });
   }

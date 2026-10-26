@@ -271,7 +271,7 @@ bed_target = {{ min = 0.0, max = 110.0 }}
 [safety.actions]
 operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-            "set_fan_percent", "acknowledge_failure"]
+            "set_fan_percent", "acknowledge_failure", "close_print"]
 # The agent is granted one adjustment and nothing else, so an agent asking for
 # anything else is a rejection of that operation's own kind — and the one it is
 # granted is the one this tier's responder issues through the API.

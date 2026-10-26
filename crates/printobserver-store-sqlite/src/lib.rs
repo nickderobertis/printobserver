@@ -61,6 +61,8 @@
 //!   end recorded — and is refused with
 //!   [`StoreError::NotFound`](printobserver_core::store::StoreError::NotFound) when there is
 //!   none, which is the same condition policy names `NoActivePrint`.
+//!   `record_action_against` binds to the print it names, ended or not, and
+//!   is refused the same way when no such print was ever recorded.
 //! * **A page size of zero.** `audit_page` resolves its page size through the
 //!   domain's own [`resolve_history_limit`](printobserver_core::store::resolve_history_limit),
 //!   and a zero page takes the default window, because a page of nothing cannot

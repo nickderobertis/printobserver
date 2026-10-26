@@ -210,12 +210,16 @@ class _Asset:
 class Registries:
     """The three registries a route is taken from, answering on one address."""
 
-    def __init__(self, repo: Repo, into: Path) -> None:
-        """Start answering on a port the operating system chooses.
+    def __init__(self, repo: Repo, into: Path, port: int = 0) -> None:
+        """Start answering on `port`, or one the operating system chooses.
 
         Args:
             repo: The tree the served distributions' own names are declared in.
             into: A directory the assembled packages are written under.
+            port: The loopback port to answer on; the default lets the
+                operating system choose, which is what every proof does. A
+                journey names one to stand a second stand-in up where an
+                earlier one answered, as a port handed out again would.
         """
         self.repo = repo
         self.into = into
@@ -249,7 +253,7 @@ class Registries:
         self._next_id = 1
         #: What a write of one artifact is refused with, by registry and name.
         self._refusals: dict[tuple[str, str], _Refusal] = {}
-        self._server = QuietServer(_handler(self))
+        self._server = QuietServer(_handler(self), port)
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

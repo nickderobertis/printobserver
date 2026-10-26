@@ -76,7 +76,7 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use printobserver_core::{PreflightMode, SafetyEnvelope, SpoolPolicy};
+use printobserver_core::{ActionKind, ActorClass, PreflightMode, SafetyEnvelope, SpoolPolicy};
 use printobserver_obico::{AccessToken, ObicoApi};
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
@@ -1247,6 +1247,19 @@ fn check_envelope(envelope: &SafetyEnvelope) -> Result<(), ConfigError> {
                 ),
             ));
         }
+    }
+    // Closing a print record is the operator's judgement that the print is
+    // over, so no configuration may hand it to the agent watching the print.
+    if envelope
+        .actions
+        .get(&ActorClass::Agent)
+        .is_some_and(|granted| granted.contains(&ActionKind::ClosePrint))
+    {
+        return Err(ConfigError::about(
+            ConfigField::SafetyEnvelope,
+            "it grants `close_print` to the agent, and closing a print record is the \
+             operator's judgement that the print is over",
+        ));
     }
     if envelope.agent_min_interval_s < 0 {
         return Err(ConfigError::about(

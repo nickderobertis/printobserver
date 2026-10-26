@@ -695,6 +695,26 @@ class _Composer:
         """The records successive requests of one action answer, each its own."""
         return [self.record(operation, action, sequence) for sequence in range(RECORDS_PER_ACTION)]
 
+    def refused_closes(self, state: str) -> list[dict[str, Any]]:
+        """The records successive closes of this print answer: each refused, as the page shows.
+
+        The print a turn watches is still running on the printer, so a close of
+        it is rejected naming the state that read found, and nothing executes.
+        """
+        active = state if state in ("printing", "paused", "cancelling") else "printing"
+        closes = self.records("close-print", {"outcome": "interrupted", "reason": ECHOED_REASON})
+        unexecuted = ("executed_at", "outcome")
+        # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
+        return [
+            {
+                "record": {
+                    **{k: v for k, v in close["record"].items() if k not in unexecuted},
+                    "decision": {"rejected": {"print_still_active": {"state": active}}},
+                }
+            }
+            for close in closes
+        ]
+
     def recorded_acknowledgements(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Each acknowledgement the case's own turn was answered, by its event and disposition."""
         found: dict[tuple[str, str], dict[str, Any]] = {}
@@ -834,17 +854,17 @@ def not_an_option(option: str, command: str) -> str:
 
 
 def _rendered(
-    name: str, command: str, pattern: str, documents: list[dict[str, Any]]
+    name: str, command: str, pattern: str, documents: list[dict[str, Any]], exit_code: int = 0
 ) -> list[StubSpec]:
-    """A command's stubs: under `--json` the document, otherwise its lines.
+    """A command's stubs: under `--json` the document, otherwise its lines, with its exit.
 
     A command asking for `--json` is matched first, since the first matching
     stub answers.
     """
     json_pattern = pattern + r"""(?:[^"\\]|\\.)*?--json(?:[^\w-]|$)"""
     return [
-        StubSpec(f"{name}-json", command, json_pattern, tuple(documents), Render.JSON),
-        StubSpec(name, command, pattern, tuple(documents)),
+        StubSpec(f"{name}-json", command, json_pattern, tuple(documents), Render.JSON, exit_code),
+        StubSpec(name, command, pattern, tuple(documents), Render.LABELLED, exit_code),
     ]
 
 
@@ -952,6 +972,7 @@ def _answers(
     }
     for operation in ("pause", "resume", "cancel"):
         answers[operation] = composer.records(operation, {"reason": ECHOED_REASON})
+    answers["close-print"] = composer.refused_closes(first.state)
     for adjustment in ADJUSTMENTS:
         answers[adjustment.command] = [_adjusted(composer, adjustment, adjustment.nominal)]
     answers.update(_spool_answers(composer))
@@ -1141,7 +1162,10 @@ def _stubs(
             specs.extend(_rendered(name, step.operation, step_pattern(step), [document]))
     for command in surface().operations:
         pattern = step_pattern(Step(command.name, {}))
-        specs.extend(_rendered(command.name, command.name, pattern, answers[command.name]))
+        exit_code = exits["rejected"] if command.name == "close-print" else exits["success"]
+        specs.extend(
+            _rendered(command.name, command.name, pattern, answers[command.name], exit_code)
+        )
     refusal = f"{PROGRAM}: this invocation is not one this program can carry out.\n\n{usage()}\n"
     specs += [
         StubSpec(

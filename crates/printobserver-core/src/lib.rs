@@ -52,6 +52,7 @@ pub mod actions;
 pub mod block_on;
 pub mod bounds;
 pub mod clock;
+pub mod closing;
 pub mod config;
 pub mod context;
 pub mod decision;
@@ -76,7 +77,7 @@ pub mod turn_lock;
 pub mod unobserved;
 pub mod upgrade;
 
-pub use accounting::UNTRACKED_REASON;
+pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule};
 pub use actions::{ActionOutcome, reported_value};
 pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};

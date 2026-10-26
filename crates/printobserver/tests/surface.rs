@@ -705,6 +705,7 @@ fn every_action_of_the_vocabulary_has_a_command() {
         ActionKind::SetBedTargetC,
         ActionKind::SetFanPercent,
         ActionKind::AcknowledgeFailure,
+        ActionKind::ClosePrint,
     ]
     .into_iter()
     .map(|kind| format!("{kind:?}"))

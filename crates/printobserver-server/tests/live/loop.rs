@@ -8,7 +8,7 @@
 //!
 //! # Where each operation's effect is confirmed
 //!
-//! Seven of the ten actions have a read-back at the machine — start, pause,
+//! Seven of the eleven actions have a read-back at the machine — start, pause,
 //! resume, cancel, the two heater targets and the acknowledgement that stops a
 //! print — and are confirmed by a status read afterwards. Three have none:
 //! `OctoPrint` reports neither an applied feedrate factor nor an applied
@@ -19,6 +19,12 @@
 //! each is asserted to carry is computed with the adapter's own exported
 //! conversion, because the number on the wire is that adapter's business and no
 //! crate but that adapter may spell one.
+//!
+//! The eleventh, `close_print`, closes a record the machine has finished with,
+//! and this walk's machine is never idle under an open record: a read ends one
+//! the moment its job is over. So what is proven of it here is what the real
+//! machine makes it refuse — a record whose job is running, and a record a
+//! cancel already ended — and its acceptance is the command-line journeys'.
 
 use printobserver_core::AgentAssessmentPayload;
 use printobserver_obico::ObicoFailureAlertPayload;
@@ -135,6 +141,19 @@ struct Live {
     adjustable: Option<&'static str>,
 }
 
+/// A plan for an operation this machine only ever refuses: accepted by the
+/// policy's grants, and with no effect at the machine to read back.
+fn refused_at_the_machine(extra: &[(&str, Value)]) -> Live {
+    Live {
+        accepted: body(extra),
+        rejected: as_the_agent(extra),
+        reaches: None,
+        reported: None,
+        received: Vec::new(),
+        adjustable: None,
+    }
+}
+
 /// What every mutating operation is asked, by the name it is declared under.
 ///
 /// The rejected body is of that operation's own kind: a value outside the
@@ -238,6 +257,7 @@ fn live(name: &str) -> Live {
             ],
             adjustable: Some("fan"),
         },
+        "close_print" => refused_at_the_machine(&[("outcome", json!("interrupted"))]),
         other => panic!("`{other}` is a mutating operation this walk does not know"),
     }
 }
@@ -1046,9 +1066,10 @@ const WHILE_IT_RUNS: [&str; 8] = [
 ];
 
 /// What ends the print and what begins the next, which the walk takes last: a
+/// close is refused while the job runs and again once the record has ended, a
 /// cancel ends the print every step before it is about, and a start opens a
 /// print of its own.
-const ENDING_IT: [&str; 2] = ["cancel", "start_print"];
+const ENDING_IT: [&str; 3] = ["close_print", "cancel", "start_print"];
 
 /// Every mutating operation the vocabulary declares was walked, by one of
 /// [`every_operation_while_it_runs_has_its_own_effect`] and
@@ -1122,7 +1143,8 @@ async fn every_operation_while_it_runs_has_its_own_effect(
     walked
 }
 
-/// A cancel ends the print — a read of it finds the job over — and a start
+/// A close is refused while the job runs, a cancel ends the print — a read of
+/// it finds the job over — after which a close is refused again, and a start
 /// from the idle machine opens a print of its own, which its answer names and
 /// the job runs under; answers which were walked.
 async fn a_cancel_ends_the_print_and_a_start_opens_its_own(
@@ -1130,7 +1152,15 @@ async fn a_cancel_ends_the_print_and_a_start_opens_its_own(
     proxy: &Proxy,
     print_id: PrintId,
 ) -> Vec<&'static str> {
-    let [cancel, start] = ENDING_IT;
+    let [close, cancel, start] = ENDING_IT;
+    a_close_is_refused(
+        world,
+        proxy,
+        print_id,
+        &json!({ "print_still_active": { "state": "printing" } }),
+    )
+    .await;
+
     proxy.forget();
     let (code, cancelled) = ask(world, print_id, cancel, &live(cancel).accepted).await;
     assert_eq!(code, 200, "`{cancel}` was not accepted: {cancelled}");
@@ -1149,6 +1179,7 @@ async fn a_cancel_ends_the_print_and_a_start_opens_its_own(
             .is_some_and(|reason| reason.starts_with("the print reached ")),
         "a read of the cancelled print did not end it: {ended}"
     );
+    a_close_is_refused(world, proxy, print_id, &json!("print_already_ended")).await;
 
     let (code, started) = ask(world, print_id, start, &live(start).accepted).await;
     assert_eq!(code, 200, "`{start}` was not accepted: {started}");
@@ -1173,7 +1204,37 @@ async fn a_cancel_ends_the_print_and_a_start_opens_its_own(
         json!(opened.to_string()),
         "the listing does not name the print the start opened as the running job's"
     );
-    vec![cancel, start]
+    vec![close, cancel, start]
+}
+
+/// A close the real machine's state makes the policy refuse, as the rejection
+/// named: answered `409` naming it, nothing asked of the machine, and nothing
+/// stored but the record of the rejection.
+async fn a_close_is_refused(world: &Composed, proxy: &Proxy, print_id: PrintId, named: &Value) {
+    let close = ENDING_IT[0];
+    let before = stored(world, print_id).await;
+    proxy.forget();
+
+    let (code, answer) = ask(world, print_id, close, &live(close).accepted).await;
+
+    assert_eq!(code, 409, "`{close}` was not rejected as {named}: {answer}");
+    assert_eq!(
+        answer["record"]["decision"]["rejected"], *named,
+        "`{close}` was rejected for something else: {answer}"
+    );
+    assert!(
+        proxy.bodies().is_empty(),
+        "`{close}` was rejected and the machine was asked {:?}",
+        proxy.bodies()
+    );
+    nothing_moved_but_the_record_of_the_rejection(
+        world,
+        print_id,
+        &before,
+        &answer["record"]["id"],
+        close,
+    )
+    .await;
 }
 
 /// The print the listing names as the running job's.

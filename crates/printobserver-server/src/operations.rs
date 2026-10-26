@@ -791,7 +791,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 28] = [
+pub const OPERATIONS: [Operation; 29] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -935,6 +935,12 @@ pub const OPERATIONS: [Operation; 28] = [
         "acknowledge_failure",
         "/prints/{print_id}/actions/acknowledge_failure",
         ActionKind::AcknowledgeFailure,
+    ),
+    // Closes a record printobserver left open, asking nothing of the machine.
+    action(
+        "close_print",
+        "/prints/{print_id}/actions/close_print",
+        ActionKind::ClosePrint,
     ),
     command(
         "register_spool",

@@ -8,7 +8,7 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 
 use super::action::{ActionKind, ActorClass};
-use super::ids::SpoolId;
+use super::ids::{InterventionId, SpoolId};
 use super::spool::UnverifiedReason;
 
 /// Server configuration: what any actor may ask for at all.
@@ -127,6 +127,20 @@ pub enum RejectionReason {
         file_name: String,
         /// How long the start waited for one, in whole seconds.
         waited_s: u64,
+    },
+    /// A close was refused because the print record has already ended.
+    PrintAlreadyEnded,
+    /// A close was refused because the printer shows a job of the record's
+    /// file printing, paused or cancelling.
+    PrintStillActive {
+        /// The state the printer reported that job in.
+        state: PrinterState,
+    },
+    /// A close was refused because an intervention for the print has neither
+    /// expired nor been restored.
+    InterventionStillActive {
+        /// The intervention still standing.
+        intervention_id: InterventionId,
     },
     /// A spool command could not be carried out.
     SpoolRefused {

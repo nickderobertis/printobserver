@@ -1258,3 +1258,59 @@ fn walk_state(root: &std::path::Path) -> Vec<PathBuf> {
     }
     found
 }
+
+/// The agent's grants every installer writes, read out of the committed
+/// configuration it writes on Linux and macOS.
+fn installed_agent_grants() -> Value {
+    let script = include_str!("../../../../scripts/install-service.sh");
+    let start = script
+        .find("\nagent = [")
+        .expect("the installer grants the agent a list")
+        + "\nagent = ".len();
+    let listed = &script[start..];
+    let end = listed.find(']').expect("the agent's list closes") + 1;
+    printobserver_types::serde_json::from_str(&listed[..end].replace('\n', " "))
+        .expect("the agent's grants are a list of names")
+}
+
+/// An agent asking to close the print it watches is refused for the grant
+/// under the grants every installer writes: the refusal is in the record,
+/// nothing was executed, and the print and its session are still open.
+#[test]
+fn an_agent_asking_to_close_its_print_is_refused_by_the_default_grants() {
+    let grants = installed_agent_grants();
+    assert!(
+        !grants.to_string().contains("close_print"),
+        "the installer grants the agent close_print: {grants}"
+    );
+    let watching = Watching::start(
+        r#"eval "printobserver close-print --outcome interrupted --reason 'the print looks finished to me' $actor $about" > "$dir/close-$print" 2>&1"#,
+        move |document| {
+            document["safety"]["actions"]["agent"] = grants;
+        },
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Printing);
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    watching.settled_after(&print, 1);
+
+    let asked = actions_asked(world, &print);
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert_eq!(asked[0]["action"], "close_print", "{asked:?}");
+    assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
+    let rejected = events_of(world, &print, "action_rejected");
+    assert_eq!(rejected.len(), 1, "{rejected:?}");
+    let refusal = &rejected[0]["payload"]["decision"]["rejected"]["actor_may_not_request"];
+    assert_eq!(refusal["actor_class"], "agent", "{rejected:?}");
+    assert_eq!(refusal["action"], "close_print", "{rejected:?}");
+    assert!(events_of(world, &print, "action_executed").is_empty());
+    assert!(events_of(world, &print, "print_ended").is_empty());
+    assert!(events_of(world, &print, "supervision_session_closed").is_empty());
+    let status = running::read(world, &["status", "--print-id", &print]);
+    assert!(status["print"].get("ended_at").is_none(), "{status}");
+    assert!(
+        status["session"].is_object() && status["session"].get("closed_at").is_none(),
+        "{status}"
+    );
+}

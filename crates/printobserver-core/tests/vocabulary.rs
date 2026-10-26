@@ -24,7 +24,7 @@ use printobserver_types::serde_json::{Value, json};
 use records::declared;
 
 /// Every variant the contract names, in the spelling the wire carries.
-const STATED_VARIANTS: [&str; 10] = [
+const STATED_VARIANTS: [&str; 11] = [
     "pause",
     "resume",
     "cancel",
@@ -35,6 +35,7 @@ const STATED_VARIANTS: [&str; 10] = [
     "set_bed_target_c",
     "set_fan_percent",
     "acknowledge_failure",
+    "close_print",
 ];
 
 /// The one free-text field the vocabulary declares, and the tag beside it.
@@ -90,10 +91,10 @@ const SPOOL_COMMAND_KINDS: [&str; 5] = [
     "retire_spool",
 ];
 
-/// The kind vocabulary names the same ten and then the five spool commands, so
+/// The kind vocabulary names the same actions and then the five spool commands, so
 /// nothing can name a policy for an action the vocabularies do not declare.
 #[test]
-fn the_kind_vocabulary_names_the_same_ten_and_the_spool_commands() {
+fn the_kind_vocabulary_names_the_same_actions_and_the_spool_commands() {
     let kinds: Vec<String> = arms(&schema_of::<ActionKind>())
         .iter()
         .map(|arm| {

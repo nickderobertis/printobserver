@@ -637,8 +637,18 @@ class Recording:
         )
 
     def environment(self, **extra: str) -> dict[str, str]:
-        """An environment finding the stand-ins first, and telling them what to record."""
-        environment = dict(os.environ)
+        """An environment finding the stand-ins first, and telling them what to record.
+
+        None of the host's own `PRINTOBSERVER_` variables is carried: every one
+        a dispatched job reads is the job's own or a step's export, and on a
+        runner the gate job running this suite has already exported its own
+        scratch directory, which a step under test would otherwise inherit.
+        """
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("PRINTOBSERVER_")
+        }
         environment["PATH"] = os.pathsep.join([str(self.programs), environment.get("PATH", "")])
         environment["RECORD"] = str(self.record)
         environment["FAIL_ON"] = self.failing_on
@@ -670,6 +680,7 @@ def _run(
         cwd=tree.root,
         environment=recording.environment(**extra),
         say=lambda line: print(line, file=said),
+        refuse=lambda line: print(line, file=said),
     )
     return code, said.getvalue()
 
@@ -695,6 +706,7 @@ def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_pa
             "just check ",
             "just budgets-release-pr",
             "just runner-temp cleanup",
+            "just gate-time",
         ],
         describing="what ran",
     )
@@ -952,6 +964,126 @@ def test_a_job_level_literal_environment_is_carried_and_an_expression_is_not(
         ["just prove-registry-pypi version=unset note=literal"],
         describing="what ran, and what it was handed",
     )
+
+
+def _exporting(recording: Recording, exports: str, file: str = "GITHUB_ENV") -> None:
+    """A stand-in `just` whose `runner-temp` appends `exports` to the file `$<file>` names.
+
+    Every call records the platform and the exported scratch directory it was
+    handed. The export is written byte for byte as given, so a caller can hand
+    it the CRLF line endings PowerShell's `Out-File` writes on Windows, which
+    is how the committed setup writes its own.
+    """
+    written = recording.programs.parent / "exports"
+    written.write_bytes(exports.encode("utf-8"))
+    script = recording.programs / JUST
+    script.write_text(
+        "#!/bin/sh\n"
+        'echo "just $* platform=${PRINTOBSERVER_PLATFORM-unset}'
+        " scratch=${PRINTOBSERVER_JOB_SCRATCH-unset}"
+        ' owner=${PRINTOBSERVER_JOB_SCRATCH_OWNER-unset}" >> "$RECORD"\n'
+        f'if [ "$*" = "runner-temp" ]; then cat "{written.as_posix()}" >> "${file}"; fi\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+
+def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """The gate's setup exports its scratch directory, and the steps after it run in it.
+
+    The job's `PRINTOBSERVER_PLATFORM` is `${{ matrix.platform.id }}`, which a
+    dispatch reads as the platform it names; and what `runner-temp` appends to
+    `$GITHUB_ENV` is what every later step runs with — an empty value included —
+    and not what the step itself ran with.
+    """
+    copy = tree()
+    recording = Recording(tmp_path)
+    _exporting(
+        recording,
+        "PRINTOBSERVER_JOB_SCRATCH=D:/printobserver-1\r\nPRINTOBSERVER_JOB_SCRATCH_OWNER=\r\n",
+    )
+
+    code, said = _run(copy, "gate", "linux-aarch64", recording)
+
+    equal(code, 0, describing=f"the exit of a gate whose commands all passed:\n{said}")
+    exported = "platform=linux-aarch64 scratch=D:/printobserver-1 owner="
+    equal(
+        recording.recorded(),
+        [
+            "just runner-temp platform=linux-aarch64 scratch=unset owner=unset",
+            f"just bootstrap {exported}",
+            f"just gate-tier {exported}",
+            f"just check  {exported}",
+            f"just budgets-release-pr {exported}",
+            f"just runner-temp cleanup {exported}",
+        ],
+        describing="what ran, and what it was handed",
+    )
+
+
+#: Each form of export no source job writes: what is written, to which file,
+#: and the words the refusal names it in.
+REFUSED_EXPORTS = {
+    "multi-line": (
+        "GITHUB_ENV",
+        "PRINTOBSERVER_JOB_SCRATCH<<EOF\nsomewhere\nEOF\n",
+        "multi-line `NAME<<DELIMITER` form",
+    ),
+    "no assignment": ("GITHUB_ENV", "PRINTOBSERVER_JOB_SCRATCH\n", "is not a `NAME=value` line"),
+    "a path entry": ("GITHUB_PATH", "/opt/somewhere/bin\n", "added to `$GITHUB_PATH`"),
+}
+
+
+@pytest.mark.parametrize("form", list(REFUSED_EXPORTS))
+def test_an_export_in_a_form_no_source_job_writes_is_refused_by_name(
+    form: str, tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """The form stops the job naming it, and the teardown still runs."""
+    file, exports, named = REFUSED_EXPORTS[form]
+    copy = tree()
+    recording = Recording(tmp_path)
+    _exporting(recording, exports, file)
+
+    code, said = _run(copy, "gate", "linux-x86_64", recording)
+
+    equal(code, REFUSED, describing=f"the exit of a job whose setup wrote {form}:\n{said}")
+    contains(said, "platform-dispatch: refused: `just runner-temp`", describing=said)
+    contains(said, named, describing=said)
+    equal(
+        recording.recorded(),
+        [
+            "just runner-temp platform=linux-x86_64 scratch=unset owner=unset",
+            "just runner-temp cleanup platform=linux-x86_64 scratch=unset owner=unset",
+        ],
+        describing="what ran: the setup, and then only the teardown",
+    )
+
+
+def test_the_script_prints_an_export_refusal_on_standard_error(
+    tree: Callable[[], Tree],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`run` says a refused export where it says every other refusal, and exits 2."""
+    file, exports, named = REFUSED_EXPORTS["multi-line"]
+    copy = tree()
+    recording = Recording(tmp_path)
+    _exporting(recording, exports, file)
+    for name, value in recording.environment().items():
+        monkeypatch.setenv(name, value)
+
+    code = dispatching.main(
+        ["run", "--job", "gate", "--platform", "linux-x86_64", "--root", str(copy.root)]
+    )
+
+    said = capsys.readouterr()
+    equal(code, REFUSED, describing="the exit of a run whose setup wrote a refused form")
+    contains(said.err, "platform-dispatch: refused: `just runner-temp`", describing=said.err)
+    contains(said.err, named, describing=said.err)
+    absent(said.out, "refused", describing="what the run printed on standard output")
 
 
 def test_the_script_refuses_an_unknown_pair_before_anything_runs(

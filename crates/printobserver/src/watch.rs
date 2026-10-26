@@ -730,6 +730,7 @@ fn ended_detail(watch: &Watch, ended: &Ended) -> String {
             PrintOutcome::Completed => "completed",
             PrintOutcome::Cancelled => "cancelled",
             PrintOutcome::Failed => "failed",
+            PrintOutcome::Interrupted => "interrupted",
         },
         ended.received_at,
         ended.event_id
