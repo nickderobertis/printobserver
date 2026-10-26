@@ -1,0 +1,849 @@
+//! `printobserver watch` and `printobserver events`, against a real supervisor.
+//!
+//! Every journey runs the built program as a subprocess against a supervisor
+//! of its own — the built program run as `server`, which the journeys about a
+//! stream that loses its server stop and start again. The events a journey is
+//! about are put in the record beside it through a second connection to its
+//! store — the one way to record an observation with a `received_at` of the
+//! journey's choosing — and it is then asked for a look at another print,
+//! which it records through its own store: that write is what wakes a waiting
+//! read, as any write the supervisor makes does.
+//!
+//! What a stream printed is held to the record itself: the events in scope, in
+//! the order the store stored them, read back through the store's own ordered
+//! read once the stream has ended.
+
+use std::io::{BufRead as _, BufReader};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use printobserver_core::records::PrinterState;
+use printobserver_core::store::{EventDraft, EventStore as _, StoredQuery};
+use printobserver_core::{
+    PeriodicObservationPayload, PrintEndedPayload, PrintOutcome, system_source,
+};
+use printobserver_types::contract::Sample as _;
+use printobserver_types::serde_json::{self, Value, json};
+use printobserver_types::{
+    EventBody, EventKind, EventPayload as _, EventRecord, PrintId, Timestamp,
+};
+
+use super::running;
+use crate::proxy::Proxy;
+use crate::standalone::Standalone;
+use crate::world::{CREDENTIAL, STOOD_IN, World};
+
+/// The kind of the routine observation every journey here records.
+const OBSERVATION: &str = "periodic_observation";
+
+/// A kind no crate declares, standing for anything that is not routine.
+const NOTABLE: &str = "streaming_notable";
+
+/// How long a journey waits for a stream to print what it is waiting for.
+const PATIENCE: Duration = Duration::from_secs(30);
+
+/// One observation of a print, received at the instant given.
+fn observation(print_id: Option<PrintId>, received_at: Timestamp) -> EventDraft {
+    EventDraft {
+        print_id,
+        source: system_source(),
+        received_at,
+        body: EventBody::of(&PeriodicObservationPayload::sample_full())
+            .expect("an observation renders"),
+        raw: None,
+    }
+}
+
+/// One event of a kind nothing declares, on a print or on none.
+fn notable(print_id: Option<PrintId>) -> EventDraft {
+    EventDraft {
+        print_id,
+        source: system_source(),
+        received_at: Timestamp::now(),
+        body: EventBody {
+            kind: EventKind::new(NOTABLE).expect("a kind name"),
+            payload: json!({ "said": "something happened" }),
+        },
+        raw: None,
+    }
+}
+
+/// One print's end.
+fn ended(print_id: PrintId) -> EventDraft {
+    EventDraft {
+        print_id: Some(print_id),
+        source: system_source(),
+        received_at: Timestamp::now(),
+        body: EventBody::of(&PrintEndedPayload {
+            outcome: PrintOutcome::Completed,
+            state: PrinterState::Operational,
+            reason: "it ran to its end".to_owned(),
+            last_position: None,
+        })
+        .expect("an end renders"),
+        raw: None,
+    }
+}
+
+/// One identifier, read as the print it names.
+fn print(id: &str) -> PrintId {
+    id.parse().expect("a print identifier")
+}
+
+/// An instant some seconds after another.
+fn after(at: Timestamp, seconds: i64) -> Timestamp {
+    at.plus_seconds(seconds).expect("an instant")
+}
+
+/// The events in a print's scope, in the order the store stored them, from
+/// that print's first event.
+fn in_scope(own: &Standalone, print_id: PrintId) -> Vec<EventRecord> {
+    let store = own.store();
+    let mut found = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = printobserver_core::block_on(store.stored_after(StoredQuery {
+            after: cursor,
+            print_id: Some(print_id),
+            limit: Some(1_000),
+        }))
+        .expect("the record reads");
+        let Some(last) = page.last() else {
+            return found;
+        };
+        cursor = Some(last.id);
+        found.extend(page);
+    }
+}
+
+/// One stream, running.
+struct Watching {
+    /// The program, running.
+    child: Child,
+    /// Each line it printed, as it printed it.
+    lines: mpsc::Receiver<String>,
+    /// Every line read so far.
+    seen: Vec<String>,
+}
+
+/// Start `watch` with these arguments against a journey's own supervisor.
+fn watch(own: &Standalone, arguments: &[&str]) -> Watching {
+    watch_with(arguments, &own.client)
+}
+
+/// Start `watch` configured by the file given.
+fn watch_with(arguments: &[&str], config: &std::path::Path) -> Watching {
+    let mut child = Command::new(running::program())
+        .arg("watch")
+        .args(arguments)
+        .arg("--config")
+        .arg(config)
+        .env_remove("PRINTOBSERVER_SERVER")
+        .env_remove("PRINTOBSERVER_CREDENTIAL")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("the watch starts");
+    let out = child.stdout.take().expect("the watch's output");
+    let (sending, lines) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(out).lines().map_while(Result::ok) {
+            if sending.send(line).is_err() {
+                return;
+            }
+        }
+    });
+    Watching {
+        child,
+        lines,
+        seen: Vec::new(),
+    }
+}
+
+impl Watching {
+    /// Read lines until what was read satisfies `done`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when it does not within [`PATIENCE`], naming what was read.
+    fn until(&mut self, what: &str, done: impl Fn(&[String]) -> bool) {
+        let deadline = Instant::now() + PATIENCE;
+        while !done(&self.seen) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.lines.recv_timeout(left) {
+                Ok(line) => self.seen.push(line),
+                Err(error) => panic!(
+                    "the stream never printed {what} ({error}): {:#?}",
+                    self.seen
+                ),
+            }
+        }
+    }
+
+    /// Wait for the stream to end, and answer every line and the exit.
+    fn finished(mut self) -> (Vec<String>, ExitStatus) {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            if let Some(status) = self.child.try_wait().expect("the watch is waited on") {
+                // Whatever it printed before it exited is still in the pipe.
+                while let Ok(line) = self.lines.recv_timeout(Duration::from_millis(500)) {
+                    self.seen.push(line);
+                }
+                return (std::mem::take(&mut self.seen), status);
+            }
+            if let Ok(line) = self.lines.recv_timeout(Duration::from_millis(100)) {
+                self.seen.push(line);
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the stream did not end: {:#?}",
+                self.seen
+            );
+        }
+    }
+
+    /// Ask the stream to stop with one signal, as a terminal or a service
+    /// manager does.
+    #[cfg(unix)]
+    fn signal(&self, which: &str) {
+        let sent = Command::new("kill")
+            .arg(format!("-{which}"))
+            .arg(self.child.id().to_string())
+            .status()
+            .expect("the signal is sent");
+        assert!(sent.success(), "the signal was not sent");
+    }
+}
+
+impl Drop for Watching {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Every line, as a document.
+fn documents(lines: &[String]) -> Vec<Value> {
+    lines
+        .iter()
+        .map(|line| {
+            serde_json::from_str(line)
+                .unwrap_or_else(|error| panic!("`{line}` is not one JSON object: {error}"))
+        })
+        .collect()
+}
+
+/// The events a stream printed, by identifier, in the order printed.
+fn printed_ids(lines: &[Value]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|line| line.get("id").is_some())
+        .map(|line| line["id"].as_str().expect("an event id").to_owned())
+        .collect()
+}
+
+/// The stream's last line, which is its ending, and that it is its only one.
+fn ending(lines: &[Value]) -> Value {
+    let endings: Vec<&Value> = lines
+        .iter()
+        .filter(|line| line.get("watch_ended").is_some())
+        .collect();
+    assert_eq!(
+        endings.len(),
+        1,
+        "a stream ended other than once: {lines:#?}"
+    );
+    let last = lines.last().expect("the stream printed something");
+    assert!(
+        last.get("watch_ended").is_some(),
+        "the ending was not the last line: {lines:#?}"
+    );
+    last["watch_ended"].clone()
+}
+
+/// The events of a print's scope that pass a filter, up to and including the
+/// print's end, in the order stored.
+fn expected(
+    own: &Standalone,
+    print_id: PrintId,
+    passes: impl Fn(&EventRecord) -> bool,
+) -> Vec<String> {
+    let mut found = Vec::new();
+    for event in in_scope(own, print_id) {
+        let is_the_end =
+            event.kind().as_str() == PrintEndedPayload::KIND && event.print_id == Some(print_id);
+        if passes(&event) {
+            found.push(event.id.to_string());
+        }
+        if is_the_end {
+            return found;
+        }
+    }
+    panic!("the record holds no end of print {print_id}")
+}
+
+/// The events a stream printed are exactly those of the print's scope that
+/// pass, in the order stored, and the stream ended with the print, once.
+fn held_to_the_record(
+    own: &Standalone,
+    print_id: PrintId,
+    lines: &[Value],
+    status: ExitStatus,
+    passes: impl Fn(&EventRecord) -> bool,
+) {
+    assert_eq!(status.code(), Some(0), "{lines:#?}");
+    let ended = ending(lines);
+    assert_eq!(ended["reason"], json!("print_ended"), "{lines:#?}");
+    assert_eq!(
+        printed_ids(lines),
+        expected(own, print_id, passes),
+        "the stream did not print the print's passing events, once each, in the order stored"
+    );
+}
+
+/// One answer of a journey's own supervisor, read through this program.
+fn read(world: &World, own: &Standalone, arguments: &[&str]) -> Value {
+    let mut given: Vec<String> = arguments.iter().map(|word| (*word).to_owned()).collect();
+    given.extend([
+        "--json".to_owned(),
+        "--config".to_owned(),
+        own.client.display().to_string(),
+    ]);
+    let ran = running::with(world, &given, &[]);
+    assert_eq!(ran.code, Some(0), "{arguments:?} failed: {}", ran.said());
+    serde_json::from_str(&ran.out)
+        .unwrap_or_else(|error| panic!("{arguments:?} answered {error}: {}", ran.out))
+}
+
+/// The supervisor's own `history --json` and `events --json` for one print,
+/// by event identifier.
+fn as_served(
+    world: &World,
+    own: &Standalone,
+    print_id: &str,
+) -> std::collections::BTreeMap<String, Value> {
+    let mut served = std::collections::BTreeMap::new();
+    let history = read(
+        world,
+        own,
+        &["history", "--print-id", print_id, "--limit", "1000"],
+    );
+    let mut cursor: Option<String> = None;
+    loop {
+        let mut asked = vec!["events", "--print-id", print_id, "--limit", "500"];
+        let from;
+        if let Some(after) = &cursor {
+            from = after.clone();
+            asked.extend(["--after", from.as_str()]);
+        }
+        let page = read(world, own, &asked);
+        let events = page["events"].as_array().cloned().unwrap_or_default();
+        if events.is_empty() {
+            break;
+        }
+        for event in events {
+            served.insert(event["id"].as_str().expect("an id").to_owned(), event);
+        }
+        cursor = page["cursor"].as_str().map(str::to_owned);
+    }
+    // A print's own events are held to what its history prints; the printer's,
+    // which no print's history carries, to what the events read prints.
+    for event in history["events"].as_array().cloned().unwrap_or_default() {
+        served.insert(event["id"].as_str().expect("an id").to_owned(), event);
+    }
+    served
+}
+
+/// A stream over a print carries that print's events and the printer's, in
+/// the order stored, each exactly as `history --json` prints it, and no other
+/// print's; it prints the print's end and then ends with it, once, exit 0.
+#[test]
+fn a_watch_streams_a_prints_events_and_the_printers_and_ends_with_the_print() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let mut stream = watch(&own, &["--json", "--print-id", &watched]);
+    std::thread::sleep(Duration::from_millis(500));
+
+    let first = own.record(vec![
+        notable(Some(print(&watched))),
+        notable(None),
+        notable(Some(print(&own.elsewhere))),
+        observation(Some(print(&watched)), Timestamp::now()),
+    ]);
+    own.nudge(&world);
+    let last_of_batch = first[3].id.to_string();
+    stream.until("the first batch", |seen| {
+        seen.iter().any(|line| line.contains(&last_of_batch))
+    });
+    let end = own.record(vec![ended(print(&watched))]);
+    own.nudge(&world);
+    let (lines, status) = stream.finished();
+    let lines = documents(&lines);
+
+    held_to_the_record(&own, print(&watched), &lines, status, |_| true);
+    assert!(
+        printed_ids(&lines).contains(&first[1].id.to_string()),
+        "the printer's own event was not streamed: {lines:#?}"
+    );
+    assert!(
+        !printed_ids(&lines).contains(&first[2].id.to_string()),
+        "another print's event was streamed: {lines:#?}"
+    );
+    assert_eq!(
+        printed_ids(&lines).last(),
+        Some(&end[0].id.to_string()),
+        "the print's end was not the last event printed: {lines:#?}"
+    );
+    let served = as_served(&world, &own, &watched);
+    for line in lines.iter().filter(|line| line.get("id").is_some()) {
+        let id = line["id"].as_str().expect("an id");
+        assert_eq!(
+            Some(line),
+            served.get(id),
+            "a streamed event is not what the supervisor's own reads print for it"
+        );
+    }
+}
+
+/// `--kind` and `--exclude-kind` pass exactly what they name; and watching a
+/// print with an inclusion list that leaves its end out, or with its end
+/// excluded, still ends with the print — without printing the end.
+#[test]
+fn kind_filters_pass_exactly_what_they_name_and_still_end_with_the_print() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let included = watch(
+        &own,
+        &["--json", "--print-id", &watched, "--kind", OBSERVATION],
+    );
+    let mut excluded = watch(
+        &own,
+        &[
+            "--json",
+            "--print-id",
+            &watched,
+            "--exclude-kind",
+            PrintEndedPayload::KIND,
+        ],
+    );
+    let mut routine = watch(
+        &own,
+        &[
+            "--json",
+            "--print-id",
+            &watched,
+            "--exclude-kind",
+            OBSERVATION,
+        ],
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    let now = Timestamp::now();
+    let recorded = own.record(vec![
+        observation(Some(print(&watched)), now),
+        notable(Some(print(&watched))),
+        observation(None, after(now, 1)),
+        notable(None),
+    ]);
+    own.nudge(&world);
+    let last = recorded[3].id.to_string();
+    for stream in [&mut excluded, &mut routine] {
+        stream.until("the batch", |seen| {
+            seen.iter().any(|line| line.contains(&last))
+        });
+    }
+    // The printer's event stored after the end is in the print's scope and
+    // after its end, so no stream over the print prints it.
+    own.record(vec![ended(print(&watched)), notable(None)]);
+    own.nudge(&world);
+
+    let is = |kind: &'static str| move |event: &EventRecord| event.kind().as_str() == kind;
+    let (lines, status) = included.finished();
+    held_to_the_record(
+        &own,
+        print(&watched),
+        &documents(&lines),
+        status,
+        is(OBSERVATION),
+    );
+    let (lines, status) = excluded.finished();
+    held_to_the_record(&own, print(&watched), &documents(&lines), status, |event| {
+        event.kind().as_str() != PrintEndedPayload::KIND
+    });
+    let (lines, status) = routine.finished();
+    held_to_the_record(&own, print(&watched), &documents(&lines), status, |event| {
+        event.kind().as_str() != OBSERVATION
+    });
+}
+
+/// `--sample periodic_observation=300` passes the first observation, drops
+/// each received inside 300 s of the last one passed, and passes each at or
+/// beyond it — so observations keep arriving for the whole print — while
+/// every other kind passes untouched.
+#[test]
+fn a_sampled_kind_passes_one_per_interval_by_received_at_for_the_whole_print() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    // Starts after an event already in the record, so the observations below
+    // are the only ones the sampling sees, and the event it starts after is
+    // not printed.
+    let start = own.record(vec![notable(Some(print(&watched)))])[0]
+        .id
+        .to_string();
+    let stream = watch(
+        &own,
+        &[
+            "--json",
+            "--print-id",
+            &watched,
+            "--after",
+            &start,
+            "--sample",
+            &format!("{OBSERVATION}=300"),
+        ],
+    );
+    let base = Timestamp::now();
+    let mut drafts = Vec::new();
+    for offset in [0, 100, 299, 300, 450, 600, 601, 1_000, 1_299, 1_300] {
+        drafts.push(observation(Some(print(&watched)), after(base, offset)));
+    }
+    drafts.insert(3, notable(Some(print(&watched))));
+    drafts.push(ended(print(&watched)));
+    let recorded = own.record(drafts);
+    own.nudge(&world);
+    let (lines, status) = stream.finished();
+    let lines = documents(&lines);
+
+    let at = |index: usize| recorded[index].id.to_string();
+    // 0, 100, 299, notable, 300, 450, 600, 601, 1000, 1299, 1300, end.
+    assert_eq!(
+        printed_ids(&lines),
+        vec![at(0), at(3), at(4), at(6), at(8), at(10), at(11)],
+        "the sampling did not pass exactly one observation per interval: {lines:#?}"
+    );
+    assert_eq!(status.code(), Some(0), "{lines:#?}");
+    assert_eq!(ending(&lines)["reason"], json!("print_ended"));
+}
+
+/// Without `--json` a stream prints one line per passing event and the print's
+/// end in words, and exits 0.
+#[test]
+fn a_watch_in_words_prints_a_line_per_event_and_the_end() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let stream = watch(
+        &own,
+        &["--print-id", &watched, "--exclude-kind", OBSERVATION],
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    own.record(vec![
+        notable(Some(print(&watched))),
+        observation(Some(print(&watched)), Timestamp::now()),
+        notable(None),
+        ended(print(&watched)),
+    ]);
+    own.nudge(&world);
+    let (lines, status) = stream.finished();
+
+    let expected = expected(&own, print(&watched), |event| {
+        event.kind().as_str() != OBSERVATION
+    });
+    assert_eq!(status.code(), Some(0), "{lines:#?}");
+    assert_eq!(lines.len(), expected.len() + 1, "{lines:#?}");
+    for (line, id) in lines.iter().zip(&expected) {
+        assert!(line.contains(id), "`{line}` is not the line for event {id}");
+    }
+    let last = lines.last().expect("a last line");
+    assert!(
+        last.starts_with("watch ended: the print ended.") && last.contains("completed"),
+        "the stream did not end in words: {last}"
+    );
+}
+
+/// A heartbeat line every second while nothing passes, and SIGINT and SIGTERM
+/// each end the stream with one `interrupted` line and exit 0.
+#[cfg(unix)]
+#[test]
+fn a_quiet_stream_beats_and_a_signal_ends_it_as_interrupted() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    for signal in ["INT", "TERM"] {
+        let mut stream = watch(
+            &own,
+            &[
+                "--json",
+                "--heartbeat-s",
+                "1",
+                "--kind",
+                "streaming_never_recorded",
+            ],
+        );
+        stream.until("two heartbeats", |seen| {
+            seen.iter()
+                .filter(|line| line.contains("watch_heartbeat"))
+                .count()
+                >= 2
+        });
+        stream.signal(signal);
+        let (lines, status) = stream.finished();
+        let lines = documents(&lines);
+
+        for beat in lines.iter().filter_map(|line| line.get("watch_heartbeat")) {
+            assert!(beat["at"].is_string(), "{beat}");
+            assert!(beat.get("cursor").is_some(), "{beat}");
+        }
+        let ended = ending(&lines);
+        assert_eq!(
+            ended["reason"],
+            json!("interrupted"),
+            "SIG{signal}: {lines:#?}"
+        );
+        assert!(
+            ended["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains(&format!("SIG{signal}"))),
+            "{ended}"
+        );
+        assert_eq!(status.code(), Some(0), "SIG{signal}: {lines:#?}");
+    }
+}
+
+/// A server that stops ends the stream as unreachable, exit 3, once it has not
+/// answered for longer than `--reconnect-s`.
+#[test]
+fn a_server_that_goes_away_ends_the_stream_as_unreachable_after_the_retry() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let mut stream = watch(
+        &own,
+        &["--json", "--reconnect-s", "2", "--heartbeat-s", "1"],
+    );
+    stream.until("a heartbeat", |seen| {
+        seen.iter().any(|line| line.contains("watch_heartbeat"))
+    });
+    let stopped = Instant::now();
+    own.stop();
+    let (lines, status) = stream.finished();
+    let lines = documents(&lines);
+
+    assert!(
+        stopped.elapsed() >= Duration::from_secs(2),
+        "the stream gave up before its retry was over: {:?}",
+        stopped.elapsed()
+    );
+    assert_eq!(ending(&lines)["reason"], json!("unreachable"), "{lines:#?}");
+    assert_eq!(status.code(), Some(3), "{lines:#?}");
+}
+
+/// A server restarted inside `--reconnect-s` is followed on from the cursor:
+/// what was recorded while it was down is streamed, and nothing is printed
+/// twice or left out.
+#[test]
+fn a_server_restarted_inside_the_retry_is_followed_on_from_the_cursor() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let mut stream = watch(
+        &own,
+        &["--json", "--print-id", &watched, "--reconnect-s", "60"],
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    let before = own.record(vec![notable(Some(print(&watched))), notable(None)]);
+    own.nudge(&world);
+    let seen = before[1].id.to_string();
+    stream.until("what was recorded before", |lines| {
+        lines.iter().any(|line| line.contains(&seen))
+    });
+
+    own.stop();
+    own.record(vec![
+        notable(Some(print(&watched))),
+        observation(Some(print(&watched)), Timestamp::now()),
+        notable(None),
+    ]);
+    own.start();
+    own.record(vec![ended(print(&watched))]);
+    own.nudge(&world);
+    let (lines, status) = stream.finished();
+
+    held_to_the_record(&own, print(&watched), &documents(&lines), status, |_| true);
+}
+
+/// A print whose record holds more events than one read answers, followed by
+/// a stream that lost the server and came back only after the print ended —
+/// and by one started on the print once it had ended: each prints every
+/// passing event once, in the order stored, and then ends with the print once.
+#[test]
+fn a_stream_that_comes_back_after_the_end_or_starts_there_prints_all_of_a_long_print() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let mut stream = watch(
+        &own,
+        &[
+            "--json",
+            "--print-id",
+            &watched,
+            "--reconnect-s",
+            "60",
+            "--exclude-kind",
+            PrintEndedPayload::KIND,
+        ],
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    let before = own.record(vec![notable(Some(print(&watched)))]);
+    own.nudge(&world);
+    let seen = before[0].id.to_string();
+    stream.until("what was recorded before", |lines| {
+        lines.iter().any(|line| line.contains(&seen))
+    });
+
+    own.stop();
+    let base = Timestamp::now();
+    let mut long: Vec<EventDraft> = (0..300)
+        .map(|second| observation(Some(print(&watched)), after(base, second)))
+        .collect();
+    long.push(ended(print(&watched)));
+    own.record(long);
+    own.start();
+    let (lines, status) = stream.finished();
+    let lines = documents(&lines);
+    held_to_the_record(&own, print(&watched), &lines, status, |event| {
+        event.kind().as_str() != PrintEndedPayload::KIND
+    });
+    assert!(
+        printed_ids(&lines).len() > 300,
+        "the stream did not carry the whole of a long print: {}",
+        printed_ids(&lines).len()
+    );
+
+    // The same print, watched only once it has ended.
+    let (lines, status) = watch(
+        &own,
+        &["--json", "--print-id", &watched, "--kind", OBSERVATION],
+    )
+    .finished();
+    let lines = documents(&lines);
+    held_to_the_record(&own, print(&watched), &lines, status, |event| {
+        event.kind().as_str() == OBSERVATION
+    });
+    assert!(
+        printed_ids(&lines).len() >= 300,
+        "{}",
+        printed_ids(&lines).len()
+    );
+}
+
+/// A credential the supervisor refuses, and a request it refuses, each end the
+/// stream as refused with exit 7 at once rather than being retried until it is
+/// unreachable.
+#[test]
+fn a_refused_credential_or_request_ends_the_stream_as_refused_at_once() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    for (arguments, config) in [
+        (vec!["--json"], own.refused_client.clone()),
+        (vec!["--json", "--kind", "Not-A-Kind"], own.client.clone()),
+    ] {
+        let started = Instant::now();
+        let mut asked = arguments.clone();
+        asked.extend(["--reconnect-s", "60"]);
+        let (lines, status) = watch_with(&asked, &config).finished();
+        let lines = documents(&lines);
+
+        assert_eq!(
+            ending(&lines)["reason"],
+            json!("refused"),
+            "{arguments:?}: {lines:#?}"
+        );
+        assert_eq!(status.code(), Some(7), "{arguments:?}: {lines:#?}");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{arguments:?} was retried rather than refused at once: {:?}",
+            started.elapsed()
+        );
+    }
+}
+
+/// `printobserver events` prints what the route answered: the events, the
+/// cursor and, scoped to a print, its end — the end told although the read
+/// filtered its event out.
+#[test]
+fn the_events_command_prints_the_answer_the_route_served() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    // Read through a recording proxy, so what the route served is the bytes
+    // that came back over the wire rather than what this program says they
+    // were.
+    let proxy = Proxy::in_front_of(own.address);
+    let through = world.root.path().join("through-the-proxy.toml");
+    std::fs::write(
+        &through,
+        format!(
+            "[client]\nserver = \"{}\"\ncredential = \"{CREDENTIAL}\"\n",
+            proxy.url()
+        ),
+    )
+    .expect("the client configuration is writable");
+    let recorded = own.record(vec![
+        notable(Some(print(&watched))),
+        notable(None),
+        ended(print(&watched)),
+    ]);
+
+    let after = recorded[0].id.to_string();
+    let ran = running::with(
+        &world,
+        &[
+            "events",
+            "--json",
+            "--print-id",
+            &watched,
+            "--after",
+            &after,
+            "--exclude-kinds",
+            PrintEndedPayload::KIND,
+            "--config",
+            &through.display().to_string(),
+        ]
+        .map(str::to_owned),
+        &[],
+    );
+    assert_eq!(ran.code, Some(0), "{}", ran.said());
+    let said: Value = serde_json::from_str(&ran.out).expect("the command printed JSON");
+    let served: Value =
+        serde_json::from_str(&proxy.the_one_request().answered).expect("the route answered JSON");
+
+    assert_eq!(
+        said, served,
+        "the command did not print what the route served"
+    );
+    assert_eq!(
+        said["events"].as_array().map(|events| events
+            .iter()
+            .map(|event| event["id"].clone())
+            .collect::<Vec<_>>()),
+        Some(vec![json!(recorded[1].id.to_string())]),
+        "{said:#}"
+    );
+    assert_eq!(
+        said["cursor"],
+        json!(recorded[2].id.to_string()),
+        "{said:#}"
+    );
+    assert_eq!(
+        said["print_ended"]["event_id"],
+        json!(recorded[2].id.to_string()),
+        "{said:#}"
+    );
+    assert_eq!(
+        said["print_ended"]["outcome"],
+        json!("completed"),
+        "{said:#}"
+    );
+}
