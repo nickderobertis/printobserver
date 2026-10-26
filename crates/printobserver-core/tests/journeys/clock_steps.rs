@@ -11,19 +11,20 @@
 //! the absolute instants the store recorded. The history keeps those absolute
 //! instants, as written.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use printobserver_core::store::{EventStore as _, HistoryQuery, StoreError};
 use printobserver_core::{
     ActionRequestedPayload, Actor, Clock as _, CoreError, Intervention, InterventionOutcome,
-    PolicyDecision, PrintAction, RejectionReason,
+    PolicyDecision, PrintAction, RejectionReason, SystemClock,
 };
 use printobserver_printer_api::PrinterState;
 use printobserver_types::{EventPayload as _, PrintId, Timestamp};
 
 use crate::fakes::StoreMethod;
 use crate::journal::Call;
-use crate::world::{World, agent_actor, permissive_envelope};
+use crate::world::{EPOCH_SECONDS, World, agent_actor, permissive_envelope};
 
 /// How long the bounded change in these journeys stands for.
 const DURATION_S: i64 = 60;
@@ -260,6 +261,63 @@ fn a_change_recorded_after_the_restart_by_the_wall_clock_waits_the_whole_interva
 
     world.clock.advance(1);
     assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
+}
+
+/// A supervisor restarted on the host's own clock keeps the time the agent's
+/// interval had already been waited before it started. That clock's monotonic
+/// reading starts near zero with the process, long after a change made most of
+/// an interval ago: the change is refused while what was left of the interval
+/// runs out, and accepted once it has, rather than held for a whole interval
+/// counted from the process's start.
+#[test]
+fn a_restart_on_the_system_clock_keeps_the_time_already_waited() {
+    const LEFT_S: i64 = 2;
+    let (mut world, print_id) = spaced_world();
+    let host_now = Timestamp::now().as_utc().timestamp();
+    world
+        .clock
+        .step_wall(host_now - EPOCH_SECONDS - (INTERVAL_S - LEFT_S));
+    let made = world.clock.now();
+    assert_eq!(agent_fan(&world, print_id), PolicyDecision::Accepted);
+    let ends = made
+        .plus_seconds(INTERVAL_S)
+        .expect("a representable instant");
+
+    world.restart_on(Arc::new(SystemClock));
+    match agent_fan(&world, print_id) {
+        PolicyDecision::Rejected(RejectionReason::MinIntervalNotElapsed {
+            interval_s,
+            since_last_s,
+        }) => {
+            assert_eq!(interval_s, INTERVAL_S);
+            assert!(
+                since_last_s >= INTERVAL_S - LEFT_S,
+                "the time already waited was lost: {since_last_s}s"
+            );
+        }
+        other => panic!("the change was not held for what was left: {other:?}"),
+    }
+
+    let latest = Duration::from_secs(u64::try_from(LEFT_S).expect("positive") + 2);
+    let polling = std::time::Instant::now();
+    let accepted_at = loop {
+        if agent_fan(&world, print_id) == PolicyDecision::Accepted {
+            break Timestamp::now();
+        }
+        assert!(
+            polling.elapsed() < latest,
+            "the change was still refused well after the interval ended at {ends:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let late = accepted_at
+        .as_utc()
+        .signed_duration_since(*ends.as_utc())
+        .num_milliseconds();
+    assert!(
+        (0..500).contains(&late),
+        "accepted {late}ms from the interval's end"
+    );
 }
 
 /// A restarted supervisor that cannot read when the agent last acted refuses

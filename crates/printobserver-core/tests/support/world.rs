@@ -133,13 +133,20 @@ impl World {
     /// the first saw.
     #[must_use]
     pub fn restarted(&self) -> Arc<Supervisor> {
+        self.restarted_on(Arc::clone(&self.clock) as Arc<dyn printobserver_core::Clock>)
+    }
+
+    /// A second supervisor over this world's same store, printer and ports,
+    /// reading time from `clock`, built as a restart builds one.
+    #[must_use]
+    pub fn restarted_on(&self, clock: Arc<dyn printobserver_core::Clock>) -> Arc<Supervisor> {
         let core = Supervisor::new(
             self.config.clone(),
             Arc::clone(&self.printer) as Arc<dyn printobserver_printer_api::PrinterPort>,
             printobserver_core::store::Stores::of(Arc::clone(&self.store)),
             Arc::clone(&self.vision) as Arc<dyn printobserver_vision_api::VisionPort>,
             Arc::clone(&self.agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
-            Arc::clone(&self.clock) as Arc<dyn printobserver_core::Clock>,
+            clock,
         );
         assert!(
             core.install_turn_authority(Arc::new(crate::fakes::OpensTurns(Arc::clone(
@@ -159,8 +166,18 @@ impl World {
     ///
     /// Panics when the first supervisor does not stop.
     pub fn restart(&mut self) {
+        self.restart_on(Arc::clone(&self.clock) as Arc<dyn printobserver_core::Clock>);
+    }
+
+    /// Stop this world's supervisor and go on with a restarted one over the
+    /// same store, printer and ports, reading time from `clock`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the first supervisor does not stop.
+    pub fn restart_on(&mut self, clock: Arc<dyn printobserver_core::Clock>) {
         let stopped = Arc::downgrade(&self.core);
-        self.core = self.restarted();
+        self.core = self.restarted_on(clock);
         self.agent.attach(&self.core);
         wait_until("the first supervisor to stop", || {
             stopped.upgrade().is_none()

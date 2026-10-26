@@ -146,7 +146,7 @@ pub struct Supervisor {
     /// When, on the clock nothing steps, the agent last changed the machine
     /// on each print: absent until it is known, and `None` once it is known
     /// the agent never has.
-    last_agent_action: Mutex<BTreeMap<PrintId, Option<Duration>>>,
+    last_agent_action: Mutex<BTreeMap<PrintId, Option<AgentAction>>>,
     /// Both of the clock's readings as this supervisor started, which every
     /// instant a previous supervisor recorded is translated against once.
     started: ClockReading,
@@ -159,6 +159,18 @@ pub struct Supervisor {
     /// Where each supervision turn's runs take their credentials from, once
     /// the composition root has installed it.
     turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
+}
+
+/// When the agent last changed the machine on one print, as this supervisor
+/// measures it.
+#[derive(Debug, Clone, Copy)]
+struct AgentAction {
+    /// The reading of the clock nothing steps this supervisor counts on from.
+    seen_at: Duration,
+    /// How long before `seen_at` the change was made: nothing for one this
+    /// supervisor made, and for one a previous supervisor recorded, how long
+    /// it had been waited already as this one started.
+    already: Duration,
 }
 
 impl core::fmt::Debug for Supervisor {
@@ -330,7 +342,13 @@ impl Supervisor {
     /// Record that the agent changed the machine on one print at a reading of
     /// the clock nothing steps.
     pub(crate) fn note_agent_action(&self, print_id: PrintId, at: Duration) {
-        self.last_agents_actions().insert(print_id, Some(at));
+        self.last_agents_actions().insert(
+            print_id,
+            Some(AgentAction {
+                seen_at: at,
+                already: Duration::ZERO,
+            }),
+        );
     }
 
     /// How long ago, on the clock nothing steps, the agent last changed the
@@ -340,10 +358,13 @@ impl Supervisor {
     /// history once: the newest change the agent made that reached the machine,
     /// translated against the reading this supervisor took as it started, so
     /// that what is left of the interval when a supervisor restarts is waited
-    /// out on the clock nothing steps. A change recorded after that reading — a
-    /// wall clock stepped back across the restart — is taken as made the
-    /// moment this supervisor started, which waits the whole interval rather
-    /// than longer.
+    /// out on the clock nothing steps. The time it had already been waited at
+    /// that reading is kept as a span of its own rather than as a reading of
+    /// that clock, whose origin may be later than the change: a host's
+    /// monotonic clock starts near zero with the process. A change recorded
+    /// after that reading — a wall clock stepped back across the restart — is
+    /// taken as made the moment this supervisor started, which waits the whole
+    /// interval rather than longer.
     ///
     /// # Errors
     ///
@@ -361,13 +382,26 @@ impl Supervisor {
             let recorded = self
                 .recorded_agent_action(print_id)
                 .await?
-                .map(|at| started.elapsed_at(at).min(started.elapsed));
+                .map(|at| AgentAction {
+                    seen_at: started.elapsed,
+                    already: started
+                        .wall
+                        .as_utc()
+                        .signed_duration_since(*at.as_utc())
+                        .to_std()
+                        .unwrap_or_default(),
+                });
             *self
                 .last_agents_actions()
                 .entry(print_id)
                 .or_insert(recorded)
         };
-        Ok(last.map(|at| self.clock().elapsed().saturating_sub(at)))
+        Ok(last.map(|action| {
+            self.clock()
+                .elapsed()
+                .saturating_sub(action.seen_at)
+                .saturating_add(action.already)
+        }))
     }
 
     /// When the newest change the agent made to the machine on one print was
@@ -407,7 +441,7 @@ impl Supervisor {
     }
 
     /// The agent's last change on each print, held for one read or write.
-    fn last_agents_actions(&self) -> MutexGuard<'_, BTreeMap<PrintId, Option<Duration>>> {
+    fn last_agents_actions(&self) -> MutexGuard<'_, BTreeMap<PrintId, Option<AgentAction>>> {
         self.last_agent_action
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
