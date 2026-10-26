@@ -600,9 +600,16 @@ def listen_address(webhook_url: str) -> tuple[str, int, str]:
 
 
 def held_at(webhook_url: str, port: int) -> str:
-    """`webhook_url` with the port the capture holds in place of the one it named."""
+    """`webhook_url` with the port the capture holds in place of the one it named.
+
+    Only the port moves: any user information and the host exactly as the URL
+    spelled it — an IPv6 literal keeping its brackets — are kept.
+    """
     parts = urllib.parse.urlsplit(webhook_url)
-    return urllib.parse.urlunsplit(parts._replace(netloc=f"{parts.hostname}:{port}"))
+    user, at, host = parts.netloc.rpartition("@")
+    if parts.port is not None:
+        host = host.rpartition(":")[0]
+    return urllib.parse.urlunsplit(parts._replace(netloc=f"{user}{at}{host}:{port}"))
 
 
 def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> dict[str, Any]:
