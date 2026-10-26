@@ -400,7 +400,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
         "{}",
         reached.said()
     );
-    let expected: std::net::SocketAddr = octoprint.parse().expect("a loopback address");
+    let expected = octoprint;
     assert!(
         reached.connected.contains(&expected),
         "the session did not record `{}` connecting to {octoprint}, so it says nothing \

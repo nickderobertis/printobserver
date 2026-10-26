@@ -9,10 +9,12 @@
 //! JSON, a connection that is refused.
 
 use std::io::Write as _;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
+
+use socket2::{Domain, Socket, Type};
 
 use crate::received::{Recorded, read_request};
 
@@ -138,16 +140,28 @@ impl Drop for Stub {
 
 /// A loopback address nothing is listening on.
 ///
-/// Bound and then released, so the port is one this host handed out rather than
-/// one this test hoped was free.
+/// Bound once and never listened on, and held until this test process exits:
+/// a connection to it is refused, the port is one this host handed out rather
+/// than one this test hoped was free, and no other socket can come to bind it.
 ///
 /// # Panics
 ///
 /// Panics when no loopback socket can be bound, which is a broken host.
 pub fn closed_address() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
+    static HELD: OnceLock<(Socket, SocketAddr)> = OnceLock::new();
+    let (_, address) = HELD.get_or_init(|| {
+        let socket =
+            Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
+        socket
+            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
+            .expect("a loopback port binds");
+        let address = socket
+            .local_addr()
+            .expect("the bound address reads")
+            .as_socket()
+            .expect("the bound address is an internet address");
+        (socket, address)
+    });
     format!("http://{address}")
 }
 

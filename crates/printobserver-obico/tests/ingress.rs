@@ -366,7 +366,7 @@ async fn post_with(field: &str, state: &State) -> (Arc<MemoryStore>, Receipt) {
                 .remove(field);
         }
     }
-    body["img_url"] = json!(unreachable_url().await);
+    body["img_url"] = json!(unreachable_url());
     let store = Arc::new(MemoryStore::new());
     let receipt = ingress(&store, prompt_bounds())
         .receive(body_of(&body), Some("application/json".to_owned()))
@@ -490,7 +490,7 @@ async fn a_body_that_cannot_be_read_is_recorded_and_then_refused() {
 /// Post the committed alert against a store, with no reachable snapshot.
 async fn post_alert(store: &Arc<MemoryStore>) -> Receipt {
     let mut body = failure_alert();
-    body["img_url"] = json!(unreachable_url().await);
+    body["img_url"] = json!(unreachable_url());
     ingress(store, prompt_bounds())
         .receive(body_of(&body), Some("application/json".to_owned()))
         .await
@@ -739,12 +739,8 @@ async fn a_content_type_that_is_not_an_image_is_refused() {
 async fn a_host_nothing_answers_on_is_unreachable() {
     let store = Arc::new(MemoryStore::new());
 
-    let (receipt, body) = post_alert_for(
-        &store,
-        unreachable_url().await,
-        ObicoVisionConfig::default(),
-    )
-    .await;
+    let (receipt, body) =
+        post_alert_for(&store, unreachable_url(), ObicoVisionConfig::default()).await;
 
     let failure = receipt
         .image_failure
@@ -1045,7 +1041,7 @@ async fn an_acknowledgement_obico_refuses_names_the_answer_and_never_the_token()
     assert!(!said.contains(ACCESS_TOKEN), "{said}");
     assert!(!format!("{refused:?}").contains(ACCESS_TOKEN));
 
-    let unreachable = acknowledging(&unreachable_url().await)
+    let unreachable = acknowledging(&unreachable_url())
         .clear_detection(the_samples_detection())
         .await
         .expect_err("an unreachable API is an error");

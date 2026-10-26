@@ -1467,6 +1467,7 @@ dependencies = [
  "printobserver-vision-api",
  "reqwest",
  "sha2",
+ "socket2",
  "tempfile",
  "tokio",
  "tokio-rustls",
@@ -1482,6 +1483,7 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
+ "socket2",
  "syn 3.0.5",
 ]
 

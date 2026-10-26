@@ -6,7 +6,7 @@
 //! listens on it: a connection to it is refused by the kernel, and while the
 //! socket lives no other socket can bind the port.
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use socket2::{Domain, Socket, Type};
 
@@ -18,13 +18,22 @@ pub struct Unreachable {
 }
 
 impl Unreachable {
-    /// Bind a free loopback port and hold it without listening.
+    /// Bind a free port on IPv4 loopback and hold it without listening.
     pub fn held() -> Self {
-        let socket =
-            Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
+        Self::held_on(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    }
+
+    /// Bind a free port on `host` and hold it without listening.
+    pub fn held_on(host: IpAddr) -> Self {
+        let socket = Socket::new(
+            Domain::for_address(SocketAddr::new(host, 0)),
+            Type::STREAM,
+            None,
+        )
+        .expect("a socket opens");
         socket
-            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
-            .expect("a loopback port binds");
+            .bind(&SocketAddr::new(host, 0).into())
+            .expect("a free port binds");
         let address = socket
             .local_addr()
             .expect("the bound address reads")

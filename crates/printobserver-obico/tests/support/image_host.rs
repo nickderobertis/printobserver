@@ -9,8 +9,10 @@
 
 use core::fmt::Write as _;
 use core::time::Duration;
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::{Arc, Mutex, OnceLock};
+
+use socket2::{Domain, Socket, Type};
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
@@ -105,15 +107,25 @@ impl Drop for ImageHost {
 
 /// An address nothing is listening on.
 ///
-/// A port is bound to learn one that is free and then released, so what the
-/// fetch meets is a refused connection rather than a served refusal — which is
-/// the one failure no response a host can write will produce.
-pub async fn unreachable_url() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
+/// A port is bound once and never listened on, and held until this test
+/// process exits, so what the fetch meets is a refused connection rather than a
+/// served refusal — which is the one failure no response a host can write will
+/// produce — however late the fetch comes and whatever binds beside it.
+pub fn unreachable_url() -> String {
+    static HELD: OnceLock<(Socket, SocketAddr)> = OnceLock::new();
+    let (_, address) = HELD.get_or_init(|| {
+        let socket =
+            Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
+        socket
+            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
+            .expect("a loopback port binds");
+        let address = socket
+            .local_addr()
+            .expect("the bound address reads")
+            .as_socket()
+            .expect("the bound address is an internet address");
+        (socket, address)
+    });
     format!("http://{address}/snapshot.jpg")
 }
 

@@ -146,10 +146,27 @@ fn recorded_as_unproducible_against_this_target() {
     }
 }
 
-/// A loopback address nothing is listening on.
+/// A loopback address nothing is listening on: bound once and never listened
+/// on, and held until this test process exits, so nothing can come to.
 fn closed_address() -> String {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
+    use std::net::{Ipv4Addr, SocketAddr};
+    use std::sync::OnceLock;
+
+    use socket2::{Domain, Socket, Type};
+
+    static HELD: OnceLock<(Socket, SocketAddr)> = OnceLock::new();
+    let (_, address) = HELD.get_or_init(|| {
+        let socket =
+            Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
+        socket
+            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
+            .expect("a loopback port binds");
+        let address = socket
+            .local_addr()
+            .expect("the bound address reads")
+            .as_socket()
+            .expect("the bound address is an internet address");
+        (socket, address)
+    });
     format!("http://{address}")
 }
