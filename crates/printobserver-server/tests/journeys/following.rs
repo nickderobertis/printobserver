@@ -343,6 +343,7 @@ async fn a_well_formed_kind_is_taken_and_every_bad_value_is_refused_naming_it() 
         ("limit", "0"),
         ("limit", "501"),
         ("after", "not-an-event"),
+        ("print_ended", "1"),
     ] {
         let (status, refused) = world
             .get(&events_url(&world, &[(name, value.to_owned())]))
@@ -439,5 +440,47 @@ async fn a_print_end_is_told_whatever_the_filters_say() {
         unscoped.get("print_ended").is_none(),
         "a read naming no print carries a print's end: {unscoped}"
     );
+    world.server.stop().await;
+}
+
+/// A value given twice that is read once, a print nothing holds and an event
+/// nothing stored are each refused naming what will not do.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_repeated_single_value_a_missing_print_and_a_missing_cursor_are_refused() {
+    let world = World::open().await;
+
+    let (status, refused) = world
+        .get(&events_url(
+            &world,
+            &[("limit", "1".to_owned()), ("limit", "2".to_owned())],
+        ))
+        .await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .is_some_and(|said| said.contains("`limit`")),
+        "{refused}"
+    );
+
+    let nobody = PrintId::new();
+    let (status, refused) = world
+        .get(&events_url(&world, &[("print_id", nobody.to_string())]))
+        .await;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .is_some_and(|said| said.contains(&nobody.to_string())),
+        "{refused}"
+    );
+
+    let (status, refused) = world
+        .get(&events_url(
+            &world,
+            &[("after", printobserver_types::EventId::new().to_string())],
+        ))
+        .await;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND, "{refused}");
     world.server.stop().await;
 }

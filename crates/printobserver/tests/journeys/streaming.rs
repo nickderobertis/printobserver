@@ -847,3 +847,100 @@ fn the_events_command_prints_the_answer_the_route_served() {
         "{said:#}"
     );
 }
+
+/// A watch that cannot start prints no line at all: a malformed sampling is
+/// refused as usage, and a configuration naming no supervisor as unconfigured,
+/// before any stream exists to end.
+#[test]
+fn a_watch_that_cannot_start_prints_no_line_and_exits_as_every_command_does() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let serverless = world.serverless_config();
+    for (arguments, config, exit) in [
+        (
+            vec!["--json", "--sample", "periodic_observation"],
+            &own.client,
+            2,
+        ),
+        (vec!["--json", "--sample", "Not-A-Kind=300"], &own.client, 2),
+        (vec!["--json", "--reconnect-s", "-1"], &own.client, 2),
+        (vec!["--json"], &serverless, 4),
+    ] {
+        let (lines, status) = watch_with(&arguments, config).finished();
+
+        assert!(
+            lines.is_empty(),
+            "{arguments:?} printed a stream: {lines:#?}"
+        );
+        assert_eq!(status.code(), Some(exit), "{arguments:?}");
+    }
+}
+
+/// A supervisor that answers an events read with something that is not one
+/// ends the stream as refused, exit 7, at once.
+#[test]
+fn an_answer_that_is_not_an_events_answer_ends_the_stream_as_refused() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let address = listener.local_addr().expect("the bound address");
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut asked = [0_u8; 4096];
+            let _ = std::io::Read::read(&mut stream, &mut asked);
+            let body = r#"{"not":"an events answer"}"#;
+            let _ = std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    let root = tempfile::TempDir::new().expect("a root");
+    let config = root.path().join("client.toml");
+    std::fs::write(
+        &config,
+        format!("[client]\nserver = \"http://{address}\"\ncredential = \"{CREDENTIAL}\"\n"),
+    )
+    .expect("the client configuration is writable");
+
+    let (lines, status) = watch_with(&["--json", "--reconnect-s", "60"], &config).finished();
+    let lines = documents(&lines);
+
+    let ended = ending(&lines);
+    assert_eq!(ended["reason"], json!("refused"), "{lines:#?}");
+    assert!(
+        ended["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("cannot read")),
+        "{ended}"
+    );
+    assert_eq!(status.code(), Some(7), "{lines:#?}");
+}
+
+/// A watch asked to start after a print's end prints nothing more and ends
+/// with the print at once.
+#[test]
+fn a_watch_started_after_a_prints_end_ends_with_it_at_once() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let recorded = own.record(vec![notable(Some(print(&watched))), ended(print(&watched))]);
+    let end = recorded[1].id.to_string();
+
+    let (lines, status) =
+        watch(&own, &["--json", "--print-id", &watched, "--after", &end]).finished();
+    let lines = documents(&lines);
+
+    assert!(printed_ids(&lines).is_empty(), "{lines:#?}");
+    let ended = ending(&lines);
+    assert_eq!(ended["reason"], json!("print_ended"), "{lines:#?}");
+    assert!(
+        ended["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains(&end)),
+        "{ended}"
+    );
+    assert_eq!(status.code(), Some(0), "{lines:#?}");
+}

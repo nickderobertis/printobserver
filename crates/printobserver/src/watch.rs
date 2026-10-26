@@ -32,8 +32,11 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use printobserver_types::Timestamp;
+use core::num::NonZeroU32;
+
+use printobserver_types::serde::Deserialize;
 use printobserver_types::serde_json::{self, Value, json};
+use printobserver_types::{EventId, EventKind, PrintId, Timestamp};
 use tokio::time::Instant;
 
 use crate::config::{ClientConfig, load};
@@ -84,15 +87,17 @@ pub struct Watch {
     /// Whether machine-readable output was asked for.
     pub machine_readable: bool,
     /// The print to watch, when one was named.
-    pub print_id: Option<String>,
+    pub print_id: Option<PrintId>,
     /// The event to start after, when one was named.
-    pub after: Option<String>,
-    /// Only these kinds; empty, every kind.
+    pub after: Option<EventId>,
+    /// Only these kinds; empty, every kind. Carried as given: the server rules
+    /// on a kind's spelling, and refuses the read naming one it will not take.
     pub kinds: Vec<String>,
-    /// Never these kinds.
+    /// Never these kinds, carried as given for the same reason.
     pub exclude_kinds: Vec<String>,
-    /// The kinds sampled, each with the least time between two that pass.
-    pub samples: BTreeMap<String, i64>,
+    /// The kinds sampled, each with the least number of seconds between two
+    /// that pass.
+    pub samples: BTreeMap<EventKind, NonZeroU32>,
     /// How often to say the watch is still running with nothing to print, in
     /// seconds; zero, never.
     pub heartbeat_s: u64,
@@ -105,14 +110,16 @@ impl Watch {
     ///
     /// # Errors
     ///
-    /// Returns what to tell the caller when a sampling is not `KIND=SECONDS`,
-    /// or a number of seconds is not a whole number at or above its least.
+    /// Returns what to tell the caller when a print or an event is not an
+    /// identifier this system mints, a sampling is not `KIND=SECONDS` naming a
+    /// kind and a whole number of seconds above zero, or a number of seconds is
+    /// not a whole number at or above its least.
     pub fn of(
         config: Option<PathBuf>,
         machine_readable: bool,
         values: &BTreeMap<String, Value>,
     ) -> Result<Self, String> {
-        let text = |name: &str| values.get(name).and_then(Value::as_str).map(str::to_owned);
+        let text = |name: &str| values.get(name).and_then(Value::as_str);
         let texts = |name: &str| -> Vec<String> {
             match values.get(name) {
                 Some(Value::Array(each)) => each
@@ -135,29 +142,24 @@ impl Watch {
         };
         let mut samples = BTreeMap::new();
         for sampling in texts(SAMPLE_FIELD) {
-            let (kind, every) = sampling
-                .split_once('=')
-                .filter(|(kind, _)| !kind.is_empty())
-                .ok_or_else(|| {
-                    format!("`--sample` takes `KIND=SECONDS`, and `{sampling}` is not that")
-                })?;
-            let every: i64 = every
-                .parse()
-                .ok()
-                .filter(|every: &i64| *every > 0)
-                .ok_or_else(|| {
-                    format!(
-                        "`--sample` takes a whole number of seconds above zero after `=`, and \
+            let (kind, every) = sampling.split_once('=').ok_or_else(|| {
+                format!("`--sample` takes `KIND=SECONDS`, and `{sampling}` is not that")
+            })?;
+            let kind = EventKind::new(kind)
+                .map_err(|refused| format!("`--sample` names no kind: {refused}"))?;
+            let every: NonZeroU32 = every.parse().map_err(|_| {
+                format!(
+                    "`--sample` takes a whole number of seconds above zero after `=`, and \
                          `{sampling}` does not carry one"
-                    )
-                })?;
-            samples.insert(kind.to_owned(), every);
+                )
+            })?;
+            samples.insert(kind, every);
         }
         Ok(Self {
             config,
             machine_readable,
-            print_id: text("print_id"),
-            after: text("after"),
+            print_id: identifier(text("print_id"), "--print-id")?,
+            after: identifier(text("after"), "--after")?,
             kinds: texts(KIND_FIELD),
             exclude_kinds: texts(EXCLUDE_KIND_FIELD),
             samples,
@@ -177,15 +179,15 @@ impl Watch {
     /// Watching a print, the read always lets the print's own end through, so
     /// the stream can stop at it; this program then prints it by the caller's
     /// filters alone.
-    fn target(&self, cursor: Option<&str>, wait_s: u32) -> String {
+    fn target(&self, cursor: Option<EventId>, wait_s: u32) -> String {
         let mut asked: Vec<(&str, String)> = Vec::new();
         if let Some(after) = cursor {
-            asked.push(("after", after.to_owned()));
+            asked.push(("after", after.to_string()));
         }
         let mut kinds = self.kinds.clone();
         let mut excluded = self.exclude_kinds.clone();
-        if let Some(print_id) = &self.print_id {
-            asked.push(("print_id", print_id.clone()));
+        if let Some(print_id) = self.print_id {
+            asked.push(("print_id", print_id.to_string()));
             if !kinds.is_empty() && !kinds.iter().any(|kind| kind == PRINT_ENDED) {
                 kinds.push(PRINT_ENDED.to_owned());
             }
@@ -201,6 +203,20 @@ impl Watch {
             .collect();
         format!("/v1/events?{}", query.join("&"))
     }
+}
+
+/// One identifier an option gave, read as the type that mints it.
+fn identifier<T>(given: Option<&str>, option: &str) -> Result<Option<T>, String>
+where
+    T: core::str::FromStr,
+    T::Err: core::fmt::Display,
+{
+    given
+        .map(|text| {
+            text.parse()
+                .map_err(|refused| format!("`{option}` is `{text}`: {refused}"))
+        })
+        .transpose()
 }
 
 /// Why a watch ended.
@@ -244,28 +260,95 @@ impl Ending {
 #[derive(Debug, Default)]
 struct Sampler {
     /// When the last event of each sampled kind that passed was received.
-    last: BTreeMap<String, Timestamp>,
+    last: BTreeMap<EventKind, Timestamp>,
 }
 
 impl Sampler {
     /// Whether one event passes, noting it when it does.
-    fn passes(&mut self, watch: &Watch, kind: &str, received_at: Option<Timestamp>) -> bool {
+    fn passes(&mut self, watch: &Watch, kind: &EventKind, received_at: Timestamp) -> bool {
         let Some(every) = watch.samples.get(kind) else {
             return true;
         };
-        // An instant this program cannot read is not one it can sample by, so
-        // the event is passed rather than silently dropped.
-        let Some(received_at) = received_at else {
-            return true;
-        };
         let due = self.last.get(kind).is_none_or(|last| {
-            last.plus_seconds(*every)
+            last.plus_seconds(i64::from(every.get()))
                 .is_ok_and(|next| received_at >= next)
         });
         if due {
-            self.last.insert(kind.to_owned(), received_at);
+            self.last.insert(kind.clone(), received_at);
         }
         due
+    }
+}
+
+/// The fields of one event this program reads to decide what to do with it.
+///
+/// The event itself is printed as the server sent it; these are read beside
+/// it, and an event without them is an answer this program cannot read.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+struct Head {
+    /// Its identifier, which the stream reads on from.
+    id: EventId,
+    /// Its kind, which the filters and the sampling rule on.
+    kind: EventKind,
+    /// When it was received, which the sampling counts by.
+    received_at: Timestamp,
+    /// The print it belongs to, when it belongs to one.
+    #[serde(default)]
+    print_id: Option<PrintId>,
+}
+
+/// One print's end, as an events answer tells it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+struct Ended {
+    /// The `print_ended` event.
+    event_id: EventId,
+    /// When it was received.
+    received_at: Timestamp,
+    /// How the print ended.
+    outcome: String,
+}
+
+/// One events answer, as the server sends it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+struct Answer {
+    /// The events, each printed as it came.
+    events: Vec<Value>,
+    /// The last event the read examined.
+    cursor: Option<EventId>,
+    /// The watched print's end, once it has ended.
+    #[serde(default)]
+    print_ended: Option<Ended>,
+}
+
+/// One events answer, read: each event beside the fields this program decides
+/// on.
+#[derive(Debug, Clone)]
+struct Page {
+    /// The events, in the order stored.
+    events: Vec<(Head, Value)>,
+    /// The last event the read examined.
+    cursor: Option<EventId>,
+    /// The watched print's end, once it has ended.
+    print_ended: Option<Ended>,
+}
+
+impl Page {
+    /// One answer's body, read, or why it cannot be.
+    fn read(body: &str) -> Result<Self, serde_json::Error> {
+        let answer: Answer = serde_json::from_str(body)?;
+        let events = answer
+            .events
+            .into_iter()
+            .map(|event| Ok((Head::deserialize(&event)?, event)))
+            .collect::<Result<_, serde_json::Error>>()?;
+        Ok(Self {
+            events,
+            cursor: answer.cursor,
+            print_ended: answer.print_ended,
+        })
     }
 }
 
@@ -284,29 +367,30 @@ impl Lines {
     }
 
     /// One event that passed.
-    fn event(&self, event: &Value) {
+    fn event(&self, head: &Head, event: &Value) {
         if self.machine_readable {
             Self::write(&event.to_string());
             return;
         }
-        let field = |name: &str| event.get(name).and_then(Value::as_str).unwrap_or("?");
-        let scope = event
-            .get("print_id")
-            .and_then(Value::as_str)
+        let scope = head
+            .print_id
             .map_or_else(|| "printer".to_owned(), |print| format!("print {print}"));
         Self::write(&format!(
             "{}  {}  {scope}  event {}",
-            field("received_at"),
-            field("kind"),
-            field("id")
+            head.received_at, head.kind, head.id
         ));
     }
 
     /// The watch is running, and nothing passed since the last line.
-    fn heartbeat(&self, cursor: Option<&str>) {
+    fn heartbeat(&self, cursor: Option<EventId>) {
         let at = Timestamp::now().to_string();
         if self.machine_readable {
-            Self::write(&json!({ "watch_heartbeat": { "at": at, "cursor": cursor } }).to_string());
+            Self::write(
+                &json!({
+                    "watch_heartbeat": { "at": at, "cursor": cursor.map(|id| id.to_string()) }
+                })
+                .to_string(),
+            );
         } else {
             Self::write(&format!(
                 "{at}  still watching; nothing new since the last line"
@@ -315,14 +399,14 @@ impl Lines {
     }
 
     /// The last line.
-    fn ending(&self, ending: Ending, detail: &str, cursor: Option<&str>) {
+    fn ending(&self, ending: Ending, detail: &str, cursor: Option<EventId>) {
         if self.machine_readable {
             Self::write(
                 &json!({
                     "watch_ended": {
                         "reason": ending.as_str(),
                         "detail": detail,
-                        "cursor": cursor,
+                        "cursor": cursor.map(|id| id.to_string()),
                     }
                 })
                 .to_string(),
@@ -342,10 +426,11 @@ impl Lines {
 /// What one read came back with.
 enum Read {
     /// The server answered the read.
-    Answered(Value),
+    Answered(Page),
     /// Nothing answered.
     Unreachable(String),
-    /// The server refused the credential or the request.
+    /// The server refused the credential or the request, or answered
+    /// something this program cannot read.
     Refused(String),
 }
 
@@ -355,28 +440,32 @@ fn read(config: &ClientConfig, target: &str) -> Read {
         Ok(answered) => answered,
         Err(unreachable) => return Read::Unreachable(unreachable.to_string()),
     };
-    let document: Option<Value> = serde_json::from_str(&answered.body).ok();
-    match (answered.status, document) {
-        (200, Some(document)) => Read::Answered(document),
-        (200, None) => Read::Refused(format!(
-            "the supervisor at {} answered something this program cannot read",
-            config.address()
-        )),
-        (401, _) => Read::Refused(format!(
+    if answered.status == 200 {
+        return match Page::read(&answered.body) {
+            Ok(page) => Read::Answered(page),
+            Err(error) => Read::Refused(format!(
+                "the supervisor at {} answered an events read with something this program                  cannot read: {error}",
+                config.address()
+            )),
+        };
+    }
+    if answered.status == 401 {
+        return Read::Refused(format!(
             "the supervisor at {} refused the credential this program presented. Run \
              `printobserver credential issue`, or configure the credential whose verifier the \
              supervisor holds",
             config.address()
-        )),
-        (status, document) => Read::Refused(format!(
-            "the supervisor answered {status}: {}",
-            document
-                .as_ref()
-                .and_then(|said| said.get("error"))
-                .and_then(Value::as_str)
-                .unwrap_or("it said nothing this program can read")
-        )),
+        ));
     }
+    let said: Option<Value> = serde_json::from_str(&answered.body).ok();
+    Read::Refused(format!(
+        "the supervisor answered {}: {}",
+        answered.status,
+        said.as_ref()
+            .and_then(|said| said.get("error"))
+            .and_then(Value::as_str)
+            .unwrap_or("it said nothing this program can read")
+    ))
 }
 
 /// Wait for the first of the signals that ask a watch to stop, and name it.
@@ -448,11 +537,11 @@ struct Stream<'watch> {
     /// Where the lines go.
     lines: Lines,
     /// The last event examined, which the next read starts after.
-    cursor: Option<String>,
+    cursor: Option<EventId>,
     /// What the sampling has passed.
     sampler: Sampler,
     /// The watched print's end, once an answer has told it.
-    ended: Option<Value>,
+    ended: Option<Ended>,
     /// When the last line was printed, which the heartbeat counts from.
     last_line: Instant,
 }
@@ -460,7 +549,7 @@ struct Stream<'watch> {
 impl Stream<'_> {
     /// End the stream with its last line.
     fn end(&self, ending: Ending, detail: &str) -> Ending {
-        self.lines.ending(ending, detail, self.cursor.as_deref());
+        self.lines.ending(ending, detail, self.cursor);
         ending
     }
 
@@ -474,7 +563,7 @@ impl Stream<'_> {
         // Once the print has ended, read on at once to its end event rather
         // than waiting for events that will not come.
         let wait_s = if self.ended.is_some() { 0 } else { LONG_POLL_S };
-        let target = self.watch.target(self.cursor.as_deref(), wait_s);
+        let target = self.watch.target(self.cursor, wait_s);
         let asking = config.clone();
         let mut pending = tokio::task::spawn_blocking(move || read(&asking, &target));
         let heartbeat =
@@ -492,7 +581,7 @@ impl Stream<'_> {
                 }
                 () = tokio::time::sleep_until(beat.unwrap_or_else(Instant::now)),
                     if beat.is_some() => {
-                    self.lines.heartbeat(self.cursor.as_deref());
+                    self.lines.heartbeat(self.cursor);
                     self.last_line = Instant::now();
                 }
                 signal = stop.as_mut() => {
@@ -504,47 +593,39 @@ impl Stream<'_> {
 
     /// Print what one answer carries that passes, and end the stream when the
     /// watched print's end is reached.
-    fn take(&mut self, answer: &Value) -> Option<Ending> {
-        if let Some(ended) = answer.get("print_ended").filter(|ended| !ended.is_null()) {
-            self.ended = Some(ended.clone());
+    fn take(&mut self, page: Page) -> Option<Ending> {
+        if page.print_ended.is_some() {
+            self.ended = page.print_ended;
         }
-        let events = answer
-            .get("events")
-            .and_then(Value::as_array)
-            .map_or(&[][..], Vec::as_slice);
-        for event in events {
-            let kind = event
-                .get("kind")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let received_at = event
-                .get("received_at")
-                .and_then(Value::as_str)
-                .and_then(|at| at.parse().ok());
-            if self.watch.passes(kind) && self.sampler.passes(self.watch, kind, received_at) {
-                self.lines.event(event);
+        let drained = page.events.is_empty();
+        for (head, event) in &page.events {
+            if self.watch.passes(head.kind.as_str())
+                && self
+                    .sampler
+                    .passes(self.watch, &head.kind, head.received_at)
+            {
+                self.lines.event(head, event);
                 self.last_line = Instant::now();
             }
-            if let Some(id) = event.get("id").and_then(Value::as_str) {
-                self.cursor = Some(id.to_owned());
-            }
+            self.cursor = Some(head.id);
             let is_the_end = self.watch.print_id.is_some()
-                && kind == PRINT_ENDED
-                && event.get("print_id").and_then(Value::as_str) == self.watch.print_id.as_deref();
+                && head.kind.as_str() == PRINT_ENDED
+                && head.print_id == self.watch.print_id;
             if is_the_end {
-                let ended = self.ended.clone().unwrap_or_else(|| {
-                    json!({ "event_id": event.get("id"), "received_at": event.get("received_at") })
-                });
-                return Some(self.end(Ending::PrintEnded, &ended_detail(self.watch, &ended)));
+                let detail = self.ended.as_ref().map_or_else(
+                    || format!("its end is event {}", head.id),
+                    |ended| ended_detail(self.watch, ended),
+                );
+                return Some(self.end(Ending::PrintEnded, &detail));
             }
         }
-        if let Some(read_to) = answer.get("cursor").and_then(Value::as_str) {
-            self.cursor = Some(read_to.to_owned());
+        if page.cursor.is_some() {
+            self.cursor = page.cursor;
         }
         // An end already behind the cursor — a watch asked to start after it —
         // is one the stream has nothing left to print before.
         match &self.ended {
-            Some(ended) if events.is_empty() => {
+            Some(ended) if drained => {
                 Some(self.end(Ending::PrintEnded, &ended_detail(self.watch, ended)))
             }
             _ => None,
@@ -559,7 +640,7 @@ async fn follow(watch: &Watch, config: ClientConfig) -> Ending {
         lines: Lines {
             machine_readable: watch.machine_readable,
         },
-        cursor: watch.after.clone(),
+        cursor: watch.after,
         sampler: Sampler::default(),
         ended: None,
         last_line: Instant::now(),
@@ -570,9 +651,9 @@ async fn follow(watch: &Watch, config: ClientConfig) -> Ending {
         let detail = match stream.ask(&config, &mut stop).await {
             Err(ending) => return ending,
             Ok(Read::Refused(detail)) => return stream.end(Ending::Refused, &detail),
-            Ok(Read::Answered(answer)) => {
+            Ok(Read::Answered(page)) => {
                 unreachable_since = None;
-                if let Some(ending) = stream.take(&answer) {
+                if let Some(ending) = stream.take(page) {
                     return ending;
                 }
                 continue;
@@ -599,14 +680,15 @@ async fn follow(watch: &Watch, config: ClientConfig) -> Ending {
 }
 
 /// What the ending of a watch over a print that ended says.
-fn ended_detail(watch: &Watch, ended: &Value) -> String {
-    let field = |name: &str| ended.get(name).and_then(Value::as_str).unwrap_or("?");
+fn ended_detail(watch: &Watch, ended: &Ended) -> String {
     format!(
         "print {} ended {} at {} (event {})",
-        watch.print_id.as_deref().unwrap_or("?"),
-        field("outcome"),
-        field("received_at"),
-        field("event_id")
+        watch
+            .print_id
+            .map_or_else(|| "?".to_owned(), |print| print.to_string()),
+        ended.outcome,
+        ended.received_at,
+        ended.event_id
     )
 }
 
@@ -615,8 +697,15 @@ mod tests {
     use std::collections::BTreeMap;
 
     use printobserver_types::serde_json::{Value, json};
+    use printobserver_types::{EventId, EventKind, Timestamp};
 
     use super::{Sampler, Watch};
+
+    /// A print identifier, as this system mints one.
+    const PRINT: &str = "01a12bd0-e46a-7a32-8d69-82a6f9ca508f";
+
+    /// An event identifier, as this system mints one.
+    const AFTER: &str = "01a12bd0-e46a-7a32-8d69-82a6f9ca5090";
 
     /// A watch asked these values.
     fn watch(values: &[(&str, Value)]) -> Result<Watch, String> {
@@ -632,10 +721,15 @@ mod tests {
     fn a_sampling_is_a_kind_and_a_whole_number_of_seconds() {
         let read =
             watch(&[("sample", json!(["periodic_observation=300"]))]).expect("a sampling is read");
-        assert_eq!(read.samples.get("periodic_observation"), Some(&300));
+        let observation = EventKind::new("periodic_observation").expect("a kind");
+        assert_eq!(
+            read.samples.get(&observation).map(|every| every.get()),
+            Some(300)
+        );
         for refused in [
             "periodic_observation",
             "=300",
+            "Not-A-Kind=300",
             "periodic_observation=0",
             "a=b",
         ] {
@@ -644,6 +738,8 @@ mod tests {
         }
         let said = watch(&[("reconnect_s", json!(-1))]).expect_err("a negative reconnection");
         assert!(said.contains("--reconnect-s"), "{said}");
+        let said = watch(&[("print_id", json!("not-a-print"))]).expect_err("a malformed print");
+        assert!(said.contains("--print-id"), "{said}");
     }
 
     /// Watching a print, the read lets the print's end through whatever the
@@ -651,7 +747,7 @@ mod tests {
     #[test]
     fn watching_a_print_reads_its_end_whatever_the_filters_say() {
         let included = watch(&[
-            ("print_id", json!("p")),
+            ("print_id", json!(PRINT)),
             ("kind", json!(["periodic_observation"])),
         ])
         .expect("a watch is read");
@@ -663,15 +759,16 @@ mod tests {
         assert!(!included.passes("print_ended"));
 
         let excluded = watch(&[
-            ("print_id", json!("p")),
+            ("print_id", json!(PRINT)),
             ("exclude_kind", json!(["print_ended", "camera_look"])),
         ])
         .expect("a watch is read");
-        let target = excluded.target(Some("e"), 25);
+        let after: EventId = AFTER.parse().expect("an event identifier");
+        let target = excluded.target(Some(after), 25);
         assert!(target.contains("exclude_kinds=camera_look"), "{target}");
         assert!(!target.contains("exclude_kinds=print_ended"), "{target}");
         assert!(
-            target.starts_with("/v1/events?after=e&print_id=p"),
+            target.starts_with(&format!("/v1/events?after={AFTER}&print_id={PRINT}")),
             "{target}"
         );
         assert!(!excluded.passes("print_ended"));
@@ -684,13 +781,17 @@ mod tests {
         let sampled =
             watch(&[("sample", json!(["periodic_observation=300"]))]).expect("a watch is read");
         let mut passing = Sampler::default();
-        let at = |text: &str| Some(text.parse().expect("an instant"));
-        let kind = "periodic_observation";
+        let at = |text: &str| -> Timestamp { text.parse().expect("an instant") };
+        let kind = &EventKind::new("periodic_observation").expect("a kind");
         assert!(passing.passes(&sampled, kind, at("2026-10-25T10:00:00Z")));
         assert!(!passing.passes(&sampled, kind, at("2026-10-25T10:04:59Z")));
         assert!(passing.passes(&sampled, kind, at("2026-10-25T10:05:00Z")));
         assert!(!passing.passes(&sampled, kind, at("2026-10-25T10:09:00Z")));
         assert!(passing.passes(&sampled, kind, at("2026-10-25T11:00:00Z")));
-        assert!(passing.passes(&sampled, "camera_look", at("2026-10-25T11:00:01Z")));
+        assert!(passing.passes(
+            &sampled,
+            &EventKind::new("camera_look").expect("a kind"),
+            at("2026-10-25T11:00:01Z")
+        ));
     }
 }
