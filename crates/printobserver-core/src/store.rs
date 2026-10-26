@@ -469,18 +469,13 @@ pub trait ActionStore: Send + Sync {
     ///
     /// A close is asked of one record, which may have ended or may not be the
     /// newest open one, so its request is recorded against that record or
-    /// refused as [`StoreError::NotFound`] when there is none. The default
-    /// binds as [`ActionStore::record_action`] does, for a store that holds
-    /// one print at a time.
+    /// refused as [`StoreError::NotFound`] when there is none.
     fn record_action_against(
         &self,
         print_id: PrintId,
         request: ActionRequest,
         decision: PolicyDecision,
-    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        let _ = print_id;
-        self.record_action(request, decision)
-    }
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>>;
 
     /// Record what the printer made of an action that reached it.
     fn record_execution(
