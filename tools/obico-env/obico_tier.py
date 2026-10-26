@@ -393,11 +393,28 @@ def stack_under(state_dir: Path) -> Instance:
     if unusable:
         message = f"{record_path} has no usable {', '.join(unusable)}; run `just obico-up` again"
         raise TierError(message)
+    url = record["url"]
+    if not _is_service_address(url):
+        message = (
+            f"{record_path} names {url!r} as the stack's address, which is no "
+            "http(s) address with a host and port; run `just obico-up` again"
+        )
+        raise TierError(message)
     return Instance(
         stack=Stack(Path(record["state_dir"]), record["project"]),
-        url=record["url"],
+        url=url,
         printer_token=PrinterToken(record["printer_token"]),
     )
+
+
+def _is_service_address(url: str) -> bool:
+    """Whether `url` is an http(s) address naming a host, with a port that parses."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        _ = parts.port
+    except ValueError:
+        return False
+    return parts.scheme in {"http", "https"} and bool(parts.hostname)
 
 
 def point_stack_at(state_dir: Path, webhook_url: str) -> None:

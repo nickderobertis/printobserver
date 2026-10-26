@@ -132,6 +132,30 @@ READINESS = (
 #: The API credential a supervisor serves under, as a request presents it.
 Credential = NewType("Credential", str)
 
+
+@dataclass(frozen=True, slots=True)
+class Readiness:
+    """What one of `READINESS`'s queries read of the store, or why it could not."""
+
+    #: The rows it asks for, as `READINESS` names them.
+    what: str
+    #: The identifier of each row it found, in the order the store answered.
+    ids: tuple[str, ...]
+    #: Why the store would not answer it, or None when it did.
+    unreadable: str | None = None
+
+    @property
+    def ready(self) -> bool:
+        """Whether the query was read and found at least one row."""
+        return self.unreadable is None and bool(self.ids)
+
+    def said(self) -> str:
+        """What it read, as a wait that gave up reports it."""
+        if self.unreadable is not None:
+            return f"{self.what} unreadable ({self.unreadable})"
+        return f"{len(self.ids)} {self.what}"
+
+
 #: A spool's identifier, as the supervisor mints and spells one.
 SpoolId = NewType("SpoolId", str)
 
@@ -654,10 +678,7 @@ class World:
         read = self._read_readiness()
         if read is None:
             return "no store at all"
-        return ", ".join(
-            f"{what} unreadable ({rows})" if isinstance(rows, str) else f"{len(rows)} {what}"
-            for what, rows in read.items()
-        )
+        return ", ".join(readiness.said() for readiness in read)
 
     def _recorded(self) -> tuple[str, str, str] | None:
         """The print and image, once the ingress has finished observing the printer.
@@ -669,13 +690,13 @@ class World:
         either is the readiness boundary before a client may change the printer.
         """
         read = self._read_readiness()
-        if read is None or not all(rows and not isinstance(rows, str) for rows in read.values()):
+        if read is None or not all(readiness.ready for readiness in read):
             return None
-        prints, images, alerts = (read[what] for what in ("prints", "images", "failure alerts"))
-        return str(prints[0][0]), str(images[0][0]), str(alerts[0][0])
+        found = {readiness.what: readiness.ids[0] for readiness in read}
+        return found["prints"], found["images"], found["failure alerts"]
 
-    def _read_readiness(self) -> dict[str, list[tuple[object, ...]] | str] | None:
-        """Each of `READINESS`'s rows, or why it could not be read; None with no store yet.
+    def _read_readiness(self) -> tuple[Readiness, ...] | None:
+        """Each of `READINESS`'s reads, in its order; None with no store yet.
 
         Read once by the wait for the print and once more, by the same queries, to
         say what it last saw when that wait gives up, so the two never disagree.
@@ -685,16 +706,18 @@ class World:
             return None
         # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         connection = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
-        read: dict[str, list[tuple[object, ...]] | str] = {}
+        read: list[Readiness] = []
         try:
             for what, query in READINESS:
                 try:
-                    read[what] = connection.execute(query).fetchall()
+                    rows = connection.execute(query).fetchall()
                 except sqlite3.DatabaseError as error:
-                    read[what] = str(error)
+                    read.append(Readiness(what, (), str(error)))
+                else:
+                    read.append(Readiness(what, tuple(str(row[0]) for row in rows)))
         finally:
             connection.close()
-        return read
+        return tuple(read)
 
 
 def unheld_spool_id() -> SpoolId:

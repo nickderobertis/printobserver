@@ -186,3 +186,24 @@ def test_an_instance_that_died_before_logging_keeps_what_it_said_and_names_the_r
         truth(secret not in kept, describing="no secret of the instance's in what was kept")
     for name in REQUIRED[1:]:
         truth(not (into / name).exists(), describing=f"no kept {name}")
+
+
+def test_an_instance_whose_record_is_unreadable_is_named_by_its_state_directory(
+    state_dir: Callable[[str], str], tmp_path: Path
+) -> None:
+    """A record cut short, or holding no object, names no instance; the state directory does.
+
+    A start interrupted while it wrote `instance.json` leaves exactly that, and
+    the logs are what that failure most needs kept, so the record's shape is
+    reported as no record rather than refusing to keep anything.
+    """
+    for label, written in (("cut-short", '{"pid": '), ("not-an-object", "[1, 2]")):
+        state = state_dir(f"record-{label}")
+        Path(state).mkdir(parents=True, exist_ok=True)
+        (Path(state) / "instance.json").write_text(written, encoding="utf-8")
+        into = tmp_path / label
+
+        record = _retained(state, into)
+
+        equal(record["retained"], [], describing=f"the logs kept with a record {label}")
+        equal(record["absent"], REQUIRED, describing=f"the logs absent with a record {label}")

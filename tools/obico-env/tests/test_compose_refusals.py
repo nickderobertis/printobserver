@@ -49,6 +49,24 @@ def test_a_record_missing_what_the_tier_reads_is_refused_naming_each_field(
         contains(output, named, describing="the refusal of an unusable record")
 
 
+def test_a_record_naming_no_service_address_is_refused(tmp_path: Path) -> None:
+    """A stack address the snapshot could not be posted to is refused before it is tried."""
+    for url in ("ftp://localhost:8000", "http://", "http://localhost:port"):
+        record = {
+            "state_dir": str(tmp_path),
+            "project": "printobserver-obico",
+            "url": url,
+            "printer_token": "a-token",
+        }
+        (tmp_path / "instance.json").write_text(json.dumps(record), encoding="utf-8")
+
+        status, output = _reconcile_over(tmp_path)
+
+        equal(status, 2, describing=f"the tier's exit with {url!r} as the address:\n{output}")
+        contains(output, "no http(s) address", describing=f"the refusal of {url!r}")
+        contains(output, repr(url), describing="the address the refusal names")
+
+
 def test_a_record_that_is_not_json_is_refused(tmp_path: Path) -> None:
     """A record cut short is refused naming the file, rather than raised as a traceback."""
     (tmp_path / "instance.json").write_text('{"state_dir": ', encoding="utf-8")
