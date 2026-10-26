@@ -637,8 +637,18 @@ class Recording:
         )
 
     def environment(self, **extra: str) -> dict[str, str]:
-        """An environment finding the stand-ins first, and telling them what to record."""
-        environment = dict(os.environ)
+        """An environment finding the stand-ins first, and telling them what to record.
+
+        None of the host's own `PRINTOBSERVER_` variables is carried: every one
+        a dispatched job reads is the job's own or a step's export, and on a
+        runner the gate job running this suite has already exported its own
+        scratch directory, which a step under test would otherwise inherit.
+        """
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("PRINTOBSERVER_")
+        }
         environment["PATH"] = os.pathsep.join([str(self.programs), environment.get("PATH", "")])
         environment["RECORD"] = str(self.record)
         environment["FAIL_ON"] = self.failing_on
