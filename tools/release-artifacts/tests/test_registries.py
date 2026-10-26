@@ -17,7 +17,6 @@ serving a working artifact passes.
 
 from __future__ import annotations
 
-import http.client
 import io
 import json
 import os
@@ -48,6 +47,7 @@ from release_artifacts.registries import (
     RegistryError,
     cut_at,
     forge_token,
+    npm_versions,
     ordered,
     prove,
     released,
@@ -647,19 +647,14 @@ def test_a_replaced_stand_ins_stop_leaves_its_replacement_answering(
     """
     replaced = Registries(repo, tmp_path / "replaced")
     replacement = Registries(repo, tmp_path / "replacement", replacing=replaced)
-    host, port = replacement.base.removeprefix("http://").rsplit(":", 1)
-
-    def ask(path: str) -> int:
-        connection = http.client.HTTPConnection(host, int(port), timeout=10)
-        try:
-            connection.request("GET", path)
-            return connection.getresponse().status
-        finally:
-            connection.close()
-
+    bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: replacement.base})
     try:
         replaced.stop()
-        equal(ask("/npm/asked-after-the-stop"), 404, describing="what the replacement answered")
+        equal(
+            npm_versions(bases, "asked-after-the-stop"),
+            (),
+            describing="what the replacement answered for a name it serves nothing under",
+        )
         equal(
             replacement.asked,
             ["/npm/asked-after-the-stop"],
@@ -668,8 +663,9 @@ def test_a_replaced_stand_ins_stop_leaves_its_replacement_answering(
         equal(replaced.asked, [], describing="the reads the replaced stand-in answered")
     finally:
         replacement.stop()
-    with pytest.raises(ConnectionRefusedError):
-        ask("/npm/asked-after-both-stopped")
+    with pytest.raises(RegistryError) as unreached:
+        npm_versions(bases, "asked-after-both-stopped")
+    contains(str(unreached.value), "could not be reached", describing="what it said")
 
 
 @ROUTE_PROOF
