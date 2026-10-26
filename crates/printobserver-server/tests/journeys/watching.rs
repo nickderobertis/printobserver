@@ -1113,3 +1113,74 @@ async fn an_activity_turn_the_store_would_not_claim_is_claimed_by_the_next_read(
         .expect("the turn");
     assert_eq!(turn.print_id.to_string(), print_id);
 }
+
+/// A print's recent events are its own and the printer's since it opened,
+/// newest first, and no more than the configured number: a reset before the
+/// print opened is not among them, however few events there are.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_prints_recent_events_merge_its_own_and_the_printers_since_it_opened() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    watch.octoprint.pushes_event("PrinterReset", &json!({}));
+    let before = watch.until("printer_reset", 1).await;
+    let before_id = before[0]["id"].clone();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let print_id = watch.printing(400).await;
+
+    let context = watch.get(&format!("/prints/{print_id}/context")).await;
+    let ids: Vec<Value> = context["context"]["recent_events"]
+        .as_array()
+        .expect("recent events")
+        .iter()
+        .map(|event| event["id"].clone())
+        .collect();
+    assert!(
+        !ids.contains(&before_id),
+        "a reset before the print is among its events"
+    );
+
+    for count in 1..=12 {
+        let _ = watch
+            .get(&format!("/prints/{print_id}/look?wait_s=0"))
+            .await;
+        watch.octoprint.pushes_event("PrinterReset", &json!({}));
+        watch.until("printer_reset", count + 1).await;
+    }
+
+    let context = watch.get(&format!("/prints/{print_id}/context")).await;
+    let recent = context["context"]["recent_events"]
+        .as_array()
+        .expect("recent events")
+        .clone();
+    let limit = usize::try_from(printobserver_core::DEFAULT_RECENT_EVENTS).expect("a count");
+    assert_eq!(
+        recent.len(),
+        limit,
+        "the merge kept more or fewer than the limit"
+    );
+    let instants: Vec<String> = recent
+        .iter()
+        .map(|event| event["received_at"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    let mut newest_first = instants.clone();
+    newest_first.sort_by(|a, b| b.cmp(a));
+    assert_eq!(
+        instants, newest_first,
+        "the recent events are not newest first"
+    );
+    let kinds: Vec<&str> = recent
+        .iter()
+        .filter_map(|event| event["kind"].as_str())
+        .collect();
+    assert!(
+        kinds.contains(&"camera_look") && kinds.contains(&"printer_reset"),
+        "{kinds:?}"
+    );
+    assert!(!recent.iter().any(|event| event["id"] == before_id));
+    let newest_resets = watch.of_kind("printer_reset").await;
+    let newest = newest_resets.last().expect("a reset");
+    assert_eq!(
+        recent[0]["id"], newest["id"],
+        "the newest event is not first"
+    );
+}
