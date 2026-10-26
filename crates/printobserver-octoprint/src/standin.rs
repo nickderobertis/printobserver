@@ -62,8 +62,8 @@ impl JobScript {
     /// A job printing one file, this far in.
     #[must_use]
     pub fn printing(file: &str, size: i64, filepos: i64, print_time_s: i64) -> Self {
-        #[expect(clippy::cast_precision_loss, reason = "a file position fits a double")]
-        let completion = 100.0 * filepos as f64 / size as f64;
+        let exact = |bytes: i64| f64::from(u32::try_from(bytes).unwrap_or(u32::MAX));
+        let completion = 100.0 * exact(filepos) / exact(size);
         Self {
             state: "Printing".to_owned(),
             error: None,

@@ -58,15 +58,12 @@ pub fn judge(image: FetchedImage, max_stddev: f64) -> Result<FetchedImage, Frame
 }
 
 /// The standard deviation of grey levels, over every pixel; nothing for none.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "a frame's pixel count is far inside a double's exact range"
-)]
 fn stddev(pixels: &[u8]) -> Option<f64> {
     if pixels.is_empty() {
         return None;
     }
-    let count = pixels.len() as f64;
+    // A frame's pixel count is far inside `u32`, and so exact as a double.
+    let count = f64::from(u32::try_from(pixels.len()).ok()?);
     let mean = pixels.iter().map(|&pixel| f64::from(pixel)).sum::<f64>() / count;
     let variance = pixels
         .iter()
