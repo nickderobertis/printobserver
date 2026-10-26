@@ -121,10 +121,10 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
 
 
 @pytest.mark.parametrize("tier", ["affected", "all"])
-def test_two_shards_run_the_rust_tests_beside_the_end_to_end_tier_and_the_rest_beside_them(
+def test_two_shards_run_the_end_to_end_tier_beside_every_other_tier(
     capsys: pytest.CaptureFixture[str], tier: str
 ) -> None:
-    """The macOS split: the whole gate, nothing twice, the measured tiers either side of the tag."""
+    """The macOS split: the whole gate, nothing twice, the end-to-end tier on a runner alone."""
     shards = [shard_commands(capsys, tier, f"{index}/2") for index in (1, 2)]
     selected = [command for shard in shards for command in shard]
 
@@ -138,12 +138,9 @@ def test_two_shards_run_the_rust_tests_beside_the_end_to_end_tier_and_the_rest_b
         dry_run_check(tier),
         describing="the shards' union against `check`",
     )
-    equal(
-        shards[0],
-        [f"{RUST} just test {tier}", f"{RUST} just coverage {tier}", f"just test-e2e {tier}"],
-        describing="what the first shard runs",
-    )
-    contains(shards[1], f"{OTHERS} just test {tier}", describing="the second shard")
+    equal(shards[0], [f"just test-e2e {tier}"], describing="what the first shard runs")
+    contains(shards[1], f"just test {tier}", describing="the second shard, every project's tests")
+    contains(shards[1], f"just coverage {tier}", describing="and their coverage beside them")
 
 
 @pytest.mark.parametrize("count", [1, 2, *(count for count, _ in SPLITS)])

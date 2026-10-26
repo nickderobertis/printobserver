@@ -456,8 +456,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: nrwl/nx-set-shas@v4
-      # A cache per shard: the first compiles the Rust crates' instrumented test
-      # builds and the debug program the end-to-end tier runs, the second the
+      # A cache per shard: the first compiles the debug program the end-to-end
+      # tier runs, the second the Rust crates' instrumented test builds, the
       # lints, the debug program the Python suites run and the build tier.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
