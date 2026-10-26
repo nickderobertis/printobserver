@@ -31,7 +31,7 @@ from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_time_budget import BUDGET, KIND, PLATFORM, STEP_RUN
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, recipes, run_commands, steps_of
+from repo_checks.parsing import Recipe, jobs_of, load_workflow, recipes, run_commands, steps_of
 from repo_checks.shell import run
 from standin_jobs_api import Jobs, serving
 from treecopy import REPO_ROOT
@@ -95,7 +95,7 @@ def pull_request_contexts(repo: Repo) -> dict[str, str]:
     return reported
 
 
-def _expand(recipe: str, bodies: dict[str, Any], seen: set[str]) -> set[str]:
+def _expand(recipe: str, bodies: dict[str, Recipe], seen: set[str]) -> set[str]:
     """Every Nx target `just <recipe>` reaches, through the recipes it calls."""
     if recipe in seen or recipe not in bodies:
         return set()

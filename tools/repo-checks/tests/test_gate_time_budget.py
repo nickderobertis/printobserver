@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import secrets
 import tomllib
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
@@ -310,13 +311,28 @@ def _no_count(recorded: dict[str, Any]) -> None:
     del recorded["total_count"]
 
 
+def _boolean_count(recorded: dict[str, Any]) -> None:
+    recorded["total_count"] = True
+
+
+def _nameless_job(recorded: dict[str, Any]) -> None:
+    recorded["jobs"][3]["name"] = ["gate (windows-aarch64)"]
+
+
+def _nameless_step(recorded: dict[str, Any]) -> None:
+    job(recorded, "gate (windows-aarch64)")["steps"][0]["status"] = {"completed": True}
+
+
 @pytest.mark.parametrize(
     ("derive", "naming"),
     [
         (_without_aggregator, "gate (windows-aarch64): no job of that name"),
         (_corrupt_start, "has started_at='yesterday', not an instant"),
         (_undercounted, "answered 24 of the 29 jobs it counts"),
-        (_no_count, "answered no `total_count` and `jobs`"),
+        (_no_count, "answered `total_count` None, not a count of jobs"),
+        (_boolean_count, "answered `total_count` True, not a count of jobs"),
+        (_nameless_job, "answered job 3 with no name"),
+        (_nameless_step, "answered a step with no name or status"),
     ],
 )
 def test_a_context_whose_jobs_cannot_be_read_is_refused_rather_than_zero(
@@ -498,6 +514,26 @@ def test_the_budget_is_registered_as_the_task_states() -> None:
     equal(registered.labels, [])
     equal(registered.measure, "reported")
     equal(registered.command, ["uv", "run", "python", "-m", "repo_checks", "gate_time_budget"])
+
+
+def test_the_token_goes_to_the_forge_s_api_and_never_to_another_address(
+    result: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With `GITHUB_TOKEN` set, a stand-in is read without it, and the forge's API with it.
+
+    The forge's own address is the stand-in's for the second read, so the same
+    real HTTP request the step makes shows what it carries.
+    """
+    credential = f"job-{secrets.token_hex(8)}"
+    jobs = Jobs(REPOSITORY, COMBINED, 1, document(COMBINED))
+    with serving(jobs) as address:
+        settings = {**environment(address, "gate", "linux-x86_64"), "GITHUB_TOKEN": credential}
+        equal(measure(settings), 0)
+        monkeypatch.setattr(gate_time_budget, "FORGE_API", address)
+        equal(measure(settings), 0)
+
+    equal(jobs.authorized, [None, f"Bearer {credential}"])
+    truth(result.is_file(), describing="a figure reported")
 
 
 def test_the_forge_s_own_api_is_the_default_address() -> None:

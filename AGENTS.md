@@ -1064,15 +1064,11 @@ context is waited on.
 
 **Every required gate and integration context is held to 1,800 s, inside
 itself.** The root `budgets.yaml` registers `gate-time`, and every job reporting
-one of the ten contexts — the unsharded job, an aggregator, or a macOS carrier —
-ends with a `gate-time` step, `just gate-time`. It reads the current run's jobs
-off GitHub's jobs API, spans its own context with `gate_jobs.platform_span` from
-the earliest real start of any job behind it to that step's own start, leaving
-out the queue before the first job started, and reports the figure and its
-breakdown through onebudgetspec. Over 1,800 s the step fails that required
-context, so the merge path refuses the change with no protection change; on the
-release pull request's full sweep it reports the figure and passes. A job's only
-permission it needs beyond the rest is `actions: read`. A context over budget is
+one of the ten contexts ends with the `gate-time` step, which fails that context
+over budget — so the merge path refuses the change with no protection change —
+except on the release pull request's full sweep, where it only reports. The
+queue before a platform's first job starts is GitHub capacity rather than this
+repository's work, so it is reported and not charged. A context over budget is
 brought under by sharding it behind its own required name, never by loosening
 the budget.
 

@@ -135,10 +135,7 @@ jobs:
       - run: just budgets-release-pr
       - if: always()
         run: just runner-temp cleanup
-      # The `gate-time` budget, last so that the span it reads ends here: over
-      # 1,800 s it fails this required context, and on the release pull
-      # request's full sweep it reports the figure and passes. AGENTS.md's
-      # "Commits, releases, and merging" says what it reads.
+      # The `gate-time` budget, last so that the span it reads ends here.
       - name: gate-time
         run: just gate-time
         env:
@@ -234,10 +231,6 @@ jobs:
       - run: just shard-verdict gate windows-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
-      # The `gate-time` budget, last so that the span it reads ends here: over
-      # 1,800 s it fails this required context, and on the release pull
-      # request's full sweep it reports the figure and passes. AGENTS.md's
-      # "Commits, releases, and merging" says what it reads.
       - name: gate-time
         run: just gate-time
         env:

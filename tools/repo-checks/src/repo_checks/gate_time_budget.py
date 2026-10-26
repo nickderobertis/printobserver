@@ -22,6 +22,12 @@ to the moment of measuring, which is that step's own. A run recorded before
 the step existed is read to the aggregator's completion instead — the
 retrospective span — so a finished run's figure is the one its context waited.
 The queue before the first job started is reported, and is not part of the figure.
+
+What the jobs API answers is read as GitHub documents it, and the suites replay
+documents recorded from real runs. The producer is reconciled on every change
+rather than on a schedule: each required job's own step reads the live API, and
+an answer this cannot read fails that context naming what it could not read,
+never a figure of zero.
 """
 
 from __future__ import annotations
@@ -32,7 +38,8 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Literal, cast
 
@@ -72,6 +79,72 @@ class GateTimeError(ValueError):
     """Why no `gate-time` figure can be read, in words naming what is missing."""
 
 
+@dataclass(frozen=True, slots=True)
+class Context:
+    """The required context a step measures: its kind and its platform."""
+
+    kind: Literal["gate", "integration"]
+    platform: str
+
+    @property
+    def name(self) -> str:
+        """The context as a pull request reports it."""
+        return f"{self.kind} ({self.platform})"
+
+
+@dataclass(frozen=True, slots=True)
+class RunJobs:
+    """Every job of one attempt of the current run, as the jobs API answered them."""
+
+    run_id: int
+    attempt: int
+    #: Each job as the forge's JSON, its `name` read as text; `platform_span`
+    #: narrows every other field it reads.
+    jobs: tuple[Mapping[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StepTime:
+    """One recorded step of a job behind the context, and how long it ran."""
+
+    name: str
+    seconds: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class JobTime:
+    """One job behind the context: when it ran, how long it queued, and its steps."""
+
+    name: str
+    started_at: str | None
+    completed_at: str | None
+    queue_seconds: float | None
+    steps: tuple[StepTime, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Measurement:
+    """The figure for one context, and the breakdown the step reports beside it."""
+
+    context: str
+    kind: str
+    platform: str
+    run_id: int
+    run_attempt: int
+    seconds: float
+    started_at: str | None
+    measured_to: str | None
+    #: `step` (the budget step's recorded start), `completion` (a finished
+    #: run's aggregator) or `clock` (the moment of measuring).
+    measured_to_source: str
+    initial_queue_seconds: float
+    jobs: tuple[JobTime, ...]
+
+    def detail(self) -> str:
+        """The breakdown as the JSON document onebudgetspec carries as the result's detail."""
+        return json.dumps(asdict(self), sort_keys=True)
+
+
 def _required(environ: Mapping[str, str], name: str, what: str) -> str:
     """One variable the measurement cannot do without.
 
@@ -85,18 +158,17 @@ def _required(environ: Mapping[str, str], name: str, what: str) -> str:
     return value
 
 
-def context(environ: Mapping[str, str]) -> tuple[Literal["gate", "integration"], str]:
-    """The kind and platform of the required context this step measures.
+def context(environ: Mapping[str, str]) -> Context:
+    """The required context this step measures.
 
     Raises:
-        GateTimeError: If either is unset, or the kind is neither of the two.
+        GateTimeError: If its kind or platform is unset, or the kind is neither of the two.
     """
     kind = _required(environ, KIND, "required context")
     if kind not in KINDS:
         msg = f"{KIND}={kind!r} names no required context: it is one of {', '.join(KINDS)}"
         raise GateTimeError(msg)
-    platform = _required(environ, PLATFORM, "required context")
-    return kind, platform
+    return Context(kind, _required(environ, PLATFORM, "required context"))
 
 
 def api_address(environ: Mapping[str, str]) -> str:
@@ -157,8 +229,10 @@ def _page(url: str, token: str | None) -> Mapping[str, object]:
     return cast("Mapping[str, object]", document)
 
 
-def run_jobs(environ: Mapping[str, str]) -> tuple[str, str, list[Mapping[str, object]]]:
-    """The run id, its attempt, and every job of that attempt, read off the jobs API.
+def run_jobs(environ: Mapping[str, str]) -> RunJobs:
+    """Every job of the current run's attempt, read off the jobs API.
+
+    The job's token goes to the forge's own API and nowhere else.
 
     Raises:
         GateTimeError: Naming what is missing, if no repository or run is named,
@@ -176,7 +250,7 @@ def run_jobs(environ: Mapping[str, str]) -> tuple[str, str, list[Mapping[str, ob
         msg = f"GITHUB_REPOSITORY={repository!r} is not `owner/name`"
         raise GateTimeError(msg)
     address = api_address(environ)
-    token = environ.get("GITHUB_TOKEN", "").strip() or None
+    token = (environ.get("GITHUB_TOKEN", "").strip() or None) if address == FORGE_API else None
     base = (
         f"{address}/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(name)}"
         f"/actions/runs/{run_id}/attempts/{attempt}/jobs"
@@ -185,20 +259,38 @@ def run_jobs(environ: Mapping[str, str]) -> tuple[str, str, list[Mapping[str, ob
     page = 1
     while True:
         url = f"{base}?per_page={PAGE}&page={page}"
-        document = _page(url, token if address == FORGE_API else None)
-        total, listed = document.get("total_count"), document.get("jobs")
-        if not isinstance(total, int) or not isinstance(listed, list):
-            msg = f"{url} answered no `total_count` and `jobs`, so the jobs could not be read"
-            raise GateTimeError(msg)
-        entries = cast("list[object]", listed)
-        jobs.extend(cast("Mapping[str, object]", job) for job in entries if isinstance(job, dict))
-        if len(jobs) >= total or not entries:
+        listed, total = _jobs_of(url, _page(url, token))
+        jobs.extend(listed)
+        if len(jobs) >= total or not listed:
             break
         page += 1
-    if len(jobs) < total:
+    if len(jobs) != total:
         msg = f"{base} answered {len(jobs)} of the {total} jobs it counts"
         raise GateTimeError(msg)
-    return run_id, attempt, jobs
+    return RunJobs(int(run_id), int(attempt), tuple(jobs))
+
+
+def _jobs_of(url: str, document: Mapping[str, object]) -> tuple[list[Mapping[str, object]], int]:
+    """One page's jobs and the count the API answers beside them, each validated.
+
+    Raises:
+        GateTimeError: If the count is not a non-negative whole number, the jobs
+            are not a list, or a job is not an object with a name.
+    """
+    total, listed = document.get("total_count"), document.get("jobs")
+    if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+        msg = f"{url} answered `total_count` {total!r}, not a count of jobs"
+        raise GateTimeError(msg)
+    if not isinstance(listed, list):
+        msg = f"{url} answered no `jobs` list, so the jobs could not be read"
+        raise GateTimeError(msg)
+    jobs: list[Mapping[str, object]] = []
+    for position, entry in enumerate(cast("list[object]", listed)):
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+            msg = f"{url} answered job {position} with no name, so the jobs could not be read"
+            raise GateTimeError(msg)
+        jobs.append(cast("Mapping[str, object]", entry))
+    return jobs, total
 
 
 def _instant(value: object) -> datetime | None:
@@ -218,15 +310,28 @@ def _stamp(instant: datetime | None) -> str | None:
 
 
 def _steps(entry: Mapping[str, object]) -> list[Mapping[str, object]]:
-    """A job's recorded steps, in the order it ran them."""
+    """A job's recorded steps, in the order it ran them, none where it recorded none.
+
+    Raises:
+        GateTimeError: If a step is not an object whose name and status are text.
+    """
     steps = entry.get("steps")
-    if not isinstance(steps, list):
+    if steps is None:
         return []
-    return [
-        cast("Mapping[str, object]", step)
-        for step in cast("list[object]", steps)
-        if isinstance(step, dict)
-    ]
+    if not isinstance(steps, list):
+        msg = f"job {entry.get('name')!r} answered `steps` {steps!r}, not a list"
+        raise GateTimeError(msg)
+    read: list[Mapping[str, object]] = []
+    for step in cast("list[object]", steps):
+        if (
+            not isinstance(step, dict)
+            or not isinstance(step.get("name"), str)
+            or not isinstance(step.get("status"), str)
+        ):
+            msg = f"job {entry.get('name')!r} answered a step with no name or status"
+            raise GateTimeError(msg)
+        read.append(cast("Mapping[str, object]", step))
+    return read
 
 
 def budget_step_start(entry: Mapping[str, object]) -> datetime | None:
@@ -234,36 +339,34 @@ def budget_step_start(entry: Mapping[str, object]) -> datetime | None:
 
     A step the forge skipped — its job failed before reaching it — never started,
     whatever instant the forge records beside it.
+
+    Raises:
+        GateTimeError: If its steps cannot be read.
     """
     for step in reversed(_steps(entry)):
         if (
-            step.get("name") == BUDGET
-            and step.get("status") in {"in_progress", "completed"}
+            step["name"] == BUDGET
+            and step["status"] in {"in_progress", "completed"}
             and step.get("conclusion") != "skipped"
         ):
             return _instant(step.get("started_at"))
     return None
 
 
-def measured(
-    jobs: Sequence[Mapping[str, object]],
-    kind: Literal["gate", "integration"],
-    platform: str,
-    now: datetime,
-) -> tuple[float, dict[str, object]]:
-    """The span of the context, in seconds, and the breakdown of it.
+def measured(run: RunJobs, context: Context, now: datetime) -> Measurement:
+    """The span of `context` in `run`, and the breakdown of it.
 
     Raises:
-        GateTimeError: If `platform_span` cannot read the context's jobs.
+        GateTimeError: If `platform_span` cannot read the context's jobs, or a
+            job's steps cannot be read.
     """
     try:
-        span: GateSpan = platform_span(jobs, kind, platform)
+        span: GateSpan = platform_span(run.jobs, context.kind, context.platform)
     except GateJobsError as error:
         msg = f"{error}, so no gate-time figure is read rather than one of zero"
         raise GateTimeError(msg) from error
-    entries = {entry.get("name"): entry for entry in jobs}
-    aggregator = entries[span.jobs[0].name]
-    step_start = budget_step_start(aggregator)
+    entries = {cast("str", entry["name"]): entry for entry in run.jobs}
+    step_start = budget_step_start(entries[span.jobs[0].name])
     completed = span.jobs[0].completed_at
     if step_start is not None:
         end, source = step_start, "step"
@@ -271,55 +374,53 @@ def measured(
         end, source = completed, "completion"
     else:
         end, source = now, "clock"
-    first_created = min(job.created_at for job in span.jobs)
-    breakdown_jobs: list[dict[str, object]] = []
+    breakdown: list[JobTime] = []
     for job in span.jobs:
-        steps = []
+        steps: list[StepTime] = []
         for step in _steps(entries[job.name]):
             began, ended = _instant(step.get("started_at")), _instant(step.get("completed_at"))
             seconds = (ended - began).total_seconds() if began and ended else None
-            steps.append({"name": step.get("name"), "seconds": seconds})
-        breakdown_jobs.append(
-            {
-                "name": job.name,
-                "started_at": _stamp(job.started_at),
-                "completed_at": _stamp(job.completed_at),
-                "queue_seconds": job.queue_seconds,
-                "steps": steps,
-            }
+            steps.append(StepTime(cast("str", step["name"]), seconds))
+        breakdown.append(
+            JobTime(
+                job.name,
+                _stamp(job.started_at),
+                _stamp(job.completed_at),
+                job.queue_seconds,
+                tuple(steps),
+            )
         )
-    seconds = span.seconds_to(end)
-    detail: dict[str, object] = {
-        "context": f"{kind} ({platform})",
-        "kind": kind,
-        "platform": platform,
-        "seconds": seconds,
-        "started_at": _stamp(span.started_at),
-        "measured_to": _stamp(end),
-        "measured_to_source": source,
-        "initial_queue_seconds": max(0.0, (span.started_at - first_created).total_seconds()),
-        "jobs": breakdown_jobs,
-    }
-    return seconds, detail
+    first_created = min(job.created_at for job in span.jobs)
+    return Measurement(
+        context=context.name,
+        kind=context.kind,
+        platform=context.platform,
+        run_id=run.run_id,
+        run_attempt=run.attempt,
+        seconds=span.seconds_to(end),
+        started_at=_stamp(span.started_at),
+        measured_to=_stamp(end),
+        measured_to_source=source,
+        initial_queue_seconds=max(0.0, (span.started_at - first_created).total_seconds()),
+        jobs=tuple(breakdown),
+    )
 
 
 def measure(environ: Mapping[str, str] | None = None, now: datetime | None = None) -> int:
     """The budget's command: report the figure and its breakdown, or refuse naming why."""
     environment = os.environ if environ is None else environ
     try:
-        kind, platform = context(environment)
-        run_id, attempt, jobs = run_jobs(environment)
-        seconds, detail = measured(jobs, kind, platform, now or datetime.now(UTC))
+        named = context(environment)
+        found = measured(run_jobs(environment), named, now or datetime.now(UTC))
     except GateTimeError as error:
         print(f"gate-time: refused: {error}", file=sys.stderr)
         return REFUSED
-    detail = {"run_id": int(run_id), "run_attempt": int(attempt), **detail}
     print(
-        f"gate-time: {detail['context']} in run {run_id} attempt {attempt}: {seconds:.0f} s "
-        f"from {detail['started_at']} to {detail['measured_to']}",
+        f"gate-time: {found.context} in run {found.run_id} attempt {found.run_attempt}: "
+        f"{found.seconds:.0f} s from {found.started_at} to {found.measured_to}",
         file=sys.stderr,
     )
-    report(seconds, json.dumps(detail, sort_keys=True))
+    report(found.seconds, found.detail())
     return 0
 
 
