@@ -351,3 +351,88 @@ async fn with_no_detector_address_the_detector_reads_unchecked() {
     );
     assert!(changes(&world).await.is_empty());
 }
+
+/// With a detector address configured and no print open, nothing is asked of
+/// the detector at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn with_no_print_open_the_detector_is_not_asked() {
+    let web = Host::serving("application/json", br#"{"version":"1.0.0"}"#.to_vec()).await;
+    let detector = Detector::start();
+    let url = detector.url();
+    let web_url = web.url();
+    let idle = RecordingPrinter::printing();
+    idle.in_state(printobserver_printer_api::PrinterState::Operational);
+    idle.runs_job(
+        "benchy.gcode",
+        printobserver_printer_api::PrinterState::Operational,
+        None,
+    );
+    let world = World::configured(idle, StandInAgent::new(), move |document| {
+        set(
+            document,
+            "supervisor.observation_interval_s",
+            toml::Value::Integer(1),
+        );
+        let mut obico = toml::Table::new();
+        obico.insert("url".to_owned(), toml::Value::String(web_url));
+        obico.insert(
+            "access_token".to_owned(),
+            toml::Value::String("a-journeys-own-obico-token".to_owned()),
+        );
+        obico.insert("ml_api_url".to_owned(), toml::Value::String(url));
+        set(document, "obico", toml::Value::Table(obico));
+    })
+    .await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    assert!(detector.received().is_empty(), "{:?}", detector.received());
+    assert!(changes(&world).await.is_empty());
+}
+
+/// A detector that is down at the first check — its port closed — is recorded
+/// going unavailable, saying it could not be reached, and the print's agent is
+/// given a turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_detector_down_at_the_first_check_is_recorded_unavailable_with_a_turn() {
+    let web = Host::serving("application/json", br#"{"version":"1.0.0"}"#.to_vec()).await;
+    let mut detector = Detector::start();
+    let url = detector.url();
+    detector.close().await;
+    let (world, print_id) = watching(Some(url), &web.url()).await;
+
+    let down = until_changes(&world, 1).await;
+
+    assert_eq!(down[0]["payload"]["status"], "unavailable");
+    let detail = down[0]["payload"]["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("could not be reached"), "{detail}");
+    until_status(&world, print_id, "unavailable").await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while !world
+        .agent
+        .turns()
+        .iter()
+        .any(|turn| turn.event.kind().as_str() == "detector_health_changed")
+    {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no turn on the outage"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// A detector holding its check past the bound is recorded unavailable,
+/// saying it did not answer in time.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_detector_holding_its_check_past_the_bound_is_recorded_unavailable() {
+    let web = Host::serving("application/json", br#"{"version":"1.0.0"}"#.to_vec()).await;
+    let detector = Detector::start();
+    detector.answers(Mood::Hanging);
+    let (world, _) = watching(Some(detector.url()), &web.url()).await;
+
+    let down = until_changes(&world, 1).await;
+
+    assert_eq!(down[0]["payload"]["status"], "unavailable");
+    let detail = down[0]["payload"]["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("did not answer within 5s"), "{detail}");
+}

@@ -787,3 +787,98 @@ async fn what_the_watch_records_during_a_print_is_in_its_next_turns_context() {
         json!({ "status": "unchecked", "since": null })
     );
 }
+
+/// An `M114` nothing answers, or answers with a line naming no position, reads
+/// no position: the heating is recorded with motion unknown.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_position_nothing_answers_or_answers_unreadably_is_motion_unknown() {
+    for unreadable in [None, Some("Recv: X:nan Y:1.00 Z:1.00 E:0.00")] {
+        let watch = Watch::open().await;
+        watch.connected().await;
+        interrupted(&watch).await;
+        match unreadable {
+            None => watch.octoprint.answers_position(false),
+            Some(line) => watch.octoprint.answers_position_with(line),
+        }
+
+        watch.octoprint.targets(190.0, 0.0);
+        let activity = watch.until("unattended_printer_activity", 1).await;
+
+        assert_eq!(
+            activity[0]["payload"]["moved"],
+            Value::Null,
+            "{unreadable:?}"
+        );
+        assert!(
+            watch
+                .octoprint
+                .commands()
+                .iter()
+                .any(|(line, _)| line == "M114"),
+            "no position was asked for"
+        );
+    }
+}
+
+/// A job started inside the window closes it: heating while it runs is no
+/// activity, and none is attributed to the interrupted print after it ends.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_job_started_inside_the_window_closes_it() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    interrupted(&watch).await;
+
+    watch.octoprint.reports(
+        "Printing",
+        JobScript::printing("second.gcode", SIZE, 100, 30),
+    );
+    watch.until("print_started", 2).await;
+    watch.octoprint.targets(210.0, 60.0);
+    tokio::time::sleep(POLL * 6).await;
+    watch.octoprint.reports(
+        "Operational",
+        JobScript {
+            file: Some(("second.gcode".to_owned(), SIZE)),
+            ..JobScript::idle()
+        },
+    );
+    watch.until("print_ended", 2).await;
+    tokio::time::sleep(POLL * 6).await;
+
+    assert!(
+        watch
+            .of_kind("unattended_printer_activity")
+            .await
+            .is_empty()
+    );
+    let sent_while_printing: Vec<(String, bool)> = watch
+        .octoprint
+        .commands()
+        .into_iter()
+        .filter(|(_, printing)| *printing)
+        .collect();
+    assert_eq!(
+        sent_while_printing,
+        Vec::new(),
+        "M114 was sent while a job ran"
+    );
+}
+
+/// Activity that stops and then begins again, the same as before, is recorded
+/// again: a transition into activity rather than a change of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn activity_that_stops_and_begins_again_is_recorded_again() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    interrupted(&watch).await;
+
+    watch.octoprint.targets(200.0, 0.0);
+    watch.until("unattended_printer_activity", 1).await;
+    watch.octoprint.targets(0.0, 0.0);
+    tokio::time::sleep(POLL * 5).await;
+    assert_eq!(watch.of_kind("unattended_printer_activity").await.len(), 1);
+    watch.octoprint.targets(200.0, 0.0);
+    let again = watch.until("unattended_printer_activity", 2).await;
+
+    assert_eq!(again[0]["payload"]["tools"], again[1]["payload"]["tools"]);
+}
