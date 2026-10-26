@@ -214,16 +214,8 @@ impl Supervisor {
             })?,
         )
         .await?;
-        if let (
-            PrintAction::ClosePrint {
-                outcome, reason, ..
-            },
-            Some(state),
-        ) = (&action, closing_state.as_ref())
-        {
-            self.close_by_operator(print_id, *outcome, state, reason)
-                .await?;
-        }
+        self.follow_the_close(print_id, &action, closing_state.as_ref())
+            .await?;
         Ok(ActionOutcome {
             record: issued.record,
             executed: issued.executed,

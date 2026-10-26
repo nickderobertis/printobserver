@@ -105,6 +105,27 @@ impl Supervisor {
         Ok(Ok(state))
     }
 
+    /// Close the record an accepted, executed close names, in the state the
+    /// close's own check found; any other action closes nothing.
+    pub(crate) async fn follow_the_close(
+        &self,
+        print_id: PrintId,
+        action: &PrintAction,
+        closing_state: Option<&PrinterState>,
+    ) -> Result<(), CoreError> {
+        if let (
+            PrintAction::ClosePrint {
+                outcome, reason, ..
+            },
+            Some(state),
+        ) = (action, closing_state)
+        {
+            self.close_by_operator(print_id, *outcome, state, reason)
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Close one print record at an operator's word, with no charge.
     ///
     /// The print is settled first — no charge, no pend, no mark, and its
