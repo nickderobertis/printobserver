@@ -37,7 +37,7 @@ def _installed(state: Path) -> Path:
 
 def test_an_in_place_edit_to_one_environment_leaves_the_next_install_unchanged(
     state_dir: Callable[[str], str], tmp_path: Path
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """A second clean environment on the same cache receives the published file."""
     # A cache of this journey's own: an edit reaching it would otherwise reach
     # every environment the host installs afterwards.
