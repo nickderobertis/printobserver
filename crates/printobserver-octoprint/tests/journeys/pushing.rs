@@ -446,6 +446,94 @@ fn a_login_with_no_session_or_an_upgrade_naming_none_is_refused() {
     );
 }
 
+/// One server text frame, unmasked, whose length is written in the two-byte
+/// (`126`) or the eight-byte (`127`) extended form.
+fn extended_frame(marker: u8, payload: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0x81, marker];
+    let length = u64::try_from(payload.len()).expect("a length");
+    if marker == 126 {
+        let short = u16::try_from(length).expect("a two-byte length");
+        bytes.extend_from_slice(&short.to_be_bytes());
+    } else {
+        bytes.extend_from_slice(&length.to_be_bytes());
+    }
+    bytes.extend_from_slice(payload);
+    bytes
+}
+
+/// A push message padded with trailing whitespace to `size` bytes.
+fn padded(message: &str, size: usize) -> Vec<u8> {
+    let mut bytes = message.as_bytes().to_vec();
+    bytes.resize(size, b' ');
+    bytes
+}
+
+/// A message too long for a one-byte length is read whole in either extended
+/// encoding: two bytes for one under 64 KiB, eight for one past it.
+#[test]
+fn messages_in_both_extended_lengths_are_read_whole() {
+    let reset = r#"{"event": {"type": "PrinterReset", "payload": {}}}"#;
+    let error = r#"{"event": {"type": "Error", "payload": {"error": "Thermal Runaway", "reason": "firmware"}}}"#;
+    let standin = ScriptedOctoPrint::start();
+    let printer = adapter(&standin);
+    let mut stream = block_on(printer.push_events()).expect("the push socket opens");
+    connected(&standin);
+
+    let mut bytes = extended_frame(126, &padded(reset, 300));
+    bytes.extend(extended_frame(127, &padded(error, 70_000)));
+    standin.pushes_raw(&bytes);
+
+    assert_eq!(next_event(&mut stream), Some(PrinterPush::Reset));
+    assert_eq!(
+        next_event(&mut stream),
+        Some(PrinterPush::Error {
+            reason: PrinterErrorReason::Firmware
+        })
+    );
+}
+
+/// A pong the server sends between a message's fragments is passed over: the
+/// message is read whole, the pong is not answered, and the message after it
+/// is read too.
+#[test]
+fn a_pong_between_a_messages_fragments_is_passed_over() {
+    let standin = ScriptedOctoPrint::start();
+    let printer = adapter(&standin);
+    let mut stream = block_on(printer.push_events()).expect("the push socket opens");
+    connected(&standin);
+
+    let message = r#"{"event": {"type": "PrinterReset", "payload": {}}}"#.as_bytes();
+    let (head, tail) = message.split_at(10);
+    let mut bytes = frame(0x01, head);
+    bytes.extend(frame(0x8A, b"unsolicited"));
+    bytes.extend(frame(0x80, tail));
+    bytes.extend(frame(0x81, message));
+    standin.pushes_raw(&bytes);
+
+    assert_eq!(next_event(&mut stream), Some(PrinterPush::Reset));
+    assert_eq!(next_event(&mut stream), Some(PrinterPush::Reset));
+    assert!(
+        !standin.client_opcodes().contains(&0xA),
+        "a pong was answered with a pong"
+    );
+}
+
+/// An upgrade answer whose head never ends is refused once it is longer than
+/// any upgrade answer, rather than read without bound.
+#[test]
+fn an_upgrade_answer_that_never_ends_is_refused() {
+    let standin = ScriptedOctoPrint::start();
+    let printer = adapter(&standin);
+    standin.answers_an_endless_upgrade(true);
+
+    let refused = block_on(printer.push_events()).err();
+    assert!(
+        matches!(&refused, Some(PrinterError::Unreachable { detail }) if detail.contains("never ended")),
+        "{refused:?}"
+    );
+    assert_eq!(standin.open_sockets(), 0);
+}
+
 /// A length in eight bytes that two would hold, or one with its top bit set,
 /// a message whose fragments together pass the limit, and a message begun
 /// inside an unfinished one each end the stream.

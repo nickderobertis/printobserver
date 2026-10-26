@@ -86,6 +86,8 @@ enum Upgrade {
     WrongAccept,
     /// Upgraded leaving out its `Upgrade` and `Connection` headers.
     Bare,
+    /// Answered with a head that never ends.
+    Endless,
 }
 
 /// What the stand-in holds.
@@ -294,6 +296,17 @@ impl ScriptedOctoPrint {
     pub fn answers_a_bare_upgrade(&self, bare: bool) {
         self.held().upgrade = if bare {
             Upgrade::Bare
+        } else {
+            Upgrade::Accepted
+        };
+    }
+
+    /// Answer the upgrade with a head that never ends — one header line far
+    /// longer than any upgrade answer, never followed by the blank line — or
+    /// as `OctoPrint` answers it.
+    pub fn answers_an_endless_upgrade(&self, endless: bool) {
+        self.held().upgrade = if endless {
+            Upgrade::Endless
         } else {
             Upgrade::Accepted
         };
@@ -704,6 +717,12 @@ fn upgrade(
         let _ = connection.write_all(
             b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         );
+        return;
+    }
+    if answer == Upgrade::Endless {
+        let mut head = b"HTTP/1.1 101 Switching Protocols\r\nX-Filler: ".to_vec();
+        head.extend(std::iter::repeat_n(b'a', 128 * 1024));
+        let _ = connection.write_all(&head);
         return;
     }
     let accept = if answer == Upgrade::WrongAccept {
