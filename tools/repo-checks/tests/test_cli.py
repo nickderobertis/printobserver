@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -15,12 +16,38 @@ from repo_checks.__main__ import COMMANDS, INSTALLERS, main
 from repo_checks.expect import contains, equal
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
+from repo_checks.tree_lock import TreeLock
 from treecopy import REPO_ROOT, Tree
 
 # The subject git writes for the merge every publication of this repository makes
 # before it pushes. Nobody types it, and the hook rules on the commit's state
 # rather than on this text — which is why the same text is refused below.
 MERGE_SUBJECT = "Merge remote-tracking branch 'origin/main' into work"
+
+
+#: The lock the checked-in schema tree is read and written under, named by
+#: `repo-policy.toml`'s `supervisor.schema_lock`. The tests below that run a
+#: check over the live tree read its schemas while the adapter's suite may be
+#: rewriting one, so each holds the lock shared for as long as its check runs.
+SCHEMA_LOCK = "printobserver-schemas.lock"
+
+
+@contextmanager
+def reading(root: Path = REPO_ROOT) -> Iterator[Path]:
+    """Hold the shared schema lock on `root` while a check reads it, and answer it."""
+    held = TreeLock(root, SCHEMA_LOCK)
+    held.lock()
+    try:
+        yield root
+    finally:
+        held.release()
+
+
+@pytest.fixture
+def live_tree() -> Iterator[Path]:
+    """The committed tree, read under the shared schema lock for the whole test."""
+    with reading() as root:
+        yield root
 
 
 @pytest.fixture
@@ -62,26 +89,28 @@ def merging(tree: Callable[[], Tree]) -> Tree:
     return copy
 
 
-def test_all_over_the_committed_tree_reports_nothing(capsys: pytest.CaptureFixture[str]) -> None:
+def test_all_over_the_committed_tree_reports_nothing(
+    capsys: pytest.CaptureFixture[str], live_tree: Path
+) -> None:
     """Silent on success is the contract every script here holds to."""
-    equal(main(["all", "--root", str(REPO_ROOT)]), 0)
+    equal(main(["all", "--root", str(live_tree)]), 0)
     equal(capsys.readouterr().err, "")
 
 
-def test_one_check_can_be_run_on_its_own() -> None:
+def test_one_check_can_be_run_on_its_own(live_tree: Path) -> None:
     """A single check is reachable by name."""
-    equal(main(["workspace", "--root", str(REPO_ROOT)]), 0)
+    equal(main(["workspace", "--root", str(live_tree)]), 0)
 
 
-def test_the_workflow_tier_is_its_own_group() -> None:
+def test_the_workflow_tier_is_its_own_group(live_tree: Path) -> None:
     """`just lint-workflows` runs the workflow checks, `just check-repo` runs the rest."""
-    equal(main(["workflows", "--root", str(REPO_ROOT)]), 0)
+    equal(main(["workflows", "--root", str(live_tree)]), 0)
 
 
-def test_an_unknown_check_is_refused() -> None:
+def test_an_unknown_check_is_refused(live_tree: Path) -> None:
     """A typo is a failure, not a silent no-op."""
     with pytest.raises(SystemExit):
-        main(["not-a-check", "--root", str(REPO_ROOT)])
+        main(["not-a-check", "--root", str(live_tree)])
 
 
 def test_a_failing_check_prints_every_finding(
@@ -110,27 +139,29 @@ def test_the_suppression_check_takes_a_base_revision(tree: Callable[[], Tree]) -
     equal(main(["suppressions", "--root", str(allowed.root), "--base", "HEAD"]), 0)
 
 
-def test_commit_msg_needs_a_message_file() -> None:
+def test_commit_msg_needs_a_message_file(live_tree: Path) -> None:
     """A hook invoked wrongly says so rather than passing."""
     with pytest.raises(SystemExit):
-        main(["commit-msg", "--root", str(REPO_ROOT)])
+        main(["commit-msg", "--root", str(live_tree)])
 
 
-def test_the_committed_hook_admits_a_releasing_subject(tmp_path: Path) -> None:
+def test_the_committed_hook_admits_a_releasing_subject(tmp_path: Path, live_tree: Path) -> None:
     """`feat` is a subject this repository's own plan publishes under."""
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("feat(server): supervise a print\n", encoding="utf-8")
 
-    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
+    equal(main(["commit-msg", str(message), "--root", str(live_tree)]), 0)
 
 
 @pytest.mark.parametrize("subject", ["fix: a thing", "perf: faster", "chore: tidy up"])
-def test_the_committed_hook_admits_every_declared_type(subject: str, tmp_path: Path) -> None:
+def test_the_committed_hook_admits_every_declared_type(
+    subject: str, tmp_path: Path, live_tree: Path
+) -> None:
     """Every type `repo-policy.toml` declares is a subject the hook accepts."""
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text(subject + "\n", encoding="utf-8")
 
-    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
+    equal(main(["commit-msg", str(message), "--root", str(live_tree)]), 0)
 
 
 def test_a_merge_git_is_completing_carries_the_subject_git_wrote(
@@ -162,7 +193,7 @@ def test_the_same_wording_is_refused_when_no_merge_is_in_progress(
 
 
 def test_a_merge_shaped_pull_request_title_is_refused(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], live_tree: Path
 ) -> None:
     """The exemption is the commit hook's alone: a title is always authored.
 
@@ -171,66 +202,66 @@ def test_a_merge_shaped_pull_request_title_is_refused(
     """
     monkeypatch.setenv("PR_TITLE", "Merge remote-tracking branch 'origin/main' into work")
 
-    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)
+    equal(main(["pr-title", "--root", str(live_tree)]), 1)
     contains(capsys.readouterr().err, "not a Conventional Commit")
 
 
 def test_the_committed_hook_refuses_an_unconventional_subject(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], live_tree: Path
 ) -> None:
     """A subject release automation cannot read is refused where it is written."""
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("made some changes\n", encoding="utf-8")
 
-    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 1)
+    equal(main(["commit-msg", str(message), "--root", str(live_tree)]), 1)
     contains(capsys.readouterr().err, "not a Conventional Commit")
 
 
 def test_the_committed_hook_refuses_an_undeclared_type(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], live_tree: Path
 ) -> None:
     """A type nobody declared is one release automation has no rule for."""
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("wip: halfway there\n", encoding="utf-8")
 
-    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 1)
+    equal(main(["commit-msg", str(message), "--root", str(live_tree)]), 1)
     contains(capsys.readouterr().err, "does not admit")
 
 
-def test_a_comment_only_message_is_left_alone(tmp_path: Path) -> None:
+def test_a_comment_only_message_is_left_alone(tmp_path: Path, live_tree: Path) -> None:
     """An aborted commit is git's business, not the hook's."""
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("# please enter a message\n", encoding="utf-8")
 
-    equal(main(["commit-msg", str(message), "--root", str(REPO_ROOT)]), 0)
+    equal(main(["commit-msg", str(message), "--root", str(live_tree)]), 0)
 
 
 def test_the_pull_request_title_lint_reads_the_title_from_the_environment(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, live_tree: Path
 ) -> None:
     """The title is attacker-controlled, so it arrives through the environment."""
     monkeypatch.setenv("PR_TITLE", "feat(gate): add a tier")
 
-    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 0)
+    equal(main(["pr-title", "--root", str(live_tree)]), 0)
 
 
 def test_an_empty_pull_request_title_is_refused(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], live_tree: Path
 ) -> None:
     """A missing title is a misconfigured job, not a pass."""
     monkeypatch.setenv("PR_TITLE", "")
 
-    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)
+    equal(main(["pr-title", "--root", str(live_tree)]), 1)
     contains(capsys.readouterr().err, "PR_TITLE is empty")
 
 
 def test_an_unconventional_pull_request_title_is_refused(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, live_tree: Path
 ) -> None:
     """Under squash-merge the title is the commit release automation reads."""
     monkeypatch.setenv("PR_TITLE", "some changes")
 
-    equal(main(["pr-title", "--root", str(REPO_ROOT)]), 1)
+    equal(main(["pr-title", "--root", str(live_tree)]), 1)
 
 
 #: The two names that are groups of checks rather than commands: `main` takes

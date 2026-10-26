@@ -403,7 +403,7 @@ def test_the_committed_policy_reads_as_the_declarations_the_checks_act_on(
 
     equal(policy.adapter, "printobserver-oneharness")
     equal(policy.context_read in policy.reads, True)
-    equal(len(policy.schema_lock_holders), 3)
+    equal(len(policy.schema_lock_holders), 5)
 
 
 def _retype(copy: Tree, key: str, replacement: str) -> None:

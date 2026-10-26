@@ -20,9 +20,16 @@ from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run, start
 from treecopy import REPO_ROOT
 
-#: Where the processes import `copying`, `treecopy` and the checks from.
+#: The tools whose sources the processes import.
+TOOLS = ("repo-checks", "contract-codegen", "release-artifacts")
+
+#: Where the processes import `copying`, `treecopy`, `test_cli` and the checks
+#: from — the command line `test_cli` drives imports the other two tools too.
 IMPORTS = os.pathsep.join(
-    [str(Path(__file__).parent), str(REPO_ROOT / "tools" / "repo-checks" / "src")]
+    [
+        str(Path(__file__).parent),
+        *(str(REPO_ROOT / "tools" / tool / "src") for tool in TOOLS),
+    ]
 )
 
 #: How long the rewriting and copying processes run beside each other.
@@ -85,6 +92,33 @@ def test_copies_taken_while_another_process_rewrites_a_schema_are_never_torn(
         final in (copying.version(1), copying.version(2)),
         describing="the source schema to be whole once the rewriting is done",
     )
+
+
+def test_the_python_readers_see_a_whole_schema_while_another_process_rewrites_it(
+    tmp_path: Path,
+) -> None:
+    """The scratch copy and the live-tree read each see one whole version, never a torn one.
+
+    Each holds the shared schema lock for its whole copy or read, and the
+    rewriter truncates and rewrites the schema in two halves under the
+    exclusive one, as the adapter's journey does.
+    """
+    source = _source(tmp_path / "source")
+    rewriting = _launch("rewrite", str(source), str(SECONDS))
+    readers = {
+        "the scratch copy": _launch(
+            "scratch", str(source), str(tmp_path / "scratch"), str(SECONDS)
+        ),
+        "the live-tree read": _launch("live", str(source), str(SECONDS)),
+    }
+
+    rewrites = _said(rewriting, copying.Rewritten).rewrites
+    said = {name: _said(reader, copying.Copied) for name, reader in readers.items()}
+
+    truth(rewrites > 10, describing=f"{rewrites} rewrites")
+    for name, read in said.items():
+        truth(read.copies > 1, describing=f"{name}'s {read.copies} reads")
+        equal(read.torn, 0, describing=f"the torn schemas {name} saw: {read.first}")
 
 
 def test_a_defect_one_process_puts_in_its_copy_reaches_no_other(tmp_path: Path) -> None:

@@ -9,6 +9,10 @@ is, and says what it saw as one JSON line on standard output:
 - `copy SOURCE INTO SECONDS` copies the schema closure of `SOURCE` into fresh
   directories under `INTO` for as long as it is told, and reports every copied
   schema that was not one whole version of it.
+- `scratch SOURCE INTO SECONDS` does the same through `repo_checks.scratch`,
+  the whole-tree copy the contract generator's suite and the release tooling's
+  take, and `live SOURCE SECONDS` reads the schema in place under the lock
+  `test_cli`'s checks over the live tree hold.
 - `break INTO NAME` copies the `ci` check's closure of the committed tree,
   adds a step to the gate job running a recipe only it names, runs the real check over its
   copy and over a second, unbroken one, and reports what each check said.
@@ -21,12 +25,15 @@ import json
 import math
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from closures import closure
+from repo_checks import scratch
 from repo_checks.checks_ci import continuous_integration
 from repo_checks.model import Repo
+from test_cli import reading
 from treecopy import Closure, SchemaTreeLock, Tree, copy_tree
 
 #: The schema the rewriting process rewrites, relative to its source tree.
@@ -113,6 +120,39 @@ def copy(source: Path, into: Path, seconds: float) -> Copied:
     return Copied(copies, len(torn), torn[:3])
 
 
+def _watched(read: Callable[[int], str], seconds: float) -> Copied:
+    """Read the schema one way until `seconds` have passed, and say what each read carried."""
+    reads = 0
+    torn: list[str] = []
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        reads += 1
+        text = read(reads)
+        if text not in (version(1), version(2)):
+            torn.append(f"read{reads}: {len(text)} characters")
+    return Copied(reads, len(torn), torn[:3])
+
+
+def scratch_copy(source: Path, into: Path, seconds: float) -> Copied:
+    """Copy the whole tree as `repo_checks.scratch` does, and say what each copy carried."""
+    return _watched(
+        lambda n: (scratch.copy_tree(source, into / f"copy{n}") / SCHEMA).read_text(
+            encoding="utf-8"
+        ),
+        seconds,
+    )
+
+
+def live(source: Path, seconds: float) -> Copied:
+    """Read the schema in place as `test_cli`'s live-tree checks do, and say what each read."""
+
+    def read(_: int) -> str:
+        with reading(source):
+            return (source / SCHEMA).read_text(encoding="utf-8")
+
+    return _watched(read, seconds)
+
+
 def breaking(into: Path, name: str) -> Broken:
     """Break this process's own copy, check it and an unbroken copy, and say what each said."""
     ci = closure("ci")
@@ -152,6 +192,10 @@ def main(argv: list[str]) -> int:
             said = rewrite(Path(source), _seconds(seconds))
         case ["copy", source, into, seconds]:
             said = copy(Path(source), Path(into), _seconds(seconds))
+        case ["scratch", source, into, seconds]:
+            said = scratch_copy(Path(source), Path(into), _seconds(seconds))
+        case ["live", source, seconds]:
+            said = live(Path(source), _seconds(seconds))
         case ["break", into, name]:
             said = breaking(Path(into), name)
         case _:
