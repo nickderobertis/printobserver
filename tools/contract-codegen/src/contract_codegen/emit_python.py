@@ -48,7 +48,7 @@ from contract_codegen.naming import (
 from contract_codegen.walk import ABSENT, EventStep, LiveStep
 
 #: What each scalar of the contracts is in Python.
-SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool"}
+SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool", "null": "None"}
 
 
 def type_name(shape: TypeExpr) -> str:

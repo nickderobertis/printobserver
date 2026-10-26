@@ -51,6 +51,8 @@ pub struct Watch {
     pub octoprint: ScriptedOctoPrint,
     /// The supervising agent.
     pub agent: Arc<StandInAgent>,
+    /// What stands between the server and its event log.
+    pub held: Arc<crate::held_events::HeldEvents>,
     /// The client, presenting the operator's credential.
     pub client: reqwest::Client,
 }
@@ -76,9 +78,9 @@ impl Watch {
         let path = write(root.path(), &configured);
         let mut config = ServerConfig::load(&path).expect("the configuration is accepted");
         tune(&mut config);
-        let stores = Stores::of(Arc::new(
+        let (stores, held) = crate::held_events::HeldEvents::over(Stores::of(Arc::new(
             SqliteStore::open(&config.state_dir).expect("the store opens"),
-        ));
+        )));
         let agent = StandInAgent::new();
         let server = Server::start_with(
             config.clone(),
@@ -96,6 +98,7 @@ impl Watch {
             server,
             octoprint,
             agent,
+            held,
             client: presenting(OPERATOR),
         }
     }
@@ -505,6 +508,7 @@ async fn a_print_cancelled_through_printobserver_ends_cancelled() {
 
 /// End one print `interrupted` with a serial drop, and answer it.
 async fn interrupted(watch: &Watch) -> String {
+    let changes = watch.of_kind("printer_connection_changed").await.len();
     let print_id = watch.printing(400).await;
     watch.octoprint.reports(
         "Closed",
@@ -513,7 +517,7 @@ async fn interrupted(watch: &Watch) -> String {
     watch.until("print_ended", 1).await;
     // The printer reconnects, idle and holding no job.
     watch.octoprint.reports("Operational", JobScript::idle());
-    watch.until("printer_connection_changed", 2).await;
+    watch.until("printer_connection_changed", changes + 2).await;
     print_id
 }
 
@@ -881,4 +885,48 @@ async fn activity_that_stops_and_begins_again_is_recorded_again() {
     let again = watch.until("unattended_printer_activity", 2).await;
 
     assert_eq!(again[0]["payload"]["tools"], again[1]["payload"]["tools"]);
+}
+
+/// A connection change and unattended activity the store refused to write are
+/// each recorded by the next read once it answers again, rather than lost.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_change_the_store_refused_is_recorded_by_the_next_read() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    tokio::time::sleep(POLL * 3).await;
+
+    watch.held.refusing_kind("printer_connection_changed", true);
+    watch
+        .octoprint
+        .reports("Closed", landed_offline("Offline", None));
+    tokio::time::sleep(POLL * 5).await;
+    assert!(watch.of_kind("printer_connection_changed").await.is_empty());
+    watch
+        .held
+        .refusing_kind("printer_connection_changed", false);
+    let changed = watch.until("printer_connection_changed", 1).await;
+    assert_eq!(changed[0]["payload"]["to"], "offline");
+    watch.octoprint.reports("Operational", JobScript::idle());
+    watch.until("printer_connection_changed", 2).await;
+
+    interrupted(&watch).await;
+    watch
+        .held
+        .refusing_kind("unattended_printer_activity", true);
+    watch.octoprint.targets(200.0, 0.0);
+    tokio::time::sleep(POLL * 5).await;
+    assert!(
+        watch
+            .of_kind("unattended_printer_activity")
+            .await
+            .is_empty()
+    );
+    watch
+        .held
+        .refusing_kind("unattended_printer_activity", false);
+    let activity = watch.until("unattended_printer_activity", 1).await;
+    assert_eq!(
+        activity[0]["payload"]["tools"],
+        json!([{ "tool": 0, "target_c": 200.0 }])
+    );
 }

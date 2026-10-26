@@ -14,50 +14,65 @@
       "type": "string"
     },
     "DetectorHealth": {
-      "additionalProperties": false,
-      "description": "The failure detector's health, and since when it has been so.",
-      "properties": {
-        "since": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "When the status became what it is, `null` exactly while unchecked."
-        },
-        "status": {
-          "$ref": "#/$defs/DetectorHealthStatus",
-          "description": "What the last check found."
-        }
-      },
-      "required": [
-        "status"
-      ],
-      "type": "object"
-    },
-    "DetectorHealthStatus": {
-      "description": "The failure detector's health, as the last check found it.",
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
       "oneOf": [
         {
-          "const": "available",
-          "description": "It answered its health check.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unavailable",
-          "description": "It did not.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unchecked",
-          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         }
-      ]
+      ],
+      "title": "DetectorHealth"
     },
     "EffectiveBounds": {
       "additionalProperties": false,

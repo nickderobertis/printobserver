@@ -367,3 +367,73 @@ fn a_position_is_read_only_from_a_received_reply_naming_three_finite_axes() {
         assert_eq!(position_of(refused), None, "{refused}");
     }
 }
+
+/// A login answered with no usable session, or an upgrade answered without
+/// naming a websocket upgrade, is an error opening the stream.
+#[test]
+fn a_login_with_no_session_or_an_upgrade_naming_none_is_refused() {
+    for body in [
+        "not json",
+        r#"{"name": "", "session": "a-session"}"#,
+        r#"{"name": "standin", "session": ""}"#,
+    ] {
+        let standin = ScriptedOctoPrint::start();
+        let printer = adapter(&standin);
+        standin.answers_login_body(body);
+        let refused = block_on(printer.push_events()).err();
+        assert!(
+            matches!(&refused, Some(PrinterError::Malformed { detail }) if detail.contains("/api/login")),
+            "{body}: {refused:?}"
+        );
+    }
+    let standin = ScriptedOctoPrint::start();
+    let printer = adapter(&standin);
+    standin.answers_a_bare_upgrade(true);
+    let refused = block_on(printer.push_events()).err();
+    assert!(
+        matches!(&refused, Some(PrinterError::Unreachable { detail }) if detail.contains("no websocket upgrade")),
+        "{refused:?}"
+    );
+}
+
+/// A length in eight bytes that two would hold, or one with its top bit set,
+/// a message whose fragments together pass the limit, and a message begun
+/// inside an unfinished one each end the stream.
+#[test]
+fn eight_byte_lengths_aggregate_limits_and_interleaved_messages_end_the_stream() {
+    let limit = printobserver_octoprint::push::FRAME_LIMIT;
+    let mut nonminimal = vec![0x81, 127];
+    nonminimal.extend_from_slice(&5_u64.to_be_bytes());
+    nonminimal.extend_from_slice(b"hello");
+    let mut top_bit = vec![0x81, 127];
+    top_bit.extend_from_slice(&(1_u64 << 63 | 0x0001_1170).to_be_bytes());
+    let half = usize::try_from(limit / 2 + 1).expect("half the limit fits");
+    let mut aggregate = Vec::new();
+    for first in [0x01_u8, 0x80] {
+        aggregate.push(first);
+        aggregate.push(127);
+        aggregate.extend_from_slice(&u64::try_from(half).expect("a length").to_be_bytes());
+        aggregate.extend(std::iter::repeat_n(b'a', half));
+    }
+    let mut interleaved = frame(0x01, b"{\"current\"");
+    interleaved.extend(frame(0x81, b"{}"));
+    for (what, bytes) in [
+        ("a non-minimal eight-byte length", nonminimal),
+        ("a length with its top bit set", top_bit),
+        ("fragments past the limit together", aggregate),
+        ("a message begun inside another", interleaved),
+    ] {
+        let standin = ScriptedOctoPrint::start();
+        let printer = adapter(&standin);
+        let mut stream = block_on(printer.push_events()).expect("the push socket opens");
+        connected(&standin);
+
+        standin.pushes_raw(&bytes);
+
+        assert_eq!(
+            next_event(&mut stream),
+            None,
+            "{what} did not end the stream"
+        );
+    }
+}

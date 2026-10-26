@@ -1,5 +1,5 @@
 //! An event log and an image store that can refuse what a periodic
-//! observation writes, under a running server.
+//! observation writes, or every event of one kind, under a running server.
 //!
 //! Everything else is the durable store's own answer: this stands between the
 //! server and that store, passing every call through, so that a journey can
@@ -42,6 +42,8 @@ pub struct HeldEvents {
     released: Notify,
     /// Whether every image is refused.
     refusing_images: AtomicBool,
+    /// The event kinds whose every append is refused.
+    refused_kinds: Mutex<HashSet<String>>,
 }
 
 impl HeldEvents {
@@ -57,6 +59,7 @@ impl HeldEvents {
             held: Notify::new(),
             released: Notify::new(),
             refusing_images: AtomicBool::new(false),
+            refused_kinds: Mutex::new(HashSet::new()),
         });
         stores.events = Arc::clone(&held) as Arc<dyn EventStore>;
         stores.images = Arc::clone(&held) as Arc<dyn ImageStore>;
@@ -86,6 +89,16 @@ impl HeldEvents {
         self.released.notify_one();
     }
 
+    /// Refuse every append of one kind from now on, or stop refusing them.
+    pub fn refusing_kind(&self, kind: &str, refusing: bool) {
+        let mut refused = self.refused_kinds.lock().expect("the set is not poisoned");
+        if refusing {
+            refused.insert(kind.to_owned());
+        } else {
+            refused.remove(kind);
+        }
+    }
+
     /// Refuse every image from now on, or stop refusing them.
     pub fn refusing_images(&self, refusing: bool) {
         self.refusing_images.store(refusing, Ordering::SeqCst);
@@ -101,6 +114,14 @@ fn refusal<T>() -> Result<T, StoreError> {
 
 impl EventStore for HeldEvents {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        if self
+            .refused_kinds
+            .lock()
+            .expect("the set is not poisoned")
+            .contains(draft.kind().as_str())
+        {
+            return Box::pin(async { refusal() });
+        }
         if draft.kind().as_str() != OBSERVATION {
             return self.events.append_event(draft);
         }

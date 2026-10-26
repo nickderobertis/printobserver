@@ -154,6 +154,12 @@ reason = "Obico's alert acknowledgement — `POST /api/v1/printers/<id>/acknowle
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/health.rs"
+site = "pub const HEALTH_PATH: &str = \"hc/\";"
+reason = "Obico's detector service (`ml_api`) answers its own unauthenticated health route `GET /hc/`, which Obico publishes no machine-readable source for. The route was measured against the self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins, by the observability spike that settled this check: `ok` while the detector is up and refused once it is stopped, while the credentialed web API stays up. The server's journeys drive it against a stand-in on a real socket; the scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only, and extending it to ask the live stack's `ml_api` for this route is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-oneharness/src/sign_in.rs"
 site = "arguments: &[\"auth\", \"login\"],"
 reason = "Claude Code's login command is a third-party CLI surface with no machine-readable source. OneHarness's registry declares each harness's program, which this crate's tests hold `program` to, but not its sign-in; this invocation is read from `claude auth login --help` as the task fixing the table requires. A drift check in the gate would have to install and run the paid provider's own CLI, and a changed invocation surfaces as that CLI's own usage error on the operator's terminal the first time they sign in."

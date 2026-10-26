@@ -25,15 +25,14 @@ use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     CameraDegradedPayload, CameraLookPayload, ChargePendedPayload, DetectorHealth,
-    DetectorHealthChangedPayload, DetectorHealthStatus, DetectorStatus,
-    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
-    FrameCause, HeatedTool, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
-    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
-    PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, PrinterConnectionChangedPayload, PrinterResetPayload,
-    RebaselineDisposition, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
-    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
-    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
+    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
+    InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
+    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
+    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    PrinterResetPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
@@ -166,10 +165,6 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((
         "DetectorHealth.json".to_owned(),
         schema_of::<DetectorHealth>(),
-    ));
-    entries.push((
-        "DetectorHealthStatus.json".to_owned(),
-        schema_of::<DetectorHealthStatus>(),
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));

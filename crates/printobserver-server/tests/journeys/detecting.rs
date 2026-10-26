@@ -436,3 +436,72 @@ async fn a_detector_holding_its_check_past_the_bound_is_recorded_unavailable() {
     let detail = down[0]["payload"]["detail"].as_str().unwrap_or_default();
     assert!(detail.contains("did not answer within 5s"), "{detail}");
 }
+
+/// A detector going down that the store refused to write is recorded by the
+/// next check once it answers again, with the turn it owes.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_outage_the_store_refused_is_recorded_by_the_next_check() {
+    let web = Host::serving("application/json", br#"{"version":"1.0.0"}"#.to_vec()).await;
+    let detector = Detector::start();
+    let url = detector.url();
+    let web_url = web.url();
+    let holder: Arc<Mutex<Option<Arc<crate::held_events::HeldEvents>>>> =
+        Arc::new(Mutex::new(None));
+    let holding = Arc::clone(&holder);
+    let world = World::configured_over(
+        RecordingPrinter::printing(),
+        StandInAgent::new(),
+        move |document| {
+            set(
+                document,
+                "supervisor.observation_interval_s",
+                toml::Value::Integer(1),
+            );
+            let mut obico = toml::Table::new();
+            obico.insert("url".to_owned(), toml::Value::String(web_url));
+            obico.insert(
+                "access_token".to_owned(),
+                toml::Value::String("a-journeys-own-obico-token".to_owned()),
+            );
+            obico.insert("ml_api_url".to_owned(), toml::Value::String(url));
+            set(document, "obico", toml::Value::Table(obico));
+        },
+        move |stores| {
+            let (stores, held) = crate::held_events::HeldEvents::over(stores);
+            *holding.lock().expect("the holder holds") = Some(held);
+            stores
+        },
+    )
+    .await;
+    let held = holder
+        .lock()
+        .expect("the holder holds")
+        .take()
+        .expect("the store was stood between");
+    let print_id = world.open_print().await;
+    until_status(&world, print_id, "available").await;
+
+    held.refusing_kind("detector_health_changed", true);
+    detector.answers(Mood::Failing);
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(changes(&world).await.is_empty());
+    assert_eq!(status_health(&world, print_id).await["status"], "available");
+    held.refusing_kind("detector_health_changed", false);
+
+    let down = until_changes(&world, 1).await;
+    assert_eq!(down[0]["payload"]["status"], "unavailable");
+    until_status(&world, print_id, "unavailable").await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while !world
+        .agent
+        .turns()
+        .iter()
+        .any(|turn| turn.event.kind().as_str() == "detector_health_changed")
+    {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no turn on the outage"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}

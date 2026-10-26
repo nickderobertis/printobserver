@@ -169,10 +169,9 @@ impl DetectorHealth {
     }
 }
 
-/// The failure detector's health, and since when it has been so.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// The failure detector's health as the wire carries it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars", rename = "DetectorHealth")]
 struct DetectorHealthWire {
     /// What the last check found.
     status: DetectorHealthStatus,
@@ -230,15 +229,64 @@ impl<'de> Deserialize<'de> for DetectorHealth {
     }
 }
 
+/// One arm of the detector's health as a schema: its status, and its `since`.
+fn health_arm(
+    status: &str,
+    doc: &str,
+    since: &printobserver_types::serde_json::Value,
+) -> printobserver_types::serde_json::Value {
+    printobserver_types::serde_json::json!({
+        "type": "object",
+        "description": doc,
+        "properties": {
+            "status": { "type": "string", "const": status },
+            "since": since,
+        },
+        "required": ["status", "since"],
+        "additionalProperties": false,
+    })
+}
+
+/// The schema describes the three states as arms tagged by `status`, so a
+/// generated client cannot pair a status with the wrong `since` either.
 impl JsonSchema for DetectorHealth {
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        DetectorHealthWire::schema_name()
+        std::borrow::Cow::Borrowed("DetectorHealth")
     }
 
     fn json_schema(
         generator: &mut printobserver_types::schemars::SchemaGenerator,
     ) -> printobserver_types::schemars::Schema {
-        DetectorHealthWire::json_schema(generator)
+        let timestamp =
+            printobserver_types::serde_json::to_value(generator.subschema_for::<Timestamp>())
+                .unwrap_or_default();
+        let schema = printobserver_types::serde_json::json!({
+            "title": "DetectorHealth",
+            "description": "The failure detector's health, and since when it has been so: \
+                `since` is `null` exactly while the status is `unchecked`.",
+            "oneOf": [
+                health_arm(
+                    "unchecked",
+                    "Nothing checks it: no detector health address is configured, or no \
+                     check has been made yet.",
+                    &printobserver_types::serde_json::json!({
+                        "type": "null",
+                        "description": "Nothing: an unchecked detector has no instant it became so.",
+                    }),
+                ),
+                health_arm(
+                    "available",
+                    "It answered its health check, from `since` on.",
+                    &timestamp,
+                ),
+                health_arm(
+                    "unavailable",
+                    "It did not answer its health check, from `since` on.",
+                    &timestamp,
+                ),
+            ],
+        });
+        printobserver_types::schemars::Schema::try_from(schema).unwrap_or_default()
     }
 }
 
@@ -552,37 +600,36 @@ impl Supervisor {
         error: Option<&str>,
     ) -> Result<(), CoreError> {
         let (previous, channel_down) = {
-            let mut held = self.watch_state();
-            (
-                held.last_state.replace(state.clone()),
-                held.channel_is_down(),
-            )
+            let held = self.watch_state();
+            (held.last_state.clone(), held.channel_is_down())
         };
-        let Some(previous) = previous else {
-            return Ok(());
-        };
-        if previous == *state || !(is_down(&previous) || is_down(state)) {
-            return Ok(());
+        let changed = previous
+            .as_ref()
+            .filter(|previous| *previous != state && (is_down(previous) || is_down(state)));
+        if let Some(previous) = changed {
+            let reporting = error
+                .filter(|error| !error.trim().is_empty())
+                .map(|error| format!(", reporting {error:?}"))
+                .unwrap_or_default();
+            let mut detail = format!("the printer went from {previous:?} to {state:?}{reporting}");
+            if channel_down {
+                detail.push_str("; ");
+                detail.push_str(PUSH_CHANNEL_DOWN);
+            }
+            let draft = self.draft_of(
+                None,
+                system_source(),
+                &PrinterConnectionChangedPayload {
+                    from: previous.clone(),
+                    to: state.clone(),
+                    detail,
+                },
+            )?;
+            // Remembered only once it is written down: a change the store
+            // refused is found again by the next read.
+            self.stores().events.append_event(draft).await?;
         }
-        let reporting = error
-            .filter(|error| !error.trim().is_empty())
-            .map(|error| format!(", reporting {error:?}"))
-            .unwrap_or_default();
-        let mut detail = format!("the printer went from {previous:?} to {state:?}{reporting}");
-        if channel_down {
-            detail.push_str("; ");
-            detail.push_str(PUSH_CHANNEL_DOWN);
-        }
-        let draft = self.draft_of(
-            None,
-            system_source(),
-            &PrinterConnectionChangedPayload {
-                from: previous,
-                to: state.clone(),
-                detail,
-            },
-        )?;
-        self.stores().events.append_event(draft).await?;
+        self.watch_state().last_state = Some(state.clone());
         Ok(())
     }
 
@@ -702,9 +749,7 @@ impl Supervisor {
                 open.recorded = None;
                 return Ok(());
             }
-            let unchanged = open.recorded.as_ref() == Some(&activity);
-            open.recorded = Some(activity.clone());
-            unchanged
+            open.recorded.as_ref() == Some(&activity)
         };
         if unchanged {
             return Ok(());
@@ -727,6 +772,9 @@ impl Supervisor {
             let Some(open) = held.unattended.as_mut() else {
                 return Ok(());
             };
+            // Remembered only once it is written down: activity the store
+            // refused is found again by the next read.
+            open.recorded = Some(activity.clone());
             let due = open
                 .turned_at
                 .is_none_or(|turned| now.saturating_sub(turned) >= interval);
@@ -766,24 +814,21 @@ impl Supervisor {
             DetectorStatus::Available => DetectorHealthStatus::Available,
             DetectorStatus::Unavailable => DetectorHealthStatus::Unavailable,
         };
+        let previous = self.watch_state().detector.status();
+        if previous == health {
+            return Ok(None);
+        }
+        let since = self.clock().now();
+        let found = match status {
+            DetectorStatus::Available => DetectorHealth::Available { since },
+            DetectorStatus::Unavailable => DetectorHealth::Unavailable { since },
+        };
+        // The first check finding the detector up is where watching it begins,
+        // not a change in it.
+        if previous == DetectorHealthStatus::Unchecked && health == DetectorHealthStatus::Available
         {
-            let mut held = self.watch_state();
-            let previous = held.detector.status();
-            if previous == health {
-                return Ok(None);
-            }
-            let since = self.clock().now();
-            held.detector = match status {
-                DetectorStatus::Available => DetectorHealth::Available { since },
-                DetectorStatus::Unavailable => DetectorHealth::Unavailable { since },
-            };
-            // The first check finding the detector up is where watching it
-            // begins, not a change in it.
-            if previous == DetectorHealthStatus::Unchecked
-                && health == DetectorHealthStatus::Available
-            {
-                return Ok(None);
-            }
+            self.watch_state().detector = found;
+            return Ok(None);
         }
         let draft = self.draft_of(
             None,
@@ -791,6 +836,9 @@ impl Supervisor {
             &DetectorHealthChangedPayload { status, detail },
         )?;
         let event = self.stores().events.append_event(draft).await?;
+        // Remembered only once it is written down: a change the store refused
+        // is found again by the next check.
+        self.watch_state().detector = found;
         if status != DetectorStatus::Unavailable {
             return Ok(None);
         }

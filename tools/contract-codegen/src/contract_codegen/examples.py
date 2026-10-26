@@ -90,6 +90,8 @@ def value_of(shape: TypeExpr, contract: Contract, seen: frozenset[str] = frozens
             return NUMBER
         case Scalar("integer"):
             return INTEGER
+        case Scalar("null"):
+            return None
         case Scalar("boolean"):
             return True
         case Scalar(kind):

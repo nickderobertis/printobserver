@@ -435,14 +435,30 @@ pub struct ContextAnswer {
     pub image_path: Option<String>,
 }
 
-/// The failure detector's health, and since when it has been so.
+/// The failure detector's health, and since when it has been so: `since` is
+/// `null` exactly while the status is `unchecked`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DetectorHealth {
-    /// When the status became what it is, `null` exactly while unchecked.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub since: Option<Timestamp>,
-    /// What the last check found.
-    pub status: DetectorHealthStatus,
+#[serde(tag = "status")]
+pub enum DetectorHealth {
+    /// Nothing checks it: no detector health address is configured, or no
+    /// check has been made yet.
+    #[serde(rename = "unchecked")]
+    Unchecked {
+        /// Nothing: an unchecked detector has no instant it became so.
+        since: (),
+    },
+    /// It answered its health check, from `since` on.
+    #[serde(rename = "available")]
+    Available {
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
+    },
+    /// It did not answer its health check, from `since` on.
+    #[serde(rename = "unavailable")]
+    Unavailable {
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
+    },
 }
 
 /// The failure detector's own health changed.
@@ -454,21 +470,6 @@ pub struct DetectorHealthChangedPayload {
     pub detail: String,
     /// What the check found.
     pub status: DetectorStatus,
-}
-
-/// The failure detector's health, as the last check found it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DetectorHealthStatus {
-    /// It answered its health check.
-    #[serde(rename = "available")]
-    Available,
-    /// It did not.
-    #[serde(rename = "unavailable")]
-    Unavailable,
-    /// Nothing checks it: no detector health address is configured, or no
-    /// check has been made yet.
-    #[serde(rename = "unchecked")]
-    Unchecked,
 }
 
 /// What a check of the failure detector's own health found.

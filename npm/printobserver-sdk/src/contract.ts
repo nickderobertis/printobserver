@@ -362,13 +362,14 @@ export interface ContextAnswer {
   image_path?: string | null;
 }
 
-/** The failure detector's health, and since when it has been so. */
-export interface DetectorHealth {
-  /** When the status became what it is, `null` exactly while unchecked. */
-  since?: Timestamp | null;
-  /** What the last check found. */
-  status: DetectorHealthStatus;
-}
+/**
+ * The failure detector's health, and since when it has been so: `since` is
+ * `null` exactly while the status is `unchecked`.
+ */
+export type DetectorHealth =
+  | { status: "unchecked"; since: null }
+  | { status: "available"; since: Timestamp }
+  | { status: "unavailable"; since: Timestamp };
 
 /**
  * The failure detector's own health changed.
@@ -381,9 +382,6 @@ export interface DetectorHealthChangedPayload {
   /** What the check found. */
   status: DetectorStatus;
 }
-
-/** The failure detector's health, as the last check found it. */
-export type DetectorHealthStatus = "available" | "unavailable" | "unchecked";
 
 /** What a check of the failure detector's own health found. */
 export type DetectorStatus = "available" | "unavailable";

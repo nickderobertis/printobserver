@@ -453,16 +453,45 @@ class ContextAnswer(TypedDict):
     image_path: NotRequired[str | None]
 
 
-class DetectorHealth(TypedDict):
-    """`DetectorHealth`, as the contracts declare it.
+class DetectorHealthUnchecked(TypedDict):
+    """The `unchecked` arm of `DetectorHealth`.
 
-    The failure detector's health, and since when it has been so.
+    Nothing checks it: no detector health address is configured, or no
+    check has been made yet.
     """
 
-    # When the status became what it is, `null` exactly while unchecked.
-    since: NotRequired[Timestamp | None]
-    # What the last check found.
-    status: DetectorHealthStatus
+    status: Literal["unchecked"]
+    # Nothing: an unchecked detector has no instant it became so.
+    since: None
+
+
+class DetectorHealthAvailable(TypedDict):
+    """The `available` arm of `DetectorHealth`.
+
+    It answered its health check, from `since` on.
+    """
+
+    status: Literal["available"]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
+
+
+class DetectorHealthUnavailable(TypedDict):
+    """The `unavailable` arm of `DetectorHealth`.
+
+    It did not answer its health check, from `since` on.
+    """
+
+    status: Literal["unavailable"]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
+
+
+# The failure detector's health, and since when it has been so: `since` is
+# `null` exactly while the status is `unchecked`.
+DetectorHealth: TypeAlias = (
+    DetectorHealthUnchecked | DetectorHealthAvailable | DetectorHealthUnavailable
+)
 
 
 class DetectorHealthChangedPayload(TypedDict):
@@ -477,10 +506,6 @@ class DetectorHealthChangedPayload(TypedDict):
     detail: str
     # What the check found.
     status: DetectorStatus
-
-
-# The failure detector's health, as the last check found it.
-DetectorHealthStatus: TypeAlias = Literal["available", "unavailable", "unchecked"]
 
 
 # What a check of the failure detector's own health found.

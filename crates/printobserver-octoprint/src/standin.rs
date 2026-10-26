@@ -75,6 +75,19 @@ impl JobScript {
     }
 }
 
+/// How the push socket's upgrade is answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Upgrade {
+    /// Upgraded, as `OctoPrint` upgrades it.
+    Accepted,
+    /// Refused with a 503.
+    Refused,
+    /// Upgraded with an accept that matches no key.
+    WrongAccept,
+    /// Upgraded leaving out its `Upgrade` and `Connection` headers.
+    Bare,
+}
+
 /// What the stand-in holds.
 #[derive(Debug)]
 struct Script {
@@ -90,8 +103,8 @@ struct Script {
     position: [f64; 3],
     /// Whether an `M114` is answered on the push socket.
     answers_position: bool,
-    /// Whether the push socket's upgrade is refused.
-    refuses_sockets: bool,
+    /// How the push socket's upgrade is answered.
+    upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
     /// printing when it arrived.
     commands: Vec<(String, bool)>,
@@ -101,8 +114,10 @@ struct Script {
     requests: Vec<String>,
     /// The status the passive login is answered with.
     login_status: u16,
-    /// Whether the upgrade is answered with an accept that matches no key.
-    bad_accept: bool,
+    /// The body a successful passive login is answered with, in place of a
+    /// session.
+    login_body: Option<String>,
+
     /// The reply an `M114` is answered with in place of the head's position.
     position_reply: Option<String>,
     /// The opcode of every frame the client sent on a push socket.
@@ -149,12 +164,13 @@ impl ScriptedOctoPrint {
             bed_target: 0.0,
             position: [0.0; 3],
             answers_position: true,
-            refuses_sockets: false,
+            upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
             requests: Vec::new(),
             login_status: 200,
-            bad_accept: false,
+            login_body: None,
+
             position_reply: None,
             client_opcodes: Vec::new(),
         }));
@@ -227,9 +243,28 @@ impl ScriptedOctoPrint {
         self.held().login_status = status;
     }
 
+    /// Answer a successful passive login with this body rather than a session.
+    pub fn answers_login_body(&self, body: &str) {
+        self.held().login_body = Some(body.to_owned());
+    }
+
+    /// Answer the upgrade leaving out its `Upgrade` and `Connection` headers,
+    /// or with them.
+    pub fn answers_a_bare_upgrade(&self, bare: bool) {
+        self.held().upgrade = if bare {
+            Upgrade::Bare
+        } else {
+            Upgrade::Accepted
+        };
+    }
+
     /// Answer the upgrade with an accept matching no key, or with the right one.
     pub fn answers_a_wrong_accept(&self, wrong: bool) {
-        self.held().bad_accept = wrong;
+        self.held().upgrade = if wrong {
+            Upgrade::WrongAccept
+        } else {
+            Upgrade::Accepted
+        };
     }
 
     /// Answer `M114` with this terminal line rather than the head's position.
@@ -251,7 +286,11 @@ impl ScriptedOctoPrint {
 
     /// Refuse the push socket's upgrade from now on, or admit it again.
     pub fn refuses_sockets(&self, refuses: bool) {
-        self.held().refuses_sockets = refuses;
+        self.held().upgrade = if refuses {
+            Upgrade::Refused
+        } else {
+            Upgrade::Accepted
+        };
     }
 
     /// Push one event, of `OctoPrint`'s own type and payload, on every open
@@ -463,7 +502,9 @@ fn answer(
         ("POST", "/api/login") => match held.login_status {
             200 => (
                 200,
-                json!({ "name": "standin", "session": "a-scripted-session" }).to_string(),
+                held.login_body.clone().unwrap_or_else(|| {
+                    json!({ "name": "standin", "session": "a-scripted-session" }).to_string()
+                }),
             ),
             status => (status, r#"{"error":"refused"}"#.to_owned()),
         },
@@ -583,7 +624,8 @@ fn upgrade(
     script: &Mutex<Script>,
     sockets: &Mutex<Vec<TcpStream>>,
 ) {
-    if lock(script).refuses_sockets {
+    let answer = lock(script).upgrade;
+    if answer == Upgrade::Refused {
         let _ = connection.write_all(
             b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
         );
@@ -595,14 +637,18 @@ fn upgrade(
         );
         return;
     }
-    let accept = if lock(script).bad_accept {
+    let accept = if answer == Upgrade::WrongAccept {
         "bm90IHRoZSBhY2NlcHQgZm9yIHRoaXMga2V5"
     } else {
         SOCKET_ACCEPT
     };
+    let headers = if answer == Upgrade::Bare {
+        ""
+    } else {
+        "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+    };
     let accepted = format!(
-        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
-         Sec-WebSocket-Accept: {accept}\r\n\r\n"
+        "HTTP/1.1 101 Switching Protocols\r\n{headers}Sec-WebSocket-Accept: {accept}\r\n\r\n"
     );
     if connection.write_all(accepted.as_bytes()).is_err() {
         return;

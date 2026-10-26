@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-159 types. The set is every type any crate declares under
+158 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -6738,50 +6738,65 @@ Declared by `printobserver-server`.
       "type": "string"
     },
     "DetectorHealth": {
-      "additionalProperties": false,
-      "description": "The failure detector's health, and since when it has been so.",
-      "properties": {
-        "since": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "When the status became what it is, `null` exactly while unchecked."
-        },
-        "status": {
-          "$ref": "#/$defs/DetectorHealthStatus",
-          "description": "What the last check found."
-        }
-      },
-      "required": [
-        "status"
-      ],
-      "type": "object"
-    },
-    "DetectorHealthStatus": {
-      "description": "The failure detector's health, as the last check found it.",
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
       "oneOf": [
         {
-          "const": "available",
-          "description": "It answered its health check.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unavailable",
-          "description": "It did not.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unchecked",
-          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         }
-      ]
+      ],
+      "title": "DetectorHealth"
     },
     "EffectiveBounds": {
       "additionalProperties": false,
@@ -7739,26 +7754,6 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
-    "DetectorHealthStatus": {
-      "description": "The failure detector's health, as the last check found it.",
-      "oneOf": [
-        {
-          "const": "available",
-          "description": "It answered its health check.",
-          "type": "string"
-        },
-        {
-          "const": "unavailable",
-          "description": "It did not.",
-          "type": "string"
-        },
-        {
-          "const": "unchecked",
-          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-          "type": "string"
-        }
-      ]
-    },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
       "format": "date-time",
@@ -7767,31 +7762,65 @@ Declared by `printobserver-core`.
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "description": "The failure detector's health, and since when it has been so.",
-  "properties": {
-    "since": {
-      "anyOf": [
-        {
+  "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+      "properties": {
+        "since": {
+          "description": "Nothing: an unchecked detector has no instant it became so.",
+          "type": "null"
+        },
+        "status": {
+          "const": "unchecked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "It answered its health check, from `since` on.",
+      "properties": {
+        "since": {
           "$ref": "#/$defs/Timestamp"
         },
-        {
-          "type": "null"
+        "status": {
+          "const": "available",
+          "type": "string"
         }
+      },
+      "required": [
+        "status",
+        "since"
       ],
-      "default": null,
-      "description": "When the status became what it is, `null` exactly while unchecked."
+      "type": "object"
     },
-    "status": {
-      "$ref": "#/$defs/DetectorHealthStatus",
-      "description": "What the last check found."
+    {
+      "additionalProperties": false,
+      "description": "It did not answer its health check, from `since` on.",
+      "properties": {
+        "since": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "status": {
+          "const": "unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
     }
-  },
-  "required": [
-    "status"
   ],
-  "title": "DetectorHealth",
-  "type": "object"
+  "title": "DetectorHealth"
 }
 ```
 
@@ -7838,35 +7867,6 @@ Declared by `printobserver-core`.
   "title": "DetectorHealthChangedPayload",
   "type": "object",
   "x-event-kind": "detector_health_changed"
-}
-```
-
-### DetectorHealthStatus
-
-Declared by `printobserver-core`.
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The failure detector's health, as the last check found it.",
-  "oneOf": [
-    {
-      "const": "available",
-      "description": "It answered its health check.",
-      "type": "string"
-    },
-    {
-      "const": "unavailable",
-      "description": "It did not.",
-      "type": "string"
-    },
-    {
-      "const": "unchecked",
-      "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-      "type": "string"
-    }
-  ],
-  "title": "DetectorHealthStatus"
 }
 ```
 
@@ -18487,50 +18487,65 @@ Declared by `printobserver-core`.
       "type": "string"
     },
     "DetectorHealth": {
-      "additionalProperties": false,
-      "description": "The failure detector's health, and since when it has been so.",
-      "properties": {
-        "since": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "When the status became what it is, `null` exactly while unchecked."
-        },
-        "status": {
-          "$ref": "#/$defs/DetectorHealthStatus",
-          "description": "What the last check found."
-        }
-      },
-      "required": [
-        "status"
-      ],
-      "type": "object"
-    },
-    "DetectorHealthStatus": {
-      "description": "The failure detector's health, as the last check found it.",
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
       "oneOf": [
         {
-          "const": "available",
-          "description": "It answered its health check.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unavailable",
-          "description": "It did not.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unchecked",
-          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         }
-      ]
+      ],
+      "title": "DetectorHealth"
     },
     "EffectiveBounds": {
       "additionalProperties": false,
@@ -29545,50 +29560,65 @@ Declared by `printobserver-server`.
       "type": "string"
     },
     "DetectorHealth": {
-      "additionalProperties": false,
-      "description": "The failure detector's health, and since when it has been so.",
-      "properties": {
-        "since": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "When the status became what it is, `null` exactly while unchecked."
-        },
-        "status": {
-          "$ref": "#/$defs/DetectorHealthStatus",
-          "description": "What the last check found."
-        }
-      },
-      "required": [
-        "status"
-      ],
-      "type": "object"
-    },
-    "DetectorHealthStatus": {
-      "description": "The failure detector's health, as the last check found it.",
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
       "oneOf": [
         {
-          "const": "available",
-          "description": "It answered its health check.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unavailable",
-          "description": "It did not.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         },
         {
-          "const": "unchecked",
-          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-          "type": "string"
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
         }
-      ]
+      ],
+      "title": "DetectorHealth"
     },
     "ErrorSource": {
       "description": "Whose error a job's error is.",

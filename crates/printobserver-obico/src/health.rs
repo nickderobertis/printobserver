@@ -18,6 +18,7 @@ use reqwest::Client;
 pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The detector's own health route, under its address.
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 pub const HEALTH_PATH: &str = "hc/";
 
 /// The failure detector's health check, against one address.

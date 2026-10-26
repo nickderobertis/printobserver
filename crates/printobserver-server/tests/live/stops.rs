@@ -11,7 +11,8 @@
 //! recorded for the printer read the instance refuses while offline, and —
 //! from the instance's own serial log — no `M114` sent while a job ran. After
 //! the serial drop, a move typed while no job runs and every heater target is
-//! zero is recorded as the printer moving on its own.
+//! zero is recorded as the printer moving on its own, and a reset while idle
+//! is recorded from the push the real instance sends for it.
 //!
 //! Every stop is put back: an offline printer is reconnected, and the walk
 //! ends with the hold print running again, as `just octoprint-up` left it.
@@ -481,8 +482,10 @@ async fn the_stops_that_go_offline(watch: &Watching, instance: &Scripted) {
 }
 
 /// A cancel from the printer's menu and one through `OctoPrint`'s own job
-/// endpoint end `cancelled`; a print run to its end `completed`; and a print
-/// the operator cancels through printobserver `cancelled`.
+/// endpoint end `cancelled`; a print run to its end `completed`; a print the
+/// operator cancels through printobserver `cancelled`; and the printer
+/// resetting while idle is recorded during no print, from the reset the real
+/// instance pushes.
 async fn the_stops_that_land_idle(watch: &Watching, instance: &Scripted) {
     let (printer, terminal) = reach(instance);
     stop(
@@ -526,4 +529,14 @@ async fn the_stops_that_land_idle(watch: &Watching, instance: &Scripted) {
         .expect("the server answers");
     assert!(answer.status().is_success(), "{}", answer.status());
     assert_eq!(watch.ending(&operated).await, "cancelled");
+
+    // The printer resetting while idle, which no read shows: the virtual
+    // printer printing `start` is what `OctoPrint` pushes a reset for.
+    settled(&printer).await;
+    until_job(&printer, &PrinterState::Operational).await;
+    terminal.send("!!DEBUG:send start").expect("sent");
+    let reset = watch
+        .until("the idle reset", |event| event["kind"] == "printer_reset")
+        .await;
+    assert_eq!(reset["payload"]["during_print"], Value::Null);
 }
