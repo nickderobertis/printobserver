@@ -230,9 +230,17 @@ def _steps(entry: Mapping[str, object]) -> list[Mapping[str, object]]:
 
 
 def budget_step_start(entry: Mapping[str, object]) -> datetime | None:
-    """When the aggregating job's own `gate-time` step started, where the forge has recorded it."""
+    """When the aggregating job's own `gate-time` step started, where the forge has recorded it.
+
+    A step the forge skipped — its job failed before reaching it — never started,
+    whatever instant the forge records beside it.
+    """
     for step in reversed(_steps(entry)):
-        if step.get("name") == BUDGET and step.get("status") in {"in_progress", "completed"}:
+        if (
+            step.get("name") == BUDGET
+            and step.get("status") in {"in_progress", "completed"}
+            and step.get("conclusion") != "skipped"
+        ):
             return _instant(step.get("started_at"))
     return None
 

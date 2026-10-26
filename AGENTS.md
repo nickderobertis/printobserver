@@ -377,7 +377,7 @@ what makes a job running once a decision rather than an omission.
 The account's few macOS slots are shared with other repositories, so one change
 may occupy at most one per workflow run, and at most two runs over its
 automatic life: its pull request's `macos` job in `ci.yml`, which runs the gate
-and the integration tier side by side, and the release's macOS `artifacts` cell,
+and the integration tier in turn, and the release's macOS `artifacts` cell,
 which proves what it built before publishing. Nothing else starts macOS
 automatically; `platform-dispatch.yml` is the one manual lever, one job per
 dispatch.
@@ -389,15 +389,6 @@ unknown input does — and the Linux jobs carrying `gate (macos-aarch64)` and
 omission the classifier authorized. `repo-policy.toml`'s `[[workflows.carried]]`
 records each omitted cell and its carrier, and `.github/budgets.yaml` holds both
 bounds against the graph `github-workflows:test` evaluates.
-
-Both macOS contexts are waited on for that one job's whole span, so its two
-lanes run side by side rather than in turn: the integration tier is paced by its
-virtual printer rather than by the runner's processors, and in turn the job ran
-2,147 to 2,573 s, over the 1,800 s `gate-time` holds every context to. Once the
-printer is up, `just test-integration <lane>` starts the tier in the background,
-the gate runs, and `just test-integration-wait <lane>` answers the tier's own
-output and exit status as the `integration` step's, so each lane's step still
-reports its own verdict.
 
 ## The scripted OctoPrint environment
 

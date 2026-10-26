@@ -191,6 +191,27 @@ def test_a_running_aggregator_is_measured_to_its_gate_time_step(result: Path) ->
     equal((detail["measured_to"], detail["measured_to_source"]), ("2026-10-25T21:58:10Z", "step"))
 
 
+def test_a_skipped_gate_time_step_is_read_as_never_started(result: Path) -> None:
+    """A job that failed before its budget step ran is measured to its completion instead."""
+    derived = document(COMBINED)
+    job(derived, "gate (linux-x86_64)")["steps"].append(
+        {
+            "name": "gate-time",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 18,
+            "started_at": "2026-10-25T21:54:09Z",
+            "completed_at": "2026-10-25T21:54:09Z",
+        }
+    )
+    with serving(Jobs(REPOSITORY, COMBINED, 1, derived)) as address:
+        equal(measure(environment(address, "gate", "linux-x86_64")), 0)
+
+    value, detail = reported(result)
+    equal(value, 1559.0)
+    equal(detail["measured_to_source"], "completion")
+
+
 def test_a_step_the_forge_has_not_recorded_yet_is_measured_to_the_clock(result: Path) -> None:
     """Before the forge records the step's start, the moment of measuring is that start."""
     derived = _in_flight(document(COMBINED), "gate (linux-x86_64)", None)

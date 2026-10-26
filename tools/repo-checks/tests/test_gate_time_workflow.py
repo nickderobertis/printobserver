@@ -6,8 +6,8 @@ this budget was built on, and three things are held of it:
 * every check context a pull request was reported before is reported still, and
   each of the ten required gate and integration contexts by jobs running every
   Nx target, over every project carrying it, that the context ran at `BASELINE`
-  — the two macOS contexts exactly those, so the lever that brought macOS under
-  30 minutes dropped nothing from it;
+  — the two macOS contexts exactly those, so nothing done to bring macOS
+  under 30 minutes dropped anything from it;
 * every job reporting one of the ten ends with the `gate-time` step, waived by
   no `continue-on-error`, naming its own context, and with nothing but
   `actions: read` added to the permissions it had;
@@ -187,17 +187,12 @@ def test_each_required_context_runs_all_the_nx_work_it_ran(
 def test_the_macos_lever_runs_exactly_the_work_macos_ran(
     baseline: Repo, committed_repo: Repo, context: str
 ) -> None:
-    """Both lanes still run in the combined job, beside each other rather than in turn."""
+    """Both lanes still run in the one combined job, behind both contexts."""
     now, before = nx_work(committed_repo, context), nx_work(baseline, context)
     equal(sorted(now ^ before), [], describing=f"what {context} runs that it did not, or no longer")
     equal(
         behind(committed_repo, context),
         [{"gate (macos-aarch64)": "gate-macos"}.get(context, "integration-macos"), "macos"],
-    )
-    lanes = [step.get("id") for step in steps_of(jobs_of(workflow(committed_repo))["macos"])]
-    truth(
-        lanes.index("integration-started") < lanes.index("gate") < lanes.index("integration"),
-        describing=f"the integration lane started before the gate and answered after it: {lanes}",
     )
 
 

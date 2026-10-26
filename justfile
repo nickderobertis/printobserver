@@ -532,21 +532,9 @@ octoprint-down:
 # Deliberately not one of `just check`'s tiers: it installs OctoPrint, starts
 # it, and waits a print out, so it is a continuous-integration job of its own
 # rather than something every gate run pays for.
-#
-# Given LANE, the same tier runs in the background instead, its output and exit
-# status kept under LANE, so a job can run another lane beside it — the `macos`
-# job of `ci.yml` runs the gate — and `just test-integration-wait LANE` answers
-# it: its output, and its exit status.
-test-integration lane="":
+test-integration:
     just node-modules
-    if [ -z {{quote(lane)}} ]; then \
-    bunx nx run-many -t test-integration --output-style=stream; \
-    else uv run -q python -m repo_checks.lanes start {{quote(lane)}} just test-integration; \
-    fi
-
-# Wait out the integration tier `just test-integration LANE` started.
-test-integration-wait lane:
-    uv run -q python -m repo_checks.lanes wait {{quote(lane)}}
+    bunx nx run-many -t test-integration --output-style=stream
 
 # Rewrite every generated documentation artifact from what the tree declares.
 #

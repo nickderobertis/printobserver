@@ -17,7 +17,7 @@
 # macOS is the one exception, and it is a consolidation rather than a
 # narrowing: the account's few macOS slots are shared with other repositories,
 # so the gate's and the integration tier's `macos-aarch64` cells run as ONE job,
-# `macos`, that runs both recipes side by side, and only on a pull request the
+# `macos`, that runs both recipes in turn, and only on a pull request the
 # classifier (`.github/macos-policy.mjs`) says owes it. Two Linux jobs carry the
 # required contexts `gate (macos-aarch64)` and `integration (macos-aarch64)`,
 # each reporting exactly what that one job's own step for its lane did.
@@ -413,15 +413,8 @@ jobs:
 
   # The gate and the printer integration tier for `macos-aarch64`, in one job:
   # one shared macOS slot for a pull request rather than two. Each lane's own
-  # step publishes its outcome, and neither lane waits on the other's verdict,
-  # so each required context below reports its own lane's verdict.
-  #
-  # The two lanes run side by side rather than in turn: the integration lane is
-  # started in the background once its printer is up, the gate runs, and the
-  # `integration` step then waits that lane out and answers its exit status.
-  # In turn they spanned 2,147 to 2,573 s, over the 1,800 s `gate-time` holds
-  # both macOS contexts to, because the integration tier is paced by the
-  # virtual printer rather than by the runner's processors.
+  # step publishes its outcome, and the integration lane runs whatever the gate
+  # answered, so each required context below reports its own lane's verdict.
   macos:
     name: macos-aarch64 (gate, integration)
     needs: classify
@@ -459,8 +452,12 @@ jobs:
       - run: just runner-temp
       - id: bootstrap
         run: just bootstrap
-      # The integration lane's printer, and the lane itself started in the
-      # background: a failure here is that lane's verdict, not the gate's.
+      # The gate lane: the same recipe, at the same tier, as every gate cell.
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - id: gate
+        run: just check "$(just gate-tier)"
+      # The integration lane, after the gate whatever it answered: a failed gate
+      # is that lane's verdict, not this one's.
       - id: release-program
         if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
         run: just release-program-key >> "$GITHUB_OUTPUT"
@@ -475,19 +472,9 @@ jobs:
       - id: octoprint-up
         if: ${{ !cancelled() && steps.release-program-built.outcome == 'success' }}
         run: just octoprint-up
-      - id: integration-started
-        if: ${{ !cancelled() && steps.octoprint-up.outcome == 'success' }}
-        run: just test-integration "$RUNNER_TEMP/integration-lane"
-      # The gate lane: the same recipe, at the same tier, as every gate cell,
-      # whatever the integration lane's bring-up answered.
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - id: gate
-        if: ${{ !cancelled() && steps.bootstrap.outcome == 'success' }}
-        run: just check "$(just gate-tier)"
-      # The integration lane's verdict: its whole log, and its exit status.
       - id: integration
-        if: ${{ !cancelled() && steps.integration-started.outcome == 'success' }}
-        run: just test-integration-wait "$RUNNER_TEMP/integration-lane"
+        if: ${{ !cancelled() && steps.octoprint-up.outcome == 'success' }}
+        run: just test-integration
       - if: always()
         run: just octoprint-down
       - if: always()

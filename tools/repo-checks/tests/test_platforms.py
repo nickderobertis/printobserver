@@ -335,8 +335,8 @@ def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
-        '        run: just test-integration "$RUNNER_TEMP/integration-lane"\n',
-        "        run: just octoprint-up\n",
+        "        run: just test-integration\n",
+        "        run: just octoprint-down\n",
     )
 
     findings = platforms(broken.repo)
