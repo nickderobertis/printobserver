@@ -11,6 +11,13 @@ declares, and what the method answered is asserted to carry, field for
 field, exactly the document the host sent. A client that transformed a
 value on the way out fails that equality rather than needing a probe that
 guesses how it transformed it.
+
+Every value of a named contract shape is the contract's own example
+document, parsed and cast to that shape: a parse answers an untyped value,
+and the cast names the shape the example was drawn from rather than
+converting anything. What the host received is then compared with the
+example field for field, so an example that is not that shape fails there
+rather than being hidden by the cast.
 """
 
 from __future__ import annotations

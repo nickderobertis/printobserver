@@ -12,6 +12,13 @@
  * field, exactly the document the host sent. A client that transformed a
  * value on the way out fails that equality rather than needing a probe that
  * guesses how it transformed it.
+ *
+ * Every value of a named contract shape is the contract's own example
+ * document, parsed and asserted to be that shape with `as`: a parse answers
+ * an untyped value, and the assertion names the shape the example was drawn
+ * from rather than converting anything. What the host received is then
+ * compared with the example field for field, so an example that is not that
+ * shape fails there rather than being hidden by the assertion.
  */
 
 import { expect, test } from "bun:test";
@@ -321,7 +328,10 @@ test("pause surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`pause`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -393,7 +403,10 @@ test("resume surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`resume`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -465,7 +478,10 @@ test("cancel surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`cancel`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -552,7 +568,10 @@ test("start_print surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`start_print`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -649,7 +668,10 @@ test("set_feedrate_factor surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_feedrate_factor`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -730,7 +752,10 @@ test("set_flowrate_factor surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_flowrate_factor`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -813,7 +838,10 @@ test("set_tool_target_c surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_tool_target_c`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -894,7 +922,10 @@ test("set_bed_target_c surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_bed_target_c`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -975,7 +1006,10 @@ test("set_fan_percent surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_fan_percent`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -1056,7 +1090,10 @@ test("acknowledge_failure surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`acknowledge_failure`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -1145,7 +1182,10 @@ test("close_print surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`close_print`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBe(1.5);
   expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
   expect(rejection.reason).toHaveProperty("out_of_bounds");
@@ -1242,7 +1282,10 @@ test("register_spool surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`register_spool`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBeUndefined();
   expect(rejection.allowed).toBeUndefined();
   expect(rejection.reason).toHaveProperty("spool_refused");
@@ -1337,7 +1380,10 @@ test("load_spool surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`load_spool`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBeUndefined();
   expect(rejection.allowed).toBeUndefined();
   expect(rejection.reason).toHaveProperty("spool_refused");
@@ -1411,7 +1457,10 @@ test("unload_spool surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`unload_spool`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBeUndefined();
   expect(rejection.allowed).toBeUndefined();
   expect(rejection.reason).toHaveProperty("spool_refused");
@@ -1492,7 +1541,10 @@ test("adjust_spool surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`adjust_spool`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBeUndefined();
   expect(rejection.allowed).toBeUndefined();
   expect(rejection.reason).toHaveProperty("spool_refused");
@@ -1566,7 +1618,10 @@ test("retire_spool surfaces the policy's own refusal", async () => {
   }
 
   expect(refused).toBeInstanceOf(Rejected);
-  const rejection = refused as Rejected;
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`retire_spool`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
   expect(rejection.requested).toBeUndefined();
   expect(rejection.allowed).toBeUndefined();
   expect(rejection.reason).toHaveProperty("spool_refused");

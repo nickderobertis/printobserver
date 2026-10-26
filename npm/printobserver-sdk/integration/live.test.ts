@@ -359,7 +359,10 @@ async function stepClosePrint(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("print_still_active");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`close_print`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("print_still_active");
   const seen = proxy.last();
   expect(seen.method).toBe("POST");
   expect(seen.target).toBe(`/v1/prints/${world.print_id}/actions/close_print`);
@@ -368,7 +371,7 @@ async function stepClosePrint(client: Client, proxy: Recording) {
   expect(sent.actor).toBe("operator");
   expect(sent.outcome).toEqual("interrupted");
   expect(sent.reason).toEqual(REASON);
-  same("close_print", (refused as Rejected).answer, seen.answer);
+  same("close_print", refused.answer, seen.answer);
 }
 
 /** `spools`, answered by a real supervisor. */
@@ -596,10 +599,13 @@ async function refusedCancel(client: Client, proxy: Recording) {
   const refused = await client.cancel(world.print_id, REASON).catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`cancel`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("cancel", (refused as Rejected).answer, seen.answer);
+  same("cancel", refused.answer, seen.answer);
 }
 
 /** `start_print`, refused by a real supervisor's own policy. */
@@ -609,10 +615,13 @@ async function refusedStartPrint(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`start_print`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("start_print", (refused as Rejected).answer, seen.answer);
+  same("start_print", refused.answer, seen.answer);
 }
 
 /** `set_feedrate_factor`, refused by a real supervisor's own policy. */
@@ -622,10 +631,13 @@ async function refusedSetFeedrateFactor(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_feedrate_factor`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("set_feedrate_factor", (refused as Rejected).answer, seen.answer);
+  same("set_feedrate_factor", refused.answer, seen.answer);
 }
 
 /** `set_flowrate_factor`, refused by a real supervisor's own policy. */
@@ -635,10 +647,13 @@ async function refusedSetFlowrateFactor(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_flowrate_factor`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("set_flowrate_factor", (refused as Rejected).answer, seen.answer);
+  same("set_flowrate_factor", refused.answer, seen.answer);
 }
 
 /** `set_fan_percent`, refused by a real supervisor's own policy. */
@@ -648,10 +663,13 @@ async function refusedSetFanPercent(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_fan_percent`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("set_fan_percent", (refused as Rejected).answer, seen.answer);
+  same("set_fan_percent", refused.answer, seen.answer);
 }
 
 /** `set_tool_target_c`, refused by a real supervisor's own policy. */
@@ -661,10 +679,13 @@ async function refusedSetToolTargetC(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_tool_target_c`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("set_tool_target_c", (refused as Rejected).answer, seen.answer);
+  same("set_tool_target_c", refused.answer, seen.answer);
 }
 
 /** `set_bed_target_c`, refused by a real supervisor's own policy. */
@@ -674,10 +695,13 @@ async function refusedSetBedTargetC(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`set_bed_target_c`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("set_bed_target_c", (refused as Rejected).answer, seen.answer);
+  same("set_bed_target_c", refused.answer, seen.answer);
 }
 
 /** `acknowledge_failure`, refused by a real supervisor's own policy. */
@@ -687,10 +711,13 @@ async function refusedAcknowledgeFailure(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`acknowledge_failure`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("acknowledge_failure", (refused as Rejected).answer, seen.answer);
+  same("acknowledge_failure", refused.answer, seen.answer);
 }
 
 /** `pause`, refused by a real supervisor's own policy. */
@@ -698,10 +725,13 @@ async function refusedPause(client: Client, proxy: Recording) {
   const refused = await client.pause(world.print_id, REASON).catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`pause`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("pause", (refused as Rejected).answer, seen.answer);
+  same("pause", refused.answer, seen.answer);
 }
 
 /** `resume`, refused by a real supervisor's own policy. */
@@ -709,10 +739,13 @@ async function refusedResume(client: Client, proxy: Recording) {
   const refused = await client.resume(world.print_id, REASON).catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`resume`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("resume", (refused as Rejected).answer, seen.answer);
+  same("resume", refused.answer, seen.answer);
 }
 
 /** `close_print`, refused by a real supervisor's own policy. */
@@ -722,10 +755,13 @@ async function refusedClosePrint(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`close_print`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("close_print", (refused as Rejected).answer, seen.answer);
+  same("close_print", refused.answer, seen.answer);
 }
 
 /** `register_spool`, refused by a real supervisor's own policy. */
@@ -745,10 +781,13 @@ async function refusedRegisterSpool(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`register_spool`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("register_spool", (refused as Rejected).answer, seen.answer);
+  same("register_spool", refused.answer, seen.answer);
 }
 
 /** `load_spool`, refused by a real supervisor's own policy. */
@@ -758,10 +797,13 @@ async function refusedLoadSpool(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`load_spool`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("load_spool", (refused as Rejected).answer, seen.answer);
+  same("load_spool", refused.answer, seen.answer);
 }
 
 /** `unload_spool`, refused by a real supervisor's own policy. */
@@ -771,10 +813,13 @@ async function refusedUnloadSpool(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`unload_spool`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("unload_spool", (refused as Rejected).answer, seen.answer);
+  same("unload_spool", refused.answer, seen.answer);
 }
 
 /** `adjust_spool`, refused by a real supervisor's own policy. */
@@ -784,10 +829,13 @@ async function refusedAdjustSpool(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`adjust_spool`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("adjust_spool", (refused as Rejected).answer, seen.answer);
+  same("adjust_spool", refused.answer, seen.answer);
 }
 
 /** `retire_spool`, refused by a real supervisor's own policy. */
@@ -797,10 +845,13 @@ async function refusedRetireSpool(client: Client, proxy: Recording) {
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);
-  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`retire_spool`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
   const seen = proxy.last();
   expect(seen.status).toBe(409);
-  same("retire_spool", (refused as Rejected).answer, seen.answer);
+  same("retire_spool", refused.answer, seen.answer);
 }
 
 /**

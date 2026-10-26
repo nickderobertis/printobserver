@@ -595,6 +595,15 @@ def emit_walk(contract: Contract) -> str:
             "value on the way out fails that equality rather than needing a probe that "
             "guesses how it transformed it."
         ),
+        "",
+        *wrapped(
+            "Every value of a named contract shape is the contract's own example "
+            "document, parsed and cast to that shape: a parse answers an untyped value, "
+            "and the cast names the shape the example was drawn from rather than "
+            "converting anything. What the host received is then compared with the "
+            "example field for field, so an example that is not that shape fails there "
+            "rather than being hidden by the cast."
+        ),
         '"""',
         "",
         "from __future__ import annotations",

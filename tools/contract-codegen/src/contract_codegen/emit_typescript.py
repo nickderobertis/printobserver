@@ -460,6 +460,18 @@ def emit_walk(contract: Contract) -> str:
                 "needing a probe that guesses how it transformed it."
             )
         ),
+        " *",
+        *(
+            f" *{f' {line}' if line else ''}"
+            for line in wrapped(
+                "Every value of a named contract shape is the contract's own example "
+                "document, parsed and asserted to be that shape with `as`: a parse "
+                "answers an untyped value, and the assertion names the shape the example "
+                "was drawn from rather than converting anything. What the host received "
+                "is then compared with the example field for field, so an example that "
+                "is not that shape fails there rather than being hidden by the assertion."
+            )
+        ),
         " */",
         "",
         'import { expect, test } from "bun:test";',
@@ -519,7 +531,10 @@ def emit_walk(contract: Contract) -> str:
                 "  }",
                 "",
                 "  expect(refused).toBeInstanceOf(Rejected);",
-                "  const rejection = refused as Rejected;",
+                "  if (!(refused instanceof Rejected)) {",
+                f'    throw new Error("`{step.name}`: the refusal did not arrive as a rejection");',
+                "  }",
+                "  const rejection = refused;",
                 *(
                     [
                         "  expect(rejection.requested).toBeUndefined();",
@@ -683,13 +698,16 @@ def _live_refused_step(step: LiveStep, call: str, spelled: str) -> list[str]:
         f"  const refused = await client.{spelled}({call}).catch((raised: unknown) => raised);",
         "",
         "  expect(refused).toBeInstanceOf(Rejected);",
-        f'  expect((refused as Rejected).reason).toHaveProperty("{step.refused}");',
+        "  if (!(refused instanceof Rejected)) {",
+        f'    throw new Error("`{step.name}`: the refusal did not arrive as a rejection");',
+        "  }",
+        f'  expect(refused.reason).toHaveProperty("{step.refused}");',
         "  const seen = proxy.last();",
         f'  expect(seen.method).toBe("{step.method}");',
         f"  expect(seen.target).toBe({_live_target(step)});",
         "  expect(seen.status).toBe(409);",
         *_live_body(step),
-        f'  same("{step.name}", (refused as Rejected).answer, seen.answer);',
+        f'  same("{step.name}", refused.answer, seen.answer);',
         "}",
         "",
     ]
@@ -835,10 +853,13 @@ def emit_live(contract: Contract) -> str:
             f"  const refused = await client.{spelled}({call}).catch((raised: unknown) => raised);",
             "",
             "  expect(refused).toBeInstanceOf(Rejected);",
-            '  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");',
+            "  if (!(refused instanceof Rejected)) {",
+            f'    throw new Error("`{step.name}`: the refusal did not arrive as a rejection");',
+            "  }",
+            '  expect(refused.reason).toHaveProperty("actor_may_not_request");',
             "  const seen = proxy.last();",
             "  expect(seen.status).toBe(409);",
-            f'  same("{step.name}", (refused as Rejected).answer, seen.answer);',
+            f'  same("{step.name}", refused.answer, seen.answer);',
             "}",
             "",
         ]
