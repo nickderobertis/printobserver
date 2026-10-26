@@ -198,8 +198,10 @@ fn a_configuration_granting_the_agent_close_print_is_refused_at_start() {
 /// web address.
 #[test]
 fn the_watchs_settings_out_of_range_are_refused_at_start_by_name() {
-    use printobserver_types::serde_json::json;
-    let refusals: [(&str, &str, fn(&mut printobserver_types::serde_json::Value)); 5] = [
+    use printobserver_types::serde_json::{Value, json};
+    /// One edit of the configuration document.
+    type Edit = fn(&mut Value);
+    let refusals: [(&str, &str, Edit); 5] = [
         ("supervisor", "printer_poll_s", |document| {
             document["supervisor"]["printer_poll_s"] = json!(4);
         }),
