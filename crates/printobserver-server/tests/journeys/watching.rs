@@ -664,6 +664,66 @@ async fn interrupted(watch: &Watch) -> String {
     print_id
 }
 
+/// Activity that begins while the ended print's agent is still in its turn on
+/// the ending is handed to that turn rather than given a turn of its own: the
+/// turn's next look carries it, and no second turn is run on it.
+#[tokio::test(flavor = "multi_thread")]
+async fn activity_during_a_running_turn_is_handed_to_it() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    watch.agent.hold_turns();
+    let print_id = interrupted(&watch).await;
+    let held = watch.turns(1).await;
+    assert_eq!(held[0].event.kind().as_str(), "print_ended");
+
+    watch.octoprint.targets(200.0, 0.0);
+    let activity = watch.until("unattended_printer_activity", 1).await;
+    let look = watch
+        .get(&format!("/prints/{print_id}/look?wait_s=5"))
+        .await;
+    let arrived = look["arrived"]
+        .as_array()
+        .expect("the look carries what arrived");
+    assert_eq!(arrived.len(), 1, "{look}");
+    assert_eq!(arrived[0]["id"], activity[0]["id"], "{look}");
+
+    watch.agent.release_turns();
+    tokio::time::sleep(POLL * 5).await;
+    let turns = watch.agent.turns();
+    assert_eq!(
+        turns.len(),
+        1,
+        "the activity the running turn took was given a turn again: {turns:?}"
+    );
+}
+
+/// Activity the running turn on the ending never takes is given a turn of its
+/// own once that turn returns, naming the activity.
+#[tokio::test(flavor = "multi_thread")]
+async fn activity_a_running_turn_never_took_is_given_a_turn_after_it() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    watch.agent.hold_turns();
+    let print_id = interrupted(&watch).await;
+    watch.turns(1).await;
+
+    watch.octoprint.targets(200.0, 0.0);
+    watch.until("unattended_printer_activity", 1).await;
+    tokio::time::sleep(POLL * 5).await;
+    assert_eq!(watch.agent.turns().len(), 1);
+
+    watch.agent.release_turns();
+    let turns = watch.turns(2).await;
+    let next = &turns[1];
+    assert_eq!(next.print_id.to_string(), print_id);
+    assert_eq!(next.event.kind().as_str(), "unattended_printer_activity");
+    let noticed = next.situation.noticed.as_deref().unwrap_or_default();
+    assert!(
+        noticed.starts_with("unattended_printer_activity"),
+        "{noticed}"
+    );
+}
+
 /// Heating with no job running after an interrupted print is recorded once
 /// however many polls find it, naming the print, with the head's position
 /// read; and its agent is given one turn on it, naming the activity.

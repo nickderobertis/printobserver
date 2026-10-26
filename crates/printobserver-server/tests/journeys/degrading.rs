@@ -19,9 +19,11 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpListener;
 
 use crate::agent::StandInAgent;
-use crate::ingress::snapshot_bytes;
+use crate::held_events::HeldEvents;
+use crate::http_host::image_host;
+use crate::ingress::{post, snapshot_bytes};
 use crate::printer::RecordingPrinter;
-use crate::world::{World, set};
+use crate::world::{SECRET, World, failure_alert, set};
 
 /// The generated near-uniform grey frame.
 fn grey() -> Vec<u8> {
@@ -209,6 +211,69 @@ async fn a_camera_giving_only_cut_frames_degrades_the_look_as_undecodable() {
     assert_eq!(answered["event"]["kind"], "camera_degraded");
     assert_eq!(answered["event"]["payload"]["cause"], "undecodable");
     assert!(answered.get("image_path").is_none(), "{answered}");
+}
+
+/// A degraded look the store would not write down delivers nothing, so what
+/// it was handed goes back to the print's running turn: the look is refused,
+/// and the next one — written down — carries what arrived.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_degraded_look_that_could_not_be_written_hands_back_what_arrived() {
+    let camera = Camera::serving(vec![grey()]).await;
+    let host = image_host(snapshot_bytes()).await;
+    let agent = StandInAgent::new();
+    agent.taking(Duration::from_secs(20));
+    let url = camera.url.clone();
+    let mut standing = None;
+    let world = World::configured_over(
+        RecordingPrinter::printing(),
+        Arc::clone(&agent),
+        move |document| {
+            let mut table = toml::Table::new();
+            table.insert("snapshot_url".to_owned(), toml::Value::String(url));
+            set(document, "camera", toml::Value::Table(table));
+        },
+        |stores| {
+            let (stores, held) = HeldEvents::over(stores);
+            standing = Some(held);
+            stores
+        },
+    )
+    .await;
+    let held = standing.expect("the event log is stood in front of");
+    let alert = failure_alert(4211, &host.url()).to_string();
+    assert_eq!(
+        post(&world, &alert, Some(SECRET)).await,
+        reqwest::StatusCode::ACCEPTED
+    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while agent.turns().is_empty() {
+        assert!(tokio::time::Instant::now() < deadline, "no turn started");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let print_id = agent.turns()[0].print_id;
+    assert_eq!(
+        post(&world, &alert, Some(SECRET)).await,
+        reqwest::StatusCode::ACCEPTED
+    );
+
+    held.refusing_kind("camera_degraded", true);
+    let refused_url = format!(
+        "{}?wait_s=5",
+        world.operation_url("/v1/prints/{print_id}/look", print_id)
+    );
+    let (status, refused) = world.get(&refused_url).await;
+    assert!(!status.is_success(), "{status}: {refused}");
+    held.refusing_kind("camera_degraded", false);
+
+    let answered = look(&world, print_id).await;
+    assert_eq!(answered["event"]["kind"], "camera_degraded");
+    let arrived = answered["arrived"]
+        .as_array()
+        .expect("the look carries what arrived");
+    assert_eq!(arrived.len(), 1, "{answered}");
+    assert_eq!(arrived[0]["kind"], "obico_failure_alert");
+    assert_eq!(agent.turns().len(), 1, "the arrival started a second turn");
+    world.server.stop().await;
 }
 
 /// A periodic observation whose camera gives only bad frames gives the

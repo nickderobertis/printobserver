@@ -389,13 +389,11 @@ impl Supervisor {
     ) -> Result<Supervised, CoreError> {
         let event = &arrival.event;
         let guard = self.turns().acquire(print.id).await;
-        if self
-            .stores()
-            .prints
-            .print(print.id)
-            .await?
-            .is_none_or(|held| held.ended_at.is_some() && !concerns_its_end(event.kind()))
-        {
+        let Some(held) = self.stores().prints.print(print.id).await? else {
+            return Ok(Supervised::Ended);
+        };
+        let ended = held.ended_at.is_some();
+        if ended && !concerns_its_end(event.kind()) {
             return Ok(Supervised::Ended);
         }
         let context = self.gather_context(print, Some(event.id)).await?;
@@ -471,7 +469,12 @@ impl Supervisor {
                 .await;
             }
         }
-        Ok(terminal.map_or(Supervised::Ran, Supervised::Terminal))
+        // A print already over has nothing a terminal state could close: its
+        // turn on its end ran, and what was handed to it meanwhile is next.
+        Ok(match terminal {
+            Some(state) if !ended => Supervised::Terminal(state),
+            _ => Supervised::Ran,
+        })
     }
 
     /// Gather the current context of one print, including while its
