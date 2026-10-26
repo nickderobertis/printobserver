@@ -53,6 +53,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[("id", "ImageId", true), ("sha256", "string", true)],
     ),
     ("PrintId", &[]),
+    ("PrinterState", &[("unknown", "string", true)]),
     ("Range", &[("max", "number", true), ("min", "number", true)]),
     ("RawBytes", &[]),
     (

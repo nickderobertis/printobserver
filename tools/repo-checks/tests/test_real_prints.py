@@ -434,14 +434,14 @@ def test_an_unknown_operation_or_argument_is_refused(check: Run, tree: Callable[
     ("path", "old", "new", "name", "naming"),
     [
         (
-            "schemas/printobserver-printer-api/PrinterState.json",
+            "schemas/printobserver-types/PrinterState.json",
             '"oneOf": [',
             '"anyOf": [',
             "real-prints-scenarios",
             "names no state",
         ),
         (
-            "schemas/printobserver-printer-api/PrinterState.json",
+            "schemas/printobserver-types/PrinterState.json",
             '"oneOf": [',
             '"type": 5, "oneOf": [',
             "real-prints-scenarios",
@@ -491,7 +491,7 @@ def test_a_contract_that_is_no_schema_object_is_refused(
 ) -> None:
     """A schema file holding a bare JSON value is named, not indexed into."""
     copy = tree()
-    copy.write("schemas/printobserver-printer-api/PrinterState.json", "true\n")
+    copy.write("schemas/printobserver-types/PrinterState.json", "true\n")
     refused_with(
         check("real-prints-scenarios", copy), "PrinterState.json is not a JSON Schema object"
     )

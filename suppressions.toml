@@ -100,12 +100,6 @@ reason = "`HarnessIdentity` owns a `String`, so it cannot be built in the const 
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
-file = "crates/printobserver-supervisor-api/src/lib.rs"
-site = "pub printer_state: Option<String>,"
-reason = "The printer contract's own state vocabulary, `PrinterState`, lives in `printobserver-printer-api`, and this port may depend on `printobserver-types` alone: `repo-policy.toml`'s `crates.may_depend_on` gives `printobserver-supervisor-api` that one edge, and its manifest and surface tier hold it there, so it cannot name the enum. The string is filled only from `PrinterState`'s own serialization, in `printobserver-core`'s loop, and `the_situations_printer_state_is_the_printer_contracts_own_spelling` in `crates/printobserver-core/tests/journeys/one_agent_per_print.rs` holds it to exactly that spelling for every state. Moving the state vocabulary into `printobserver-types`, so the port could carry the enum without a new edge, is drafted as a follow-up."
-
-[[suppression]]
-rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/records/spool.rs"
 site = "marks: Vec<UnverifiedMark>,"
 reason = "The shape is the filament ledger's shared contract, stated once by the plan as `unverified { marks: Vec<UnverifiedMark> }` and built against by the store, the domain and the three clients at the same time, so a non-empty collection type in its place is a change to that agreement rather than to this field; it is proposed as a follow-up instead. What can be enforced without changing the agreement is: the schema says `minItems: 1`, a parse of an empty list is refused naming why, and the only two functions that produce this variant — `SpoolTrust::marked`, which always adds one, and `SpoolTrust::cleared`, which answers `verified` once none remain — cannot make an empty one, which `tests/filament.rs` and `tests/spool_ledger.rs` hold."

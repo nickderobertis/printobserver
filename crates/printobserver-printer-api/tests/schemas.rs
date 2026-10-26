@@ -117,7 +117,6 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
             ("tools", "array:HeaterSnapshot", true),
         ],
     ),
-    ("PrinterState", &[("unknown", "string", true)]),
     (
         "ToolFilament",
         &[

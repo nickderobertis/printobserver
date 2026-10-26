@@ -36,7 +36,7 @@ use std::sync::Arc;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventPayload, EventRecord, PrintId};
+use printobserver_types::{EventPayload, EventRecord, PrintId, PrinterState};
 
 pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
 pub use assessment::{AgentAssessment, Confidence};
@@ -77,10 +77,10 @@ pub struct TurnRequest {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct TurnSituation {
     /// The printer's state when the turn began, in the printer contract's own
-    /// spelling, null when the printer could not be read.
+    /// vocabulary — a state it does not name as `{"unknown": "<the printer's
+    /// word>"}` — null when the printer could not be read.
     #[serde(default)]
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    pub printer_state: Option<String>,
+    pub printer_state: Option<PrinterState>,
     /// Whether the detector only warned, null when the event is not one of its
     /// detections.
     #[serde(default)]
@@ -99,7 +99,7 @@ pub struct TurnSituation {
 impl Sample for TurnSituation {
     fn sample_full() -> Self {
         Self {
-            printer_state: Some("paused".to_owned()),
+            printer_state: Some(PrinterState::Paused),
             detector_warned: Some(false),
             detector_paused_the_print: Some(true),
             arrived_while_busy: vec![EventRecord::sample_full()],
