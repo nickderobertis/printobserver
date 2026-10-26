@@ -372,6 +372,12 @@ file = "tools/repo-checks/src/repo_checks/verified_download.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "The downloads `just install-tools` makes, run by one blocking command in one CI step: a release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
 
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/src/repo_checks/gate_time_budget.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "The one read the `gate-time` step makes, run by one blocking command at the end of a CI job: the current run's jobs, page after page, each page's `total_count` deciding whether the next is asked for, and then one figure handed to `onebudgetspec`. There is nothing to overlap, and no typed client for the jobs API this environment carries; the answer is narrowed field by field by `gate_jobs.platform_span`, which refuses whatever it cannot read. An event loop under a command whose whole contract is one reported number and one exit status would buy nothing. The boundary this rule is about is the product's, and the product makes no such request."
+
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 
 [[suppression]]

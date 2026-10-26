@@ -165,9 +165,10 @@ describe("the carriers", () => {
   test("each judges the lane its own context names, through the committed recipe", () => {
     for (const lane of ["gate", "integration"]) {
       const job = Object.values(ci.jobs).find((one) => one.name === `${lane} (macos-aarch64)`);
+      // Its verdict, and then the `gate-time` budget every required job ends with.
       assert.deepEqual(
         commands(job),
-        [`just macos-carry ${lane}`],
+        [`just macos-carry ${lane}`, "just gate-time"],
         `${lane} (macos-aarch64)'s command`,
       );
       const step = job.steps.find((one) => one.run === `just macos-carry ${lane}`);
@@ -193,11 +194,24 @@ describe("the macOS job carries what the two macOS cells ran", () => {
   const ci = workflows.get("ci.yml");
 
   test("every command of the gate cell, and every command of the integration cell", () => {
-    const carried = new Set(commands(ci.jobs.macos));
+    const ran = commands(ci.jobs.macos);
+    // The integration tier is started as a background lane beside the gate,
+    // `just test-integration <lane>`, and carried only where the same job
+    // answers that lane with `just test-integration-wait <lane>`.
+    const started = ran.filter((command) => command.startsWith("just test-integration "));
+    const carried = new Set(ran);
+    for (const command of started) {
+      const lane = command.slice("just test-integration ".length);
+      assert.ok(carried.has(`just test-integration-wait ${lane}`), `the macOS job answers ${lane}`);
+      carried.add("just test-integration");
+    }
     // The release pull request's maintenance measurement runs on linux-x86_64
     // alone; on every other cell, macOS's included, the recipe does nothing.
-    const gate = commands(ci.jobs.gate).filter((command) => command !== "just budgets-release-pr");
-    for (const command of [...gate, ...commands(ci.jobs.integration)]) {
+    // The `gate-time` budget is each context's own, run by its carrier.
+    const own = ["just budgets-release-pr", "just gate-time"];
+    const gate = commands(ci.jobs.gate).filter((command) => !own.includes(command));
+    const integration = commands(ci.jobs.integration).filter((command) => !own.includes(command));
+    for (const command of [...gate, ...integration]) {
       assert.ok(carried.has(command), `the macOS job runs \`${command}\``);
     }
     assert.equal(
@@ -664,6 +678,7 @@ describe("the macOS job's own steps, walked as the forge runs them", () => {
     [["gate"], "fail", "pass"],
     [["bootstrap"], "fail", "fail"],
     [["octoprint-up"], "pass", "fail"],
+    [["integration-started"], "pass", "fail"],
     [["integration"], "pass", "fail"],
   ];
   for (const [failing, gate, integration] of STEP_FAILURES) {
@@ -676,8 +691,14 @@ describe("the macOS job's own steps, walked as the forge runs them", () => {
       assert.ok(walked.ran.includes("just runner-temp cleanup"));
       if (failing.includes("gate")) {
         assert.ok(
-          walked.ran.includes("just test-integration"),
-          "the integration lane runs after a failed gate",
+          walked.ran.includes('just test-integration-wait "$RUNNER_TEMP/integration-lane"'),
+          "the integration lane is answered after a failed gate",
+        );
+      }
+      if (failing.includes("integration-started")) {
+        assert.ok(
+          walked.ran.includes('just check "$(just gate-tier)"'),
+          "the gate lane runs after a failed integration start",
         );
       }
     });

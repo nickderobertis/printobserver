@@ -137,6 +137,7 @@ def _page(url: str, token: str | None) -> Mapping[str, object]:
     if token is not None:
         opener.addheaders.append(("Authorization", f"Bearer {token}"))
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         with opener.open(url, timeout=TIMEOUT) as answer:
             body = answer.read()
     except urllib.error.HTTPError as error:
