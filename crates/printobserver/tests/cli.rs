@@ -69,25 +69,34 @@ fn the_installed_command_runs_and_exits_zero() {
     }
 }
 
-/// The surface marks the one value that may be given more than once, and the
-/// program takes it more than once while refusing any other given twice.
+/// The surface marks exactly the values that may be given more than once, and
+/// the program takes one more than once while refusing any other given twice.
 ///
 /// Both runs name a configuration file that is not there, so a run the parser
 /// accepted stops at the configuration rather than reaching a server.
 #[test]
-fn the_one_repeatable_value_is_marked_in_the_surface_and_taken_more_than_once() {
+fn the_repeatable_values_are_marked_in_the_surface_and_taken_more_than_once() {
     let (code, said) = run(&["--help"]);
     assert_eq!(code, Some(0), "{said}");
     let marked: Vec<&str> = said.lines().filter(|line| line.contains("]...")).collect();
+    let expected = [
+        "printobserver events [--after <value>] [--print-id <value>] [--kinds <value>]... \
+         [--exclude-kinds <value>]... [--wait-s <value>]",
+        "printobserver printer-history [--kinds <value>]... [--since <value>]",
+        "printobserver watch [--after <value>] [--print-id <value>] [--kind <value>]... \
+         [--exclude-kind <value>]... [--sample <value>]... [--heartbeat-s <value>]",
+    ];
     assert_eq!(
         marked.len(),
-        1,
-        "the surface marks other than one repeatable value: {said}"
+        expected.len(),
+        "the surface marks other than the repeatable values: {said}"
     );
-    assert!(
-        marked[0].contains("printobserver printer-history [--kinds <value>]..."),
-        "the repeatable value is not printer-history's --kinds: {said}"
-    );
+    for (line, command) in marked.iter().zip(expected) {
+        assert!(
+            line.contains(command),
+            "`{line}` does not mark the repeatable values of `{command}`: {said}"
+        );
+    }
 
     let absent = std::env::temp_dir().join("printobserver-no-such-config.toml");
     let absent = absent.display().to_string();

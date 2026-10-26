@@ -133,6 +133,7 @@ async fn a_turn_credential_is_its_own_session_on_its_own_print() {
         format!("/prints/{print_id}/context"),
         format!("/prints/{print_id}/history"),
         format!("/prints/{print_id}/manifest"),
+        format!("/events?print_id={print_id}"),
         "/prints".to_owned(),
     ] {
         let (status, body) = sent(turn.get(world.url(&path))).await;
@@ -542,6 +543,7 @@ async fn a_turn_credential_reads_nothing_of_another_print() {
         format!("/prints/{other}/look"),
         format!("/prints/{other}/history"),
         format!("/prints/{other}/manifest"),
+        format!("/events?print_id={other}"),
     ] {
         let answer = sent(turn.get(world.url(&path))).await;
         assert_forbidden(
@@ -550,6 +552,14 @@ async fn a_turn_credential_reads_nothing_of_another_print() {
             &[&session, &other.to_string()],
         );
     }
+
+    // Every print's events at once are the operator's to read.
+    let answer = sent(turn.get(world.url("/events"))).await;
+    assert_forbidden(
+        &answer,
+        "a turn reading every print's events",
+        &[&print_id.to_string(), "print_id"],
+    );
 
     let own = an_image_of(&world, print_id).await;
     let (status, body) = sent(turn.get(world.url(&format!("/images/{}", own.id)))).await;

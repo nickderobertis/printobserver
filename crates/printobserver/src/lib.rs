@@ -4,9 +4,10 @@
 //! repository. Its `server` subcommand runs the supervisor, its `sign-in`
 //! subcommand signs that supervisor's harness in, and its two `credential`
 //! subcommands issue the operator's credential and print a credential's
-//! verifier; every other subcommand is one request to an already-running
-//! supervisor, and is the whole of the surface both the supervising agent and
-//! the operator work through.
+//! verifier; `watch` follows the supervisor's event log as one stream; every
+//! other subcommand is one request to an already-running supervisor, and is
+//! the whole of the surface both the supervising agent and the operator work
+//! through.
 //!
 //! May depend on: `printobserver-server`, `printobserver-sdk` and
 //! `printobserver-types`. Never the `OctoPrint` adapter and never the `Obico`
@@ -61,6 +62,7 @@ pub mod service;
 pub mod sign_in;
 pub mod surface;
 pub mod transport;
+pub mod watch;
 #[cfg(windows)]
 pub mod windows_service;
 
@@ -76,7 +78,7 @@ pub use sign_in::sign_in;
 pub use surface::{
     CONFIG_OPTION, CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, Command, DURATION_FIELD,
     Field, Form, GLOBAL_OPTIONS, HELP_OPTION, JSON_OPTION, LOCAL_COMMANDS, MAX_DURATION_SECONDS,
-    MIN_DURATION_SECONDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, VERSION, VERSION_OPTION, command,
-    surface, usage, version,
+    MIN_DURATION_SECONDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, VERSION, VERSION_OPTION,
+    WATCH_COMMAND, command, surface, usage, version, watch_command,
 };
 pub use transport::{Answered, Unreachable, send};

@@ -19,12 +19,13 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 27] = [
+pub const OPERATION_NAMES: [&str; 28] = [
     "prints",
     "status",
     "context",
     "image",
     "history",
+    "events",
     "manifest_get",
     "look",
     "manifest_set",
@@ -48,6 +49,15 @@ pub const OPERATION_NAMES: [&str; 27] = [
     "adjust_spool",
     "retire_spool",
 ];
+
+/// A field that was sent, null included, as what was sent.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
 
 /// What an operator's acknowledgement of a failure event asks for next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -444,6 +454,28 @@ pub struct EventRecord {
 /// Where an event came from, as the bare string the domain that raised it
 /// declares for itself.
 pub type EventSource = String;
+
+/// What an events read answers: the events stored after its cursor that pass
+/// its filters, oldest first, and where the next read picks up.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EventsAnswer {
+    /// The last event this read examined, whether or not it passed the
+    /// filters, given as `after` to read on from it; null when the log held
+    /// nothing to start after. Always sent, as null when it is that.
+    pub cursor: Option<EventId>,
+    /// The events, oldest first in the order they were stored, each exactly
+    /// as
+    /// a history read serves it.
+    pub events: Vec<EventRecord>,
+    /// The watched print's end as stored, whatever the filters said, and null
+    /// while it is open. Absent from a read that names no print.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub print_ended: Option<Option<PrintEnded>>,
+}
 
 /// What happened when an accepted action reached the printer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1323,6 +1355,17 @@ pub struct PrintContext {
     pub printer: Option<PrinterSnapshot>,
     /// A bounded list of this print's events, newest first.
     pub recent_events: Vec<EventRecord>,
+}
+
+/// One print's end, as its `print_ended` event stored it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrintEnded {
+    /// The `print_ended` event.
+    pub event_id: EventId,
+    /// How the print ended.
+    pub outcome: PrintOutcome,
+    /// When that event was received.
+    pub received_at: Timestamp,
 }
 
 /// A print ended.
@@ -2389,6 +2432,45 @@ impl Client {
     ) -> Result<HistoryAnswer, ClientError> {
         let target = format!("/v1/prints/{print_id}/history");
         let mut asked: Vec<(String, String)> = Vec::new();
+        if let Some(value) = limit {
+            asked.push(("limit".to_owned(), value.to_string()));
+        }
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `events` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn events(
+        &self,
+        after: Option<String>,
+        print_id: Option<String>,
+        kinds: Option<Vec<String>>,
+        exclude_kinds: Option<Vec<String>>,
+        wait_s: Option<i64>,
+        limit: Option<i64>,
+    ) -> Result<EventsAnswer, ClientError> {
+        let target = String::from("/v1/events");
+        let mut asked: Vec<(String, String)> = Vec::new();
+        if let Some(value) = after {
+            asked.push(("after".to_owned(), value));
+        }
+        if let Some(value) = print_id {
+            asked.push(("print_id".to_owned(), value));
+        }
+        for value in kinds.into_iter().flatten() {
+            asked.push(("kinds".to_owned(), value));
+        }
+        for value in exclude_kinds.into_iter().flatten() {
+            asked.push(("exclude_kinds".to_owned(), value));
+        }
+        if let Some(value) = wait_s {
+            asked.push(("wait_s".to_owned(), value.to_string()));
+        }
         if let Some(value) = limit {
             asked.push(("limit".to_owned(), value.to_string()));
         }

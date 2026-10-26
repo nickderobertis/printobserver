@@ -53,7 +53,7 @@ fn command_entry(command: &Command) -> Value {
         .iter()
         .flat_map(|field| {
             field.forms.iter().map(move |form| {
-                json!({
+                let mut entry = json!({
                     "option": form.option,
                     "field": field.parameter.name,
                     "required": field.required() && form.supply == Supply::Value,
@@ -62,7 +62,13 @@ fn command_entry(command: &Command) -> Value {
                         Supply::File => "file",
                     },
                     "located": located(field.parameter.located),
-                })
+                });
+                // Carried only by an option that may be given more than once,
+                // so an entry that may not reads as it always did.
+                if field.parameter.repeated {
+                    entry["repeated"] = Value::Bool(true);
+                }
+                entry
             })
         })
         .chain(command.flags.iter().map(|flag| {
@@ -227,6 +233,58 @@ fn the_documents_restate_the_timeline_kinds_and_the_spool_window_as_the_server_h
             text.contains(&window),
             "{document} does not say a spool's read carries the {window} of its events"
         );
+    }
+}
+
+/// The bounds the reference documents restate for the events read and the
+/// watch are the ones the server and this program enforce.
+#[test]
+fn the_documents_restate_the_events_and_watch_bounds_as_the_code_has_them() {
+    use printobserver::watch::DEFAULT_RECONNECT_S;
+    use printobserver_server::{DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT, MAX_EVENTS_WAIT_S};
+    let read = |document: &str| {
+        std::fs::read_to_string(repo_root().join(document))
+            .unwrap_or_else(|error| panic!("{document} reads: {error}"))
+    };
+    let (surface, api) = (read(COMMAND_SURFACE), read(API_AND_CLIENTS));
+    for (document, text, said) in [
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("0 to {MAX_EVENTS_WAIT_S}"),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("1 to {MAX_EVENTS_LIMIT} (optional; {DEFAULT_EVENTS_LIMIT} by default)"),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("{DEFAULT_RECONNECT_S} by default)."),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            "0, the default, prints none).".to_owned(),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            "a number of seconds below zero — the only bound either takes — is refused".to_owned(),
+        ),
+        (
+            API_AND_CLIENTS,
+            &api,
+            format!("`wait_s` is 0 to {MAX_EVENTS_WAIT_S}, default 0"),
+        ),
+        (
+            API_AND_CLIENTS,
+            &api,
+            format!("`limit` is 1 to {MAX_EVENTS_LIMIT}, default {DEFAULT_EVENTS_LIMIT}"),
+        ),
+    ] {
+        assert!(text.contains(&said), "{document} does not say `{said}`");
     }
 }
 

@@ -103,6 +103,8 @@ pub struct ApiState {
     pub operator: Arc<OperatorCredential>,
     /// The live supervision turns' credentials, checked the same way.
     pub turns: TurnCredentials,
+    /// The broadcast an events read waits on, raised once an event is stored.
+    pub stored: crate::events::Stored,
 }
 
 /// Who one request authenticated as.
@@ -168,7 +170,7 @@ fn claim_refused(caller: &Caller, actor: &Actor) -> Option<Response> {
 }
 
 /// Refuse a turn's request about any print but its own.
-fn scope_refused(caller: &Caller, print_id: PrintId) -> Option<Response> {
+pub(crate) fn scope_refused(caller: &Caller, print_id: PrintId) -> Option<Response> {
     match caller {
         Caller::Turn(binding) if binding.print_id() != print_id => Some(refusal(
             StatusCode::FORBIDDEN,
@@ -420,6 +422,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("context", Method::Get) => get(context),
         ("image", Method::Get) => get(image),
         ("history", Method::Get) => get(history),
+        ("events", Method::Get) => get(crate::events::events),
         ("look", Method::Get) => get(look),
         ("manifest_get", Method::Get) => get(manifest_get),
         ("manifest_set", Method::Put) => put(manifest_set),
@@ -434,7 +437,10 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
 }
 
 /// One answer, rendered as JSON under the media type every operation answers in.
-fn answer<T: printobserver_types::serde::Serialize>(status: StatusCode, body: &T) -> Response {
+pub(crate) fn answer<T: printobserver_types::serde::Serialize>(
+    status: StatusCode,
+    body: &T,
+) -> Response {
     let rendered = match printobserver_types::serde_json::to_vec(body) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -455,12 +461,12 @@ fn answer<T: printobserver_types::serde::Serialize>(status: StatusCode, body: &T
 }
 
 /// One refusal, rendered as JSON under the same media type.
-fn refusal(status: StatusCode, detail: impl core::fmt::Display) -> Response {
+pub(crate) fn refusal(status: StatusCode, detail: impl core::fmt::Display) -> Response {
     answer(status, &ErrorAnswer::saying(detail))
 }
 
 /// The status a store refusal is answered under.
-fn store_status(error: &StoreError) -> StatusCode {
+pub(crate) fn store_status(error: &StoreError) -> StatusCode {
     match error {
         StoreError::NotFound { .. } => StatusCode::NOT_FOUND,
         StoreError::LimitRefused { .. } | StoreError::ConstraintRefused { .. } => {

@@ -52,6 +52,7 @@ SERVER_DIR = "schemas/printobserver-server"
 
 #: The member a payload's schema carries naming the event kind it is under.
 EVENT_KIND_MARKER = "x-event-kind"
+NULL_IS_SENT_MARKER = "x-null-is-sent"
 
 #: The file the operation list is checked in under.
 OPERATIONS_FILE = "operations.json"
@@ -217,6 +218,8 @@ def _fields(schema: dict[str, Any], known: set[str], skip: str = "") -> tuple[Fi
             type=type_of(property_schema),
             required=name in required_names,
             doc=_doc(property_schema, known) if isinstance(property_schema, dict) else "",
+            null_is_sent=isinstance(property_schema, dict)
+            and property_schema.get(NULL_IS_SENT_MARKER) is True,
         )
         for name, property_schema in sorted(properties.items())
         if name != skip and (isinstance(property_schema, dict) or property_schema is True)

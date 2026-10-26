@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One print's end, as its `print_ended` event stored it.",
+  "properties": {
+    "event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The `print_ended` event."
+    },
+    "outcome": {
+      "$ref": "#/$defs/PrintOutcome",
+      "description": "How the print ended."
+    },
+    "received_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When that event was received."
+    }
+  },
+  "required": [
+    "event_id",
+    "received_at",
+    "outcome"
+  ],
+  "title": "PrintEnded",
+  "type": "object"
+}

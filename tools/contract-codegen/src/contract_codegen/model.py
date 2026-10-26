@@ -69,6 +69,9 @@ class Field:
     type: TypeExpr
     required: bool
     doc: str
+    # An optional field whose null is sent and means something its absence
+    # does not, so a client that re-serializes it keeps the two apart.
+    null_is_sent: bool = False
 
 
 @dataclass(frozen=True, slots=True)

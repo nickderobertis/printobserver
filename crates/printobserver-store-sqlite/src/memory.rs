@@ -12,7 +12,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
-    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, StoredQuery, StoredSignal,
+    resolve_history_limit,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
@@ -25,6 +26,7 @@ use printobserver_types::{EventId, EventRecord, ImageId, ImageRef, PrintId, RawB
 
 use crate::hold::{HoldPoints, settle_label};
 use crate::images::{resolve, store_bytes};
+use crate::stored::Signals;
 use crate::values::{not_found, refused};
 
 mod filament;
@@ -61,6 +63,8 @@ pub struct MemoryStore {
     records: Mutex<Records>,
     /// The two places this store's own tests hold a call at.
     points: HoldPoints,
+    /// What is raised once a write that stored an event has been kept.
+    signals: Signals,
 }
 
 /// The lock, taken whether or not a panicking test poisoned it.
@@ -82,6 +86,7 @@ impl MemoryStore {
             state_dir,
             records: Mutex::new(Records::default()),
             points: HoldPoints::default(),
+            signals: Signals::default(),
         })
     }
 
@@ -463,6 +468,8 @@ impl EventStore for MemoryStore {
                 raw: draft.raw,
             };
             records.events.push(record.clone());
+            drop(records);
+            self.signals.raise();
             Ok(record)
         })
     }
@@ -514,6 +521,53 @@ impl EventStore for MemoryStore {
             events.truncate(size);
             Ok(AuditPage { events, next })
         })
+    }
+
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move {
+            let limit = resolve_history_limit(query.limit)? as usize;
+            let records = lock(&self.records);
+            // The vector is the order the events were written in.
+            let from = match (query.after, query.print_id) {
+                (Some(cursor), _) => {
+                    records
+                        .events
+                        .iter()
+                        .position(|event| event.id == cursor)
+                        .ok_or_else(|| not_found(&format!("event {cursor}")))?
+                        + 1
+                }
+                (None, Some(print_id)) => records
+                    .events
+                    .iter()
+                    .position(|event| event.print_id == Some(print_id))
+                    .unwrap_or(records.events.len()),
+                (None, None) => 0,
+            };
+            Ok(records
+                .events
+                .iter()
+                .skip(from)
+                .filter(|event| {
+                    query
+                        .print_id
+                        .is_none_or(|print_id| event.print_id.is_none_or(|own| own == print_id))
+                })
+                .take(limit)
+                .map(|event| Self::with_image(&records, event))
+                .collect())
+        })
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        Box::pin(async move { Ok(lock(&self.records).events.last().map(|event| event.id)) })
+    }
+
+    fn on_stored(&self, signal: StoredSignal) {
+        self.signals.add(signal);
     }
 }
 

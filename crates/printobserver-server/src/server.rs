@@ -39,6 +39,7 @@ use tokio::task::JoinHandle;
 
 use crate::api::{ApiState, router};
 use crate::config::{ApiCredential, ConfigError, ConfigField, CredentialVerifier, ServerConfig};
+use crate::events::Stored;
 use crate::ingress::{IngressState, receive};
 use crate::operations::{INGRESS_PATH, OPERATIONS, command_for};
 use crate::reconcile::{ReconcileStores, Reconciliation, overdue, reconcile};
@@ -524,6 +525,11 @@ impl Server {
         );
         let completions = ingress.completions();
         let observing = crate::observation::start(&supervisor);
+        // Every events read waits on this, and every write that stores an
+        // event raises it once committed — whichever of this server's parts
+        // made the write.
+        let (stored, signal) = Stored::channel();
+        ports.stores.events.on_stored(signal);
         let application = router(ApiState {
             supervisor: Arc::clone(&supervisor),
             prints: Arc::clone(&ports.stores.prints),
@@ -532,6 +538,7 @@ impl Server {
             sessions: Arc::clone(&ports.stores.sessions),
             operator: Arc::new(operator),
             turns,
+            stored,
         })
         .merge(
             Router::new()
