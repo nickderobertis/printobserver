@@ -1004,12 +1004,12 @@ exec "$0" --exact traced::regression::connector --nocapture"#;
         let scratch = tempfile::TempDir::new().expect("trace scratch");
         let listener = TcpListener::bind("127.0.0.1:0").expect("accepted endpoint");
         let accepted = listener.local_addr().expect("listener endpoint");
-        // Held bound and never listened on while it is used, so it stays refused.
+        // Nothing answers there while it is used, so the attempt is refused.
         let reservation = crate::unreachable::Unreachable::held();
         let refused = reservation.address();
         let listener6 = TcpListener::bind("[::1]:0").expect("accepted IPv6 endpoint");
         let accepted6 = listener6.local_addr().expect("IPv6 listener endpoint");
-        // Held bound and never listened on while it is used, so it stays refused.
+        // Nothing answers there while it is used, so the attempt is refused.
         let reservation6 =
             crate::unreachable::Unreachable::held_on(std::net::Ipv6Addr::LOCALHOST.into());
         let refused6 = reservation6.address();
@@ -1140,7 +1140,7 @@ mod native_boundaries {
     /// of the real shipped command, with its normal unreachable exit.
     #[test]
     fn a_refused_attempt_from_the_real_command_is_observed() {
-        // Held bound and never listened on while it is used, so it stays refused.
+        // Nothing answers there while it is used, so the attempt is refused.
         let reservation = crate::unreachable::Unreachable::held();
         let endpoint = reservation.address();
         let scratch = tempfile::TempDir::new().expect("trace scratch");
@@ -1183,7 +1183,7 @@ mod native_boundaries {
     fn ipv6_accepted_and_refused_attempts_are_both_observed() {
         let listener = TcpListener::bind("[::1]:0").expect("IPv6 listener");
         let accepted = listener.local_addr().expect("accepted endpoint");
-        // Held bound and never listened on while it is used, so it stays refused.
+        // Nothing answers there while it is used, so the attempt is refused.
         let reservation =
             crate::unreachable::Unreachable::held_on(std::net::Ipv6Addr::LOCALHOST.into());
         let refused = reservation.address();
@@ -1213,7 +1213,7 @@ mod native_boundaries {
     /// inherited output handles. Both outputs and endpoint evidence are complete.
     #[test]
     fn a_descendant_connecting_after_its_parent_exits_is_observed() {
-        // Held bound and never listened on while it is used, so it stays refused.
+        // Nothing answers there while it is used, so the attempt is refused.
         let reservation = crate::unreachable::Unreachable::held();
         let endpoint = reservation.address();
         for inherited in [false, true] {
@@ -1240,7 +1240,7 @@ mod native_boundaries {
     )]
     #[test]
     fn the_lifecycle_socket_waits_out_a_late_descendant_and_refuses_an_endless_one() {
-        // Held bound and never listened on while it is used, so it stays refused.
+        // Nothing answers there while it is used, so the attempt is refused.
         let reservation = crate::unreachable::Unreachable::held();
         let endpoint = reservation.address();
         let scratch = tempfile::TempDir::new().expect("trace scratch");
