@@ -22,6 +22,17 @@
  * `PRINTOBSERVER_INTERPOSE_WATCH` names the watched paths, one per line; an
  * access to one of them or to anything beneath one is refused.
  *
+ * `PRINTOBSERVER_INTERPOSE_LIFECYCLE` names a Unix socket the reader listens
+ * on, and it is how the reader knows the whole tree has finished rather than
+ * only its root. The first observed process connects to it and keeps that
+ * connection on a descriptor left open across `exec`, naming the descriptor in
+ * `PRINTOBSERVER_INTERPOSE_LIFECYCLE_FD` for every process it starts. So every
+ * descendant holds the one connection — a descendant that outlives the root
+ * and closes the output streams it inherited included — and a `close` of that
+ * descriptor is answered without closing it. The connection reaches its end
+ * only once the last process of the tree has exited, which is the moment the
+ * reader may read the log as complete.
+ *
  * On macOS the wrappers are installed through dyld's `__DATA,__interpose`
  * table, which rebinds every other image's references to the named functions
  * and leaves this library's own calls reaching the originals. On Linux the
@@ -32,7 +43,8 @@
  * The functions wrapped are the ones Rust's standard library and the `libc`
  * crate reach for these operations on each platform: `open`, `openat`, `stat`,
  * `lstat`, `fstatat`, `access`, `faccessat`, `opendir` and `connect`, plus on
- * Linux the large-file and `statx` spellings glibc links them under. The
+ * Linux the large-file and `statx` spellings glibc links them under — and
+ * `close`, so the lifecycle descriptor is never closed under the reader. The
  * table below names each by its C spelling, so it interposes whatever symbol
  * the SDK's own headers resolve that name to — on Apple silicon, the one
  * supported macOS, that is the plain symbol.
@@ -55,6 +67,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #ifdef __APPLE__
@@ -91,6 +104,11 @@ static void *po_next(const char *name) {
 #define PO_WATCH_ENV "PRINTOBSERVER_INTERPOSE_WATCH"
 /* Set, this process alone is observed: see po_loaded. */
 #define PO_SELF_ENV "PRINTOBSERVER_INTERPOSE_SELF"
+#define PO_LIFECYCLE_ENV "PRINTOBSERVER_INTERPOSE_LIFECYCLE"
+#define PO_LIFECYCLE_FD_ENV "PRINTOBSERVER_INTERPOSE_LIFECYCLE_FD"
+/* The lowest descriptor the lifecycle connection is moved to, clear of the ones
+ * a program commonly opens, duplicates over or closes by number. */
+#define PO_LIFECYCLE_FLOOR 100
 #ifdef __APPLE__
 #define PO_LOADER_ENV "DYLD_INSERT_LIBRARIES"
 #else
@@ -113,6 +131,56 @@ static void po_log(const char *line, size_t length) {
     errno = saved;
 }
 
+/* The descriptor this process holds the tree's lifecycle connection on, or -1. */
+static int po_lifecycle = -1;
+
+/*
+ * Hold the tree's lifecycle connection: the one an ancestor made, inherited,
+ * or — in the first observed process — a new one to the reader's socket.
+ */
+static void po_hold_lifecycle(void) {
+    const char *inherited = getenv(PO_LIFECYCLE_FD_ENV);
+    if (inherited != NULL && *inherited != '\0') {
+        int fd = atoi(inherited);
+        if (fd >= 0 && fcntl(fd, F_GETFD) != -1) {
+            po_lifecycle = fd;
+            return;
+        }
+    }
+    const char *path = getenv(PO_LIFECYCLE_ENV);
+    if (path == NULL || *path == '\0') {
+        return;
+    }
+    struct sockaddr_un address;
+    memset(&address, 0, sizeof address);
+    address.sun_family = AF_UNIX;
+    if (strlen(path) >= sizeof address.sun_path) {
+        return;
+    }
+    strncpy(address.sun_path, path, sizeof address.sun_path - 1);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return;
+    }
+    if (REAL(connect)(fd, (const struct sockaddr *)&address, sizeof address) != 0) {
+        REAL(close)(fd);
+        return;
+    }
+    /* F_DUPFD leaves the copy open across exec, which is what passes it on. */
+    int held = fcntl(fd, F_DUPFD, PO_LIFECYCLE_FLOOR);
+    if (held < 0) {
+        held = fcntl(fd, F_DUPFD, 3);
+    }
+    REAL(close)(fd);
+    if (held < 0) {
+        return;
+    }
+    po_lifecycle = held;
+    char number[32];
+    snprintf(number, sizeof number, "%d", held);
+    setenv(PO_LIFECYCLE_FD_ENV, number, 1);
+}
+
 /*
  * Asked to observe this process alone, the library takes its own loader
  * variable out of the environment here, before the program has started
@@ -126,6 +194,7 @@ __attribute__((constructor)) static void po_loaded(void) {
     if (getenv(PO_SELF_ENV) != NULL) {
         unsetenv(PO_LOADER_ENV);
     }
+    po_hold_lifecycle();
     int length = snprintf(line, sizeof line, "loaded %ld\n", (long)getpid());
     if (length > 0 && (size_t)length < sizeof line) {
         po_log(line, (size_t)length);
@@ -250,6 +319,15 @@ WRAPPER int WRAP(connect)(int fd, const struct sockaddr *address, socklen_t leng
     return REAL(connect)(fd, address, length);
 }
 
+/* A close of the lifecycle descriptor is answered and not made: the tree has
+ * not finished while this process still runs, whatever it closes. */
+WRAPPER int WRAP(close)(int fd) {
+    if (po_lifecycle >= 0 && fd == po_lifecycle) {
+        return 0;
+    }
+    return REAL(close)(fd);
+}
+
 WRAPPER int WRAP(open)(const char *path, int flags, ...) {
     mode_t mode = 0;
     if (po_creates(flags)) {
@@ -321,6 +399,7 @@ WRAPPER DIR *WRAP(opendir)(const char *path) {
 }
 
 #ifdef __APPLE__
+INTERPOSE(close)
 INTERPOSE(connect)
 INTERPOSE(open)
 INTERPOSE(openat)

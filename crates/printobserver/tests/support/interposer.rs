@@ -24,15 +24,30 @@
 //! nothing. The client commands start no system binary to reach anything: the
 //! one place a connection is opened is this program's own transport.
 //!
+//! # When the recording is complete
+//!
+//! A descendant may outlive the program it was started by, close the output
+//! streams it inherited and only then connect somewhere, so neither the root's
+//! exit nor the end of its output says the tree has finished. The library holds
+//! one connection to a Unix socket this module listens on — made by the first
+//! observed process, inherited by every one after it, and never closed by any
+//! of them — and the recording is read only once that connection has reached
+//! its end, which is the last process of the tree exiting. A tree that does not
+//! finish within [`LIFECYCLE_BOUND`], or that never connected at all, is
+//! refused rather than read as a tree that did nothing more.
+//!
 //! # One library, both platforms
 //!
 //! The same source builds on Linux, loaded with `LD_PRELOAD`, so the recording
 //! and the reading of it are proven on every host this tier runs on — not only
 //! on the runners where they are the only observation there is.
 
+use std::io::{ErrorKind, Read as _};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// The interposer's source, compiled into each scratch directory that needs it.
 const SOURCE: &str = include_str!("interposer.c");
@@ -42,6 +57,17 @@ const LOG_ENV: &str = "PRINTOBSERVER_INTERPOSE_LOG";
 
 /// The variable naming the paths it refuses, one per line.
 const WATCH_ENV: &str = "PRINTOBSERVER_INTERPOSE_WATCH";
+
+/// The variable naming the socket the tree's lifecycle connection is made to.
+const LIFECYCLE_ENV: &str = "PRINTOBSERVER_INTERPOSE_LIFECYCLE";
+
+/// The variable naming the descriptor an ancestor holds that connection on,
+/// which no process this module starts may arrive already carrying.
+const LIFECYCLE_FD_ENV: &str = "PRINTOBSERVER_INTERPOSE_LIFECYCLE_FD";
+
+/// How long a tree is given, after its root has exited, for its last process
+/// to finish: a bound on a descendant that never does, rather than a pause.
+pub const LIFECYCLE_BOUND: Duration = Duration::from_secs(20);
 
 /// The variable the dynamic loader reads a library to insert from.
 #[cfg(target_os = "macos")]
@@ -115,14 +141,33 @@ impl Interposed {
 /// Panics when the interposer cannot be built, when the command cannot be
 /// started, or when the interposer was not loaded into the command's own
 /// process — each of which is a run whose recording says nothing about it.
-pub fn interposed(mut command: Command, scratch: &Path, watching: &[PathBuf]) -> Interposed {
+pub fn interposed(command: Command, scratch: &Path, watching: &[PathBuf]) -> Interposed {
+    interposed_within(command, scratch, watching, LIFECYCLE_BOUND)
+}
+
+/// [`interposed`], giving the tree `bound` after its root exits to finish.
+///
+/// # Panics
+///
+/// As [`interposed`] does, and when the tree has not finished within `bound`
+/// or never made its lifecycle connection — each a recording that cannot be
+/// read as complete.
+pub fn interposed_within(
+    mut command: Command,
+    scratch: &Path,
+    watching: &[PathBuf],
+    bound: Duration,
+) -> Interposed {
     let library = built(scratch);
     let log = scratch.join(unique("interposed", "log"));
     std::fs::write(&log, "").expect("the interposer's log is writable");
+    let lifecycle = Lifecycle::listening();
     command
         .env(LOADER_ENV, &library)
         .env(LOG_ENV, &log)
         .env(WATCH_ENV, watched(watching))
+        .env(LIFECYCLE_ENV, &lifecycle.path)
+        .env_remove(LIFECYCLE_FD_ENV)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -133,20 +178,128 @@ pub fn interposed(mut command: Command, scratch: &Path, watching: &[PathBuf]) ->
     let output = child
         .wait_with_output()
         .unwrap_or_else(|error| panic!("the observed program could not be waited for: {error}"));
+    let loaded = std::fs::read_to_string(&log)
+        .unwrap_or_else(|error| panic!("the interposer's log {} reads: {error}", log.display()));
+    // Read before the tree's end is waited for, so a library that was never
+    // loaded is said at once rather than after the wait runs out.
+    assert!(
+        activity(&loaded, root).is_some(),
+        "the interposer at {} was not loaded into process {root}, so nothing it recorded \
+         says what that process did. {LOADER_ENV} is ignored for {IGNORED_FOR}; this tier's \
+         claims about what the program reaches rest on the observation. It said:\n{}{}",
+        library.display(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    if let Err(incomplete) = lifecycle.finished(bound) {
+        panic!(
+            "the observation of process {root} is not complete, so what the interposer \
+             recorded cannot be read as everything its tree did: {incomplete}"
+        );
+    }
     let recorded = std::fs::read_to_string(&log)
         .unwrap_or_else(|error| panic!("the interposer's log {} reads: {error}", log.display()));
-    let activity = activity(&recorded, root).unwrap_or_else(|| {
-        panic!(
-            "the interposer at {} was not loaded into process {root}, so nothing it recorded \
-             says what that process did. {LOADER_ENV} is ignored for {IGNORED_FOR}; this \
-             tier's claims about what the program reaches rest on the observation. It \
-             said:\n{}{}",
-            library.display(),
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr),
-        )
-    });
+    let activity = activity(&recorded, root)
+        .expect("a recording that said the library was loaded still says so");
     Interposed { output, activity }
+}
+
+/// The socket an observed tree holds its one lifecycle connection to.
+struct Lifecycle {
+    listener: UnixListener,
+    path: PathBuf,
+}
+
+impl Lifecycle {
+    /// Listen at a path of this run's own, short enough for any platform's
+    /// socket address: the system's temporary directory rather than a scratch
+    /// directory nested beneath it.
+    fn listening() -> Self {
+        let path = std::env::temp_dir().join(unique("po-lifecycle", "sock"));
+        let listener = UnixListener::bind(&path).unwrap_or_else(|error| {
+            panic!(
+                "the interposer's lifecycle socket {} could not be bound: {error}",
+                path.display()
+            )
+        });
+        listener
+            .set_nonblocking(true)
+            .expect("the lifecycle socket can be polled");
+        Self { listener, path }
+    }
+
+    /// Wait until every connection the tree made has reached its end, for at
+    /// most `bound`.
+    ///
+    /// # Errors
+    ///
+    /// Says why the tree cannot be taken as finished: no process ever made the
+    /// connection, or some process still held it when `bound` ran out.
+    fn finished(&self, bound: Duration) -> Result<(), String> {
+        let deadline = Instant::now() + bound;
+        let mut held: Vec<UnixStream> = Vec::new();
+        let mut connected = 0_usize;
+        loop {
+            loop {
+                match self.listener.accept() {
+                    Ok((stream, _)) => {
+                        stream
+                            .set_nonblocking(true)
+                            .expect("a lifecycle connection can be polled");
+                        held.push(stream);
+                        connected += 1;
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => break,
+                    Err(error) => return Err(format!("the lifecycle socket refused: {error}")),
+                }
+            }
+            held.retain_mut(still_held);
+            if connected > 0 && held.is_empty() {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(if connected == 0 {
+                    format!(
+                        "no process of the tree made its lifecycle connection to {} within \
+                         {bound:?}",
+                        self.path.display()
+                    )
+                } else {
+                    format!(
+                        "{} of the {connected} lifecycle connections the tree made were still \
+                         held {bound:?} after its root exited: a process it started is still \
+                         running",
+                        held.len()
+                    )
+                });
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+/// Whether a lifecycle connection is still held by some process of the tree.
+///
+/// Nothing is ever written on it, so what a read answers is whether it has
+/// reached its end: no bytes and no error once the last holder has exited.
+fn still_held(stream: &mut UnixStream) -> bool {
+    let mut ignored = [0_u8; 64];
+    loop {
+        match stream.read(&mut ignored) {
+            Ok(0) => return false,
+            Err(error) if error.kind() == ErrorKind::WouldBlock => return true,
+            Ok(_) => {}
+            Err(error) if error.kind() == ErrorKind::Interrupted => {}
+            // A connection reset by its last holder has ended as surely.
+            Err(_) => return false,
+        }
+    }
+}
+
+impl Drop for Lifecycle {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
 }
 
 /// What a recording says the tree did, when the recording is of `root`.
