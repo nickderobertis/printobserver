@@ -68,6 +68,25 @@ impl Watch {
         edit: impl FnOnce(&mut toml::Value),
         tune: impl FnOnce(&mut ServerConfig),
     ) -> Self {
+        Self::start_holding(edit, tune, false).await.0
+    }
+
+    /// A server that starts with a print already open from before spool
+    /// tracking — one with no `print_started` — while the scripted printer
+    /// runs it, answering the server and that print's identifier.
+    pub async fn over_a_print_from_before_tracking() -> (Self, String) {
+        let (watch, print) =
+            Self::start_holding(|_| {}, |config| config.printer_poll = POLL, true).await;
+        (watch, print.expect("the print was opened"))
+    }
+
+    /// A server watching a fresh scripted printer, and the print from before
+    /// spool tracking it starts holding, when `held_open` asks for one.
+    async fn start_holding(
+        edit: impl FnOnce(&mut toml::Value),
+        tune: impl FnOnce(&mut ServerConfig),
+        held_open: bool,
+    ) -> (Self, Option<String>) {
         let octoprint = ScriptedOctoPrint::start();
         let root = TempDir::new().expect("a journey's own root");
         let mut configured = document(root.path(), &octoprint.base_url());
@@ -85,6 +104,17 @@ impl Watch {
         )));
         let prints = crate::refusing_prints::RefusingPrints::over(Arc::clone(&stores.prints));
         stores.prints = Arc::clone(&prints) as Arc<dyn printobserver_core::store::PrintStore>;
+        let held_print = if held_open {
+            octoprint.reports("Printing", JobScript::printing(FILE, SIZE, 400, 60));
+            let print = stores
+                .prints
+                .open_print(Some(4211), Some(FILE.to_owned()))
+                .await
+                .expect("the store opens a print");
+            Some(print.id.to_string())
+        } else {
+            None
+        };
         let agent = StandInAgent::new();
         let server = Server::start_with(
             config.clone(),
@@ -97,7 +127,7 @@ impl Watch {
         )
         .await
         .expect("the server starts");
-        Self {
+        let watch = Self {
             _root: root,
             server,
             octoprint,
@@ -105,7 +135,8 @@ impl Watch {
             held,
             prints,
             client: presenting(OPERATOR),
-        }
+        };
+        (watch, held_print)
     }
 
     /// A server watching a fresh scripted printer under the base configuration.
@@ -476,6 +507,67 @@ async fn completion_or_a_position_at_the_end_alone_leaves_the_print_open() {
             "cancelled",
             "{case}"
         );
+    }
+}
+
+/// A print open from before spool tracking ends by what the printer pushed
+/// during its stop, exactly as a tracked one does: a reset landing idle ends
+/// it `interrupted`, a reset pushed just after the idle read still does, and
+/// the printer's own error landing offline ends it `failed` — each settled
+/// untracked, with one `print_untracked`, and each giving the agent a turn
+/// naming the transition.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_print_from_before_tracking_ends_by_what_the_printer_pushed() {
+    let stops = ["reset", "late reset", "firmware error"];
+    for stop in stops {
+        let (watch, print_id) = Watch::over_a_print_from_before_tracking().await;
+        watch.connected().await;
+        tokio::time::sleep(POLL * 3).await;
+        assert!(
+            watch.of_kind("print_started").await.is_empty(),
+            "{stop}: the held print was started again"
+        );
+
+        let outcome = match stop {
+            "reset" => {
+                watch.octoprint.pushes_event("PrinterReset", &json!({}));
+                watch.until("printer_reset", 1).await;
+                watch.octoprint.reports("Operational", landed_idle());
+                "interrupted"
+            }
+            "late reset" => {
+                watch.octoprint.reports("Operational", landed_idle());
+                tokio::time::sleep(POLL + Duration::from_millis(150)).await;
+                watch.octoprint.pushes_event("PrinterReset", &json!({}));
+                "interrupted"
+            }
+            _ => {
+                watch.octoprint.pushes_event(
+                    "Error",
+                    &json!({ "error": "Thermal Runaway", "reason": "firmware" }),
+                );
+                tokio::time::sleep(POLL).await;
+                watch.octoprint.reports(
+                    "Closed",
+                    landed_offline(
+                        "Offline after error",
+                        Some("Thermal Runaway, system stopped!"),
+                    ),
+                );
+                "failed"
+            }
+        };
+        watch.until("print_ended", 1).await;
+
+        let history = watch.history().await;
+        assert_eq!(ended(&history, &print_id), outcome, "{stop}");
+        let untracked = history
+            .iter()
+            .filter(|event| event["kind"] == "print_untracked" && event["print_id"] == print_id)
+            .count();
+        assert_eq!(untracked, 1, "{stop}");
+        let turns = watch.turns(1).await;
+        assert_turn_names_the_ending(&turns, &print_id, outcome);
     }
 }
 
