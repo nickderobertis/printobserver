@@ -136,6 +136,10 @@ fn rejected(world: &World, print: &str, ran: &crate::traced::Ran, reason: &str) 
     let answer: Value = printobserver_types::serde_json::from_str(&ran.out)
         .unwrap_or_else(|error| panic!("the rejection is not a document ({error}): {}", ran.out));
     let action_id = answer["record"]["id"].as_str().expect("the record's id");
+    assert_eq!(
+        answer["record"]["print_id"], print,
+        "the rejection was recorded against another print: {answer}"
+    );
     // A rejection carrying no fields is its own name, and any other carries
     // its fields under that name.
     let decided = &answer["record"]["decision"]["rejected"];
@@ -174,6 +178,10 @@ fn closed(world: &World, print: &str, ran: &crate::traced::Ran, outcome: &str, s
     let answer: Value = printobserver_types::serde_json::from_str(&ran.out)
         .unwrap_or_else(|error| panic!("the close is not a document ({error}): {}", ran.out));
     let action_id = answer["record"]["id"].as_str().expect("the record's id");
+    assert_eq!(
+        answer["record"]["print_id"], print,
+        "the close was recorded against another print: {answer}"
+    );
     let requested = about(world, print, "action_requested", action_id);
     assert_eq!(
         requested.len(),
@@ -386,4 +394,17 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
     world.wants(Reports::Operational);
     let ran = close(world, &idle, "failed", REASON);
     closed(world, &idle, &ran, "failed", "operational");
+
+    // With no record left open, an ended one is still refused as ended.
+    assert!(
+        running::read(world, &["prints"])["prints"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .all(|print| print["ended_at"].is_string()),
+        "a record is still open"
+    );
+    let ran = close(world, &idle, "completed", REASON);
+    rejected(world, &idle, &ran, "print_already_ended");
+    assert_eq!(of_kind(world, &idle, "print_ended").len(), 1);
 }

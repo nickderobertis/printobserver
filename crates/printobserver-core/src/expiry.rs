@@ -251,7 +251,7 @@ impl Supervisor {
             actor,
             requested_at,
         };
-        let issued = self.issue_decided_action(request, decision).await?;
+        let issued = self.issue_decided_action(request, decision, None).await?;
         if let PolicyDecision::Rejected(reason) = &issued.record.decision {
             return Ok(InterventionOutcome::RestoreFailed {
                 reason: rejection_detail(reason),

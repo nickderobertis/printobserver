@@ -455,13 +455,32 @@ pub trait ImageStore: Send + Sync {
 pub trait ActionStore: Send + Sync {
     /// Record one request together with the decision taken on it.
     ///
-    /// This is the only method that takes either half, and it takes them only
-    /// together; the [`ActionId`] it answers is minted for the pair.
+    /// This and [`ActionStore::record_action_against`] are the only methods
+    /// that take either half, and they take them only together; the
+    /// [`ActionId`] each answers is minted for the pair.
     fn record_action(
         &self,
         request: ActionRequest,
         decision: PolicyDecision,
     ) -> BoxFuture<'_, Result<ActionRecord, StoreError>>;
+
+    /// Record one request together with the decision taken on it, against the
+    /// print it names rather than the one the store would bind it to.
+    ///
+    /// A close is asked of one record, which may have ended or may not be the
+    /// newest open one, so its request is recorded against that record or
+    /// refused as [`StoreError::NotFound`] when there is none. The default
+    /// binds as [`ActionStore::record_action`] does, for a store that holds
+    /// one print at a time.
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        let _ = print_id;
+        self.record_action(request, decision)
+    }
 
     /// Record what the printer made of an action that reached it.
     fn record_execution(

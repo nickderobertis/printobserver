@@ -244,6 +244,20 @@ impl ActionStore for CommitThenFail {
         )
     }
 
+    // The same write as `record_action`, bound to the print named, so a test
+    // failing that write fails a close's too.
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        self.after(
+            "record_action",
+            ActionStore::record_action_against(&*self.inner, print_id, request, decision),
+        )
+    }
+
     fn record_execution(
         &self,
         action_id: ActionId,

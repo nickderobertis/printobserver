@@ -169,7 +169,9 @@ impl Supervisor {
             actor: actor.clone(),
             requested_at,
         };
-        let issued = self.issue_decided_action(request, decision).await?;
+        let issued = self
+            .issue_decided_action(request, decision, Some(print_id))
+            .await?;
         let source = source_of(&actor);
         self.write_decision_down(print_id, &source, &action, &issued, preflight.as_ref())
             .await?;

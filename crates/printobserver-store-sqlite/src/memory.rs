@@ -167,20 +167,29 @@ impl MemoryStore {
     /// Record one request together with the decision taken on it.
     fn insert_action(
         &self,
+        bound: Option<PrintId>,
         request: ActionRequest,
         decision: PolicyDecision,
     ) -> Result<ActionRecord, StoreError> {
         let mut records = lock(&self.records);
-        let mut open: Vec<&PrintRecord> = records
-            .prints
-            .iter()
-            .filter(|print| print.ended_at.is_none())
-            .collect();
-        open.sort_by_key(|print| (print.opened_at, print.id));
-        let print_id = open
-            .last()
-            .map(|print| print.id)
-            .ok_or_else(|| not_found("open print to record this action against"))?;
+        let print_id = if let Some(named) = bound {
+            records
+                .prints
+                .iter()
+                .find(|print| print.id == named)
+                .map(|print| print.id)
+                .ok_or_else(|| not_found(&format!("print {named}")))?
+        } else {
+            let mut open: Vec<&PrintRecord> = records
+                .prints
+                .iter()
+                .filter(|print| print.ended_at.is_none())
+                .collect();
+            open.sort_by_key(|print| (print.opened_at, print.id));
+            open.last()
+                .map(|print| print.id)
+                .ok_or_else(|| not_found("open print to record this action against"))?
+        };
         let record = ActionRecord {
             id: ActionId::new(),
             print_id,
@@ -575,7 +584,16 @@ impl ActionStore for MemoryStore {
         request: ActionRequest,
         decision: PolicyDecision,
     ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        Box::pin(async move { self.insert_action(request, decision) })
+        Box::pin(async move { self.insert_action(None, request, decision) })
+    }
+
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        Box::pin(async move { self.insert_action(Some(print_id), request, decision) })
     }
 
     fn record_execution(

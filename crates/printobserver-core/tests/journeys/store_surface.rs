@@ -201,6 +201,15 @@ fn stated_action_methods() -> Vec<Method> {
             "BoxFuture<'_,Result<ActionRecord,StoreError>>",
         ),
         method(
+            "record_action_against",
+            &[
+                ("print_id", "PrintId"),
+                ("request", "ActionRequest"),
+                ("decision", "PolicyDecision"),
+            ],
+            "BoxFuture<'_,Result<ActionRecord,StoreError>>",
+        ),
+        method(
             "record_execution",
             &[("action_id", "ActionId"), ("outcome", "ExecutionOutcome")],
             "BoxFuture<'_,Result<ActionRecord,StoreError>>",
@@ -542,32 +551,40 @@ fn action_pair_partition(source: &syn::File, traits: &[&str]) -> (Vec<Method>, V
         })
 }
 
-/// `record_action` is the only method taking either half, and it takes both.
+/// `record_action` and `record_action_against` are the only methods taking
+/// either half, and each takes both.
 #[test]
-fn record_action_is_the_only_method_taking_the_action_pair() {
+fn only_the_action_recorders_take_the_action_pair() {
     let source = parse(&store_source());
     let (taking, rest) = action_pair_partition(&source, &TRAITS);
     assert_eq!(
-        taking.len(),
-        1,
+        taking
+            .iter()
+            .map(|declared| declared.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["record_action", "record_action_against"],
         "these methods take a half of the pair: {taking:?}"
     );
-    let recorder = &taking[0];
-    assert_eq!(recorder.name, "record_action");
-    assert_eq!(
-        recorder
+    for recorder in &taking {
+        let halves: Vec<&str> = recorder
             .params
             .iter()
             .map(|param| param.ty.as_str())
-            .collect::<Vec<_>>(),
-        vec!["ActionRequest", "PolicyDecision"],
-        "record_action does not take the request and the decision together"
-    );
-    assert!(
-        recorder.returns.contains("ActionRecord"),
-        "record_action answers {}, which carries no minted identifier",
-        recorder.returns
-    );
+            .filter(|ty| *ty != "PrintId")
+            .collect();
+        assert_eq!(
+            halves,
+            vec!["ActionRequest", "PolicyDecision"],
+            "{} does not take the request and the decision together",
+            recorder.name
+        );
+        assert!(
+            recorder.returns.contains("ActionRecord"),
+            "{} answers {}, which carries no minted identifier",
+            recorder.name,
+            recorder.returns
+        );
+    }
     assert!(
         !rest.is_empty()
             && rest
