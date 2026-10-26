@@ -112,6 +112,23 @@ STARTUP_TIMEOUT_SECONDS = 60.0
 INGRESS_TIMEOUT_SECONDS = 60.0
 
 
+#: What the store holds once the ingress has prepared the print its alert
+#: opens, each named as a wait that gave up reports it: the print, the image, the
+#: alert's event, and the supervision turn's assessment or failure, which is
+#: recorded after the context read and so is the readiness boundary.
+READINESS = (
+    ("prints", "SELECT id FROM prints"),
+    ("images", "SELECT id FROM images"),
+    ("failure alerts", "SELECT id FROM events WHERE kind = 'obico_failure_alert'"),
+    (
+        "finished supervision turns",
+        "SELECT id FROM events WHERE kind = 'agent_assessment' "
+        "OR (kind = 'port_failure' "
+        "AND json_extract(payload, '$.payload.site') = 'supervision_turn')",
+    ),
+)
+
+
 #: The API credential a supervisor serves under, as a request presents it.
 Credential = NewType("Credential", str)
 
@@ -627,33 +644,13 @@ class World:
 
     def _progress(self) -> str:
         """What the store holds of the print the alert opens, for a wait that gave up."""
-        store = self.state / STORE
-        if not store.is_file():
+        read = self._read_readiness()
+        if read is None:
             return "no store at all"
-        connection = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
-        seen: list[str] = []
-        try:
-            for what, query in (
-                ("prints", "SELECT count(*) FROM prints"),
-                ("images", "SELECT count(*) FROM images"),
-                (
-                    "failure alerts",
-                    "SELECT count(*) FROM events WHERE kind = 'obico_failure_alert'",
-                ),
-                (
-                    "finished supervision turns",
-                    "SELECT count(*) FROM events WHERE kind = 'agent_assessment' "
-                    "OR (kind = 'port_failure' "
-                    "AND json_extract(payload, '$.payload.site') = 'supervision_turn')",
-                ),
-            ):
-                try:
-                    seen.append(f"{connection.execute(query).fetchone()[0]} {what}")
-                except sqlite3.DatabaseError as error:
-                    seen.append(f"{what} unreadable ({error})")
-        finally:
-            connection.close()
-        return ", ".join(seen)
+        return ", ".join(
+            f"{what} unreadable ({rows})" if isinstance(rows, str) else f"{len(rows)} {what}"
+            for what, rows in read.items()
+        )
 
     def _recorded(self) -> tuple[str, str, str] | None:
         """The print and image, once the ingress has finished observing the printer.
@@ -664,28 +661,33 @@ class World:
         The turn's assessment or failure is recorded after the context read, so
         either is the readiness boundary before a client may change the printer.
         """
+        read = self._read_readiness()
+        if read is None or not all(rows and not isinstance(rows, str) for rows in read.values()):
+            return None
+        prints, images, alerts = (read[what] for what in ("prints", "images", "failure alerts"))
+        return str(prints[0][0]), str(images[0][0]), str(alerts[0][0])
+
+    def _read_readiness(self) -> dict[str, list[tuple[object, ...]] | str] | None:
+        """Each of `READINESS`'s rows, or why it could not be read; None with no store yet.
+
+        Read once by the wait for the print and once more, by the same queries, to
+        say what it last saw when that wait gives up, so the two never disagree.
+        """
         store = self.state / STORE
         if not store.is_file():
             return None
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         connection = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
+        read: dict[str, list[tuple[object, ...]] | str] = {}
         try:
-            prints = connection.execute("SELECT id FROM prints").fetchall()
-            images = connection.execute("SELECT id FROM images").fetchall()
-            events = connection.execute(
-                "SELECT id FROM events WHERE kind = 'obico_failure_alert'"
-            ).fetchall()
-            prepared = connection.execute(
-                "SELECT id FROM events WHERE kind = 'agent_assessment' "
-                "OR (kind = 'port_failure' "
-                "AND json_extract(payload, '$.payload.site') = 'supervision_turn')"
-            ).fetchall()
-        except sqlite3.DatabaseError:
-            return None
+            for what, query in READINESS:
+                try:
+                    read[what] = connection.execute(query).fetchall()
+                except sqlite3.DatabaseError as error:
+                    read[what] = str(error)
         finally:
             connection.close()
-        if not prints or not images or not events or not prepared:
-            return None
-        return str(prints[0][0]), str(images[0][0]), str(events[0][0])
+        return read
 
 
 def unheld_spool_id() -> SpoolId:

@@ -9,8 +9,9 @@ The tier itself, `just test-integration`, is not run here: the required
 `integration (<platform>)` jobs run it between these same two recipes on every
 pull request, and a second run inside the gate would only repeat theirs. What
 is run here is what a failing tier leaves behind: made to fail on purpose once
-the instance has written its logs, the tier — and this walk — keep those logs
-before the bring-down, where they are still readable after it.
+the instance has written its logs, this walk keeps those logs before the
+bring-down, where they are still readable after it; the tier's own recipe is
+failed the same way in `tools/octoprint-env/tests/test_retaining.py`.
 """
 
 from __future__ import annotations
@@ -22,15 +23,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from journey import REPO_ROOT, GateCopy
+from journey import GateCopy
 from repo_checks.expect import equal, passing, truth
 from repo_checks.shell import start
 
 STATE = ".octoprint-env"
-
-#: Where a walk that failed keeps the instance's logs: in this checkout rather
-#: than in the copy, which goes when the journey's own directory does.
-KEPT = REPO_ROOT / ".octoprint-diagnostics" / "repo-e2e"
 
 #: The variable naming where `octoprint-retain` keeps what it keeps.
 RETAIN_DIR = "OCTOPRINT_ENV_RETAIN_DIR"
@@ -162,85 +159,34 @@ def wrote_every_log(state: Path) -> None:
 
 @pytest.mark.alone
 def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started(
-    gate_copy: Callable[[], GateCopy],
-) -> None:
-    """Up, running, down — and no process left behind."""
-    copy = gate_copy()
-
-    pid = walk(
-        copy,
-        lambda pid: truth(running(pid), describing=f"the process {pid} the bring-up started"),
-        KEPT,
-    )
-
-    truth(
-        not running(pid),
-        describing=f"process {pid} to be gone once the bring-down recipe has run",
-    )
-
-
-@pytest.mark.alone
-def test_a_walk_that_fails_keeps_every_log_past_the_bring_down(
     gate_copy: Callable[[], GateCopy], tmp_path: Path
 ) -> None:
-    """Failed on purpose once the instance has written its logs, the walk keeps them."""
-    copy = gate_copy()
-    kept = tmp_path / "kept"
-    state = copy.root / STATE
+    """Up, running, down — and no process left behind, nor any log lost.
 
-    def fails(pid: int) -> None:
-        wrote_every_log(state)
-        msg = f"a deliberate failure of the walk over process {pid}"
-        raise AssertionError(msg)
-
-    with pytest.raises(AssertionError, match="a deliberate failure"):
-        walk(copy, fails, kept)
-
-    truth(not (state / "instance.json").exists(), describing="the bring-down to have run")
-    holds_every_log_the_instance_wrote(state, kept)
-
-
-@pytest.mark.alone
-def test_a_tier_that_fails_keeps_every_log_before_the_bring_down(
-    gate_copy: Callable[[], GateCopy], tmp_path: Path
-) -> None:
-    """The tier's own recipe, failed on purpose, keeps the instance's logs before teardown.
-
-    The graph runner the recipe hands the tier to is one that fails at once, on
-    a path of this journey's own: everything else — the recipe, the bring-up
-    before it and the bring-down after it — is the committed one.
+    The walk is failed on purpose once the process is seen running and the
+    instance has written its logs, so what a walk that fails keeps is proven by
+    the same one bring-up: every log, kept before the bring-down and readable
+    after it, and still nothing left running.
     """
     copy = gate_copy()
     kept = tmp_path / "kept"
     state = copy.root / STATE
-    failing = tmp_path / "failing-runner"
-    failing.mkdir()
-    runner = failing / "bunx"
-    runner.write_text(
-        "#!/bin/sh\necho 'a deliberately failing tier' >&2\nexit 1\n", encoding="utf-8"
-    )
-    runner.chmod(0o755)
+    seen: list[int] = []
 
-    brought_up = copy.just("octoprint-up", timeout=1200)
-    try:
-        passing(brought_up, describing="`just octoprint-up`")
+    def fails_once_running(pid: int) -> None:
+        truth(running(pid), describing=f"the process {pid} the bring-up recipe started")
         wrote_every_log(state)
-        tier = copy.just(
-            "test-integration",
-            timeout=600,
-            environment={
-                "PATH": f"{failing}{os.pathsep}{os.environ['PATH']}",
-                RETAIN_DIR: str(kept),
-            },
-        )
-    finally:
-        brought_down = copy.just("octoprint-down", timeout=600)
-    passing(brought_down, describing="`just octoprint-down`")
+        seen.append(pid)
+        msg = f"a deliberate failure of the walk over process {pid}"
+        raise AssertionError(msg)
 
-    truth(tier.returncode != 0, describing="the deliberately failed tier to fail")
+    with pytest.raises(AssertionError, match="a deliberate failure"):
+        walk(copy, fails_once_running, kept)
+
+    equal(len(seen), 1, describing="the walks that reached the running process")
     truth(
-        "a deliberately failing tier" in tier.stdout + tier.stderr,
-        describing="the tier to have failed where it was made to",
+        not running(seen[0]),
+        describing=f"process {seen[0]} to be gone once the bring-down recipe has run",
     )
     holds_every_log_the_instance_wrote(state, kept)
 

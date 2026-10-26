@@ -30,8 +30,8 @@ from pathlib import Path
 import pytest
 import yaml
 from harness import ENVIRONMENT, environment, free_port, said, timed
-from obico_env import FAILURE_CLASSES, SERVICES
-from repo_checks.expect import contains, refused_naming, truth
+from obico_env import FAILURE_CLASSES, SERVICES, Stack, StartupError, override, published_ports
+from repo_checks.expect import contains, equal, refused_naming, truth
 from repo_checks.shell import run as shell_run
 
 # Short, because these journeys are about the failure rather than the wait: the
@@ -210,6 +210,31 @@ def _handled_by_main(module: ast.Module) -> set[str]:
             }
     message = "expected a `main` in the script, which is where every failure is reported"
     raise AssertionError(message)
+
+
+def test_a_service_docker_published_no_port_for_is_named_with_a_next_action(
+    tmp_path: Path,
+) -> None:
+    """Ports read back from a stack whose containers never started are refused by name.
+
+    Docker chooses each host port as it starts a container, so a container that
+    is not running has none to read back. Asked of the real `docker compose`,
+    over a composition of these services that was never started.
+    """
+    stack = Stack(tmp_path / "state", f"po-unpublished-{tmp_path.name.lower()}")
+    stack.source.mkdir(parents=True)
+    stack.compose_file.write_text(
+        "services:\n" + "".join(f"  {service.name}:\n    image: busybox\n" for service in SERVICES),
+        encoding="utf-8",
+    )
+    stack.override_file.write_text(override(), encoding="utf-8")
+
+    with pytest.raises(StartupError) as refused:
+        published_ports(stack)
+
+    equal(refused.value.failure_class, "containers-unstartable", describing="the class")
+    contains(refused.value.detail, "redis", describing="the service the refusal names")
+    contains(refused.value.next_action, "docker ps", describing="the next action the refusal gives")
 
 
 def test_the_script_can_reach_no_failure_path_the_declared_set_does_not_cover() -> None:

@@ -41,7 +41,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, TypedDict
 
 # The Obico release this environment brings up, pinned to a revision. An
 # environment that tracked a moving branch would make this tier's findings
@@ -316,6 +316,17 @@ def free_port() -> int:
 # ~~ provisioning the sources and the images
 
 
+class Installed(TypedDict):
+    """What `install` answers: where the stack lives and the override it wrote.
+
+    The host ports are not among it: Docker chooses them as it starts each
+    container, and `up` answers them read back.
+    """
+
+    state_dir: str
+    override_file: str
+
+
 def install(stack: Stack) -> None:
     """Clone the pinned sources and build the images, doing nothing already done."""
     _require_docker()
@@ -343,9 +354,9 @@ def published_ports(stack: Stack) -> dict[str, int]:
         _, _, port = asked.stdout.strip().rpartition(":")
         if asked.returncode != 0 or not port.isdigit():
             raise StartupError(
-                "port-unpublished",
-                f"Docker published no host port for {service.name}'s {service.port}:\n"
-                f"{asked.stdout}",
+                "containers-unstartable",
+                f"Docker published no host port for {service.name}'s {service.port}, so "
+                f"its container is not running:\n{asked.stdout}",
             )
         ports[service.name] = int(port)
     note(
@@ -837,10 +848,9 @@ def main(argv: list[str] | None = None) -> int:
             answer = down(stack)
         elif arguments.command == "install":
             install(stack)
-            answer = {
-                "state_dir": str(stack.state_dir),
-                "override_file": str(stack.override_file),
-            }
+            answer = Installed(
+                state_dir=str(stack.state_dir), override_file=str(stack.override_file)
+            )
         else:
             answer = up(
                 stack,

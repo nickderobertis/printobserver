@@ -786,6 +786,7 @@ def bound_port(instance: Instance, pid: int, timeout: float) -> int:
         seen = listening_ports(instance.venv, pid)
         for candidate in seen:
             try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] reason in suppressions.toml
                 status, _ = call(f"http://{HOST}:{candidate}", key, "/api/version", timeout=5.0)
             except OSError, http.client.HTTPException:
                 continue
@@ -1349,7 +1350,24 @@ def required_logs(instance: Instance) -> dict[str, Path]:
     }
 
 
-def retain(instance: Instance, into: Path) -> dict[str, object]:
+class RetainedInstance(TypedDict):
+    """The instance a retention names: where it lives, and what `up` recorded of it."""
+
+    state_dir: str
+    # The record `up` wrote while the instance ran, or None where none was left.
+    record: dict[str, object] | None
+
+
+class Retention(TypedDict):
+    """What `retain` kept of one instance's logs, and what it never wrote."""
+
+    instance: RetainedInstance
+    into: str
+    retained: list[str]
+    absent: list[str]
+
+
+def retain(instance: Instance, into: Path) -> Retention:
     """Copy the instance's own logs to `into` before a teardown, naming what was absent.
 
     A failed tier runs this before the bring-down, so the first failing run
@@ -1365,10 +1383,10 @@ def retain(instance: Instance, into: Path) -> dict[str, object]:
     record: object = None
     with suppress(OSError, ValueError):
         record = json.loads(instance.record.read_text(encoding="utf-8"))
-    named: dict[str, object] = {
-        "state_dir": str(instance.state_dir.resolve()),
-        "record": record if isinstance(record, dict) else None,
-    }
+    named = RetainedInstance(
+        state_dir=str(instance.state_dir.resolve()),
+        record=record if isinstance(record, dict) else None,
+    )
     retained: list[str] = []
     absent: list[str] = []
     for name, source in required_logs(instance).items():
@@ -1383,12 +1401,7 @@ def retain(instance: Instance, into: Path) -> dict[str, object]:
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_text(redacted(text), encoding="utf-8")
         retained.append(name)
-    answer: dict[str, object] = {
-        "instance": named,
-        "into": str(into.resolve()),
-        "retained": retained,
-        "absent": absent,
-    }
+    answer = Retention(instance=named, into=str(into.resolve()), retained=retained, absent=absent)
     (into / RETAINED_RECORD).write_text(json.dumps(answer, indent=2) + "\n", encoding="utf-8")
     note(f"kept {len(retained)} of {len(retained) + len(absent)} logs under {into}")
     return answer

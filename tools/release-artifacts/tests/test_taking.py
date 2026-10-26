@@ -260,21 +260,40 @@ def test_a_supervisor_answering_nowhere_is_said_to_be(
         world.stop()
 
 
+@pytest.mark.parametrize(
+    ("store", "last_seen"),
+    [
+        ("recorded", "1 prints, 0 images, 0 failure alerts, 0 finished supervision turns"),
+        ("absent", "no store at all"),
+        (
+            "tableless",
+            "0 prints, images unreadable (no such table: images), failure alerts unreadable "
+            "(no such table: events), finished supervision turns unreadable "
+            "(no such table: events)",
+        ),
+    ],
+)
 def test_an_ingress_that_never_prepares_the_print_ends_at_the_tier_s_own_timeout(
-    repo: Repo, into: Callable[[str], Path]
+    store: str,
+    last_seen: str,
+    repo: Repo,
+    into: Callable[[str], Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The wait for the print and image is the tier's bound, and its failure says what it saw.
 
-    The stand-in supervisor accepts the alert and records a print, and then
-    never stores an image or finishes a supervision turn: an ingress that
-    stays short of ready however long it is given.
+    The stand-in supervisor accepts the alert and leaves its store short of a
+    prepared print in one of three ways — a print and nothing after it, no
+    store at all, or a store missing the tables a prepared print is read from —
+    and stays that way however long it is given.
     """
-    root = into("unprepared")
+    root = into(f"unprepared-{store}")
     accepting = _stand_in(
         root,
         "accepts-and-never-prepares",
         (Path(__file__).parent / "unprepared_ingress.py").read_text(encoding="utf-8"),
     )
+    monkeypatch.setenv("UNPREPARED_STORE", store)
     tier_timeout = 3.0
     world = World(accepting, root, ingress_timeout=tier_timeout)
 
@@ -289,7 +308,7 @@ def test_an_ingress_that_never_prepares_the_print_ends_at_the_tier_s_own_timeout
     contains(str(gave_up.value), f"in {tier_timeout}s", describing="the bound the wait names")
     contains(
         str(gave_up.value),
-        "the last state seen: 1 prints, 0 images, 0 failure alerts, 0 finished supervision turns",
+        f"the last state seen: {last_seen}",
         describing="what the wait says it last saw",
     )
     truth(

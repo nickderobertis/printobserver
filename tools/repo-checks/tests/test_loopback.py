@@ -60,6 +60,7 @@ class _Answers(BaseHTTPRequestHandler):
 
 def _status(port: int) -> bytes:
     """The status line a server on loopback `port` answers, asked by number alone."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as connection:
         connection.settimeout(30)
         connection.connect(("127.0.0.1", port))
