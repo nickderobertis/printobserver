@@ -473,6 +473,17 @@ fn next_after(world: &World, cause: &Value, figure_g: &str) -> Vec<String> {
 /// field, and a write the ledger itself refused — and an automation acting on
 /// the cause alone, never the message, makes the next request that succeeds.
 pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
+    let (unknown, loaded, shelved) = lifecycle_refusals(world);
+    figure_and_field_refusals(world, &loaded);
+    ledger_refusal(world, &loaded);
+    acting_on_the_cause_alone(world, &unknown, &shelved);
+}
+
+/// The refusals a spool's place in its lifecycle earns: an unknown or retired
+/// spool, nothing to confirm, a tool the printer cannot have, a spool on no
+/// tool and a missing tare. Answers the unknown id, a spool loaded on tool 0
+/// and a shelved spool with no tare, for the refusals that follow.
+fn lifecycle_refusals(world: &World) -> (String, String, String) {
     let unknown = printobserver_types::EventId::new().to_string();
     assert_eq!(
         cause_of(
@@ -515,6 +526,12 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
         ),
         json!({ "cause": "tare_required", "spool_id": shelved })
     );
+    (unknown, loaded, shelved)
+}
+
+/// The refusals of what a request says rather than of the spool it names: a
+/// missing density, an impossible figure, and a missing or conflicting field.
+fn figure_and_field_refusals(world: &World, loaded: &str) {
     let register = |also: &[&str]| {
         let mut asked = vec!["register-spool"];
         asked.extend_from_slice(also);
@@ -538,7 +555,7 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
     assert_eq!(
         cause_of(
             world,
-            &["adjust-spool", "--spool-id", &loaded, "--gross-g", "-10"]
+            &["adjust-spool", "--spool-id", loaded, "--gross-g", "-10"]
         ),
         json!({ "cause": "invalid_adjustment_figure", "field": "gross_g", "value": -10.0 })
     );
@@ -547,7 +564,7 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
         json!({ "cause": "missing_field", "field": "name" })
     );
     assert_eq!(
-        cause_of(world, &["adjust-spool", "--spool-id", &loaded]),
+        cause_of(world, &["adjust-spool", "--spool-id", loaded]),
         json!({ "cause": "missing_field", "field": "remaining_g" })
     );
     assert_eq!(
@@ -556,7 +573,7 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
             &[
                 "adjust-spool",
                 "--spool-id",
-                &loaded,
+                loaded,
                 "--remaining-g",
                 "10",
                 "--gross-g",
@@ -565,6 +582,11 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
         ),
         json!({ "cause": "conflicting_fields", "fields": ["remaining_g", "gross_g"] })
     );
+}
+
+/// A write the ledger itself refused is answered as that, naming no storage
+/// constraint, and leaves the spool where it was.
+fn ledger_refusal(world: &World, loaded: &str) {
     // The ledger refusing a write is the database refusing it: a rule put on
     // the spools table from outside, as a second writer racing this one would
     // leave the table, is one the store meets mid-write.
@@ -573,24 +595,24 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
         "CREATE TRIGGER a_journey_refuses_every_spool_write BEFORE UPDATE ON spools \
          BEGIN SELECT RAISE(ABORT, 'spools.loaded_on_tool'); END",
     );
-    let raced = cause_of(world, &["unload-spool", "--spool-id", &loaded]);
+    let raced = cause_of(world, &["unload-spool", "--spool-id", loaded]);
     in_the_database(world, "DROP TRIGGER a_journey_refuses_every_spool_write");
     assert_eq!(raced, json!({ "cause": "ledger_refused" }));
     assert_eq!(
-        running::read(world, &["spool", "--spool-id", &loaded])["spool"]["lifecycle"],
+        running::read(world, &["spool", "--spool-id", loaded])["spool"]["lifecycle"],
         json!({ "state": "loaded", "tool": 0 }),
         "a refused write moved the spool"
     );
+}
 
+/// An automation reading only the cause makes the next request that succeeds.
+fn acting_on_the_cause_alone(world: &World, unknown: &str, shelved: &str) {
     for (asked, figure) in [
         (
-            vec!["adjust-spool", "--spool-id", &shelved, "--gross-g", "900"],
+            vec!["adjust-spool", "--spool-id", shelved, "--gross-g", "900"],
             "650",
         ),
-        (
-            vec!["load-spool", "--spool-id", &unknown, "--tool", "1"],
-            "",
-        ),
+        (vec!["load-spool", "--spool-id", unknown, "--tool", "1"], ""),
     ] {
         let cause = cause_of(world, &asked);
         let next = next_after(world, &cause, figure);
@@ -598,7 +620,7 @@ pub fn every_spool_refusal_is_answered_with_its_cause(world: &World) {
         done(world, &next);
     }
     assert_eq!(
-        running::read(world, &["spool", "--spool-id", &shelved])["spool"]["remaining_g"],
+        running::read(world, &["spool", "--spool-id", shelved])["spool"]["remaining_g"],
         json!(650.0),
         "the automation's next request did not correct the spool"
     );
