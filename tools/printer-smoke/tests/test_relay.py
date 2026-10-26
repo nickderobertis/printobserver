@@ -52,6 +52,7 @@ from relay import (
     RelayState,
 )
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.loopback import unreachable
 from repo_checks.shell import PROGRAM_NOT_FOUND, run, start
 from world import (
     RELAY_CLIENT,
@@ -160,13 +161,6 @@ def received(connection: socket.socket) -> bytes:
     while chunk := connection.recv(65536):
         chunks.append(chunk)
     return b"".join(chunks)
-
-
-def a_closed_address() -> str:
-    """A loopback address nothing listens on: a port the system handed out, then let go."""
-    with socket.create_server(LISTEN_ON) as listener:
-        host, port = listener.getsockname()[:2]
-    return f"{host}:{port}"
 
 
 def until(condition: Callable[[], bool], *, describing: str) -> None:
@@ -358,9 +352,13 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
     """
     environment = world.environment()
     said = "the smoke's relay did not answer"
+    held = contextlib.ExitStack()
     match reachable:
         case "closed":
-            environment[ADDRESS] = a_closed_address()
+            # A port the system handed out, held bound and never listened on
+            # while the client is pointed at it.
+            host, port = held.enter_context(unreachable())
+            environment[ADDRESS] = f"{host}:{port}"
         case "unnamed":
             environment.pop(ADDRESS, None)
         case "elsewhere":
@@ -370,7 +368,8 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
             environment[ADDRESS] = "a relay"
             said = "not a loopback host:port"
 
-    answered = relay(environment, "status", "--json")
+    with held:
+        answered = relay(environment, "status", "--json")
 
     equal(
         answered.returncode,

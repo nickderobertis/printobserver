@@ -1,4 +1,9 @@
-"""The one way a loopback HTTP stand-in is bound: by its number, asking no name service.
+"""The one way a loopback HTTP stand-in is bound, and the one way an address is held unreachable.
+
+`unreachable` is the address nothing listens on: a port bound and never
+listened on, held for as long as it is used, because a port bound, read and
+let go can be taken by another listener before the connection meant to be
+refused is made.
 
 The standard library's HTTP server names itself in `server_bind` with
 `socket.getfqdn`, a reverse lookup of the address it just bound. Nothing a
@@ -106,3 +111,19 @@ class LoopbackServer(ThreadingHTTPServer):
     def url(self) -> str:
         """Where this server answers, as `http://host:port` with no trailing slash."""
         return f"http://{self.server_name}:{self.server_port}"
+
+
+@contextlib.contextmanager
+def unreachable(host: str = LOOPBACK) -> Iterator[tuple[str, int]]:
+    """A loopback address bound and never listened on, for as long as the block runs.
+
+    A connection to it is refused, and while the block runs no other socket
+    can bind the port — on Windows because the port is held exclusively, which
+    a later bind there could otherwise share.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as held:
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:
+            held.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        held.bind((host, 0))
+        yield host, int(held.getsockname()[1])
