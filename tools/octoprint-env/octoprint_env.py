@@ -45,7 +45,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +90,14 @@ HOST = "127.0.0.1"
 VIRTUAL_DEVICE = "VIRTUAL"
 DEFAULT_BAUDRATE = 115200
 DEFAULT_STATE_DIR = ".octoprint-env"
+
+# Where `retain` keeps a failed tier's evidence unless told otherwise: outside
+# the state directory, so neither a bring-down nor the next bring-up touches it,
+# and at the path the integration job uploads when the tier fails.
+DEFAULT_RETAIN_DIR = ".octoprint-diagnostics"
+
+# The record `retain` writes beside the logs it kept, naming the instance.
+RETAINED_RECORD = "retained.json"
 
 # The minimum this script states the hold print keeps running for, measured from
 # the moment `up` answers. The tier needs a print that is still there to be
@@ -1310,8 +1318,8 @@ def summarize_install(instance: Instance) -> dict[str, Any]:
     }
 
 
-def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
-    """Bounded, redacted observations after a journey's state deadline expires."""
+def redactor(instance: Instance) -> Callable[[str], str]:
+    """What hides this instance's own secrets, and any bearer token, from text it wrote."""
     secrets_to_hide: list[str] = [os.environ.get("PRINTOBSERVER_CREDENTIAL", "")]
     for path in (instance.api_key_file, instance.account_password_file):
         with suppress(OSError):
@@ -1323,6 +1331,72 @@ def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, 
             if secret:
                 text = text.replace(secret, "[redacted]")
         return re.sub(r"(?i)(Bearer\s+|X-Api-Key[\s:=]+)\S+", r"\1[redacted]", text)
+
+    return redacted
+
+
+def required_logs(instance: Instance) -> dict[str, Path]:
+    """The logs a failed tier's diagnosis needs, by the name each is retained under.
+
+    What the server process said, OctoPrint's own log, and the serial log of the
+    line between OctoPrint and the printer — which is where a printer going
+    offline mid-tier says why.
+    """
+    return {
+        "server.log": instance.server_log,
+        "logs/octoprint.log": instance.octoprint_log,
+        "logs/serial.log": instance.basedir / "logs" / "serial.log",
+    }
+
+
+def retain(instance: Instance, into: Path) -> dict[str, object]:
+    """Copy the instance's own logs to `into` before a teardown, naming what was absent.
+
+    A failed tier runs this before the bring-down, so the first failing run
+    keeps its evidence rather than leaving it to a rerun that may pass. Each
+    required log is copied whole with this instance's secrets redacted, because
+    what is kept is uploaded; a log the instance never wrote is reported absent
+    by name rather than skipped, and a copy an earlier run left of it is
+    removed so nothing stale passes for this run's. The instance is named by its
+    state directory and by the record `up` wrote, where it wrote one.
+    """
+    redacted = redactor(instance)
+    into.mkdir(parents=True, exist_ok=True)
+    record: object = None
+    with suppress(OSError, ValueError):
+        record = json.loads(instance.record.read_text(encoding="utf-8"))
+    named: dict[str, object] = {
+        "state_dir": str(instance.state_dir.resolve()),
+        "record": record if isinstance(record, dict) else None,
+    }
+    retained: list[str] = []
+    absent: list[str] = []
+    for name, source in required_logs(instance).items():
+        kept = into / name
+        try:
+            text = source.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            absent.append(name)
+            kept.unlink(missing_ok=True)
+            note(f"{name} is absent: the instance under {instance.state_dir} never wrote it")
+            continue
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(redacted(text), encoding="utf-8")
+        retained.append(name)
+    answer: dict[str, object] = {
+        "instance": named,
+        "into": str(into.resolve()),
+        "retained": retained,
+        "absent": absent,
+    }
+    (into / RETAINED_RECORD).write_text(json.dumps(answer, indent=2) + "\n", encoding="utf-8")
+    note(f"kept {len(retained)} of {len(retained) + len(absent)} logs under {into}")
+    return answer
+
+
+def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
+    """Bounded, redacted observations after a journey's state deadline expires."""
+    redacted = redactor(instance)
 
     logs: dict[str, object] = {}
     for path in (
@@ -1365,7 +1439,9 @@ def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, 
 def argument_parser() -> argparse.ArgumentParser:
     """The command surface, whose defaults every recipe and caller shares."""
     parser = argparse.ArgumentParser(prog="octoprint-env", description=__doc__)
-    parser.add_argument("command", choices=("install", "up", "down", "upload", "diagnostics"))
+    parser.add_argument(
+        "command", choices=("install", "up", "down", "upload", "diagnostics", "retain")
+    )
     parser.add_argument(
         "--supervisor-status",
         help="the last supervisor status read by a timed-out journey, for diagnostics",
@@ -1380,6 +1456,11 @@ def argument_parser() -> argparse.ArgumentParser:
         dest="as_name",
         default=None,
         help="the name `upload` gives it there (default: the file's own)",
+    )
+    parser.add_argument(
+        "--into",
+        default=os.environ.get("OCTOPRINT_ENV_RETAIN_DIR", DEFAULT_RETAIN_DIR),
+        help="where `retain` keeps the instance's logs (default: %(default)s)",
     )
     parser.add_argument(
         "--state-dir",
@@ -1461,6 +1542,8 @@ def main(argv: list[str] | None = None) -> int:
                 answer = stop(instance)
             case "diagnostics":
                 answer = diagnostics(instance, arguments.supervisor_status)
+            case "retain":
+                answer = retain(instance, Path(arguments.into))
             case "upload":
                 if not arguments.file:
                     raise StartupError(

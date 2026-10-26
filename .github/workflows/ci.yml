@@ -361,6 +361,14 @@ jobs:
       # restore usable temp for post-job actions before removing owned scratch.
       - if: always()
         run: just octoprint-down
+      # A failed tier kept the instance's own logs before that bring-down, and
+      # they are uploaded so the first failing run is the one diagnosed.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: octoprint-diagnostics-${{ matrix.platform.id }}
+          path: .octoprint-diagnostics
+          if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
 
@@ -430,6 +438,13 @@ jobs:
         run: just test-integration
       - if: always()
         run: just octoprint-down
+      # The logs a failed tier kept before that bring-down.
+      - if: ${{ !cancelled() && steps.integration.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: octoprint-diagnostics-macos-aarch64
+          path: .octoprint-diagnostics
+          if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
 

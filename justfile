@@ -527,14 +527,22 @@ octoprint-up:
 octoprint-down:
     uv run -q python tools/octoprint-env/octoprint_env.py down
 
+# Keep the scripted OctoPrint's own logs — what the server said, OctoPrint's
+# log and the serial log — under `.octoprint-diagnostics`, with a record naming
+# the instance and every one of them it never wrote.
+octoprint-retain:
+    uv run -q python tools/octoprint-env/octoprint_env.py retain
+
 # The printer integration tier, against the environment `octoprint-up` started.
 #
 # Deliberately not one of `just check`'s tiers: it installs OctoPrint, starts
 # it, and waits a print out, so it is a continuous-integration job of its own
-# rather than something every gate run pays for.
+# rather than something every gate run pays for. A tier that fails keeps the
+# instance's logs before anything can tear it down, so the first failing run is
+# the one that is diagnosed.
 test-integration:
     just node-modules
-    bunx nx run-many -t test-integration --output-style=stream
+    if ! bunx nx run-many -t test-integration --output-style=stream; then just octoprint-retain; exit 1; fi
 
 # Rewrite every generated documentation artifact from what the tree declares.
 #
