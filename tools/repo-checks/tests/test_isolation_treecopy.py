@@ -16,6 +16,7 @@ from pathlib import Path
 
 import copying
 from repo_checks.expect import accepted, contains, equal, refused, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run, start
 from treecopy import REPO_ROOT
 
@@ -51,7 +52,7 @@ def _source(root: Path) -> Path:
     (root / copying.SCHEMA).parent.mkdir(parents=True)
     (root / copying.SCHEMA).write_text(copying.version(1), encoding="utf-8")
     (root / ".gitignore").write_text("target/\n", encoding="utf-8")
-    run(["git", "init", "-q"], cwd=root, check=True)
+    init_repository(root)
     run(["git", "add", "-A"], cwd=root, check=True)
     run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"],

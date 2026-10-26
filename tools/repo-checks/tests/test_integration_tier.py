@@ -22,6 +22,7 @@ import pytest
 from closures import closure
 from repo_checks.checks_integration import integration_tier
 from repo_checks.expect import accepted, refused
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import Tree
@@ -211,7 +212,7 @@ def test_a_list_that_loses_a_platform_it_carried_at_the_base_is_refused(
 ) -> None:
     """Deleting a platform and narrowing the job to match is the state this refuses."""
     broken = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=broken.root, check=True)
+    init_repository(broken.root)
     base = _committed(broken.root, "chore: the committed tree, copied")
 
     broken.edit("AGENTS.md", AARCH64_PLATFORM, "")
@@ -226,7 +227,7 @@ def test_a_list_that_loses_a_platform_it_carried_at_the_base_is_refused(
 def test_a_platform_recorded_as_retired_may_leave_the_list(tree: Callable[[], Tree]) -> None:
     """A cut with its reason on record is a decision, and the matrix follows the list."""
     allowed = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=allowed.root, check=True)
+    init_repository(allowed.root)
     base = _committed(allowed.root, "chore: the committed tree, copied")
 
     allowed.edit("AGENTS.md", AARCH64_PLATFORM, "")
@@ -247,7 +248,7 @@ def test_a_list_that_keeps_every_platform_it_carried_at_the_base_is_accepted(
 ) -> None:
     """A change that leaves the list alone is not narrowing it."""
     allowed = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=allowed.root, check=True)
+    init_repository(allowed.root)
     base = _committed(allowed.root, "chore: the committed tree, copied")
 
     accepted(integration_tier(allowed.repo, base=base), describing="a list nothing narrowed")

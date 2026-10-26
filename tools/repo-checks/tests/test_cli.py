@@ -13,6 +13,7 @@ import pytest
 from repo_checks import __main__ as entry_point
 from repo_checks.__main__ import COMMANDS, INSTALLERS, main
 from repo_checks.expect import contains, equal
+from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
 
@@ -36,8 +37,8 @@ def merging(tree: Callable[[], Tree]) -> Tree:
     def git(*args: str) -> None:
         run(["git", *args], cwd=copy.root, check=True)
 
+    init_repository(copy.root)
     for args in (
-        ("init", "-q", "-b", "main"),
         ("config", "user.email", "test@example.com"),
         ("config", "user.name", "test"),
         ("add", "-A"),
@@ -97,8 +98,8 @@ def test_a_failing_check_prints_every_finding(
 def test_the_suppression_check_takes_a_base_revision(tree: Callable[[], Tree]) -> None:
     """The change-scoped half is reachable from the command line."""
     allowed = tree()
+    init_repository(allowed.root)
     for args in (
-        ["init", "-q", "-b", "main"],
         ["config", "user.email", "test@example.com"],
         ["config", "user.name", "test"],
         ["add", "-A"],

@@ -28,6 +28,7 @@ from repo_checks.commands import (
     measured_sources,
 )
 from repo_checks.expect import absent, contains, equal, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.gate_tier import TierError
 from repo_checks.model import Repo
 from repo_checks.powershell_release import HASHES
@@ -116,7 +117,7 @@ def test_install_hooks_points_git_at_the_committed_hooks(
 ) -> None:
     """A clean clone's bootstrap wires the hooks it ships with."""
     fresh = tree()
-    run(["git", "init", "-q", "-b", "main"], cwd=fresh.root, check=True)
+    init_repository(fresh.root)
 
     equal(install_hooks(fresh.repo), 0)
 

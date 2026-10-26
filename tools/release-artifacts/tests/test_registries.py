@@ -58,6 +58,7 @@ from release_artifacts.registries import (
 from release_artifacts.standin import FORGE_PREFIX, NPM_PREFIX, PYPI_PREFIX, Registries
 from release_artifacts.targets import declared, named
 from repo_checks.expect import contains, equal, passing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from route_proof import ROUTE_PROOF, SHARED_TOOL_DIRECTORY
@@ -1275,7 +1276,7 @@ def checkout(tmp_path: Path) -> Checkout:
         truth(done.returncode == 0, describing=f"`git {' '.join(argv)}`:\n{done.stderr}")
         return done.stdout.strip()
 
-    git("init", "--initial-branch", "main")
+    init_repository(root)
     git("config", "user.email", "release@example.invalid")
     git("config", "user.name", "release automation")
     at: dict[str, str] = {}
