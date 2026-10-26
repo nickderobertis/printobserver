@@ -1221,9 +1221,10 @@ fn every_value_of_a_repeated_option_rules_on_the_stream() {
 /// never off when this journey happened to read a line: the heartbeat's `since`,
 /// stamped once the stream had written the event line and its timer reset, and
 /// its `at`, stamped as it was printed. A reader delayed under load reads both
-/// lines late without moving either instant. That `since` is the event line's
-/// own is held too: it is no earlier than the event was stored, which was
-/// after the first heartbeat, and the event line comes before the heartbeat.
+/// lines late without moving either instant. The heartbeat measured is the
+/// first printed after the event line, and that its `since` is the event
+/// line's own is held too: it is no earlier than the event was stored, which
+/// was after the first heartbeat.
 #[test]
 fn a_heartbeat_comes_an_interval_after_the_last_line() {
     let world = World::open(STOOD_IN);
@@ -1251,13 +1252,25 @@ fn a_heartbeat_comes_an_interval_after_the_last_line() {
     let recorded = own.record(vec![notable(None)]);
     own.nudge(&world);
     let printed = recorded[0].id.to_string();
-    stream.until("the event", |seen| {
-        seen.iter().any(|line| line.contains(&printed))
+    // The heartbeat after the event is the first one printed after its line,
+    // not the second one printed: the event reaches the stream only once the
+    // nudge's own command has run, and on a loaded host that can be after the
+    // stream has beaten a whole interval past the first heartbeat, rightly.
+    let after_the_line = |seen: &[String]| {
+        seen.iter()
+            .position(|line| line.contains(&printed))
+            .map(|event_at| beats(&seen[event_at..]))
+    };
+    stream.until("the event and a heartbeat after it", |seen| {
+        after_the_line(seen).is_some_and(|after| after >= 1)
     });
-    stream.until("the next heartbeat", |seen| beats(seen) == 2);
     let lines = stream.seen.clone();
-    let documents = documents(&lines);
-    let beat = last_beat(&documents);
+    let event_at = lines
+        .iter()
+        .position(|line| line.contains(&printed))
+        .unwrap_or_else(|| panic!("the event line: {lines:#?}"));
+    let documents = documents(&lines[event_at..]);
+    let beat = earliest_beat(&documents);
     let (since, second_beat) = (instant(beat, "since"), instant(beat, "at"));
     assert!(
         since >= recorded[0].received_at && since > first_beat,
@@ -1270,11 +1283,6 @@ fn a_heartbeat_comes_an_interval_after_the_last_line() {
         after_the_event >= Duration::from_millis(1_800),
         "the heartbeat after an event came before a whole interval: {after_the_event:?}"
     );
-    let event_at = lines.iter().position(|line| line.contains(&printed));
-    let second_beat = lines
-        .iter()
-        .rposition(|line| line.contains("watch_heartbeat"));
-    assert!(event_at < second_beat, "{lines:#?}");
 }
 
 /// The last heartbeat among `lines`.
@@ -1282,6 +1290,14 @@ fn last_beat(lines: &[Value]) -> &Value {
     lines
         .iter()
         .rev()
+        .find_map(|line| line.get("watch_heartbeat"))
+        .unwrap_or_else(|| panic!("a heartbeat: {lines:#?}"))
+}
+
+/// The first heartbeat among `lines`.
+fn earliest_beat(lines: &[Value]) -> &Value {
+    lines
+        .iter()
         .find_map(|line| line.get("watch_heartbeat"))
         .unwrap_or_else(|| panic!("a heartbeat: {lines:#?}"))
 }
