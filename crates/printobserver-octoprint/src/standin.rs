@@ -244,6 +244,18 @@ impl ScriptedOctoPrint {
         self.held().succeeded = Some((file.to_owned(), size, now));
     }
 
+    /// How many times a file's history was read, at
+    /// `GET /api/files/local/<file>`.
+    #[must_use]
+    pub fn history_reads(&self, file: &str) -> usize {
+        let asked = format!("GET /api/files/local/{file}");
+        self.held()
+            .requests
+            .iter()
+            .filter(|request| request.starts_with(&asked))
+            .count()
+    }
+
     /// Report these heater targets from now on.
     pub fn targets(&self, tool_c: f64, bed_c: f64) {
         let mut held = self.held();

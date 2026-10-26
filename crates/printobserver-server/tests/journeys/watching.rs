@@ -585,15 +585,9 @@ async fn a_successful_file_history_alone_does_not_complete_a_watched_print() {
     watch.octoprint.reports("Operational", landed_idle());
     watch.until("print_ended", 1).await;
 
-    let asked = format!("GET /api/files/local/{FILE}");
     assert!(
-        watch
-            .octoprint
-            .requests()
-            .iter()
-            .any(|request| request.starts_with(&asked)),
-        "the file's history was never read: {:?}",
-        watch.octoprint.requests()
+        watch.octoprint.history_reads(FILE) > 0,
+        "the file's history was never read"
     );
     assert_eq!(ended(&watch.history().await, &print_id), "cancelled");
 }
