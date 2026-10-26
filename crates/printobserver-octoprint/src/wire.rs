@@ -517,6 +517,39 @@ fn connection_of(state: &StatePayload) -> PrinterState {
     }
 }
 
+/// What `GET /api/connection` answers, as far as this adapter reads it.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ConnectionPayload {
+    /// The connection as it is now.
+    current: ConnectionCurrent,
+}
+
+/// The connection as it is now.
+#[derive(Debug, Deserialize)]
+struct ConnectionCurrent {
+    /// `OctoPrint`'s own word for the printer's state.
+    #[serde(default)]
+    state: Option<String>,
+}
+
+impl ConnectionPayload {
+    /// A snapshot of a printer this connection says is offline or in error,
+    /// carrying nothing but that state; nothing for any other state.
+    pub(crate) fn disconnected(&self, observed_at: Timestamp) -> Option<PrinterSnapshot> {
+        let connection = job_state_of(self.current.state.as_deref());
+        matches!(connection, PrinterState::Offline | PrinterState::Error).then(|| PrinterSnapshot {
+            connection,
+            tools: Vec::new(),
+            bed: None,
+            chamber: None,
+            feedrate_factor: None,
+            flowrate_factor: None,
+            fan_percent: None,
+            observed_at,
+        })
+    }
+}
+
 /// The state `OctoPrint`'s own word for a job denotes.
 ///
 /// The words are `OctoPrint`'s, and the ones this vocabulary has no arm for

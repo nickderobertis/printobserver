@@ -43,6 +43,9 @@
 //!   That is what "absent" in that contract means: the source did not report it.
 //! * **Filtration is not here.** It is not in the action vocabulary this port
 //!   implements, and this crate implements no path to one.
+//! * **One command, and only one, is sent as a line.** `M114`, which
+//!   `PrinterCommand::ReportPosition` is rendered as; its reply arrives on the
+//!   push socket ([`push`]) as a terminal line, never in an HTTP answer.
 //! * **Plain HTTP only.** The deployment is one board beside the printer on the
 //!   machine's own network; a base URL spelled with any other scheme is refused
 //!   where it is configured rather than at the first request.
@@ -52,6 +55,9 @@ pub mod config;
 pub mod convert;
 pub mod gcode;
 mod http;
+pub mod push;
+#[cfg(feature = "standin")]
+pub mod standin;
 mod wire;
 
 pub use client::OctoPrintPrinter;
