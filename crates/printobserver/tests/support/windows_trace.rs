@@ -366,7 +366,7 @@ pub fn controller_id() -> String {
 #[cfg(test)]
 #[test]
 fn a_crashed_controller_is_refused_then_another_process_recovers() {
-    let (scratch, program, arguments, environment) = probe();
+    let (_reserved, scratch, program, arguments, environment) = probe();
     let first = super::traced(&program, &arguments, &environment, scratch.path());
     assert_probe(&first, &environment);
     let identity = controller_id();
@@ -423,7 +423,7 @@ fn a_crashed_controller_is_refused_then_another_process_recovers() {
 #[cfg(test)]
 #[test]
 fn incomplete_native_evidence_is_refused_then_the_logger_recovers() {
-    let (scratch, program, arguments, environment) = probe();
+    let (_reserved, scratch, program, arguments, environment) = probe();
     let first = super::traced(&program, &arguments, &environment, scratch.path());
     assert_probe(&first, &environment);
     with_session(|slot| {
@@ -506,18 +506,20 @@ fn incomplete_native_evidence_is_refused_then_the_logger_recovers() {
     another_process_recovers(&program, &arguments, &environment, scratch.path());
 }
 
-/// A reserved refused endpoint and the real socket fixture executable.
+/// A reserved refused endpoint, held, and the real socket fixture executable.
 #[cfg(test)]
 fn probe() -> (
+    crate::unreachable::Unreachable,
     TempDir,
     std::path::PathBuf,
     Vec<String>,
     Vec<(String, String)>,
 ) {
-    let reservation = std::net::TcpListener::bind("127.0.0.1:0").expect("reserved endpoint");
-    let endpoint = reservation.local_addr().expect("refused endpoint");
-    drop(reservation);
+    // Held bound and never listened on for as long as the caller holds it.
+    let reservation = crate::unreachable::Unreachable::held();
+    let endpoint = reservation.address();
     (
+        reservation,
         TempDir::new().expect("trace probe scratch"),
         std::env::current_exe().expect("test program"),
         vec![

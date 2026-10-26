@@ -61,6 +61,7 @@ use std::path::Path;
 use std::process::{Command, Output};
 #[cfg(not(any(target_os = "macos", windows)))]
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 /// The tracer this tier reads a process tree's connections out of.
 #[cfg(not(any(target_os = "macos", windows)))]
@@ -73,6 +74,20 @@ static TRACED: AtomicU64 = AtomicU64::new(0);
 #[cfg(windows)]
 #[path = "windows_trace.rs"]
 mod windows_trace;
+
+/// How long this platform's observation gives a tree, once its root has
+/// exited, for its last process to finish before refusing the observation as
+/// incomplete.
+///
+/// Only the macOS interposer bounds it, with its lifecycle socket; `strace -f`
+/// and the Windows session follow every descendant to its exit themselves.
+#[cfg(target_os = "macos")]
+pub const COMPLETION_BOUND: Option<Duration> = Some(interposer::LIFECYCLE_BOUND);
+/// How long this platform's observation gives a tree, once its root has
+/// exited, for its last process to finish: unbounded here, where the tracer
+/// follows every descendant to its exit itself.
+#[cfg(not(target_os = "macos"))]
+pub const COMPLETION_BOUND: Option<Duration> = None;
 
 /// One invocation, and everything it did.
 #[derive(Debug, Clone)]
@@ -356,8 +371,134 @@ mod observing {
     use printobserver::failure::Exit;
     use tempfile::TempDir;
 
-    use super::interposer::{activity, interposed};
+    use super::interposer::{Lifecycle, activity, interposed, interposed_within};
     use super::{connections_in, traced};
+
+    /// The fixture command, started as a root that starts one descendant which
+    /// connects to `endpoint` after `delay` and records its PID at `recorded`.
+    fn outliving_root(endpoint: SocketAddr, delay_ms: u128, recorded: &Path) -> Command {
+        let mut command = Command::new(std::env::current_exe().expect("test executable"));
+        command
+            .args(["--exact", "traced::regression::connector", "--nocapture"])
+            .env("PRINTOBSERVER_TRACE_CONNECT", endpoint.to_string())
+            .env("PRINTOBSERVER_TRACE_CHILD", "yes")
+            .env("PRINTOBSERVER_TRACE_DELAY", delay_ms.to_string())
+            .env("PRINTOBSERVER_TRACE_CHILD_PID", recorded);
+        command
+    }
+
+    /// A lifecycle socket nothing connected to is refused within its bound
+    /// rather than read as a tree that finished, and one whose only holder
+    /// connected and went away is a tree that has.
+    #[test]
+    fn a_lifecycle_nobody_connected_to_is_refused_and_a_released_one_is_finished() {
+        let unconnected = Lifecycle::listening();
+        let bound = std::time::Duration::from_millis(500);
+        let began = std::time::Instant::now();
+        let refused = unconnected
+            .finished(bound)
+            .expect_err("a lifecycle nobody connected to is not a finished tree");
+        let waited = began.elapsed();
+        assert!(
+            refused.contains("no process of the tree made its lifecycle connection"),
+            "{refused}"
+        );
+        assert!(
+            waited >= bound && waited < bound + std::time::Duration::from_secs(10),
+            "the refusal came after {waited:?}, not within the {bound:?} bound"
+        );
+
+        let released = Lifecycle::listening();
+        drop(
+            std::os::unix::net::UnixStream::connect(&released.path)
+                .expect("the lifecycle socket accepts a connection"),
+        );
+        assert_eq!(released.finished(bound), Ok(()));
+    }
+
+    /// The interposer reads a tree only once its last process has finished.
+    ///
+    /// Its lifecycle socket on this host, loaded the way this platform loads
+    /// it: a descendant that outlives its root, with its output streams
+    /// closed, and connects a second after the root exits is in the recording;
+    /// one that never finishes is refused within the bound it was given.
+    #[test]
+    fn the_interposer_reads_a_tree_only_once_its_last_process_has_finished() {
+        let reservation = crate::unreachable::Unreachable::held();
+        let endpoint = reservation.address();
+        let scratch = TempDir::new().expect("a scratch directory");
+
+        let late = scratch.path().join("late-descendant");
+        let run = interposed(outliving_root(endpoint, 1000, &late), scratch.path(), &[]);
+        assert_eq!(run.output.status.code(), Some(0));
+        assert!(late.is_file(), "the root started no descendant");
+        assert_eq!(
+            connections_in(&run.activity),
+            BTreeSet::from([endpoint]),
+            "the connection a descendant made after its root exited is missing: {}",
+            run.activity
+        );
+
+        let bound = std::time::Duration::from_secs(2);
+        let endless = scratch.path().join("endless-descendant");
+        let began = std::time::Instant::now();
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            interposed_within(
+                outliving_root(endpoint, 600_000, &endless),
+                scratch.path(),
+                &[],
+                bound,
+            )
+        }));
+        let waited = began.elapsed();
+        if let Ok(pid) = std::fs::read_to_string(&endless) {
+            // The descendant this test's own fixture started, by the PID it recorded.
+            let _ = Command::new("kill").arg(pid.trim()).status();
+        }
+        let refusal = refused
+            .err()
+            .expect("a tree still running is not read as complete");
+        let said = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            said.contains("still held"),
+            "the refusal does not say the tree is still running: {said}"
+        );
+        assert!(
+            waited >= bound && waited < bound + std::time::Duration::from_secs(20),
+            "the refusal came after {waited:?}, not within the {bound:?} bound"
+        );
+    }
+
+    /// A descendant that closes the lifecycle descriptor it inherited, and
+    /// connects a second later, is still in the recording: the close is
+    /// answered and not made, so the tree stays held until it has finished.
+    ///
+    /// Not on macOS, where the shell that makes the close is a protected
+    /// program the loader inserts no library into.
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_descendant_closing_the_lifecycle_descriptor_still_holds_the_tree() {
+        let reservation = crate::unreachable::Unreachable::held();
+        let endpoint = reservation.address();
+        let scratch = TempDir::new().expect("a scratch directory");
+        let late = scratch.path().join("closing-descendant");
+        let mut root = outliving_root(endpoint, 100, &late);
+        root.env("PRINTOBSERVER_TRACE_CLOSE_LIFECYCLE", "yes");
+
+        let run = interposed(root, scratch.path(), &[]);
+
+        assert_eq!(run.output.status.code(), Some(0));
+        assert!(late.is_file(), "the root started no descendant");
+        assert_eq!(
+            connections_in(&run.activity),
+            BTreeSet::from([endpoint]),
+            "the connection made after the lifecycle descriptor was closed is missing: {}",
+            run.activity
+        );
+    }
 
     /// A print identifier the program accepts, naming no print anywhere.
     const SOME_PRINT: &str = "01900000-0000-7000-8000-000000000000";
@@ -606,8 +747,18 @@ mod regression {
         }
         if std::env::var_os("PRINTOBSERVER_TRACE_CHILD").is_some() {
             let inherited = std::env::var("PRINTOBSERVER_TRACE_INHERIT").as_deref() == Ok("yes");
-            let child = Command::new(std::env::current_exe().expect("test executable"))
-                .args(["--exact", "traced::regression::connector", "--nocapture"])
+            let program = std::env::current_exe().expect("test executable");
+            let mut descendant =
+                if std::env::var("PRINTOBSERVER_TRACE_CLOSE_LIFECYCLE").as_deref() == Ok("yes") {
+                    let mut closing = Command::new("bash");
+                    closing.args(["-c", CLOSES_ITS_LIFECYCLE]).arg(&program);
+                    closing
+                } else {
+                    let mut connecting = Command::new(&program);
+                    connecting.args(["--exact", "traced::regression::connector", "--nocapture"]);
+                    connecting
+                };
+            let child = descendant
                 .env_remove("PRINTOBSERVER_TRACE_CHILD")
                 .env(
                     "PRINTOBSERVER_TRACE_DELAY",
@@ -644,11 +795,23 @@ mod regression {
         }
     }
 
+    /// The descendant a closing fixture starts in place of a connecting one: it
+    /// closes the lifecycle descriptor it inherited, takes away the socket a
+    /// process could make a connection of its own to, and only then, a second
+    /// on, becomes the connecting fixture. The descriptor it closed is what
+    /// holds the tree over that second, or nothing does.
+    const CLOSES_ITS_LIFECYCLE: &str = r#"eval "exec ${PRINTOBSERVER_INTERPOSE_LIFECYCLE_FD}>&-"
+unset PRINTOBSERVER_INTERPOSE_LIFECYCLE
+sleep 1
+exec "$0" --exact traced::regression::connector --nocapture"#;
+
     /// Accepted and refused attempts belong to this invocation's lifetime and
     /// ancestry; adjacent invocations and simultaneous host traffic do not.
-    // macOS has no descendant-exit signal: its interposer cannot observe a
-    // descendant that outlives the root. Follow-up: "Observe macOS descendants
-    // that outlive their root process" (draft 20261015T025150Z).
+    // Not yet run on macOS. The descendant that outlives its root is observed
+    // there now — `native_boundaries` holds that half on every platform — but
+    // the concurrent observers this walk also drives are built for the other
+    // two platforms' tracers, and bringing them to the interposer is its own
+    // change.
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn each_invocation_observes_its_descendants_and_refused_attempts_only() {
@@ -841,14 +1004,15 @@ mod regression {
         let scratch = tempfile::TempDir::new().expect("trace scratch");
         let listener = TcpListener::bind("127.0.0.1:0").expect("accepted endpoint");
         let accepted = listener.local_addr().expect("listener endpoint");
-        let reservation = TcpListener::bind("127.0.0.1:0").expect("refused endpoint");
-        let refused = reservation.local_addr().expect("reserved endpoint");
-        drop(reservation);
+        // Nothing answers there while it is used, so the attempt is refused.
+        let reservation = crate::unreachable::Unreachable::held();
+        let refused = reservation.address();
         let listener6 = TcpListener::bind("[::1]:0").expect("accepted IPv6 endpoint");
         let accepted6 = listener6.local_addr().expect("IPv6 listener endpoint");
-        let reservation6 = TcpListener::bind("[::1]:0").expect("refused IPv6 endpoint");
-        let refused6 = reservation6.local_addr().expect("reserved IPv6 endpoint");
-        drop(reservation6);
+        // Nothing answers there while it is used, so the attempt is refused.
+        let reservation6 =
+            crate::unreachable::Unreachable::held_on(std::net::Ipv6Addr::LOCALHOST.into());
+        let refused6 = reservation6.address();
         let outside = TcpListener::bind("127.0.0.1:0").expect("unrelated endpoint");
         let unrelated = outside.local_addr().expect("outside endpoint");
         let done = Arc::new(AtomicBool::new(false));
@@ -918,6 +1082,7 @@ mod regression {
 mod native_boundaries {
     use std::collections::BTreeSet;
     use std::net::{SocketAddr, TcpListener};
+    use std::time::Duration;
 
     use super::{Ran, traced};
 
@@ -975,9 +1140,9 @@ mod native_boundaries {
     /// of the real shipped command, with its normal unreachable exit.
     #[test]
     fn a_refused_attempt_from_the_real_command_is_observed() {
-        let reservation = TcpListener::bind("127.0.0.1:0").expect("reserved port");
-        let endpoint = reservation.local_addr().expect("reserved endpoint");
-        drop(reservation);
+        // Nothing answers there while it is used, so the attempt is refused.
+        let reservation = crate::unreachable::Unreachable::held();
+        let endpoint = reservation.address();
         let scratch = tempfile::TempDir::new().expect("trace scratch");
         let ran = traced(
             std::path::Path::new(env!("CARGO_BIN_EXE_printobserver")),
@@ -1018,9 +1183,10 @@ mod native_boundaries {
     fn ipv6_accepted_and_refused_attempts_are_both_observed() {
         let listener = TcpListener::bind("[::1]:0").expect("IPv6 listener");
         let accepted = listener.local_addr().expect("accepted endpoint");
-        let reservation = TcpListener::bind("[::1]:0").expect("IPv6 refused port");
-        let refused = reservation.local_addr().expect("refused endpoint");
-        drop(reservation);
+        // Nothing answers there while it is used, so the attempt is refused.
+        let reservation =
+            crate::unreachable::Unreachable::held_on(std::net::Ipv6Addr::LOCALHOST.into());
+        let refused = reservation.address();
         assert_eq!(
             sockets(&[accepted, refused], false).connected,
             BTreeSet::from([accepted, refused])
@@ -1045,21 +1211,108 @@ mod native_boundaries {
 
     /// Descendants connect after their root exits, with either closed or
     /// inherited output handles. Both outputs and endpoint evidence are complete.
-    // macOS has no descendant-exit signal: its interposer cannot observe a
-    // descendant that outlives the root. Follow-up: "Observe macOS descendants
-    // that outlive their root process" (draft 20261015T025150Z).
-    #[cfg(not(target_os = "macos"))]
     #[test]
     fn a_descendant_connecting_after_its_parent_exits_is_observed() {
-        let reservation = TcpListener::bind("127.0.0.1:0").expect("refused port");
-        let endpoint = reservation.local_addr().expect("refused endpoint");
-        drop(reservation);
+        // Nothing answers there while it is used, so the attempt is refused.
+        let reservation = crate::unreachable::Unreachable::held();
+        let endpoint = reservation.address();
         for inherited in [false, true] {
             assert_eq!(
                 sockets_with_output(&[endpoint], true, inherited).connected,
                 BTreeSet::from([endpoint])
             );
         }
+    }
+
+    /// The macOS interposer's lifecycle socket is what says a tree has finished.
+    ///
+    /// A descendant that closes the output streams it inherited, outlives its
+    /// root and connects only after the root has exited is in the evidence,
+    /// because the recording is read once the descendant's hold on the tree's
+    /// lifecycle connection has ended; and a descendant that never finishes is
+    /// refused within the reader's bound rather than read as a tree that did
+    /// nothing more. `strace -f` and the Windows session follow descendants to
+    /// their exit themselves and read no lifecycle socket, so this is ignored
+    /// on every other platform, where the test above holds the same evidence.
+    #[cfg_attr(
+        not(target_os = "macos"),
+        ignore = "only the macOS interposer reads a lifecycle socket"
+    )]
+    #[test]
+    fn the_lifecycle_socket_waits_out_a_late_descendant_and_refuses_an_endless_one() {
+        // Nothing answers there while it is used, so the attempt is refused.
+        let reservation = crate::unreachable::Unreachable::held();
+        let endpoint = reservation.address();
+        let scratch = tempfile::TempDir::new().expect("trace scratch");
+        let program = std::env::current_exe().expect("test executable");
+        let arguments = [
+            "--exact".to_owned(),
+            "traced::regression::connector".to_owned(),
+            "--nocapture".to_owned(),
+        ];
+        let descendant = |delay: Duration, recorded: &std::path::Path| {
+            vec![
+                (
+                    "PRINTOBSERVER_TRACE_CONNECT".to_owned(),
+                    endpoint.to_string(),
+                ),
+                ("PRINTOBSERVER_TRACE_CHILD".to_owned(), "yes".to_owned()),
+                (
+                    "PRINTOBSERVER_TRACE_DELAY".to_owned(),
+                    delay.as_millis().to_string(),
+                ),
+                (
+                    "PRINTOBSERVER_TRACE_CHILD_PID".to_owned(),
+                    recorded.display().to_string(),
+                ),
+            ]
+        };
+
+        // A second after its root has gone, well past the root's own exit.
+        let late = scratch.path().join("late-descendant");
+        let ran = traced(
+            &program,
+            &arguments,
+            &descendant(Duration::from_secs(1), &late),
+            scratch.path(),
+        );
+        assert_eq!(ran.code, Some(0), "{}", ran.said());
+        assert!(late.is_file(), "the root started no descendant");
+        assert_eq!(
+            ran.connected,
+            BTreeSet::from([endpoint]),
+            "the connection a descendant made after its root exited is missing"
+        );
+
+        let bound = super::COMPLETION_BOUND.expect("the macOS observation is bounded");
+        let endless = scratch.path().join("endless-descendant");
+        let began = std::time::Instant::now();
+        let refused = std::panic::catch_unwind(|| {
+            traced(
+                &program,
+                &arguments,
+                &descendant(bound * 10, &endless),
+                scratch.path(),
+            )
+        });
+        let waited = began.elapsed();
+        if let Ok(pid) = std::fs::read_to_string(&endless) {
+            // The descendant this test's own fixture started, by the PID it recorded.
+            let _ = std::process::Command::new("kill").arg(pid.trim()).status();
+        }
+        let refusal = refused.expect_err("a tree still running is not read as complete");
+        let said = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            said.contains("still held"),
+            "the refusal does not say the tree is still running: {said}"
+        );
+        assert!(
+            waited >= bound && waited < bound + Duration::from_secs(30),
+            "the refusal came after {waited:?}, not within the {bound:?} bound"
+        );
     }
 
     /// Adjacent invocations have distinct endpoint sets while reusing the

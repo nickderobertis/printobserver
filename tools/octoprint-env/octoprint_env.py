@@ -45,7 +45,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +90,14 @@ HOST = "127.0.0.1"
 VIRTUAL_DEVICE = "VIRTUAL"
 DEFAULT_BAUDRATE = 115200
 DEFAULT_STATE_DIR = ".octoprint-env"
+
+# Where `retain` keeps a failed tier's evidence unless told otherwise: outside
+# the state directory, so neither a bring-down nor the next bring-up touches it,
+# and at the path the integration job uploads when the tier fails.
+DEFAULT_RETAIN_DIR = ".octoprint-diagnostics"
+
+# The record `retain` writes beside the logs it kept, naming the instance.
+RETAINED_RECORD = "retained.json"
 
 # The minimum this script states the hold print keeps running for, measured from
 # the moment `up` answers. The tier needs a print that is still there to be
@@ -233,6 +241,11 @@ FAILURE_CLASSES: dict[str, str] = {
     "print-not-running": (
         "read the server log the message names: the instance accepted the upload but "
         "did not report a running print, which the tier needs to act on"
+    ),
+    "retain-unwritable": (
+        "make the directory the message names writable by this user, or name another "
+        "with `--into`, and run `retain` again before the bring-down: the instance's "
+        "logs are still where it wrote them until then"
     ),
     "upload-refused": (
         "run `up` first and name the file with `--file`: `upload` puts a file on an "
@@ -725,11 +738,79 @@ def multipart(fields: dict[str, str], file_name: str, content: bytes) -> tuple[b
 # ~~ starting, waiting and stopping
 
 
-def free_port() -> int:
-    """A port nothing is listening on, so two runs on one host do not collide."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind((HOST, 0))
-        return int(probe.getsockname()[1])
+#: The port a server is told to listen on when it is to choose a free one itself.
+ANY_PORT = 0
+
+#: What reads the TCP ports a process tree is listening on. It runs under the
+#: instance's own interpreter, which carries `psutil` as one of OctoPrint's own
+#: dependencies, and it reads the whole tree because a Windows console-script
+#: launcher starts the interpreter that listens as a child of its own.
+LISTENING_PORTS = (
+    "import json, sys, psutil\n"
+    "root = psutil.Process(int(sys.argv[1]))\n"
+    "ports = set()\n"
+    "for process in [root, *root.children(recursive=True)]:\n"
+    "    try:\n"
+    "        connections = process.net_connections('tcp')\n"
+    "    except psutil.Error:\n"
+    "        continue\n"
+    "    ports.update(c.laddr.port for c in connections if c.status == psutil.CONN_LISTEN)\n"
+    "print(json.dumps(sorted(ports)))\n"
+)
+
+
+def listening_ports(venv: Path, pid: int) -> list[int]:
+    """The TCP ports the process tree rooted at `pid` is listening on now.
+
+    `venv` is the instance's environment, whose interpreter does the reading.
+    """
+    python = environment_program(venv, "python")
+    ran = _run([str(python), "-c", LISTENING_PORTS, str(pid)], timeout=60)
+    if ran.returncode != 0:
+        return []
+    try:
+        ports = json.loads(ran.stdout)
+    except json.JSONDecodeError:
+        return []
+    return [port for port in ports if isinstance(port, int)] if isinstance(ports, list) else []
+
+
+def bound_port(instance: Instance, pid: int, timeout: float) -> int:
+    """The port a server started on port zero bound for itself, once its API answers there.
+
+    Nothing reserved the port and let it go for the server to take, so no other
+    process can have taken it first. Its own API answering is what identifies
+    it: OctoPrint first serves a start-up page from an intermediary server on a
+    port of its own, closes that, and only then binds the one it serves on.
+
+    Raises:
+        StartupError: If the server stops, or never answers on a port it bound.
+    """
+    key = api_key(instance)
+    deadline = time.monotonic() + timeout
+    seen: list[int] = []
+    while time.monotonic() < deadline:
+        if not alive_after_reaping(pid):
+            raise StartupError(
+                "never-answered",
+                f"the server exited before it answered; read {instance.server_log}",
+            )
+        seen = listening_ports(instance.venv, pid)
+        for candidate in seen:
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] reason in suppressions.toml
+                status, _ = call(f"http://{HOST}:{candidate}", key, "/api/version", timeout=5.0)
+            except OSError, http.client.HTTPException:
+                continue
+            if status == 200:
+                note(f"OctoPrint chose port {candidate} and is answering its own API there")
+                return candidate
+        time.sleep(1.0)
+    raise StartupError(
+        "never-answered",
+        f"the server answered its API on none of the ports it listened on ({seen}) within "
+        f"{timeout:.0f}s; read {instance.server_log}",
+    )
 
 
 def claim_port(port: int) -> None:
@@ -862,7 +943,8 @@ def start_server(instance: Instance, port: int) -> int:
         argv.append("--iknowwhatimdoing")
     with instance.server_log.open("a", encoding="utf-8") as log:
         process = _spawn(argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    note(f"started OctoPrint on {HOST}:{port} as process {process.pid}")
+    where = "a port of its own choosing" if port == ANY_PORT else f"port {port}"
+    note(f"started OctoPrint on {HOST}, {where}, as process {process.pid}")
     return process.pid
 
 
@@ -1176,8 +1258,11 @@ def up(instance: Instance, port: int | None, *, printing: bool, timeout: float) 
     # reason to install OctoPrint first.
     claim_device(instance.connection)
     install(instance)
-    chosen = free_port() if port is None else port
-    claim_port(chosen)
+    # Given no port, the server binds a free one itself and is asked which, so
+    # no port is reserved and released for another process to take first.
+    chosen = ANY_PORT if port is None else port
+    if port is not None:
+        claim_port(port)
 
     url = f"http://{HOST}:{chosen}"
     pid = start_server(instance, chosen)
@@ -1197,6 +1282,11 @@ def up(instance: Instance, port: int | None, *, printing: bool, timeout: float) 
     instance.record.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     try:
+        if port is None:
+            chosen = bound_port(instance, pid, timeout)
+            url = f"http://{HOST}:{chosen}"
+            summary.update(url=url, port=chosen)
+            instance.record.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         wait_for_api(instance, url, pid, timeout)
         wait_for_printer(instance, url, timeout)
         if printing:
@@ -1241,8 +1331,8 @@ def summarize_install(instance: Instance) -> dict[str, Any]:
     }
 
 
-def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
-    """Bounded, redacted observations after a journey's state deadline expires."""
+def redactor(instance: Instance) -> Callable[[str], str]:
+    """What hides this instance's own secrets, and any bearer token, from text it wrote."""
     secrets_to_hide: list[str] = [os.environ.get("PRINTOBSERVER_CREDENTIAL", "")]
     for path in (instance.api_key_file, instance.account_password_file):
         with suppress(OSError):
@@ -1254,6 +1344,124 @@ def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, 
             if secret:
                 text = text.replace(secret, "[redacted]")
         return re.sub(r"(?i)(Bearer\s+|X-Api-Key[\s:=]+)\S+", r"\1[redacted]", text)
+
+    return redacted
+
+
+def required_logs(instance: Instance) -> dict[str, Path]:
+    """The logs a failed tier's diagnosis needs, by the name each is retained under.
+
+    What the server process said, OctoPrint's own log, and the serial log of the
+    line between OctoPrint and the printer — which is where a printer going
+    offline mid-tier says why.
+    """
+    return {
+        "server.log": instance.server_log,
+        "logs/octoprint.log": instance.octoprint_log,
+        "logs/serial.log": instance.basedir / "logs" / "serial.log",
+    }
+
+
+class RetainedInstance(TypedDict):
+    """The instance a retention names: where it lives, and what `up` recorded of it."""
+
+    state_dir: str
+    # The record `up` wrote while the instance ran, or None where none was left.
+    record: dict[str, object] | None
+
+
+class Retention(TypedDict):
+    """What `retain` kept of one instance's logs, what it never wrote, and what it cannot read."""
+
+    instance: RetainedInstance
+    into: str
+    retained: list[str]
+    absent: list[str]
+    unreadable: dict[str, str]
+
+
+def retain(instance: Instance, into: Path) -> Retention:
+    """Copy the instance's own logs to `into` before a teardown, naming what was absent.
+
+    A failed tier runs this before the bring-down, so the first failing run
+    keeps its evidence rather than leaving it to a rerun that may pass. Each
+    required log is copied whole with this instance's secrets redacted, because
+    what is kept is uploaded; a log the instance never wrote is reported absent
+    by name rather than skipped, one that is there and cannot be read is
+    reported unreadable with the reason rather than as never written, and a copy
+    an earlier run left of either is removed so nothing stale passes for this
+    run's. The instance is named by its
+    state directory and by the record `up` wrote, where it wrote one.
+    """
+    redacted = redactor(instance)
+    _writable(into.mkdir, into, parents=True, exist_ok=True)
+    record: object = None
+    with suppress(OSError, ValueError):
+        record = json.loads(instance.record.read_text(encoding="utf-8"))
+    named = RetainedInstance(
+        state_dir=str(instance.state_dir.resolve()),
+        record=record if isinstance(record, dict) else None,
+    )
+    retained: list[str] = []
+    absent: list[str] = []
+    unreadable: dict[str, str] = {}
+    for name, source in required_logs(instance).items():
+        kept = into / name
+        try:
+            text = source.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError, NotADirectoryError:
+            # Nothing is at that path: no file, or a parent that is no directory.
+            absent.append(name)
+            _writable(kept.unlink, kept, missing_ok=True)
+            note(f"{name} is absent: the instance under {instance.state_dir} never wrote it")
+            continue
+        except OSError as error:
+            unreadable[name] = f"{type(error).__name__}: {error.strerror or error}"
+            _writable(kept.unlink, kept, missing_ok=True)
+            note(f"{name} is unreadable under {instance.state_dir}: {unreadable[name]}")
+            continue
+        _writable(kept.parent.mkdir, kept.parent, parents=True, exist_ok=True)
+        _writable(kept.write_text, kept, redacted(text), encoding="utf-8")
+        retained.append(name)
+    answer = Retention(
+        instance=named,
+        into=str(into.resolve()),
+        retained=retained,
+        absent=absent,
+        unreadable=unreadable,
+    )
+    record_path = into / RETAINED_RECORD
+    _writable(
+        record_path.write_text, record_path, json.dumps(answer, indent=2) + "\n", encoding="utf-8"
+    )
+    return answer
+
+
+def retained_line(retention: Retention) -> str:
+    """The one line `retain` answers with: how many logs it kept, and where the record is."""
+    kept = len(retention["retained"])
+    every = kept + len(retention["absent"]) + len(retention["unreadable"])
+    record = Path(retention["into"]) / RETAINED_RECORD
+    return f"kept {kept} of {every} logs under {retention['into']}; the record is {record}"
+
+
+def _writable(write: Callable[..., object], path: Path, *args: object, **kwargs: object) -> None:
+    """Make one write of a retention, reporting a refusal as `retain-unwritable`.
+
+    Raises:
+        StartupError: If the filesystem refused the write.
+    """
+    try:
+        write(*args, **kwargs)
+    except OSError as error:
+        raise StartupError(
+            "retain-unwritable", f"could not write {path}: {error.strerror or error}"
+        ) from error
+
+
+def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, object]:
+    """Bounded, redacted observations after a journey's state deadline expires."""
+    redacted = redactor(instance)
 
     logs: dict[str, object] = {}
     for path in (
@@ -1296,7 +1504,9 @@ def diagnostics(instance: Instance, supervisor_status: str | None) -> dict[str, 
 def argument_parser() -> argparse.ArgumentParser:
     """The command surface, whose defaults every recipe and caller shares."""
     parser = argparse.ArgumentParser(prog="octoprint-env", description=__doc__)
-    parser.add_argument("command", choices=("install", "up", "down", "upload", "diagnostics"))
+    parser.add_argument(
+        "command", choices=("install", "up", "down", "upload", "diagnostics", "retain")
+    )
     parser.add_argument(
         "--supervisor-status",
         help="the last supervisor status read by a timed-out journey, for diagnostics",
@@ -1311,6 +1521,11 @@ def argument_parser() -> argparse.ArgumentParser:
         dest="as_name",
         default=None,
         help="the name `upload` gives it there (default: the file's own)",
+    )
+    parser.add_argument(
+        "--into",
+        default=os.environ.get("OCTOPRINT_ENV_RETAIN_DIR", DEFAULT_RETAIN_DIR),
+        help="where `retain` keeps the instance's logs (default: %(default)s)",
     )
     parser.add_argument(
         "--state-dir",
@@ -1392,6 +1607,11 @@ def main(argv: list[str] | None = None) -> int:
                 answer = stop(instance)
             case "diagnostics":
                 answer = diagnostics(instance, arguments.supervisor_status)
+            case "retain":
+                # The record is written beside the logs it names; what is
+                # printed is only where to find it.
+                print(retained_line(retain(instance, Path(arguments.into))))
+                return 0
             case "upload":
                 if not arguments.file:
                     raise StartupError(

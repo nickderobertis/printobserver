@@ -323,8 +323,8 @@ reason = "The second half of the same one site: S310 flags both building the req
 [[suppression]]
 rule = "S310"
 file = "tools/obico-env/tests/substitute.py"
-site = "self.webhook_url,"
-reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically. This is the stand-in posting to the webhook address the journey that built it named, which is always a loopback `http://127.0.0.1:<free port>/alert` composed in the journey itself."
+site = "            to,"
+reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically. This is the stand-in posting to the webhook address it is told to post to: the loopback `http://127.0.0.1:<port>/alert` the tier's own capture holds, handed over with the request to post, or the one the journey that built it named."
 
 [[suppression]]
 rule = "S310"
@@ -1482,7 +1482,7 @@ reason = "Where the Linux cells gain the launchd adapter's stand-in case, as the
 [[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
-site = "server = ThreadingHTTPServer((\"127.0.0.1\", 0), _AnswersEveryRead)"
+site = "server = LoopbackServer(_AnswersEveryRead)"
 reason = "The one OctoPrint this journey stands in, unchanged from before this change: the service refuses to start while nothing answers at its configured OctoPrint address, and what this journey proves is the service manager — activation, boot start, restart after a kill, teardown — not a printer. The real OctoPrint is driven by the printer integration tier and the real printer by the smoke test."
 
 [[suppression]]
@@ -2631,6 +2631,60 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_fresh_clone_journey.py"
 site = "def test_a_clones_commands_sync_its_own_environment_and_start_no_daemon"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the journey proves a copy's own `uv run` syncs the copy's lock under a caller exporting `UV_NO_SYNC`, which only an environment that does not already hold the dependencies can show, and with uv's cache warm from the shared environment that sync links rather than downloads."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "status, _ = call(f\"http://{HOST}:{candidate}\""
+reason = "The same helper and the same strictly ordered bring-up as the `http.client.HTTPConnection` entry for this file: each port the server's own process tree listens on is asked, one after another on loopback, whether it is the one OctoPrint's API answers on, and the answer decides the next step of a provisioning script whose whole contract is one blocking command. There is nothing for an async client to overlap and no typed OctoPrint client to adopt; the product reaches OctoPrint from the `printobserver-octoprint` crate."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/src/release_artifacts/world.py"
+site = "connection = sqlite3.connect(f\"file:{store}?mode=ro\", uri=True)"
+reason = "The world reads back, read-only, the store of the supervisor it started itself, to learn whether the print its alert opened is ready, and to say what it last saw when that wait gives up. It is a poll inside a strictly sequential proof whose answer decides the next step, so there is nothing for an async client to overlap; and the store has no client of its own outside the product, which reads it through `printobserver-store-sqlite`. Reading the rows as the readiness queries name them is the observation, not a second client of the product's storage."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/release-artifacts/tests/unprepared_ingress.py"
+site = "store = sqlite3.connect(STORE)"
+reason = "This is a stand-in supervisor, run as a subprocess by one test, writing the one state it exists to leave behind: a store short of a prepared print. One synchronous write, once, before it answers the alert; there is no service on the other side of it for a typed client to speak to."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/tests/test_loopback.py"
+site = "with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as connection:"
+reason = "The request is made by number over a raw socket on purpose: the journey's subject is that a stand-in is ready while every name lookup on the thread is refused, and an HTTP client would resolve the host it is handed through the very lookups being refused. One request, its status line read and asserted on; nothing to overlap."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/release-artifacts/tests/test_tracking.py"
+site = "standing = IssuesForge(REPOSITORY, CREDENTIAL)"
+reason = "The same stand-in forge as this file's other entry, for the same reason: the real issues API would open a real issue on github.com. What this journey adds is that the stand-in is ready to serve the real tracking command while every name lookup on the thread that started it is refused."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_tier.py"
+site = "status, _, _ = http(control_url, data=webhook_url.encode(\"utf-8\"), method=\"POST\")"
+reason = "One request, once, in a tier whose path is strictly ordered: the stand-in is told where to post, and only then does the tier wait for that body on its capture. There is nothing for an async client to overlap, and what answers is a stand-in this suite wrote rather than a service with a typed client. It goes through the tier's one `http` helper, which every request the tier makes shares, so the tier carries one HTTP client rather than two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/tests/substitute.py"
+site = "request = urllib.request.Request(  # noqa: S310"
+reason = "This stand-in plays Obico's webhook plugin, which posts one body with a blocking `requests.post` and does not retry; posting the same way, once, from the thread the control request arrived on is what keeps the stand-in faithful to the producer it replaces. There is nothing to overlap and no service on the other side but the tier's own capture."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_octoprint_tier.py"
+site = "def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started("
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this journey there — its section on the integration tier names `test_octoprint_tier.py` as the gate's own proof that the bring-down leaves nothing running — and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put it behind. Proving that a failed walk keeps the instance's logs adds no second bring-up: the walk fails on purpose over the one instance it already starts."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tools/octoprint-env/tests/test_retaining.py"
+site = "runner = failing_runner / \"bunx\""
+reason = "The one thing stood in is the graph runner the tier's recipe hands the tier to, and only so the tier fails at once rather than after a full integration run: what this journey is about is what the committed `test-integration` recipe does when its tier fails — keep the instance's logs before any bring-down. The recipe, the `retain` it runs, the real OctoPrint instance whose logs are kept and the bring-down after it are all the committed ones; the real tier runs unaltered in every `integration (<platform>)` job."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"

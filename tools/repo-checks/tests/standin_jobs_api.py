@@ -17,8 +17,10 @@ import urllib.parse
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any
+
+from repo_checks.loopback import LoopbackServer
 
 
 @dataclass(slots=True)
@@ -73,11 +75,11 @@ def serving(jobs: Jobs) -> Iterator[str]:
         def log_message(self, format: str, *args: object) -> None:
             """Say nothing: the suite's own assertions are the signal."""
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackServer(Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}"
+        yield server.url
     finally:
         server.shutdown()
         server.server_close()

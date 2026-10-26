@@ -56,6 +56,10 @@ use crate::world::{
 /// characters a TOML string escapes.
 const CONFIGURED: &str = r#"an-operators-own-"credential"-7Hq2\vX9mKp4Lw"#;
 
+/// How long a stopped server's store is given to be let go of: a bound on a
+/// handle never closed, rather than a pause.
+const STORE_CLOSES_WITHIN: Duration = Duration::from_secs(30);
+
 /// What a credential nobody configured is.
 const STALE: &str = "a-stale-credential-nothing-should-read-3Rt8";
 
@@ -648,6 +652,34 @@ impl Rooted {
         set_mode(&client, 0o600);
     }
 
+    /// The store's write-ahead log in that state directory.
+    fn store_log(&self) -> PathBuf {
+        self.state().join(format!(
+            "{}-wal",
+            printobserver_store_sqlite::DATABASE_FILE_NAME
+        ))
+    }
+
+    /// Wait until every connection a stopped server held on the store is closed.
+    ///
+    /// `SQLite` removes a database's write-ahead log as the last connection to
+    /// it closes, so the log being gone is the store itself saying nothing
+    /// holds it — which a stopped server's handle, still being dropped by a
+    /// task the stop only cancelled, would otherwise race the next open for.
+    async fn store_closed(&self) {
+        let log = self.store_log();
+        let deadline = std::time::Instant::now() + STORE_CLOSES_WITHIN;
+        while log.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the stopped server's store was still held after {STORE_CLOSES_WITHIN:?}: \
+                 {} remains",
+                log.display()
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     /// Start the real composition root over it.
     async fn start(&self) -> Result<Running, StartError> {
         Server::start(&self.path).await
@@ -859,7 +891,18 @@ async fn the_legacy_layout_is_converted_into_a_verifier_and_its_plaintext_remove
         "the legacy credential is still written somewhere: {:?}",
         rooted.carrying(LEGACY)
     );
+    let log = rooted.store_log();
+    assert!(
+        log.exists(),
+        "the running server's store keeps no write-ahead log at {}, so its closing \
+         would say nothing",
+        log.display()
+    );
     first.stop().await;
+    // The second start opens the same store, and an open that meets a handle
+    // the first server still holds can be refused as locked: so it waits on
+    // the store itself saying nothing holds it any more.
+    rooted.store_closed().await;
 
     let second = rooted.start().await.expect("the server starts again");
     assert!(

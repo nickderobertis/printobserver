@@ -329,7 +329,54 @@ fn ending(lines: &[Value]) -> Value {
         last.get("watch_ended").is_some(),
         "the ending was not the last line: {lines:#?}"
     );
+    held_to_the_documents(&last["watch_ended"], "watch_ended");
     last["watch_ended"].clone()
+}
+
+/// The documents that state what a `--json` stream's own lines carry.
+const STATING_THE_LINES: [&str; 2] = [
+    "skills/printobserver/reference/command-surface.md",
+    "README.md",
+];
+
+/// Hold the fields of one of the stream's own lines — `object`, printed as
+/// `{"<object>": {...}}` — to the fields each document stating it names, so
+/// a field the stream gains, loses or renames fails here naming the document.
+fn held_to_the_documents(line: &Value, object: &str) {
+    let printed: Vec<&str> = line
+        .as_object()
+        .unwrap_or_else(|| panic!("`{object}` is an object: {line}"))
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for document in STATING_THE_LINES {
+        let text = std::fs::read_to_string(root.join(document))
+            .unwrap_or_else(|error| panic!("{document} reads: {error}"));
+        let opener = format!("{{\"{object}\": {{");
+        let start = text
+            .find(&opener)
+            .unwrap_or_else(|| panic!("{document} states `{object}`"))
+            + opener.len();
+        let end = text[start..]
+            .find("}}")
+            .unwrap_or_else(|| panic!("{document} closes its `{object}`"));
+        let shape = &text[start..start + end];
+        let mut documented: Vec<&str> = shape
+            .split('"')
+            .collect::<Vec<_>>()
+            .windows(2)
+            .filter(|pair| pair[1].trim_start().starts_with(':'))
+            .map(|pair| pair[0])
+            .collect();
+        documented.sort_unstable();
+        let mut printed = printed.clone();
+        printed.sort_unstable();
+        assert_eq!(
+            printed, documented,
+            "the stream's `{object}` fields, against what {document} states"
+        );
+    }
 }
 
 /// The events of a print's scope that pass a filter, up to and including the
@@ -664,6 +711,7 @@ fn a_quiet_stream_beats_and_a_signal_ends_it_as_interrupted() {
 
         for beat in lines.iter().filter_map(|line| line.get("watch_heartbeat")) {
             assert!(beat["at"].is_string(), "{beat}");
+            assert!(beat["since"].is_string(), "{beat}");
             assert!(beat.get("cursor").is_some(), "{beat}");
         }
         let ended = ending(&lines);
@@ -1215,6 +1263,15 @@ fn every_value_of_a_repeated_option_rules_on_the_stream() {
 
 /// A heartbeat comes the interval after the last line and no sooner, and an
 /// event printed puts the next one back a whole interval.
+///
+/// The gap after the event is read off the instants the stream itself wrote,
+/// never off when this journey happened to read a line: the heartbeat's `since`,
+/// stamped once the stream had written the event line and its timer reset, and
+/// its `at`, stamped as it was printed. A reader delayed under load reads both
+/// lines late without moving either instant. The heartbeat measured is the
+/// first printed after the event line, and that its `since` is the event
+/// line's own is held too: it is no earlier than the event was stored, which
+/// was after the first heartbeat.
 #[test]
 fn a_heartbeat_comes_an_interval_after_the_last_line() {
     let world = World::open(STOOD_IN);
@@ -1234,23 +1291,87 @@ fn a_heartbeat_comes_an_interval_after_the_last_line() {
         started.elapsed()
     );
 
+    // Halfway to the next heartbeat by the stream's own clock, so a stream
+    // that went on counting from the first heartbeat rather than from the
+    // event would beat half an interval after the event, and fail below.
+    let first_beat = beat_at(&documents(&stream.seen));
+    std::thread::sleep(left_until(first_beat, interval / 2));
     let recorded = own.record(vec![notable(None)]);
     own.nudge(&world);
     let printed = recorded[0].id.to_string();
-    stream.until("the event", |seen| {
-        seen.iter().any(|line| line.contains(&printed))
+    // The heartbeat after the event is the first one printed after its line,
+    // not the second one printed: the event reaches the stream only once the
+    // nudge's own command has run, and on a loaded host that can be after the
+    // stream has beaten a whole interval past the first heartbeat, rightly.
+    let after_the_line = |seen: &[String]| {
+        seen.iter()
+            .position(|line| line.contains(&printed))
+            .map(|event_at| beats(&seen[event_at..]))
+    };
+    stream.until("the event and a heartbeat after it", |seen| {
+        after_the_line(seen).is_some_and(|after| after >= 1)
     });
-    let after_the_event = Instant::now();
-    stream.until("the next heartbeat", |seen| beats(seen) == 2);
-    assert!(
-        after_the_event.elapsed() >= Duration::from_millis(1_800),
-        "the heartbeat after an event came before a whole interval: {:?}",
-        after_the_event.elapsed()
-    );
     let lines = stream.seen.clone();
-    let event_at = lines.iter().position(|line| line.contains(&printed));
-    let second_beat = lines
+    let event_at = lines
         .iter()
-        .rposition(|line| line.contains("watch_heartbeat"));
-    assert!(event_at < second_beat, "{lines:#?}");
+        .position(|line| line.contains(&printed))
+        .unwrap_or_else(|| panic!("the event line: {lines:#?}"));
+    let documents = documents(&lines[event_at..]);
+    let beat = earliest_beat(&documents);
+    held_to_the_documents(beat, "watch_heartbeat");
+    let (since, second_beat) = (instant(beat, "since"), instant(beat, "at"));
+    assert!(
+        since >= recorded[0].received_at && since > first_beat,
+        "the heartbeat after an event counted from {since}, not from the event \
+         line, stored at {} after the first heartbeat at {first_beat}",
+        recorded[0].received_at
+    );
+    let after_the_event = between(since, second_beat);
+    assert!(
+        after_the_event >= Duration::from_millis(1_800),
+        "the heartbeat after an event came before a whole interval: {after_the_event:?}"
+    );
+}
+
+/// The last heartbeat among `lines`.
+fn last_beat(lines: &[Value]) -> &Value {
+    lines
+        .iter()
+        .rev()
+        .find_map(|line| line.get("watch_heartbeat"))
+        .unwrap_or_else(|| panic!("a heartbeat: {lines:#?}"))
+}
+
+/// The first heartbeat among `lines`.
+fn earliest_beat(lines: &[Value]) -> &Value {
+    lines
+        .iter()
+        .find_map(|line| line.get("watch_heartbeat"))
+        .unwrap_or_else(|| panic!("a heartbeat: {lines:#?}"))
+}
+
+/// The instant a heartbeat's `field` names.
+fn instant(beat: &Value, field: &str) -> Timestamp {
+    beat[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("a heartbeat carrying `{field}`: {beat}"))
+        .parse()
+        .unwrap_or_else(|error| panic!("a heartbeat's `{field}` is an instant: {error:?}"))
+}
+
+/// When the last heartbeat among `lines` says it was printed.
+fn beat_at(lines: &[Value]) -> Timestamp {
+    instant(last_beat(lines), "at")
+}
+
+/// How long from `earlier` to `later`, or nothing when `later` is not later.
+fn between(earlier: Timestamp, later: Timestamp) -> Duration {
+    (*later.as_utc() - *earlier.as_utc())
+        .to_std()
+        .unwrap_or(Duration::ZERO)
+}
+
+/// How long from now until `wait` has passed since `since`, by the wall clock.
+fn left_until(since: Timestamp, wait: Duration) -> Duration {
+    wait.saturating_sub(between(since, Timestamp::now()))
 }

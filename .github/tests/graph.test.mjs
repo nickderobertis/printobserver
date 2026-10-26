@@ -279,6 +279,62 @@ describe("the macOS jobs run what the two macOS cells ran", () => {
   });
 });
 
+describe("a failed integration tier", () => {
+  const ci = workflows.get("ci.yml");
+  // Where the tier keeps a failed instance's logs, as the environment declares it.
+  const retained = /^DEFAULT_RETAIN_DIR = "([^"]+)"$/m.exec(
+    readFileSync(join(ROOT, "tools", "octoprint-env", "octoprint_env.py"), "utf8"),
+  )[1];
+
+  /**
+   * The steps a job runs, in order, when `just test-integration` ends as `tier`
+   * and every other step that runs succeeds — each step's `if` evaluated by the
+   * forge's own rule over the results of the steps before it, under the contexts
+   * a pull request gives it and no `steps` outputs at all.
+   */
+  function walked(key, tier) {
+    const contexts = {
+      github: { event_name: "pull_request" },
+      inputs: null,
+      needs: {},
+      vars: {},
+      matrix: { platform: PLATFORMS[0] },
+      steps: {},
+    };
+    const results = [];
+    const ran = [];
+    for (const step of ci.jobs[key].steps) {
+      if (!condition(step.if, contexts, results, `${key}: ${step.run ?? step.uses}`)) {
+        continue;
+      }
+      ran.push(step);
+      results.push(step.run === "just test-integration" ? tier : "success");
+    }
+    return ran;
+  }
+
+  const uploads = (steps) =>
+    steps.filter((step) => /^actions\/upload-artifact@/.test(step.uses ?? ""));
+
+  for (const key of ["integration", MACOS_JOBS.integration]) {
+    test(`${key} uploads the retained logs after the bring-down, and only when the tier failed`, () => {
+      const failed = walked(key, "failure");
+      assert.deepEqual(
+        uploads(failed).map((step) => step.with.path),
+        [retained],
+        `${key} uploads ${retained} when the tier fails`,
+      );
+      const order = failed.map((step) => step.run ?? step.uses);
+      assert.ok(
+        order.indexOf("just octoprint-down") <
+          order.findIndex((step) => /upload-artifact/.test(step)),
+        `${key} uploads after the bring-down: ${order.join(", ")}`,
+      );
+      assert.deepEqual(uploads(walked(key, "success")), [], `${key} uploads nothing on a pass`);
+    });
+  }
+});
+
 describe("pushes and the release", () => {
   function pushed(name, released) {
     const made = history("version");

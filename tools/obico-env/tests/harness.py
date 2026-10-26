@@ -9,11 +9,11 @@ suite's own — so a journey never proves the environment right by asking it.
 from __future__ import annotations
 
 import json
-import socket
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
@@ -70,11 +70,33 @@ def said(result: subprocess.CompletedProcess[str]) -> str:
     return result.stdout + result.stderr
 
 
-def free_port() -> int:
-    """A port nothing is listening on, so two journeys do not collide."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
+#: The webhook address a journey configures the stack with: the host alias a
+#: container reaches this host by, on port zero, which leaves the port to the
+#: tier — it binds its capture on a port of its own and points the plugin there.
+#: No journey chooses a port and releases it for the tier to take later.
+TIER_CHOOSES = "http://host.docker.internal:0/alert"
+
+#: The same, for a stand-in that posts from this host rather than a container.
+TIER_CHOOSES_ON_LOOPBACK = "http://127.0.0.1:0/alert"
+
+
+def held_by_the_tier(verdict: dict[str, Any], configured: str) -> None:
+    """The tier listened on a port of its own, at the host and path configured.
+
+    Raises:
+        AssertionError: If the verdict names another address, or no port.
+    """
+    named = urllib.parse.urlsplit(configured)
+    listened = urllib.parse.urlsplit(str(verdict["webhook_url"]))
+    if verdict.get("configured_webhook_url") != configured:
+        message = f"expected the tier configured with {configured}; the verdict says {verdict}"
+        raise AssertionError(message)
+    if (listened.hostname, listened.path) != (named.hostname, named.path) or not listened.port:
+        message = (
+            f"expected the tier to listen at {named.hostname}{named.path} on a port of its "
+            f"own; it listened at {verdict['webhook_url']}"
+        )
+        raise AssertionError(message)
 
 
 def get(

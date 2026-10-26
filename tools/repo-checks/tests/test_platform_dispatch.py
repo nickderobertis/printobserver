@@ -1018,6 +1018,7 @@ def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved
             f"just check  {exported}",
             f"just budgets-release-pr {exported}",
             f"just runner-temp cleanup {exported}",
+            f"just gate-time {exported}",
         ],
         describing="what ran, and what it was handed",
     )

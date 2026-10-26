@@ -42,7 +42,7 @@ from release_artifacts.build import (
     program,
     staged_release,
 )
-from release_artifacts.world import World
+from release_artifacts.world import INGRESS_TIMEOUT_SECONDS, World
 
 #: Where an install script route is told to put it.
 SCRIPT_DIRECTORY = "bin"
@@ -927,14 +927,25 @@ def smoke_check(repo: Repo, taken: Installed) -> list[str]:
     return argv
 
 
-def prove_client(repo: Repo, taken: Installed, binary: Path | None) -> str:
+def prove_client(
+    repo: Repo,
+    taken: Installed,
+    binary: Path | None,
+    *,
+    ingress_timeout: float = INGRESS_TIMEOUT_SECONDS,
+) -> str:
     """One installed client's own smoke check, against a real supervisor.
+
+    `ingress_timeout` is the calling tier's own bound on the supervisor's
+    ingress preparing the print and image the check reads.
 
     Raises:
         InstallError: If that client has no committed smoke check.
     """
     argv = smoke_check(repo, taken)
-    world = World(program(repo, binary), taken.environment / "world")
+    world = World(
+        program(repo, binary), taken.environment / "world", ingress_timeout=ingress_timeout
+    )
     try:
         running = world.start()
         return ran(

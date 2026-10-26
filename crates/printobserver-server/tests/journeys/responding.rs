@@ -24,6 +24,7 @@ use tempfile::TempDir;
 use crate::agent::Pass;
 use crate::authenticating::history;
 use crate::printer::Call;
+use crate::probes::unreachable_address;
 use crate::world::{SECRET, World};
 
 /// The one action every run here is scripted with: an adjustment the agent is
@@ -222,9 +223,8 @@ async fn the_responder_reports_why_an_action_could_not_reach_a_server() {
         json!("https://127.0.0.1:9 is no address this responder speaks to")
     );
 
-    let unused = TcpListener::bind("127.0.0.1:0").expect("an unused address is reserved");
-    let unused_address = unused.local_addr().expect("the unused address reads");
-    drop(unused);
+    // An address no server can be listening on.
+    let unused_address = unreachable_address();
     let refused = respond(
         &format!("http://{unused_address}"),
         &credential,

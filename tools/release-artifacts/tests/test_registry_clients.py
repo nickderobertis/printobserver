@@ -499,7 +499,8 @@ def test_two_stand_ins_on_one_port_each_have_their_own_crate_built(
 
     `cargo` names a registry by its URL, and a stand-in's URL is a loopback
     port. The first stand-in serves a crate carrying no library and the second,
-    on the same port, the real client at the same name and version: a proof
+    taking over the first's listener, the real client at the same name and
+    version on the same port, which stays bound throughout: a proof
     that resolved through a cache the first one filled would build the hollow
     crate and fail. The Cargo home this run would otherwise share is one of the
     journey's own, so that it can say no proof kept a stand-in's crate in it;
@@ -511,25 +512,40 @@ def test_two_stand_ins_on_one_port_each_have_their_own_crate_built(
     toolchains = _toolchains()
     served: dict[str, bytes] = {}
     homes: dict[str, Path] = {}
-    port = 0
-    for proof, broken in (("first", True), ("second", False)):
-        standing_in = Registries(repo, tmp_path / proof / "served", port)
-        try:
-            port = int(standing_in.base.rpartition(":")[2])
+    stood: list[Registries] = []
+    #: How many reads each stand-in had answered when the next took over.
+    answered_by_then: list[int] = []
+    standing_in: Registries | None = None
+    try:
+        for proof, broken in (("first", True), ("second", False)):
+            # The second takes over the first's listener, which stays bound
+            # throughout: the address is handed out again with no moment in
+            # which another process could take it.
+            if standing_in is not None:
+                answered_by_then.append(len(standing_in.asked))
+            standing_in = Registries(repo, tmp_path / proof / "served", replacing=standing_in)
+            stood.append(standing_in)
             served[proof] = standing_in.serve_clients(CRATE, broken=broken)[CRATE].read_bytes()
             into = tmp_path / proof / "taken"
             into.mkdir(parents=True)
-            bases = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: standing_in.base})
+            reached = Bases.read(repo, {PRINTOBSERVER_PROOF_REGISTRIES: standing_in.base})
             take = clients(repo)[CRATE]
             if broken:
                 with pytest.raises(InstallError):
-                    take(repo, named(repo.root, CRATE), version, into, bases)
+                    take(repo, named(repo.root, CRATE), version, into, reached)
             else:
-                take(repo, named(repo.root, CRATE), version, into, bases)
+                take(repo, named(repo.root, CRATE), version, into, reached)
             homes[proof] = into / "env" / "cargo-home"
-        finally:
+    finally:
+        if standing_in is not None:
             standing_in.stop()
 
+    first, second = stood
+    equal(second.base, first.base, describing="the address the second stand-in answered under")
+    truth(bool(second.asked), describing="the second proof's reads answered by the second")
+    equal(
+        len(first.asked), answered_by_then[0], describing="reads the first answered after handover"
+    )
     truth(served["first"] != served["second"], describing="the two stand-ins serve different bytes")
     sources = set()
     for proof, home in homes.items():

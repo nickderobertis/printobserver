@@ -354,6 +354,17 @@ def test_job_scratch_cleanup_may_run_after_a_failed_tier(tree: Callable[[], Tree
     accepted(integration_tier(allowed.repo), describing="ownership-safe host cleanup")
 
 
+def test_an_upload_skipped_on_some_changes_is_refused(tree: Callable[[], Tree]) -> None:
+    """Only `failure()` admits an upload: any other condition is a narrowing."""
+    broken = tree()
+    broken.edit(
+        CI,
+        "      - if: failure()\n        uses: actions/upload-artifact@v4\n",
+        "      - if: github.event_name == 'push'\n        uses: actions/upload-artifact@v4\n",
+    )
+    refused(integration_tier(broken.repo), "actions/upload-artifact@v4` under the condition")
+
+
 @pytest.mark.parametrize(
     ("command", "condition"),
     [("just bootstrap", "always()"), ("just runner-temp cleanup", "success()")],

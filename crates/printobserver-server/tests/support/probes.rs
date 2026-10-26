@@ -6,9 +6,7 @@
 //! `OctoPrint`: nothing here carries an `OctoPrint` path, header or response
 //! shape, because only the adapter crate may construct one.
 
-use std::net::SocketAddr;
-
-use tokio::net::TcpListener;
+use std::net::{Ipv4Addr, SocketAddr};
 
 use crate::http_host::Host;
 
@@ -29,15 +27,15 @@ pub fn base_url(host: &Host) -> String {
     format!("http://{}", host.address)
 }
 
-/// An address nothing is listening on.
+/// An address no server can be listening on: port zero on IPv4 loopback.
 ///
-/// A port is bound to learn one that is free and then released, so what a
-/// caller meets is a refused connection rather than a served refusal.
-pub async fn unreachable_address() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    address
+/// Nothing can listen on port zero — a listener asking for it is handed some
+/// other port — so nothing is held and nothing can come to take it. A
+/// connection there fails on every host: refused on Linux, and refused before
+/// any packet is sent on Darwin and Windows, where port zero is no address to
+/// connect to. Every caller here treats any connect failure as nothing
+/// answering.
+#[must_use]
+pub fn unreachable_address() -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
 }

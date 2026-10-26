@@ -551,8 +551,9 @@ printobserver watch --json --print-id PRINT_ID --sample periodic_observation=300
 With `--json` every line is one JSON object:
 
 - each passing event, exactly as `history --json` prints it;
-- `{"watch_heartbeat": {"at": "<timestamp>", "cursor": "<event id>" | null}}`
-  with `--heartbeat-s`;
+- `{"watch_heartbeat": {"at": "<timestamp>", "since": "<timestamp>", "cursor": "<event id>" | null}}`
+  with `--heartbeat-s`, where `since` is when the last line was printed — or the
+  stream started — which the interval counts from;
 - and always, last, `{"watch_ended": {"reason": "print_ended" | "interrupted" |
   "unreachable" | "refused", "detail": "<text>", "cursor": "<event id>" | null}}`.
 

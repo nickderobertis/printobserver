@@ -147,9 +147,14 @@ fn recorded_as_unproducible_against_this_target() {
 }
 
 /// A loopback address nothing is listening on.
+///
+/// Port zero on IPv4 loopback: nothing can listen on port zero — a listener
+/// asking for it is handed some other port — so nothing is held and nothing can
+/// come to take it, whatever binds beside it. A connection there fails on every
+/// host: refused on Linux, and refused before any packet is sent on Darwin and
+/// Windows, where port zero is no address to connect to.
 fn closed_address() -> String {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    drop(listener);
-    format!("http://{address}")
+    use std::net::{Ipv4Addr, SocketAddr};
+
+    format!("http://{}", SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 }

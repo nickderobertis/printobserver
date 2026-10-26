@@ -54,6 +54,12 @@ CLIENTS = ["crate:printobserver-sdk", "pypi:printobserver-sdk", "npm:@printobser
 #: How long the one program build these share is given.
 BUILD_TIMEOUT_SECONDS = 2400
 
+#: This tier's own bound on a supervisor's ingress preparing the print and
+#: image a smoke check reads. Every world this tier stands up waits out exactly
+#: this rather than a deadline of the world's own, so a loaded host lengthens
+#: the proof instead of failing it; it bounds a hang, not a budget.
+PROOF_TIMEOUT_SECONDS = 600.0
+
 #: A credential shaped like the one a supervisor generates for itself — 32
 #: random bytes as unpadded URL-safe base64 — and beginning with `-`, as one in
 #: sixty-four of those does. An option parser reads a value beginning with `-`
@@ -141,7 +147,7 @@ def test_each_client_is_installed_and_proved_against_a_real_supervisor(
             describing=f"what `{identifier}` said of a credential {what}",
         )
 
-    said = prove_client(repo, taken, supervisor)
+    said = prove_client(repo, taken, supervisor, ingress_timeout=PROOF_TIMEOUT_SECONDS)
 
     contains(said, "smoke: contract", describing=f"what `{identifier}` said where it was put")
     contains(said, "image ", describing=f"what `{identifier}` said where it was put")
@@ -164,7 +170,12 @@ def test_each_installed_client_takes_a_credential_beginning_with_a_hyphen(
     taken = install(
         repo, identifier, into(identifier.replace(":", "-").replace("@", "")), supervisor
     )
-    world = World(supervisor, taken.environment / "world", credential=HYPHEN_LEADING)
+    world = World(
+        supervisor,
+        taken.environment / "world",
+        credential=HYPHEN_LEADING,
+        ingress_timeout=PROOF_TIMEOUT_SECONDS,
+    )
     try:
         running = world.start()
         equal(

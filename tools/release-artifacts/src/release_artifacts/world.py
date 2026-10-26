@@ -21,7 +21,6 @@ import json
 import os
 import queue
 import secrets
-import socketserver
 import sqlite3
 import subprocess
 import sys
@@ -29,18 +28,19 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from socket import socket
 from types import TracebackType
 from typing import IO, NewType
 from urllib.parse import urlsplit
 
+from repo_checks.loopback import LoopbackServer
 from repo_checks.shell import run, start
 
 
-class QuietServer(ThreadingHTTPServer):
-    """A server whose peers may go away mid-connection without a traceback for it.
+class QuietServer(LoopbackServer):
+    """A loopback server whose peers may go away mid-connection without a traceback for it.
 
     The supervisor keeps its connections to the stand-in machine open, and
     stopping it closes them from its end. On Windows that reaches the handler
@@ -51,19 +51,6 @@ class QuietServer(ThreadingHTTPServer):
     proof's output needs, and on a tier whose pass is one line per proof, it is
     noise the journeys refuse.
     """
-
-    def server_bind(self) -> None:
-        """Bind, and name the server by the address it bound rather than by a lookup of it.
-
-        The base names itself with `socket.getfqdn`, a reverse lookup of the
-        bound address that nothing here reads, and on a hosted macOS runner that
-        lookup waits out a resolver timeout of about 35 seconds: once per
-        world, and so once per client journey.
-        """
-        socketserver.TCPServer.server_bind(self)
-        host, port = self.server_address[:2]
-        self.server_name = str(host)
-        self.server_port = int(port)
 
     def handle_error(self, request: socket | tuple[bytes, socket], client_address: object) -> None:
         """Say nothing of a peer that went away; report anything else as the base does."""
@@ -120,12 +107,54 @@ SKILL = Path(__file__).resolve().parents[4] / "skills/printobserver/SKILL.md"
 #: How long the supervisor is given to answer at the address it bound.
 STARTUP_TIMEOUT_SECONDS = 60.0
 
-#: How long the ingress is given to open the print its alert names.
+#: How long the ingress is given to open the print its alert names, unless the
+#: tier standing the world up names its own bound.
 INGRESS_TIMEOUT_SECONDS = 60.0
+
+
+#: What the store holds once the ingress has prepared the print its alert
+#: opens, each named as a wait that gave up reports it: the print, the image, the
+#: alert's event, and the supervision turn's assessment or failure, which is
+#: recorded after the context read and so is the readiness boundary.
+READINESS = (
+    ("prints", "SELECT id FROM prints"),
+    ("images", "SELECT id FROM images"),
+    ("failure alerts", "SELECT id FROM events WHERE kind = 'obico_failure_alert'"),
+    (
+        "finished supervision turns",
+        "SELECT id FROM events WHERE kind = 'agent_assessment' "
+        "OR (kind = 'port_failure' "
+        "AND json_extract(payload, '$.payload.site') = 'supervision_turn')",
+    ),
+)
 
 
 #: The API credential a supervisor serves under, as a request presents it.
 Credential = NewType("Credential", str)
+
+
+@dataclass(frozen=True, slots=True)
+class Readiness:
+    """What one of `READINESS`'s queries read of the store, or why it could not."""
+
+    #: The rows it asks for, as `READINESS` names them.
+    what: str
+    #: The identifier of each row it found, in the order the store answered.
+    ids: tuple[str, ...]
+    #: Why the store would not answer it, or None when it did.
+    unreadable: str | None = None
+
+    @property
+    def ready(self) -> bool:
+        """Whether the query was read and found at least one row."""
+        return self.unreadable is None and bool(self.ids)
+
+    def said(self) -> str:
+        """What it read, as a wait that gave up reports it."""
+        if self.unreadable is not None:
+            return f"{self.what} unreadable ({self.unreadable})"
+        return f"{len(self.ids)} {self.what}"
+
 
 #: A spool's identifier, as the supervisor mints and spells one.
 SpoolId = NewType("SpoolId", str)
@@ -186,7 +215,7 @@ class Machine:
     def __init__(self) -> None:
         """Start answering on a port the operating system chooses."""
         self.asked: list[str] = []
-        self._server = QuietServer(("127.0.0.1", 0), _machine_handler(self))
+        self._server = QuietServer(_machine_handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 
@@ -396,6 +425,7 @@ class World:
         *,
         credential: Credential | None = None,
         refusing: bool = False,
+        ingress_timeout: float = INGRESS_TIMEOUT_SECONDS,
     ) -> None:
         """Bring one up under `root`, running the program at `program`.
 
@@ -409,11 +439,17 @@ class World:
         `CREDENTIAL_BYTES` random bytes; a
         journey names one to hold a client to a credential of a particular
         shape. `refusing` grants the operator nothing; see `_configuration`.
+
+        `ingress_timeout` bounds the wait for the ingress to prepare the print
+        and image its alert opens. A tier passes its own explicit timeout, so a
+        loaded host delays the proof rather than failing it on a deadline the
+        tier never chose.
         """
         self.program = program
         self.root = root
         self.credential = credential or Credential(secrets.token_urlsafe(CREDENTIAL_BYTES))
         self.refusing = refusing
+        self.ingress_timeout = ingress_timeout
         self.machine = Machine()
         self.printer = printer or Printer(self.machine.url, "a-provisioned-key", scripted=False)
         self.state = root / "state"
@@ -482,6 +518,13 @@ class World:
     def stop(self) -> None:
         """Stop the supervisor and the machine, leaving no process behind."""
         if self._supervisor is not None:
+            if sys.platform == "win32":
+                # A program reached through a launcher — a `.cmd` shim, as a
+                # package manager installs one — is a shell whose child is the
+                # supervisor, and ending the shell alone leaves that child
+                # serving, holding its directory open. Windows ends a process
+                # outright either way, so the whole tree is ended at once.
+                run(["taskkill", "/PID", str(self._supervisor.pid), "/T", "/F"], timeout=60)
             self._supervisor.terminate()
             try:
                 self._supervisor.wait(timeout=30)
@@ -575,13 +618,16 @@ class World:
             msg = f"the ingress answered {answered.status} to the alert that opens a print"
             raise WorldError(msg)
 
-        deadline = time.monotonic() + INGRESS_TIMEOUT_SECONDS
+        deadline = time.monotonic() + self.ingress_timeout
         while time.monotonic() < deadline:
             found = self._recorded()
             if found is not None:
                 return found
             time.sleep(0.2)
-        msg = "the ingress accepted the alert but did not finish preparing its print and image"
+        msg = (
+            "the ingress accepted the alert but did not finish preparing its print and image "
+            f"in {self.ingress_timeout}s; the last state seen: {self._progress()}"
+        )
         raise WorldError(msg)
 
     def _register_a_spool(self, server: str) -> SpoolId:
@@ -627,6 +673,13 @@ class World:
             raise WorldError(msg)
         return SpoolId(spool_id)
 
+    def _progress(self) -> str:
+        """What the store holds of the print the alert opens, for a wait that gave up."""
+        read = self._read_readiness()
+        if read is None:
+            return "no store at all"
+        return ", ".join(readiness.said() for readiness in read)
+
     def _recorded(self) -> tuple[str, str, str] | None:
         """The print and image, once the ingress has finished observing the printer.
 
@@ -636,28 +689,35 @@ class World:
         The turn's assessment or failure is recorded after the context read, so
         either is the readiness boundary before a client may change the printer.
         """
+        read = self._read_readiness()
+        if read is None or not all(readiness.ready for readiness in read):
+            return None
+        found = {readiness.what: readiness.ids[0] for readiness in read}
+        return found["prints"], found["images"], found["failure alerts"]
+
+    def _read_readiness(self) -> tuple[Readiness, ...] | None:
+        """Each of `READINESS`'s reads, in its order; None with no store yet.
+
+        Read once by the wait for the print and once more, by the same queries, to
+        say what it last saw when that wait gives up, so the two never disagree.
+        """
         store = self.state / STORE
         if not store.is_file():
             return None
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         connection = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
+        read: list[Readiness] = []
         try:
-            prints = connection.execute("SELECT id FROM prints").fetchall()
-            images = connection.execute("SELECT id FROM images").fetchall()
-            events = connection.execute(
-                "SELECT id FROM events WHERE kind = 'obico_failure_alert'"
-            ).fetchall()
-            prepared = connection.execute(
-                "SELECT id FROM events WHERE kind = 'agent_assessment' "
-                "OR (kind = 'port_failure' "
-                "AND json_extract(payload, '$.payload.site') = 'supervision_turn')"
-            ).fetchall()
-        except sqlite3.DatabaseError:
-            return None
+            for what, query in READINESS:
+                try:
+                    rows = connection.execute(query).fetchall()
+                except sqlite3.DatabaseError as error:
+                    read.append(Readiness(what, (), str(error)))
+                else:
+                    read.append(Readiness(what, tuple(str(row[0]) for row in rows)))
         finally:
             connection.close()
-        if not prints or not images or not events or not prepared:
-            return None
-        return str(prints[0][0]), str(images[0][0]), str(events[0][0])
+        return tuple(read)
 
 
 def unheld_spool_id() -> SpoolId:

@@ -19,13 +19,13 @@ from __future__ import annotations
 
 import json
 
-from harness import answer, environment, free_port, said, tier
+from harness import TIER_CHOOSES, answer, environment, held_by_the_tier, said, tier
 from repo_checks.expect import contains, equal, truth
 
 
 def test_the_tier_walks_every_stage_against_the_real_stack(state_dir: str) -> None:
     """Six stages, one verdict: the run this whole tier exists to make."""
-    webhook = f"http://host.docker.internal:{free_port()}/alert"
+    webhook = TIER_CHOOSES
     brought_up = environment("up", "--state-dir", state_dir, "--webhook-url", webhook)
     truth(brought_up.returncode == 0, describing=f"the bring-up to succeed:\n{said(brought_up)}")
     record = answer(brought_up)
@@ -52,7 +52,7 @@ def test_the_tier_walks_every_stage_against_the_real_stack(state_dir: str) -> No
 
     # Stage 1 and 2: it listened where the stack was configured, and the alert
     # was caused on the stack rather than posted by this suite.
-    equal(verdict["webhook_url"], webhook, describing="the address the tier listened on")
+    held_by_the_tier(verdict, webhook)
     equal(verdict["trigger"], f"compose:{state_dir}", describing="how the alert was caused")
     truth(verdict["caused"], describing="what causing the alert on the stack said")
 

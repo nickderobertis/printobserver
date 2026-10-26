@@ -10,7 +10,9 @@ running system stops seeing failures. This tier is the only thing that notices.
 It walks one path, in this order, and nothing in it compares a body the capture
 did not produce:
 
-    1. listen on the address the stack's notification plugin was configured with
+    1. listen on the address the stack's notification plugin was configured
+       with — on a port the tier binds for itself when that address names port
+       zero, the plugin then pointed at the port the tier holds
     2. cause a real failure alert on the stack
     3. capture the body the stack posts
     4. fetch the image that captured body points at, and read its bytes
@@ -47,9 +49,17 @@ import urllib.request
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Final, Literal, NewType, NotRequired, TypedDict
 
-from obico_env import PRINT_FILENAME, PRINTER_NAME, Stack, note, run_program
+from obico_env import (
+    ACCOUNT_EMAIL,
+    PRINT_FILENAME,
+    PRINTER_NAME,
+    WEBHOOK_PLUGIN,
+    Stack,
+    note,
+    run_program,
+)
 
 # The committed sample this repository holds as its claim about the producer,
 # relative to the repository root. It is the `contracts` node's file and this
@@ -61,8 +71,42 @@ SNAPSHOT = Path(__file__).resolve().parent / "snapshot" / "spaghetti.jpg"
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
-AGREES = "agrees"
-DIFFERS = "differs"
+AGREES: Final = "agrees"
+DIFFERS: Final = "differs"
+
+
+class ImageRetrieved(TypedDict):
+    """The image the captured body points at, fetched."""
+
+    url: str
+    retrieved: Literal[True]
+    status: int
+    bytes: int
+    content_type: str
+
+
+class ImageMissed(TypedDict):
+    """Why the image the captured body points at could not be fetched."""
+
+    url: str | None
+    retrieved: Literal[False]
+    why: str
+
+
+class Reconciliation(TypedDict):
+    """The verdict the tier reports, and everything it was reached from."""
+
+    verdict: Literal["agrees", "differs"]
+    differences: list[str]
+    sample: str
+    webhook_url: str
+    configured_webhook_url: str
+    trigger: str
+    caused: str
+    captured: object
+    captured_bytes: int
+    image: ImageRetrieved | ImageMissed
+    seconds: NotRequired[float]
 
 
 class TierError(Exception):
@@ -210,7 +254,12 @@ class CaptureServer:
     """The address the stack's notification plugin posts to, and what it caught."""
 
     def __init__(self, host: str, port: int) -> None:
-        """Listen on the host and port the stack was configured with."""
+        """Listen on the host and port the stack was configured with.
+
+        Port zero binds one of the capture's own choosing, which `port` then
+        names: the capture holds it from the moment it is bound until it stops,
+        so nothing else can listen there in between.
+        """
         self.capture = Capture()
         self.caught = threading.Event()
         capture, caught = self.capture, self.caught
@@ -239,6 +288,11 @@ class CaptureServer:
 
         self.server = ThreadingHTTPServer((host, port), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def port(self) -> int:
+        """The port the capture holds."""
+        return int(self.server.server_address[1])
 
     def __enter__(self) -> CaptureServer:
         """Start listening."""
@@ -311,6 +365,111 @@ print('OBICO_TIER_ALERTED print ' + str(printer.current_print_id))
 
 ALERTED = "OBICO_TIER_ALERTED"
 
+# Run inside the web container through Obico's own `manage.py shell`: point the
+# provisioned account's webhook plugin at the address the tier holds, through
+# the same model and field `obico_env.py up` configured it with.
+REPOINT_SCRIPT = """
+import json
+from app.models import User, NotificationSetting
+
+request = json.loads({request!r})
+setting = NotificationSetting.objects.get(
+    user=User.objects.get(email=request['email']), name=request['plugin']
+)
+setting.config_json = json.dumps({{'custom_webhook_URL': request['webhook_url']}})
+setting.save()
+print('OBICO_TIER_REPOINTED ' + json.loads(setting.config_json)['custom_webhook_URL'])
+"""
+
+REPOINTED = "OBICO_TIER_REPOINTED "
+
+
+#: The token Obico issued the provisioned printer, which its printer API takes
+#: as `Authorization: Token <token>`. A credential, so it is never reported.
+PrinterToken = NewType("PrinterToken", str)
+
+
+@dataclass(frozen=True)
+class Instance:
+    """What this tier reads of the record `obico_env.py up` wrote, each field checked."""
+
+    stack: Stack
+    url: str
+    printer_token: PrinterToken
+
+
+INSTANCE_FIELDS = ("state_dir", "project", "url", "printer_token")
+
+
+def stack_under(state_dir: Path) -> Instance:
+    """The stack `obico_env.py up` left under `state_dir`, read from the record it wrote.
+
+    Raises:
+        TierError: If the stack is not there, or its record is not one the bring-up writes.
+    """
+    record_path = state_dir / "instance.json"
+    if not record_path.is_file():
+        message = f"{record_path} is not there: run `just obico-up` before this tier"
+        raise TierError(message)
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except ValueError as error:
+        message = f"{record_path} is not JSON: {error}; run `just obico-up` again"
+        raise TierError(message) from error
+    if not isinstance(record, dict):
+        message = f"{record_path} holds no object; run `just obico-up` again"
+        raise TierError(message)
+    unusable = [
+        name
+        for name in INSTANCE_FIELDS
+        if not isinstance(record.get(name), str) or not record[name]
+    ]
+    if unusable:
+        message = f"{record_path} has no usable {', '.join(unusable)}; run `just obico-up` again"
+        raise TierError(message)
+    url = record["url"]
+    if not _is_service_address(url):
+        message = (
+            f"{record_path} names {url!r} as the stack's address, which is no "
+            "http(s) address with a host and port; run `just obico-up` again"
+        )
+        raise TierError(message)
+    return Instance(
+        stack=Stack(Path(record["state_dir"]), record["project"]),
+        url=url,
+        printer_token=PrinterToken(record["printer_token"]),
+    )
+
+
+def _is_service_address(url: str) -> bool:
+    """Whether `url` is an http(s) address naming a host, with a port that parses."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        _ = parts.port
+    except ValueError:
+        return False
+    return parts.scheme in {"http", "https"} and bool(parts.hostname)
+
+
+def point_stack_at(state_dir: Path, webhook_url: str) -> None:
+    """Point the stack's webhook plugin at `webhook_url`, the address the capture holds.
+
+    Raises:
+        TierError: If Obico does not say it now posts there.
+    """
+    stack = stack_under(state_dir).stack
+    request = json.dumps(
+        {"email": ACCOUNT_EMAIL, "plugin": WEBHOOK_PLUGIN, "webhook_url": webhook_url}
+    )
+    answered = run_program(
+        stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
+        timeout=600,
+        stdin=REPOINT_SCRIPT.format(request=request),
+    )
+    if f"{REPOINTED}{webhook_url}" not in answered.stdout:
+        message = f"the stack would not post to {webhook_url}:\n{answered.stdout}"
+        raise TierError(message)
+
 
 def cause_alert_on_stack(state_dir: Path) -> str:
     """Cause a real failure alert on the self-hosted stack under `state_dir`.
@@ -327,15 +486,11 @@ def cause_alert_on_stack(state_dir: Path) -> str:
     Raises:
         TierError: If the stack is not there, or will not raise the alert.
     """
-    record_path = state_dir / "instance.json"
-    if not record_path.is_file():
-        message = f"{record_path} is not there: run `just obico-up` before this tier"
-        raise TierError(message)
-    record = json.loads(record_path.read_text(encoding="utf-8"))
-    stack = Stack(Path(record["state_dir"]), str(record["project"]))
+    instance = stack_under(state_dir)
+    stack = instance.stack
 
-    posted = post_snapshot(str(record["url"]), str(record["printer_token"]))
-    note(f"the printer posted a snapshot to {record['url']} ({posted})")
+    posted = post_snapshot(instance.url, instance.printer_token)
+    note(f"the printer posted a snapshot to {instance.url} ({posted})")
 
     answered = run_program(
         stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
@@ -348,7 +503,7 @@ def cause_alert_on_stack(state_dir: Path) -> str:
     return answered.stdout.strip()
 
 
-def post_snapshot(url: str, printer_token: str) -> str:
+def post_snapshot(url: str, printer_token: PrinterToken) -> str:
     """Post the snapshot through Obico's own printer API.
 
     Raises:
@@ -383,39 +538,47 @@ def post_snapshot(url: str, printer_token: str) -> str:
     return f"{status}, {len(image)} bytes of snapshot"
 
 
-def ask_to_post(control_url: str) -> str:
-    """Ask a stand-in for the stack to post, so the tier can be driven over one.
+def ask_to_post(control_url: str, webhook_url: str) -> str:
+    """Ask a stand-in for the stack to post to `webhook_url`, so the tier can be driven over one.
+
+    The address goes with the request, as the stack's own plugin is pointed at
+    the address the capture holds before it raises an alert.
 
     Raises:
         TierError: If it will not.
     """
     try:
-        status, _, _ = http(control_url, data=b"", method="POST")
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+        status, _, _ = http(control_url, data=webhook_url.encode("utf-8"), method="POST")
     except (OSError, ValueError) as error:
         message = f"the stand-in at {control_url} would not post: {error}"
         raise TierError(message) from error
     return f"{status}"
 
 
-def cause_alert(trigger: str) -> str:
-    """Cause the alert the way the trigger says.
+def cause_alert(trigger: str, webhook_url: str) -> str:
+    """Cause the alert the way the trigger says, posted to `webhook_url`.
 
     Raises:
         TierError: If the trigger is not one this tier knows.
     """
-    kind, _, rest = trigger.partition(":")
-    if kind == "compose":
-        return cause_alert_on_stack(Path(rest))
-    if kind == "post":
-        return ask_to_post(rest)
-    message = f"`{trigger}` is not a trigger this tier knows (expected `compose:` or `post:`)"
-    raise TierError(message)
+    match trigger.partition(":"):
+        case ("compose", _, rest):
+            point_stack_at(Path(rest), webhook_url)
+            return cause_alert_on_stack(Path(rest))
+        case ("post", _, rest):
+            return ask_to_post(rest, webhook_url)
+        case _:
+            message = (
+                f"`{trigger}` is not a trigger this tier knows (expected `compose:` or `post:`)"
+            )
+            raise TierError(message)
 
 
 # ~~ the image the captured body points at
 
 
-def fetch_image(body: object) -> dict[str, Any]:
+def fetch_image(body: object) -> ImageRetrieved | ImageMissed:
     """Retrieve the image the captured body points at, and read its bytes.
 
     A body that carries no reachable `img_url` is reported rather than raised
@@ -467,13 +630,26 @@ def listen_address(webhook_url: str) -> tuple[str, int, str]:
         TierError: If the address carries no port to listen on.
     """
     parts = urllib.parse.urlsplit(webhook_url)
-    if not parts.port:
+    if parts.port is None:
         message = f"`{webhook_url}` names no port for this tier to listen on"
         raise TierError(message)
     return "", parts.port, parts.path or "/"
 
 
-def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> dict[str, Any]:
+def held_at(webhook_url: str, port: int) -> str:
+    """`webhook_url` with the port the capture holds in place of the one it named.
+
+    Only the port moves: any user information and the host exactly as the URL
+    spelled it — an IPv6 literal keeping its brackets — are kept.
+    """
+    parts = urllib.parse.urlsplit(webhook_url)
+    user, at, host = parts.netloc.rpartition("@")
+    if parts.port is not None:
+        host = host.rpartition(":")[0]
+    return urllib.parse.urlunsplit(parts._replace(netloc=f"{user}{at}{host}:{port}"))
+
+
+def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> Reconciliation:
     """Walk the whole path and answer with the verdict.
 
     Raises:
@@ -481,10 +657,11 @@ def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> d
     """
     expected = sample_body(sample)
     host, port, path = listen_address(webhook_url)
-    note(f"listening for the webhook on every interface, port {port}, path {path}")
     with CaptureServer(host, port) as server:
-        note(f"causing a failure alert ({trigger})")
-        caused = cause_alert(trigger)
+        listened = held_at(webhook_url, server.port)
+        note(f"listening for the webhook on every interface, port {server.port}, path {path}")
+        note(f"causing a failure alert ({trigger}), posted to {listened}")
+        caused = cause_alert(trigger, listened)
         captured = server.wait(timeout)
     note(f"captured {len(captured.body)} bytes posted to {captured.path}")
 
@@ -492,17 +669,17 @@ def reconcile(webhook_url: str, trigger: str, sample: Path, timeout: float) -> d
     # and what the comparison is given. Nothing below re-reads the stack.
     body = captured.json()
     image = fetch_image(body)
-    note(
-        f"the image the captured body points at: {image.get('bytes', 0)} bytes"
-        if image["retrieved"]
-        else f"the image could not be retrieved: {image['why']}"
-    )
+    if image["retrieved"]:
+        note(f"the image the captured body points at: {image['bytes']} bytes")
+    else:
+        note(f"the image could not be retrieved: {image['why']}")
     found = differences(expected, body)
     return {
         "verdict": DIFFERS if found else AGREES,
         "differences": found,
         "sample": str(sample),
-        "webhook_url": webhook_url,
+        "webhook_url": listened,
+        "configured_webhook_url": webhook_url,
         "trigger": trigger,
         "caused": caused,
         "captured": body,
@@ -566,7 +743,7 @@ def resolved(arguments: argparse.Namespace) -> tuple[str, str]:
     return str(arguments.webhook_url), str(arguments.trigger)
 
 
-def report(verdict: dict[str, Any]) -> None:
+def report(verdict: Reconciliation) -> None:
     """Say the verdict on stdout, and name every field that moved on stderr."""
     print(json.dumps(verdict, indent=2))
     if verdict["verdict"] == AGREES:

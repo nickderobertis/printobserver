@@ -67,7 +67,7 @@ import time
 import tomllib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path, PurePath, PurePosixPath
 from typing import NewType, Protocol
 
@@ -88,6 +88,7 @@ from journey import (
 from repo_checks import install_path as ip
 from repo_checks.checks_service import ACTIVATION_NAMES, installer_for
 from repo_checks.expect import absent, contains, equal, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
@@ -158,7 +159,7 @@ class _AnswersEveryRead(BaseHTTPRequestHandler):
 def octoprint() -> Iterator[str]:
     """Where a stand-in OctoPrint answers, for as long as the journey runs."""
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEveryRead)
+    server = LoopbackServer(_AnswersEveryRead)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -274,6 +275,16 @@ class Manager(Protocol):
 
     def runs_as_the_service_user(self, pid: int) -> Reported:
         """Whether `pid` runs as the account the service is installed to run as."""
+
+    def started(self, pid: int) -> str:
+        """When process `pid` started, as the host records it, or empty while there is none.
+
+        A host may hand an ended process's id to a later process it starts,
+        so an id names one process only together with this.
+        """
+
+    def listening_on(self, pid: int) -> list[str]:
+        """Every loopback `host:port` process `pid` itself holds a listening socket on."""
 
     def end_abruptly(self, pid: int) -> None:
         """End the service's process the way a crash does."""
@@ -525,6 +536,14 @@ class Systemd:
         """The process's user id against the id of the user the installer created."""
         return _compare_users(self._as_root, pid, SERVICE_USER)
 
+    def started(self, pid: int) -> str:
+        """Read inside the container, whose processes the unit's are."""
+        return _proc_started(self._as_root, pid)
+
+    def listening_on(self, pid: int) -> list[str]:
+        """Read inside the container, whose network is the host's."""
+        return _proc_listening(self._as_root, pid)
+
     def end_abruptly(self, pid: int) -> None:
         """`SIGKILL`, which the process cannot answer, as a crash is."""
         result = self._as_root("kill", "-KILL", str(pid))
@@ -617,6 +636,131 @@ def _compare_users(
         bool(expected) and running == expected,
         f"process {pid} runs as uid {running or '(none)'}; {user} is uid {expected or '(none)'}",
     )
+
+
+#: Prints every descriptor a Linux process holds, then the kernel's table of
+#: TCP sockets, so a listening socket can be traced to the process holding it.
+PROC_SOCKETS = 'for fd in /proc/"$0"/fd/*; do readlink "$fd"; done; echo ---; cat /proc/net/tcp'
+
+
+def _proc_listening(
+    on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int
+) -> list[str]:
+    """The loopback addresses a Linux process listens on, read from `/proc`.
+
+    Each socket the process holds is named by its inode among its descriptors,
+    and the kernel's TCP table gives each inode's local address and state, so
+    only a socket the process itself holds counts, never one of another's.
+    """
+    printed = on_machine("sh", "-c", PROC_SOCKETS, str(pid)).stdout
+    held_part, _, table = printed.partition("---")
+    held = set(re.findall(r"socket:\[(\d+)\]", held_part))
+    found: list[str] = []
+    for line in table.splitlines()[1:]:
+        words = line.split()
+        # `0A` is TCP_LISTEN; the address is hexadecimal, little-endian on every
+        # architecture this journey runs on.
+        if len(words) > 9 and words[3] == "0A" and words[9] in held:
+            address, _, port = words[1].partition(":")
+            octets = bytes.fromhex(address)[::-1]
+            found.append(f"{'.'.join(str(octet) for octet in octets)}:{int(port, 16)}")
+    return [address for address in found if address.startswith("127.0.0.1:")]
+
+
+def _lsof_listening(
+    on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int
+) -> list[str]:
+    """The loopback addresses a macOS process listens on, as `lsof` names them."""
+    printed = on_machine("lsof", "-nP", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-Fn").stdout
+    return [line[1:] for line in printed.splitlines() if line.startswith("n127.0.0.1:")]
+
+
+def _started_from_stat(stat: str) -> str:
+    """The clock tick a process started at, field 22 of its `/proc/<pid>/stat`.
+
+    The command name before it is parenthesised and may itself hold spaces or
+    parentheses, so the fields are counted from after its last closing one.
+    """
+    _, closed, rest = stat.rpartition(")")
+    fields = rest.split()
+    return fields[19] if closed and len(fields) > 19 else ""
+
+
+def _proc_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int) -> str:
+    """When a Linux process started, or empty once it has ended."""
+    read = on_machine("cat", f"/proc/{pid}/stat")
+    return _started_from_stat(read.stdout) if read.returncode == 0 else ""
+
+
+def _ps_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int) -> str:
+    """When a macOS process started, as `ps` prints it, or empty once it has ended."""
+    read = on_machine("ps", "-o", "lstart=", "-p", str(pid))
+    return read.stdout.strip() if read.returncode == 0 else ""
+
+
+def _cim_started(on_machine: Callable[..., subprocess.CompletedProcess[str]], pid: int) -> str:
+    """When a Windows process started, in the 100-nanosecond ticks Windows counts.
+
+    Empty once it has ended: `Get-CimInstance` then finds nothing, and nothing
+    is printed.
+    """
+    query = (
+        f'$process = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}"; '
+        "if ($process) { $process.CreationDate.ToFileTimeUtc() }"
+    )
+    read = on_machine(WindowsService.powershell(), "-NoProfile", "-Command", query)
+    return read.stdout.strip() if read.returncode == 0 else ""
+
+
+@dataclass(frozen=True, slots=True)
+class Process:
+    """One process for the whole of its life: its id, and when it started.
+
+    `started` is empty for an id the manager reported that no live process
+    holds, which is a different answer from the manager reporting no id.
+    """
+
+    pid: int
+    started: str
+
+
+class _ReportsProcess(Protocol):
+    """The part of a manager that says which process is the service's."""
+
+    def is_running(self) -> bool:
+        """Whether the manager reports the service running."""
+
+    def main_pid(self) -> int:
+        """The process the manager reports as the service's, or zero."""
+
+    def started(self, pid: int) -> str:
+        """When process `pid` started, or empty while there is none."""
+
+
+def _service_process(manager: _ReportsProcess) -> Process | None:
+    """The process the manager reports as the service's, or `None` when it reports none.
+
+    An id the manager reports whose process has ended is kept, with no start,
+    so it reads apart from no id reported at all.
+    """
+    if not manager.is_running():
+        return None
+    pid = manager.main_pid()
+    return Process(pid, manager.started(pid)) if pid > 0 else None
+
+
+def _reported(process: Process | None) -> str:
+    """What the manager reported as the service's process, in words a failure prints."""
+    if process is None:
+        return "no process reported"
+    if not process.started:
+        return f"process {process.pid} reported, with no live process holding that id"
+    return f"process {process.pid}, started {process.started}"
+
+
+def _another_process(before: Process, now: Process | None) -> bool:
+    """Whether `now` is a live process other than `before`, its id reused or not."""
+    return now is not None and bool(now.started) and now != before
 
 
 @dataclass(frozen=True, slots=True)
@@ -907,6 +1051,18 @@ class Launchd:
         equal(named, self.user, describing="the user the installed property list runs it as")
         return _compare_users(self._on_machine, pid, self.user)
 
+    def started(self, pid: int) -> str:
+        """`ps` against the host's launchd; `/proc` on the stand-in's Linux machine."""
+        if sys.platform == "darwin":
+            return _ps_started(self._on_machine, pid)
+        return _proc_started(self._on_machine, pid)
+
+    def listening_on(self, pid: int) -> list[str]:
+        """`lsof` against the host's launchd; `/proc` on the stand-in's Linux machine."""
+        if sys.platform == "darwin":
+            return _lsof_listening(self._on_machine, pid)
+        return _proc_listening(self._on_machine, pid)
+
     def end_abruptly(self, pid: int) -> None:
         """`SIGKILL`, which the process cannot answer, as a crash is."""
         result = self._on_machine("kill", "-KILL", str(pid))
@@ -1012,7 +1168,12 @@ class WindowsService:
         self.root = WINDOWS_ROOT / f"journey-{os.getpid()}-{int(time.time())}"
 
     @staticmethod
-    def _powershell() -> str:
+    def powershell() -> str:
+        """The PowerShell this host has, a newer one before Windows PowerShell.
+
+        Raises:
+            AssertionError: If this host has neither on PATH.
+        """
         for candidate in ("pwsh", "powershell"):
             found = shutil.which(candidate)
             if found:
@@ -1074,7 +1235,7 @@ class WindowsService:
         """The committed PowerShell installer into the journey's own root."""
         self.root.mkdir(parents=True, exist_ok=True)
         result = self._run(
-            self._powershell(),
+            self.powershell(),
             "-NoProfile",
             "-File",
             str(REPO_ROOT / installer_for(Repo(REPO_ROOT), ServiceManager.WINDOWS_SERVICE)),
@@ -1110,7 +1271,7 @@ class WindowsService:
     def activate(self) -> None:
         """Run the documented command verbatim, in PowerShell."""
         activation = _activation(self.manager)
-        result = self._run(self._powershell(), "-NoProfile", "-Command", activation)
+        result = self._run(self.powershell(), "-NoProfile", "-Command", activation)
         passing((result.returncode, _said(result)), describing=f"`{activation}`")
 
     def starts_automatically(self) -> Reported:
@@ -1139,7 +1300,7 @@ class WindowsService:
         _, listing = self._sc("qc", self.name)
         account = self._field(listing, "SERVICE_START_NAME")
         owner = self._run(
-            self._powershell(),
+            self.powershell(),
             "-NoProfile",
             "-Command",
             f'$owner = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}" | '
@@ -1150,6 +1311,22 @@ class WindowsService:
             bool(account) and owner.lower() == account.lower(),
             f"process {pid} runs as {owner or '(nobody)'}; the service is registered as {account}",
         )
+
+    def started(self, pid: int) -> str:
+        """`Win32_Process`'s creation time, read from the elevated shell."""
+        return _cim_started(self._run, pid)
+
+    def listening_on(self, pid: int) -> list[str]:
+        """`netstat`'s listening TCP sockets, by the process that owns each."""
+        table = self._run("netstat", "-ano", "-p", "TCP").stdout
+        return [
+            words[1]
+            for words in (line.split() for line in table.splitlines())
+            if len(words) == 5
+            and words[3] == "LISTENING"
+            and words[4] == str(pid)
+            and words[1].startswith("127.0.0.1:")
+        ]
 
     def end_abruptly(self, pid: int) -> None:
         """Terminate the process the way a crash does; it is another account's, so elevated."""
@@ -1279,24 +1456,20 @@ def manager(
             return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
 
 
-def _free_address() -> str:
-    """A loopback address nothing listens on now, for the service to take."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return f"127.0.0.1:{probe.getsockname()[1]}"
+#: Where the service is first told to listen: a port it chooses and binds
+#: itself, so no port is chosen by this journey and released for it to take.
+ITS_OWN_PORT = "127.0.0.1:0"
 
 
-def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> Served:
+def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
     """Fill the template in as an operator would, and install the skill.
 
     The operator's credential goes in as the verifier `credential issue` prints,
-    above the first table, and the service listens on a free port this names —
-    the address it serves on is written down nowhere else, the same port across
-    a restart.
+    above the first table, and the service listens on a port of its own choosing
+    until `_pinned` reads which one it bound.
     """
     template = manager.read(installed.configuration)
     truth(template is not None, describing="the installer to have written a configuration")
-    address = _free_address()
     verifier = "sha256:" + hashlib.sha256(OPERATOR.encode("utf-8")).hexdigest()
     filled = f'api.credential_verifier = "{verifier}"\n' + (
         (template or "")
@@ -1304,11 +1477,52 @@ def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> Served:
         .replace('shared_secret = ""', 'shared_secret = "a-shared-secret"')
         # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
-        .replace('listen = "127.0.0.1:8420"', f'listen = "{address}"')
+        .replace('listen = "127.0.0.1:8420"', f'listen = "{ITS_OWN_PORT}"')
     )
     manager.write(installed.configuration, filled)
     manager.lay_down_skill(installed)
-    return Served(address, OPERATOR)
+
+
+def _pinned(manager: Manager, installed: Installed) -> Served:
+    """Where the running service bound for itself, written back as where it listens.
+
+    The service the manager started holds the port it chose for as long as it
+    runs; writing that same address into its configuration is what makes the
+    process the manager brings back after a crash serve where this one does —
+    the same port across a restart, without this journey ever having chosen a
+    port and let it go.
+    """
+    _eventually(manager, "the service running", manager.is_running)
+    addresses: list[str] = []
+
+    def bound() -> bool:
+        addresses[:] = manager.listening_on(manager.main_pid())
+        return len(addresses) == 1
+
+    _eventually(manager, "the service listening on one port of its own", bound)
+    configuration = manager.read(installed.configuration) or ""
+    contains(
+        configuration,
+        f'listen = "{ITS_OWN_PORT}"',
+        describing="the configuration the service chose its own port under",
+    )
+    manager.write(
+        installed.configuration,
+        configuration.replace(f'listen = "{ITS_OWN_PORT}"', f'listen = "{addresses[0]}"'),
+    )
+    return Served(addresses[0], OPERATOR)
+
+
+def _held_by_the_service(manager: Manager, served: Served) -> None:
+    """The service's own process holds its address: nothing else can bind it."""
+    equal(
+        manager.listening_on(manager.main_pid()),
+        [served.address],
+        describing="the addresses the service's own process listens on",
+    )
+    host, _, port = served.address.rpartition(":")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taker, pytest.raises(OSError):
+        taker.bind((host, int(port)))
 
 
 def _ask(served: Served) -> str:
@@ -1391,9 +1605,9 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
         truth(not manager.is_present(), describing="the host to carry no service of this name")
         installed = manager.install()
         truth(not manager.is_running(), describing="the installer to have started nothing")
-        served = _fill_in(manager, installed, octoprint)
+        _fill_in(manager, installed, octoprint)
         manager.activate()
-        yield Activated(manager, installed, served)
+        yield Activated(manager, installed, _pinned(manager, installed))
     finally:
         manager.remove()
     equal(manager.leftovers(), [], describing="what the journey left on the host once removed")
@@ -1408,6 +1622,7 @@ def test_activated_by_the_documented_command_it_runs_answers_and_stops_cleanly(
 
     _eventually(manager, "the service running", manager.is_running)
     answer = _answered(manager, activated.served)
+    _held_by_the_service(manager, activated.served)
     _keeps_no_plaintext(manager, activated.installed.state)
     truth(
         _status_line(answer.text).startswith("HTTP/1.1 200 "),
@@ -1437,16 +1652,29 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     )
     _eventually(manager, "the service running", manager.is_running)
     _answered(manager, activated.served)
-    before = manager.main_pid()
-    truth(before > 0, describing="a process the manager reports as the service's")
+    before = _service_process(manager)
+    if before is None or not before.started:
+        message = f"the service's process: {_reported(before)}:\n{manager.diagnosis()}"
+        raise AssertionError(message)
+    manager.end_abruptly(before.pid)
 
-    manager.end_abruptly(before)
+    # Another process rather than another id: a host may hand the brought-back
+    # process the very id the ended one had. Every process the manager reports
+    # is kept, so a failure says which of three it was: the ended process still
+    # reported (same id, same start), no live process behind the reported id
+    # (no start), or none reported at all.
+    seen: list[Process | None] = []
 
-    _eventually(
-        manager,
-        "the service brought back with a new process",
-        lambda: manager.is_running() and manager.main_pid() not in {0, before},
-    )
+    def brought_back() -> bool:
+        seen.append(_service_process(manager))
+        return _another_process(before, seen[-1])
+
+    try:
+        _eventually(manager, "the service brought back with a new process", brought_back)
+    except AssertionError as failed:
+        last = seen[-1] if seen else None
+        message = f"{failed}\nended: {_reported(before)}; last reported: {_reported(last)}"
+        raise AssertionError(message) from None
     # The process that answered before is gone, so an answer now is the
     # brought-back process's own.
     again = _answered(manager, activated.served)
@@ -1454,6 +1682,8 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         _status_line(again.text).startswith("HTTP/1.1 200 "),
         describing=f"the API answering again from the brought-back process:\n{again.text}",
     )
+    # The same port across the restart, and the brought-back process's own.
+    _held_by_the_service(manager, activated.served)
     _holds(
         manager.runs_as_the_service_user(manager.main_pid()),
         "the brought-back service running as the user it is installed to run as",
@@ -1463,6 +1693,123 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
     truth(
         not manager.starts_automatically().held,
         describing="the manager no longer reporting a service switched off as one it starts",
+    )
+
+
+#: In a process-id namespace of its own, a process that ends abruptly and a
+#: later one handed its very id, as a host may hand the service's brought-back
+#: process the ended one's; each's `/proc/<pid>/stat` is printed.
+REUSED_ID = (
+    'sleep 30 & first=$!; cat /proc/"$first"/stat; kill -KILL "$first"; wait "$first"; '
+    "sleep 0.1; echo $((first - 1)) > /proc/sys/kernel/ns_last_pid; "
+    'sleep 30 & later=$!; echo ---; cat /proc/"$later"/stat; kill -KILL "$later"'
+)
+
+
+def test_a_process_handed_an_ended_ones_id_is_another_process() -> None:
+    """A brought-back process given the ended one's id is still a new process.
+
+    The process-id namespace lets the host be told which id to hand out next,
+    which is the only way to make an id's reuse certain rather than likely.
+    """
+    unshare = shutil.which("unshare")
+    if sys.platform != "linux" or unshare is None:
+        pytest.skip("handing out a chosen process id needs Linux's `unshare`")
+    printed = shell_run(
+        [
+            unshare,
+            "--user",
+            "--map-root-user",
+            "--pid",
+            "--fork",
+            "--mount-proc",
+            "sh",
+            "-c",
+            REUSED_ID,
+        ],
+        timeout=60,
+    )
+    if printed.returncode != 0 or "---" not in printed.stdout:
+        pytest.skip(f"this host refuses a process-id namespace of one's own: {_said(printed)}")
+    first_stat, _, later_stat = printed.stdout.partition("---")
+    ended = Process(int(first_stat.split()[0]), _started_from_stat(first_stat))
+    later = Process(int(later_stat.split()[0]), _started_from_stat(later_stat))
+
+    equal(later.pid, ended.pid, describing="the id the later process was handed")
+    truth(bool(ended.started), describing=f"a start read from {first_stat!r}")
+    truth(
+        _another_process(ended, later),
+        describing=f"{later} read as a process other than {ended}",
+    )
+    truth(not _another_process(ended, ended), describing="a process read as itself")
+    truth(not _another_process(ended, None), describing="no process read as another")
+
+
+def test_the_hosts_own_start_reader_names_a_live_process_and_none_once_it_ended() -> None:
+    """The reader this host's manager uses: one start while a process lives, none after."""
+    readers = {"linux": _proc_started, "darwin": _ps_started, "win32": _cim_started}
+    reader = readers.get(sys.platform)
+    if reader is None:
+        pytest.skip(f"no service manager this journey drives runs on {sys.platform}")
+
+    def on_host(*argv: str) -> subprocess.CompletedProcess[str]:
+        return shell_run(list(argv), timeout=120)
+
+    child = start([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        started = reader(on_host, child.pid)
+        truth(bool(started), describing=f"a start read for live process {child.pid}")
+        equal(reader(on_host, child.pid), started, describing="the same process read twice")
+    finally:
+        child.kill()
+        child.wait(timeout=60)
+    equal(reader(on_host, child.pid), "", describing=f"the start of ended process {child.pid}")
+
+
+@dataclass(frozen=True, slots=True)
+class _ReportedId:
+    """A manager reporting `pid` as the service's, its start read by this host's own reader."""
+
+    pid: int
+    reader: Callable[[Callable[..., subprocess.CompletedProcess[str]], int], str]
+
+    def is_running(self) -> bool:
+        return True
+
+    def main_pid(self) -> int:
+        return self.pid
+
+    def started(self, pid: int) -> str:
+        return self.reader(lambda *argv: shell_run(list(argv), timeout=120), pid)
+
+
+def test_a_reported_id_whose_process_ended_reads_apart_from_no_id_reported() -> None:
+    """The restart failure names which it saw: a live process, an ended one's id, or no id."""
+    readers = {"linux": _proc_started, "darwin": _ps_started, "win32": _cim_started}
+    reader = readers.get(sys.platform)
+    if reader is None:
+        pytest.skip(f"no service manager this journey drives runs on {sys.platform}")
+
+    child = start([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        live = _service_process(_ReportedId(child.pid, reader))
+    finally:
+        child.kill()
+        child.wait(timeout=60)
+    gone = _service_process(_ReportedId(child.pid, reader))
+    none = _service_process(_ReportedId(0, reader))
+
+    truth(live is not None and bool(live.started), describing=f"live process read as {live}")
+    equal(gone, Process(child.pid, ""), describing="the ended process's reported id")
+    equal(none, None, describing="no id reported")
+    said = {_reported(live), _reported(gone), _reported(none)}
+    equal(len(said), 3, describing=f"three different reports: {sorted(said)}")
+    contains(_reported(gone), str(child.pid), describing="the ended process's report")
+    equal(_reported(none), "no process reported", describing="the report of no id")
+    truth(live is not None and _another_process(live, live) is False, describing="itself")
+    truth(
+        live is not None and not _another_process(live, gone),
+        describing="an ended process's id read as no brought-back process",
     )
 
 

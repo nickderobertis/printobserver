@@ -14,11 +14,13 @@
 //! Nothing here uses an HTTP client crate: the one question is written out over
 //! a socket, because the point is what the running service answers.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, ChildStdout, Command, Stdio};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use printobserver::failure::Exit;
 use printobserver::service::{START_WAIT_HINT, STOP_WAIT_HINT, ServiceState};
@@ -34,6 +36,63 @@ const REPORTED: &str = "reported ";
 
 /// How long the service is given to start serving, and to stop once told to.
 const SETTLES_WITHIN: Duration = Duration::from_secs(60);
+
+/// Where every configuration here tells the server to listen: a port of the
+/// server's own choosing, bound by the server itself, so no port is reserved by
+/// this tier and released for the server to take.
+const LISTEN: &str = "127.0.0.1:0";
+
+/// What the server says on standard error once it is serving, the address it
+/// bound following it — spelled as the program prints it, from its binary.
+const SERVING_ON: &str = "printobserver is serving on ";
+
+/// Everything one started process has written to standard error so far, and
+/// whether that stream has ended.
+type Printed = Arc<Mutex<(String, bool)>>;
+
+/// Each started process's standard error, by process id, read on a thread of
+/// its own from the moment it starts — so neither the address it announces
+/// nor anything it says later waits on a reader that has not begun.
+static PRINTED: Mutex<BTreeMap<u32, Printed>> = Mutex::new(BTreeMap::new());
+
+/// Start reading a just-started process's standard error into [`PRINTED`].
+fn reading_its_stderr(child: &mut Child) {
+    let stderr = child
+        .stderr
+        .take()
+        .expect("the process was started with its standard error piped");
+    let printed: Printed = Arc::new(Mutex::new((String::new(), false)));
+    PRINTED
+        .lock()
+        .expect("not poisoned")
+        .insert(child.id(), Arc::clone(&printed));
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        loop {
+            let mut line = Vec::new();
+            match reader.read_until(b'\n', &mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => printed
+                    .lock()
+                    .expect("not poisoned")
+                    .0
+                    .push_str(&String::from_utf8_lossy(&line)),
+            }
+        }
+        printed.lock().expect("not poisoned").1 = true;
+    });
+}
+
+/// What one started process has written to standard error so far.
+fn printed_by(child: &Child) -> Printed {
+    Arc::clone(
+        PRINTED
+            .lock()
+            .expect("not poisoned")
+            .get(&child.id())
+            .expect("the process's standard error is being read"),
+    )
+}
 
 /// One report the fixture printed, as the manager would have received it.
 #[derive(Debug, PartialEq, Eq)]
@@ -76,21 +135,10 @@ fn host_answering(response: &'static [u8]) -> SocketAddr {
     address
 }
 
-/// A loopback address nothing is listening on now: bound to learn a free port,
-/// then released for the server to take.
-fn free_address() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-    listener
-        .local_addr()
-        .expect("the bound address")
-        .to_string()
-}
-
 /// A configuration the server starts under, over a state directory of the
-/// tier's own and a free port it is told to listen on — which is how this tier
-/// knows where it serves, since the server writes that down nowhere.
+/// tier's own, listening on a port the server chooses itself and announces.
 fn configuration(root: &Path, octoprint: &str) -> std::path::PathBuf {
-    let listen = free_address();
+    let listen = LISTEN;
     let verifier = CredentialVerifier::of(CREDENTIAL).to_string();
     let state = root.join("state");
     let path = root.join("config.toml");
@@ -137,14 +185,16 @@ fn start_refusing(configuration: &Path, refused: Option<ServiceState>) -> Child 
     if let Some(state) = refused {
         command.env("PRINTOBSERVER_FIXTURE_REFUSES_REPORT", state.name());
     }
-    command
+    let mut child = command
         .arg("--config")
         .arg(configuration)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("the fixture starts")
+        .expect("the fixture starts");
+    reading_its_stderr(&mut child);
+    child
 }
 
 /// The next report the fixture prints, or none if it printed no more.
@@ -174,24 +224,51 @@ fn next_report(lines: &mut std::io::Lines<BufReader<ChildStdout>>) -> Option<Rep
     })
 }
 
-/// Where the server under one state directory was told to listen, read off
-/// the configuration beside that directory, and the credential it admits.
-fn where_it_serves(state: &Path) -> (String, String) {
-    let configured: toml::Value = toml::from_str(
-        &std::fs::read_to_string(
-            state
-                .parent()
-                .expect("the state directory is in the tier's root")
-                .join("config.toml"),
-        )
-        .expect("the configuration reads"),
-    )
-    .expect("the configuration is a document");
-    let listen = configured["listen"]
-        .as_str()
-        .expect("the configuration names where to listen")
-        .to_owned();
-    (listen, CREDENTIAL.to_owned())
+/// Where a started server says it is serving — the port it bound for itself —
+/// and the credential it admits.
+///
+/// Waits for the server's own announcement, which it makes once it holds the
+/// listener: the address is never one this tier chose and let go of, so no
+/// other process can have been listening there first.
+fn where_it_serves(child: &Child) -> (String, String) {
+    let printed = printed_by(child);
+    let started = Instant::now();
+    loop {
+        let (said, ended) = printed.lock().expect("not poisoned").clone();
+        if let Some(address) = said.lines().find_map(|line| line.strip_prefix(SERVING_ON)) {
+            let address = address.trim();
+            assert!(
+                address.parse::<SocketAddr>().is_ok(),
+                "the server announced `{address}`, which is no address:\n{said}"
+            );
+            return (address.to_owned(), CREDENTIAL.to_owned());
+        }
+        assert!(
+            !ended && started.elapsed() < SETTLES_WITHIN,
+            "the server never said where it serves:\n{said}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// The port a server bound for itself is its own for as long as it runs: it
+/// was configured with no port at all, and nothing else can bind the one it
+/// announced.
+fn holds_its_own_port(configuration: &Path, address: &str) {
+    let configured: toml::Value =
+        toml::from_str(&std::fs::read_to_string(configuration).expect("the configuration reads"))
+            .expect("the configuration is a document");
+    assert_eq!(
+        configured["listen"].as_str(),
+        Some(LISTEN),
+        "the server was handed a port rather than choosing its own"
+    );
+    let taken = TcpListener::bind(address).expect_err("the server's own port cannot be bound");
+    assert_eq!(
+        taken.kind(),
+        std::io::ErrorKind::AddrInUse,
+        "binding {address} beside the running server failed otherwise: {taken}"
+    );
 }
 
 /// One question to the API, written out over a socket, and the whole answer.
@@ -232,28 +309,19 @@ fn exits_within(child: &mut Child, within: Duration) -> std::process::ExitStatus
     }
 }
 
-/// The address and credential, once the server is listening: with the running
-/// report refused, nothing else says when it is serving.
-fn once_serving(state: &Path) -> (String, String) {
-    let (address, credential) = where_it_serves(state);
-    let started = std::time::Instant::now();
-    while !still_listening(&address) {
-        assert!(
-            started.elapsed() < SETTLES_WITHIN,
-            "the service never listened at {address}"
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    (address, credential)
-}
-
-/// Everything the fixture said on standard error.
+/// Everything the process said on standard error: all of it once it has
+/// exited and its stream has ended, and what it has said so far while it runs.
 fn said(child: &mut Child) -> String {
-    let mut said = String::new();
-    if let Some(mut stderr) = child.stderr.take() {
-        let _ = stderr.read_to_string(&mut said);
+    let printed = printed_by(child);
+    let exited = child.try_wait().ok().flatten().is_some();
+    let started = Instant::now();
+    loop {
+        let (said, ended) = printed.lock().expect("not poisoned").clone();
+        if ended || !exited || started.elapsed() > SETTLES_WITHIN {
+            return said;
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
-    said
 }
 
 /// The service reports start pending, then running, answers the API, and on
@@ -287,8 +355,10 @@ fn the_service_reports_each_state_answers_while_running_and_stops_cleanly() {
         said(&mut child)
     );
 
-    // Running is a claim about the API, so the API is asked.
-    let (address, credential) = where_it_serves(&root.path().join("state"));
+    // Running is a claim about the API, so the API is asked — at the port the
+    // server chose and still holds.
+    let (address, credential) = where_it_serves(&child);
+    holds_its_own_port(&configuration, &address);
     let answer = ask(&address, &credential);
     assert!(
         answer.contains("HTTP/1.1 200") && answer.contains("application/json"),
@@ -426,7 +496,7 @@ fn a_report_the_manager_refuses_is_said_and_the_service_goes_on() {
             refused.name()
         );
 
-        let (address, credential) = once_serving(&root.path().join("state"));
+        let (address, credential) = where_it_serves(&child);
         let answer = ask(&address, &credential);
         assert!(
             answer.contains("HTTP/1.1 200"),
@@ -567,7 +637,7 @@ fn a_service_under_a_plaintext_credential_warns_and_serves() {
         "the service did not report running: {}",
         said(&mut child)
     );
-    let (address, credential) = where_it_serves(&root.path().join("state"));
+    let (address, credential) = where_it_serves(&child);
     let answer = ask(&address, &credential);
     assert!(
         answer.contains("HTTP/1.1 200"),
@@ -615,7 +685,7 @@ fn a_service_that_cannot_read_the_printers_tallies_says_it_skipped_them_and_serv
         "the service did not report running: {}",
         said(&mut child)
     );
-    let (address, credential) = where_it_serves(&root.path().join("state"));
+    let (address, credential) = where_it_serves(&child);
     assert!(ask(&address, &credential).contains("HTTP/1.1 200"));
 
     let mut stdin = child.stdin.take().expect("the fixture's stop control");
@@ -667,7 +737,9 @@ fn the_console_server_stops_cleanly_on_a_console_break() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("the server starts");
-    let (address, credential) = once_serving(&root.path().join("state"));
+    reading_its_stderr(&mut server);
+    let (address, credential) = where_it_serves(&server);
+    holds_its_own_port(&configuration, &address);
     let answer = ask(&address, &credential);
     assert!(
         answer.contains("HTTP/1.1 200") && answer.contains("application/json"),
@@ -759,7 +831,8 @@ mod under_the_manager {
     use tempfile::TempDir;
 
     use super::{
-        SETTLES_WITHIN, answering_host, ask, configuration, host_answering, where_it_serves,
+        CREDENTIAL, SETTLES_WITHIN, answering_host, ask, configuration, holds_its_own_port,
+        host_answering,
     };
 
     /// What `sc.exe` answers a caller the manager will not let register a
@@ -898,6 +971,42 @@ mod under_the_manager {
         }
     }
 
+    /// The address the service the manager started is listening on: the port
+    /// it bound for itself, read off the system's own table of listening
+    /// sockets for the process the manager says the service runs as.
+    ///
+    /// A service started by the manager has no standard error a test can read
+    /// its announcement off, so the system is asked which port that process
+    /// owns.
+    fn where_the_service_serves(name: &str) -> String {
+        let started = Instant::now();
+        loop {
+            let (_, listing) = sc(&["queryex", name]);
+            let pid = field(&listing, "PID").unwrap_or_default();
+            let netstat = Command::new("netstat")
+                .args(["-ano", "-p", "TCP"])
+                .output()
+                .expect("`netstat` runs");
+            let table = String::from_utf8_lossy(&netstat.stdout).into_owned();
+            let owned = table.lines().find_map(|line| {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                (words.len() == 5
+                    && words[3] == "LISTENING"
+                    && words[4] == pid
+                    && words[1].starts_with("127.0.0.1:"))
+                .then(|| words[1].to_owned())
+            });
+            if let Some(address) = owned {
+                return address;
+            }
+            assert!(
+                started.elapsed() < SETTLES_WITHIN,
+                "the service `{name}` (process {pid}) listened on no loopback port:\n{table}"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+
     /// A service name of this case's own, so no two cases share one.
     fn own_name(case: &str) -> String {
         format!("printobserver-tier-{case}-{}", std::process::id())
@@ -919,8 +1028,9 @@ mod under_the_manager {
         assert_eq!(code, Some(0), "`sc.exe start {name}` failed:\n{said}");
         reaches(&name, "RUNNING");
 
-        let (address, credential) = where_it_serves(&root.path().join("state"));
-        let answer = ask(&address, &credential);
+        let address = where_the_service_serves(&name);
+        holds_its_own_port(&configuration, &address);
+        let answer = ask(&address, CREDENTIAL);
         assert!(
             answer.contains("HTTP/1.1 200") && answer.contains("application/json"),
             "the manager said the service was running and its API did not answer:\n{answer}"

@@ -52,6 +52,7 @@ from relay import (
     RelayState,
 )
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.loopback import UNREACHABLE
 from repo_checks.shell import PROGRAM_NOT_FOUND, run, start
 from world import (
     RELAY_CLIENT,
@@ -160,13 +161,6 @@ def received(connection: socket.socket) -> bytes:
     while chunk := connection.recv(65536):
         chunks.append(chunk)
     return b"".join(chunks)
-
-
-def a_closed_address() -> str:
-    """A loopback address nothing listens on: a port the system handed out, then let go."""
-    with socket.create_server(LISTEN_ON) as listener:
-        host, port = listener.getsockname()[:2]
-    return f"{host}:{port}"
 
 
 def until(condition: Callable[[], bool], *, describing: str) -> None:
@@ -360,7 +354,9 @@ def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) ->
     said = "the smoke's relay did not answer"
     match reachable:
         case "closed":
-            environment[ADDRESS] = a_closed_address()
+            # Port zero, which nothing can be listening on.
+            host, port = UNREACHABLE
+            environment[ADDRESS] = f"{host}:{port}"
         case "unnamed":
             environment.pop(ADDRESS, None)
         case "elsewhere":
@@ -813,10 +809,23 @@ def test_relaying_again_replaces_the_relay_with_one_under_the_new_configuration(
 def test_a_client_that_goes_away_while_feeding_input_ends_the_program_s_input(
     world: World, tmp_path: Path
 ) -> None:
-    """A client gone mid-input closes the program's input, and the relay serves the next command."""
+    """A client gone mid-input closes the program's input, and the relay serves the next command.
+
+    The program publishes what it was fed by writing a sibling temporary file
+    and renaming it into place, and it holds between the two until the test
+    lets it go. The record's path therefore exists only once it is whole, and
+    the test proves it waits on that path rather than on the first file seen.
+    """
     fed = tmp_path / "fed"
+    writing = tmp_path / "fed.partial"
+    go = tmp_path / "go"
     reading = (
-        f"import sys; from pathlib import Path; Path({str(fed)!r}).write_text(sys.stdin.read())"
+        "import sys, time; from pathlib import Path\n"
+        f"Path({str(writing)!r}).write_text(sys.stdin.read())\n"
+        f"deadline = time.monotonic() + {SETTLE_S}\n"
+        f"while not Path({str(go)!r}).exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        f"Path({str(writing)!r}).replace({str(fed)!r})\n"
     )
     argv = [b"-c", reading.encode()]
     environment = relayed(world)
@@ -828,6 +837,10 @@ def test_a_client_that_goes_away_while_feeding_input_ends_the_program_s_input(
             + b"partial"
         )
 
+    until(writing.is_file, describing="the program to have begun writing what it was fed")
+    truth(not fed.exists(), describing="the record to be absent while it is being written")
+    go.touch()
     until(fed.is_file, describing="the program to have been given the end of its input")
     equal(fed.read_text(encoding="utf-8"), "partial", describing="what the program was fed")
+    truth(not writing.exists(), describing="the temporary file to have become the record")
     passing(relay(environment, "-c", ECHO, "status"), describing="the next command")
