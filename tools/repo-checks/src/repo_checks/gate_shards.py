@@ -19,7 +19,9 @@ halves of that split, so the workflow carries no selection of its own:
   `test-e2e[2/2]`, the part a run collects named in `PRINTOBSERVER_E2E_PART`.
   The partition is `END_TO_END_SECOND_PART`: a fixed set of the tier's test
   files, every other file in the first part, so each test is collected by
-  exactly one part. Split five ways, the first two shards are the same and the
+  exactly one part. Split two ways, for a runner of three processors, the Rust
+  side of `test` and `coverage` runs beside the whole end-to-end tier, and
+  every other tier on the other shard. Split five ways, the first two shards are the same and the
   end-to-end tier runs in three parts instead, `test-e2e[1/3]` to
   `test-e2e[3/3]`: `END_TO_END_THIRD_PART` takes its files from both halves,
   and each half keeps the rest of its own. That tier measures no coverage, so
@@ -251,6 +253,18 @@ def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
                 if tier != END_TO_END
             ),
             *((Step(END_TO_END, Shard(part, END_TO_END_PARTS)),) for part in (1, 2)),
+        ),
+        2: (
+            tuple(
+                Step(tier, projects=rust if tier in MEASURED else None)
+                for tier in tiers
+                if tier in MEASURED or tier == END_TO_END
+            ),
+            tuple(
+                Step(tier, projects=others if tier in MEASURED else None)
+                for tier in tiers
+                if tier != END_TO_END
+            ),
         ),
         5: (
             tuple(Step(tier, projects=rust) for tier in tiers if tier in MEASURED),

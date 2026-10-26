@@ -10,6 +10,7 @@ from collections.abc import Callable
 import yaml
 from closures import closure
 from repo_checks.checks_ci import platform_dependent_kinds, platforms, platforms_of
+from repo_checks.checks_integration import integration_tier
 from repo_checks.expect import (
     absent,
     accepted,
@@ -23,7 +24,7 @@ from repo_checks.model import Repo
 from treecopy import Tree
 
 #: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("platforms")
+CLOSURE = closure("platforms", "integration-tier")
 
 EMPTY_BLOCK = "[//]: # (BEGIN supported-platforms)\n[//]: # (END supported-platforms)"
 AARCH64 = (
@@ -324,8 +325,11 @@ def test_a_carried_cell_whose_carrier_runs_on_another_runner_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "carrier `ci.yml:gate-macos`", "does not run on `macos-15`")
-    refused_naming(findings, "job `gate`'s matrix omits platform `macos-aarch64`")
+    refused_naming(findings, "carrier `ci.yml:integration-macos`", "does not run on `macos-15`")
+    refused_naming(
+        integration_tier(broken.repo),
+        "the integration job `integration`'s matrix omits platform `macos-aarch64`",
+    )
 
 
 def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
@@ -363,16 +367,3 @@ def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) ->
     findings = platforms(broken.repo)
 
     refused(findings, "a non-empty `reason`")
-
-
-def test_a_gate_job_with_no_matrix_is_excused_only_by_its_carried_record(
-    tree: Callable[[], Tree],
-) -> None:
-    """`gate-macos` declares no matrix because a record holds it to the cell it carries."""
-    broken = tree()
-    broken.edit("repo-policy.toml", 'carrier = "ci.yml:gate-macos"', 'carrier = "ci.yml:gone"')
-
-    findings = platforms(broken.repo)
-
-    refused_naming(findings, "job `gate-macos` is a gate job but declares no platform matrix")
-    refused_naming(findings, "names carrier `ci.yml:gone`, which no workflow declares")

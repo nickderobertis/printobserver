@@ -73,9 +73,10 @@ describe("the recorded workload", () => {
 });
 
 describe("one change's life", () => {
-  test("its pull request asks for the two macOS jobs side by side", () => {
+  test("its pull request asks for the gate's two macOS shards and the integration job", () => {
     assert.deepEqual(spending(byId.get("pull_request.opened/source/same-repository/ordinary")), [
-      "ci.yml:gate-macos:macos-aarch64",
+      "ci.yml:gate-shard-macos-aarch64:macos-aarch64",
+      "ci.yml:gate-shard-macos-aarch64:macos-aarch64",
       "ci.yml:integration-macos:macos-aarch64",
     ]);
   });
@@ -144,7 +145,7 @@ describe("the two budgets, through onebudgetspec", () => {
     }
     assert.match(
       results.get("printobserver-macos-jobs-per-run").detail,
-      /ci\.yml on pull_request\.opened: gate \(macos-aarch64\) \[macos-aarch64 on macos-15\], integration \(macos-aarch64\)/,
+      /ci\.yml on pull_request\.opened: gate-shard \(macos-aarch64, 1\/2\) \[macos-aarch64 on macos-15\], gate-shard \(macos-aarch64, 2\/2\) \[macos-aarch64 on macos-15\], integration \(macos-aarch64\)/,
     );
     assert.match(
       results.get("printobserver-macos-runs-per-change").detail,

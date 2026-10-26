@@ -16,9 +16,9 @@
 #
 # macOS is the one exception, and it is a consolidation rather than a
 # narrowing: the account's few macOS slots are shared with other repositories,
-# so the gate's and the integration tier's `macos-aarch64` cells run as two
-# jobs of their own, `gate-macos` and `integration-macos`, and only on a pull
-# request the classifier (`.github/macos-policy.mjs`) says owes them.
+# so the gate's and the integration tier's `macos-aarch64` cells run as jobs of
+# their own — the gate's two shards and `integration-macos` — and only on a
+# pull request the classifier (`.github/macos-policy.mjs`) says owes them.
 # `repo-policy.toml`'s `[[workflows.carried]]` records the two cells as
 # carried, and AGENTS.md's "The consolidated macOS lanes" says why.
 
@@ -83,7 +83,7 @@ jobs:
     # The cell's platform is in the name because that name is the status context
     # a branch-protection rule names: two cells reporting under one name are two
     # check runs the rule cannot tell apart, so it cannot require both.
-    # `macos-aarch64` is the `gate-macos` job's below, under the same context.
+    # `macos-aarch64` is sharded below, `gate-macos` reporting its context.
     name: gate (${{ matrix.platform.id }})
     strategy:
       fail-fast: false
@@ -410,32 +410,43 @@ jobs:
         env:
           GATE_TIME_KIND: integration
 
-  # The gate and the printer integration tier for `macos-aarch64`: two macOS
-  # jobs side by side, each reporting its own required context, and each only
-  # on a pull request the classifier says owes the lane. On a pull request it
-  # could not answer they run anyway: unknown is never omission. No other event
-  # runs them, and a job its condition skips reports its context as a success,
-  # so a pull request owing no macOS lane still reports both. Two at once is the
-  # most `.github/budgets.yaml` lets one run ask for.
-  gate-macos:
-    name: gate (macos-aarch64)
+  # The gate and the printer integration tier for `macos-aarch64`: the gate in
+  # two macOS shards behind an aggregator, and the integration tier in a macOS
+  # job of its own, all side by side and only on a pull request the classifier
+  # says owes the lane. On a pull request it could not answer they run anyway:
+  # unknown is never omission. No other event runs them, and a job its
+  # condition skips reports its context as a success, so a pull request owing no
+  # macOS lane still reports both. Three at once is the most
+  # `.github/budgets.yaml` lets one run ask for.
+  gate-shard-macos-aarch64:
+    env:
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      # As in the gate's own cells: on the merge path a service-manager case
+      # whose prerequisite is missing fails rather than skipping.
+      PRINTOBSERVER_SERVICE_JOURNEY: required
+      # The Windows-target lint reads the committed tree alone, and every Linux
+      # gate cell runs it.
+      PRINTOBSERVER_HOST_INDEPENDENT: elsewhere
+    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
     needs: classify
     if: >-
       !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
       (github.event_name == 'pull_request' && needs.classify.result != 'success'))
-    runs-on: macos-15
-    env:
-      PRINTOBSERVER_PLATFORM: macos-aarch64
-      # As in the gate's own cells: on the merge path a service-manager case
-      # whose prerequisite is missing fails rather than skipping.
-      PRINTOBSERVER_SERVICE_JOURNEY: required
-      # The Windows-target lint, the workflow lint and the repository checks
-      # read the committed tree alone, and every Linux gate cell runs them.
-      PRINTOBSERVER_HOST_INDEPENDENT: elsewhere
-      GITHUB_TOKEN: ${{ github.token }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: macos-aarch64
+            runner: macos-15
+            shard: 1
+            shards: 2
+          - id: macos-aarch64
+            runner: macos-15
+            shard: 2
+            shards: 2
+    runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
-      # `nx-set-shas` and the `gate-time` step read this workflow's runs.
       actions: read
     defaults:
       run:
@@ -445,7 +456,12 @@ jobs:
         with:
           fetch-depth: 0
       - uses: nrwl/nx-set-shas@v4
+      # A cache per shard: the first compiles the Rust crates' instrumented test
+      # builds and the debug program the end-to-end tier runs, the second the
+      # lints, the debug program the Python suites run and the build tier.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
@@ -453,15 +469,38 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: just runner-temp
       - run: just bootstrap
-      # The same recipe, at the same tier, as every gate cell.
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check "$(just gate-tier)"
+      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
+        env:
+          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
       - if: always()
         run: just runner-temp cleanup
+
+  # The required `gate (macos-aarch64)` context: it waits on both shards
+  # whatever each concluded, and fails unless each succeeded — except where the
+  # classifier owed no macOS lane and skipped them, where it is skipped too.
+  gate-macos:
+    name: gate (macos-aarch64)
+    needs: [gate-shard-macos-aarch64]
+    if: always() && needs.gate-shard-macos-aarch64.result != 'skipped'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just shard-verdict gate macos-aarch64
+        env:
+          NEEDS: ${{ toJSON(needs) }}
       - name: gate-time
         run: just gate-time
         env:
           GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: macos-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
 
   integration-macos:
     name: integration (macos-aarch64)

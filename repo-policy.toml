@@ -783,13 +783,6 @@ waived_report = "GITHUB_STEP_SUMMARY"
 # consolidated macOS lanes" is the prose half.
 [[workflows.carried]]
 platform = "macos-aarch64"
-jobs = ["gate"]
-carrier = "ci.yml:gate-macos"
-runs = ["just bootstrap", "just check"]
-reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS gate runs as a job of its own beside the macOS integration job, owed only where the classifier says so, and reports `gate (macos-aarch64)` itself"
-
-[[workflows.carried]]
-platform = "macos-aarch64"
 jobs = ["integration"]
 carrier = "ci.yml:integration-macos"
 runs = ["just bootstrap", "just octoprint-up", "just test-integration", "just octoprint-down"]

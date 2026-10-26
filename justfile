@@ -95,12 +95,6 @@ tool-version TOOL:
 # Nx's plugin workers past the time they are given to start. Continuous
 # integration splits both Windows gates into shards (`just check-shard`), which
 # run their tiers in turn too.
-#
-# `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere` leaves out the three steps that read
-# the committed tree alone and answer the same on every host — the Windows-target
-# lint, the workflow lint and the repository checks — for a gate cell whose run
-# has another cell running them: `ci.yml`'s macOS gate, beside the Linux cells.
-# Any other value is refused by the Windows-target lint, early in `just lint`.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -111,10 +105,8 @@ check tier="affected":
     just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} && \
-    if [ "${PRINTOBSERVER_HOST_INDEPENDENT:-}" != elsewhere ]; then \
     just lint-workflows && \
-    just check-repo \
-    ; fi || status=$?; \
+    just check-repo || status=$?; \
     if {{E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
     elif [ "$status" = 0 ]; then \
     just test-e2e {{quote(tier)}} || status=$?; \

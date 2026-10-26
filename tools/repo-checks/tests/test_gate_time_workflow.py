@@ -221,13 +221,16 @@ def test_each_required_context_runs_all_the_nx_work_it_ran(
 def test_the_macos_lever_runs_exactly_the_work_macos_ran(
     baseline: Repo, committed_repo: Repo, context: str
 ) -> None:
-    """Each lane, once a step of the combined job, is the whole of its own macOS job."""
+    """Each lane, once a step of the combined job, is the whole of its own macOS jobs' work."""
     now, before = nx_work(committed_repo, context), nx_work(baseline, context)
     truth(bool(before), describing=f"{context} ran Nx work at the baseline")
     equal(sorted(now ^ before), [], describing=f"what {context} runs that it did not, or no longer")
     equal(
         behind(committed_repo, context),
-        [{"gate (macos-aarch64)": "gate-macos"}.get(context, "integration-macos")],
+        {
+            "gate (macos-aarch64)": ["gate-macos", "gate-shard-macos-aarch64"],
+            "integration (macos-aarch64)": ["integration-macos"],
+        }[context],
         describing=f"the jobs behind {context}",
     )
 

@@ -368,34 +368,34 @@ what makes a job running once a decision rather than an omission.
 - `gate-windows-aarch64` — it is the aggregating job of the sharded `gate (windows-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-aarch64`, whose cells are on that platform's runner.
 - `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
-- `gate-macos` — it is the `macos-aarch64` cell of the gate run as a job of its own, on that platform's runner, which `repo-policy.toml`'s `[[workflows.carried]]` holds to the cell's runner and commands; a matrix of one cell would say nothing a carried record does not, and the account's shared macOS slots allow no second cell.
+- `gate-macos` — it is the aggregating job of the sharded `gate (macos-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-macos-aarch64`, whose cells are on that platform's runner.
 - `integration-macos` — it is the `macos-aarch64` cell of the printer integration job run as a job of its own, on that platform's runner, which `repo-policy.toml`'s `[[workflows.carried]]` holds to the cell's runner and commands; a matrix of one cell would say nothing a carried record does not, and the account's shared macOS slots allow no second cell.
 [//]: # (END unmatrixed-jobs)
 
 ### The consolidated macOS lanes
 
 The account's few macOS slots are shared with other repositories, so one change
-may occupy at most two per workflow run, and at most two runs over its
-automatic life: its pull request's two macOS jobs in `ci.yml`, `gate-macos` and
-`integration-macos`, which run the gate and the integration tier side by side,
-and the release's macOS `artifacts` cell, which proves what it built before
-publishing. Nothing else starts macOS automatically; `platform-dispatch.yml` is
-the one manual lever, one job per dispatch.
+may occupy at most three per workflow run, and at most two runs over its
+automatic life: its pull request's macOS jobs in `ci.yml` — the gate's two
+shards and `integration-macos` — which run side by side, and the release's
+macOS `artifacts` cell, which proves what it built before publishing. Nothing
+else starts macOS automatically; `platform-dispatch.yml` is the one manual
+lever, one job per dispatch.
 
 `.github/macos-policy.mjs classify` decides whether a pull request owes the
 lane — release automation's version/changelog-only pull request does not, and
-unknown input does — and each macOS job reports its own required context,
-`gate (macos-aarch64)` or `integration (macos-aarch64)`; where the lane is not
-owed, both are skipped, which the forge reports as a passing check.
-`repo-policy.toml`'s `[[workflows.carried]]` records each cell and the job
-carrying it, and `.github/budgets.yaml` holds both bounds against the graph
-`github-workflows:test` evaluates.
+unknown input does. `gate (macos-aarch64)` is reported by the gate's aggregator
+and `integration (macos-aarch64)` by the integration job itself; where the lane
+is not owed, every one of those jobs is skipped, which the forge reports as a
+passing check. `repo-policy.toml`'s `[[workflows.carried]]` records the
+integration cell and the job carrying it, and `.github/budgets.yaml` holds both
+bounds against the graph `github-workflows:test` evaluates.
 
-The two lanes are two jobs rather than one because one 3-core runner cannot run
-both under `gate-time`'s 1,800 s, in turn or side by side: both are bound by the
-same processors. The macOS gate leaves the steps that read only the committed
-tree — the Windows-target lint, the workflow lint and the repository checks — to
-the Linux gate cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
+The gate is two shards and the integration tier a job of its own because one
+3-core runner cannot run the gate, let alone both lanes, under `gate-time`'s
+1,800 s: they are bound by the same processors. The macOS shards leave the
+Windows-target lint, which reads only the committed tree, to the Linux gate
+cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
 
 ## The scripted OctoPrint environment
 
@@ -1074,10 +1074,12 @@ itself.** The root `budgets.yaml` registers `gate-time`, and every job reporting
 one of the ten contexts ends with the `gate-time` step, which fails that context
 over budget — so the merge path refuses the change with no protection change —
 except on the release pull request's full sweep, where it only reports. The
-queue before a platform's first job starts is GitHub capacity rather than this
-repository's work, so it is reported and not charged. A context over budget is
-brought under by sharding it behind its own required name, never by loosening
-the budget.
+figure is the critical path of the context's jobs' own running time: the longest
+job behind it, then the aggregator. A job queued for a runner is GitHub's
+capacity rather than this repository's work, so every queue is reported and
+none is charged. A context over budget is brought under by making its work
+faster or sharding it behind its own required name, never by loosening the
+budget.
 
 The record names the contexts the committed workflows report, which is not
 always what the live protection requires: a person applies that. A change that

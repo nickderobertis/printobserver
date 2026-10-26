@@ -23,7 +23,7 @@ budgets:
       - .telemetry/macos-policy.json
     unit: jobs
     direction: max
-    threshold: 2
+    threshold: 3
     timeout_seconds: 60
   - id: printobserver-macos-runs-per-change
     description: >-
