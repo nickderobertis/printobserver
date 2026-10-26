@@ -31,6 +31,7 @@ from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_time_budget import BUDGET, KIND, PLATFORM, STEP_RUN
 from repo_checks.model import Repo
+from repo_checks.platforms import supported
 from repo_checks.parsing import Recipe, jobs_of, load_workflow, recipes, run_commands, steps_of
 from repo_checks.shell import run
 from standin_jobs_api import Jobs, serving
@@ -39,7 +40,9 @@ from treecopy import REPO_ROOT
 #: This branch's merge base with `main`: the workflow every context is held against.
 BASELINE = "e6be673e2394891588aa467a911ea5827077ce7c"
 CI = ".github/workflows/ci.yml"
-PLATFORMS = ("linux-x86_64", "linux-aarch64", "macos-aarch64", "windows-x86_64", "windows-aarch64")
+#: The supported platforms, read off AGENTS.md's list, so a platform it gains is
+#: a pair of required contexts every assertion here reaches.
+PLATFORMS = tuple(platform.id for platform in supported(Repo(REPO_ROOT)))
 REQUIRED = tuple(
     f"{kind} ({platform})" for kind in ("gate", "integration") for platform in PLATFORMS
 )

@@ -636,7 +636,7 @@ pool-maintenance:
 
 # The `gate-time` step every required gate and integration job ends with: the
 # onebudgetspec check of the root `budgets.yaml`'s `gate-time`, for the context
-# `GATE_TIME_KIND` and `GATE_TIME_PLATFORM` name, read off the current run's
+# `GATE_TIME_KIND` and `PRINTOBSERVER_PLATFORM` name, read off the current run's
 # jobs. Over its threshold it fails that required context, except on the
 # release pull request's full sweep, where it reports the figure and passes.
 gate-time:

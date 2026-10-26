@@ -56,8 +56,11 @@ def serving(jobs: Jobs) -> Iterator[str]:
                 self.send_error(jobs.status)
                 return
             query = urllib.parse.parse_qs(parsed.query)
-            per_page = int(query.get("per_page", ["30"])[0])
-            page = int(query.get("page", ["1"])[0])
+            asked = (query.get("per_page", ["30"])[0], query.get("page", ["1"])[0])
+            if not all(value.isdigit() and int(value) > 0 for value in asked):
+                self.send_error(400, "per_page and page are positive whole numbers")
+                return
+            per_page, page = (int(value) for value in asked)
             listed = list(jobs.document.get("jobs", []))
             answer = {**jobs.document, "jobs": listed[(page - 1) * per_page : page * per_page]}
             body = jobs.raw if jobs.raw is not None else json.dumps(answer).encode("utf-8")
