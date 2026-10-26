@@ -478,13 +478,12 @@ impl JobPayload {
             print_time_s: progress.print_time,
             print_time_left_s: progress.print_time_left,
             state: job_state_of(self.state.as_deref()),
-            error_report: self.error.as_deref().and_then(|text| {
+            error: self.error.as_deref().and_then(|text| {
                 error_source_of(text).map(|source| JobError {
                     text: text.to_owned(),
                     source,
                 })
             }),
-            error: self.error,
             // A position before the file's first byte is no position at all.
             file_position_bytes: progress.filepos.filter(|position| *position >= 0),
             filament: job.filament.as_ref().map(filament_of).unwrap_or_default(),

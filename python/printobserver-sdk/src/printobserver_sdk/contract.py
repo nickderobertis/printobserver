@@ -993,11 +993,8 @@ class JobSnapshot(TypedDict):
     # Normalized to a fraction here regardless of how the source expresses
     # it.
     completion: NotRequired[Reported | None]
-    # The error the source reports, when it reports one.
-    error: NotRequired[str | None]
-    # The error the source reports with whose it is, when its adapter could
-    # tell: its text is always `error`'s.
-    error_report: NotRequired[JobError | None]
+    # The error the source reports, when it reports one, and whose it is.
+    error: NotRequired[JobError | None]
     # The whole print's estimated duration, in whole seconds.
     estimated_print_time_s: NotRequired[int | None]
     # The filament the source's analysis of the file says each tool uses;

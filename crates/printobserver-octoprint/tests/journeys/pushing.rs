@@ -175,25 +175,32 @@ fn a_printer_that_is_not_operational_reads_as_offline() {
     assert!(snapshot.tools.is_empty());
     let job = block_on(printer.job()).expect("the job reads");
     assert_eq!(job.state, PrinterState::Offline);
-    assert_eq!(job.error.as_deref(), Some("SerialTimeoutException: "));
-    let report = job.error_report.clone().expect("the error is classified");
-    assert_eq!(report.source, printobserver_printer_api::ErrorSource::Host);
     assert_eq!(
-        Some(report.text),
         job.error,
-        "the report's text is not the error's"
+        Some(printobserver_printer_api::JobError {
+            text: "SerialTimeoutException: ".to_owned(),
+            source: printobserver_printer_api::ErrorSource::Host,
+        })
     );
 }
 
-/// Whatever error a job reports, a classified report of it carries exactly
-/// its text, and a job reporting none carries no report.
+/// A job's error carries the source's own text and whose it is, and a job
+/// whose source reports none, or only blank text, carries none; and the
+/// shape round-trips on the wire as an object of the two.
 #[test]
-fn a_jobs_error_report_carries_exactly_its_error() {
-    for error in [
-        Some("SerialTimeoutException: "),
-        Some("Thermal Runaway, system stopped!"),
-        Some("   "),
-        None,
+fn a_jobs_error_carries_its_text_and_whose_it_is() {
+    use printobserver_printer_api::{ErrorSource, JobError};
+    for (reported, expected) in [
+        (
+            Some("SerialTimeoutException: "),
+            Some(("SerialTimeoutException: ", ErrorSource::Host)),
+        ),
+        (
+            Some("Thermal Runaway, system stopped!"),
+            Some(("Thermal Runaway, system stopped!", ErrorSource::Printer)),
+        ),
+        (Some("   "), None),
+        (None, None),
     ] {
         let standin = ScriptedOctoPrint::start();
         let printer = adapter(&standin);
@@ -201,20 +208,27 @@ fn a_jobs_error_report_carries_exactly_its_error() {
             "Closed",
             JobScript {
                 state: "Offline after error".to_owned(),
-                error: error.map(str::to_owned),
+                error: reported.map(str::to_owned),
                 ..JobScript::idle()
             },
         );
         let job = block_on(printer.job()).expect("the job reads");
-        match job.error_report {
-            Some(report) => assert_eq!(Some(report.text), job.error, "{error:?}"),
-            None => assert!(
-                job.error
-                    .as_deref()
-                    .is_none_or(|text| text.trim().is_empty()),
-                "{error:?} carries no report"
+        let expected = expected.map(|(text, source)| JobError {
+            text: text.to_owned(),
+            source,
+        });
+        assert_eq!(job.error, expected, "{reported:?}");
+        let wire = printobserver_types::serde_json::to_value(&job).expect("the job renders");
+        match &job.error {
+            Some(error) => assert_eq!(
+                wire["error"],
+                json!({ "text": error.text, "source": printobserver_types::serde_json::to_value(error.source).expect("a source renders") })
             ),
+            None => assert!(wire.get("error").is_none(), "{wire}"),
         }
+        let read: printobserver_printer_api::JobSnapshot =
+            printobserver_types::serde_json::from_value(wire).expect("the job reads back");
+        assert_eq!(read, job);
     }
 }
 

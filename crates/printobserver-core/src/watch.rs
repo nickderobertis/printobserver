@@ -184,9 +184,18 @@ impl DetectorHealth {
 struct DetectorHealthWire {
     /// What the last check found.
     status: DetectorHealthStatus,
-    /// When the status became what it is, `null` exactly while unchecked.
-    #[serde(default)]
+    /// When the status became what it is, `null` exactly while unchecked —
+    /// and always present, as the schema requires.
+    #[serde(deserialize_with = "present")]
     since: Option<Timestamp>,
+}
+
+/// Read a value that may be `null` but may not be missing: serde reads a
+/// missing optional as `None` unless it is read through a function of its own.
+fn present<'de, D: printobserver_types::serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Timestamp>, D::Error> {
+    Option::deserialize(deserializer)
 }
 
 impl From<DetectorHealth> for DetectorHealthWire {
@@ -561,10 +570,24 @@ impl Supervisor {
         match push {
             PrinterPush::Reset => {
                 self.watch_state().pushes.reset = true;
-                let during_print = self.running_print().await?.map(|print| print.id);
-                let detail = match during_print {
-                    Some(print_id) => format!("the printer pushed a reset during print {print_id}"),
-                    None => "the printer pushed a reset while no print was running".to_owned(),
+                // A reset is recorded whatever the store answers about which
+                // print was running: the push is not sent again.
+                let (during_print, detail) = match self.running_print().await {
+                    Ok(Some(print)) => (
+                        Some(print.id),
+                        format!("the printer pushed a reset during print {}", print.id),
+                    ),
+                    Ok(None) => (
+                        None,
+                        "the printer pushed a reset while no print was running".to_owned(),
+                    ),
+                    Err(error) => (
+                        None,
+                        format!(
+                            "the printer pushed a reset; which print was running could not be \
+                             read: {error}"
+                        ),
+                    ),
                 };
                 let payload = PrinterResetPayload {
                     during_print,
@@ -649,8 +672,11 @@ impl Supervisor {
         let resolving = self.resolving().await;
         let observed = self.observe_job().await;
         if let Some(observed) = &observed {
-            self.note_connection(&observed.job.state, observed.job.error.as_deref())
-                .await?;
+            self.note_connection(
+                &observed.job.state,
+                observed.job.error.as_ref().map(|error| error.text.as_str()),
+            )
+            .await?;
             self.settle_and_adopt(observed).await?;
         }
         drop(resolving);

@@ -496,6 +496,7 @@ fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
         json!({ "status": "unchecked", "since": at }),
         json!({ "status": "available", "since": null }),
         json!({ "status": "unavailable" }),
+        json!({ "status": "unchecked" }),
     ] {
         assert!(
             serde_json::from_value::<DetectorHealth>(refused.clone()).is_err(),

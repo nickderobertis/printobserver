@@ -752,13 +752,8 @@ export interface JobSnapshot {
    * Normalized to a fraction here regardless of how the source expresses it.
    */
   completion?: Reported | null;
-  /** The error the source reports, when it reports one. */
-  error?: string | null;
-  /**
-   * The error the source reports with whose it is, when its adapter could
-   * tell: its text is always `error`'s.
-   */
-  error_report?: JobError | null;
+  /** The error the source reports, when it reports one, and whose it is. */
+  error?: JobError | null;
   /** The whole print's estimated duration, in whole seconds. */
   estimated_print_time_s?: number | null;
   /**

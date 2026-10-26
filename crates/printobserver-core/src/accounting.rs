@@ -499,7 +499,7 @@ impl Ending<'_> {
         self.pushes.gap
             && self
                 .job
-                .and_then(|job| job.error_report.as_ref())
+                .and_then(|job| job.error.as_ref())
                 .is_some_and(|report| report.source == ErrorSource::Printer)
     }
 }

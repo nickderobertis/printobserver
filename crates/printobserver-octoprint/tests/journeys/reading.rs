@@ -155,7 +155,13 @@ fn a_job_reporting_an_error_carries_the_source_s_own_words() {
     let job = block_on(printer.job()).expect("a job");
 
     assert_eq!(job.state, PrinterState::Error);
-    assert_eq!(job.error.as_deref(), Some("Too many consecutive timeouts"));
+    assert_eq!(
+        job.error,
+        Some(printobserver_printer_api::JobError {
+            text: "Too many consecutive timeouts".to_owned(),
+            source: printobserver_printer_api::ErrorSource::Printer,
+        })
+    );
 }
 
 /// Every state word this mapping has an arm for, and one it does not.

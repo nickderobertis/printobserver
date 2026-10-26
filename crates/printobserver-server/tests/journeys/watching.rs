@@ -987,3 +987,58 @@ async fn an_ending_the_store_would_not_follow_up_is_followed_up_by_the_next_read
     let activity = watch.until("unattended_printer_activity", 1).await;
     assert_eq!(activity[0]["payload"]["last_print_id"], print_id.as_str());
 }
+
+/// An `M114` the instance refuses reads no position: the heating is recorded
+/// with motion unknown.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_position_command_the_instance_refuses_is_motion_unknown() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    interrupted(&watch).await;
+    watch.octoprint.refuses_commands(true);
+    let taken = watch.octoprint.commands().len();
+
+    watch.octoprint.targets(170.0, 0.0);
+    let activity = watch.until("unattended_printer_activity", 1).await;
+
+    assert_eq!(activity[0]["payload"]["moved"], Value::Null);
+    assert_eq!(
+        watch.octoprint.commands().len(),
+        taken,
+        "a refused line was recorded as taken"
+    );
+}
+
+/// A stopped server stops watching: its push socket is closed, and nothing
+/// more is asked of the machine.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stopped_server_closes_its_push_socket_and_reads_nothing_more() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let Watch {
+        server, octoprint, ..
+    } = watch;
+
+    server.stop().await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        tokio::time::sleep(POLL * 2).await;
+        octoprint.pushes_logs(&["Recv: ok"]);
+        if octoprint.open_sockets() == 0 {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the push socket stayed open"
+        );
+    }
+    let asked = octoprint.requests().len();
+    tokio::time::sleep(POLL * 6).await;
+
+    assert_eq!(
+        octoprint.requests().len(),
+        asked,
+        "{:?}",
+        octoprint.requests()
+    );
+}

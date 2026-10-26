@@ -7208,13 +7208,6 @@ Declared by `printobserver-server`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "error_report": {
           "anyOf": [
             {
               "$ref": "#/$defs/JobError"
@@ -7223,7 +7216,7 @@ Declared by `printobserver-server`.
               "type": "null"
             }
           ],
-          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -10883,13 +10876,6 @@ Declared by `printobserver-printer-api`.
       "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
     },
     "error": {
-      "description": "The error the source reports, when it reports one.",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "error_report": {
       "anyOf": [
         {
           "$ref": "#/$defs/JobError"
@@ -10898,7 +10884,7 @@ Declared by `printobserver-printer-api`.
           "type": "null"
         }
       ],
-      "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
+      "description": "The error the source reports, when it reports one, and whose it is."
     },
     "estimated_print_time_s": {
       "description": "The whole print's estimated duration, in whole seconds.",
@@ -11218,13 +11204,6 @@ Declared by `printobserver-core`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "error_report": {
           "anyOf": [
             {
               "$ref": "#/$defs/JobError"
@@ -11233,7 +11212,7 @@ Declared by `printobserver-core`.
               "type": "null"
             }
           ],
-          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -13286,13 +13265,6 @@ Declared by `printobserver-core`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "error_report": {
           "anyOf": [
             {
               "$ref": "#/$defs/JobError"
@@ -13301,7 +13273,7 @@ Declared by `printobserver-core`.
               "type": "null"
             }
           ],
-          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -19078,13 +19050,6 @@ Declared by `printobserver-core`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "error_report": {
           "anyOf": [
             {
               "$ref": "#/$defs/JobError"
@@ -19093,7 +19058,7 @@ Declared by `printobserver-core`.
               "type": "null"
             }
           ],
-          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -29992,13 +29957,6 @@ Declared by `printobserver-server`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "error_report": {
           "anyOf": [
             {
               "$ref": "#/$defs/JobError"
@@ -30007,7 +29965,7 @@ Declared by `printobserver-server`.
               "type": "null"
             }
           ],
-          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",

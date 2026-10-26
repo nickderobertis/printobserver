@@ -899,13 +899,9 @@ pub struct JobSnapshot {
     /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion: Option<Reported>,
-    /// The error the source reports, when it reports one.
+    /// The error the source reports, when it reports one, and whose it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    /// The error the source reports with whose it is, when its adapter could
-    /// tell: its text is always `error`'s.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_report: Option<JobError>,
+    pub error: Option<JobError>,
     /// The whole print's estimated duration, in whole seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimated_print_time_s: Option<i64>,

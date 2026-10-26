@@ -103,6 +103,8 @@ struct Script {
     position: [f64; 3],
     /// Whether an `M114` is answered on the push socket.
     answers_position: bool,
+    /// Whether the command endpoint refuses every line.
+    refuses_commands: bool,
     /// How the push socket's upgrade is answered.
     upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
@@ -164,6 +166,7 @@ impl ScriptedOctoPrint {
             bed_target: 0.0,
             position: [0.0; 3],
             answers_position: true,
+            refuses_commands: false,
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
@@ -231,6 +234,12 @@ impl ScriptedOctoPrint {
     /// Put the head here.
     pub fn moves_head_to(&self, position: [f64; 3]) {
         self.held().position = position;
+    }
+
+    /// Refuse every line sent through the command endpoint from now on, or
+    /// take them again.
+    pub fn refuses_commands(&self, refuses: bool) {
+        self.held().refuses_commands = refuses;
     }
 
     /// Answer `M114` on the push socket, or not.
@@ -512,33 +521,7 @@ fn answer(
             200,
             json!({ "current": { "state": held.connection, "port": "VIRTUAL" } }).to_string(),
         ),
-        ("GET", path) if path.starts_with("/api/printer") => {
-            if not_operational(&held.connection) {
-                return (409, NOT_OPERATIONAL.to_owned());
-            }
-            let printing = held.job.state == "Printing";
-            (
-                200,
-                json!({
-                    "state": {
-                        "text": held.connection,
-                        "flags": {
-                            "operational": true,
-                            "printing": printing,
-                            "paused": held.job.state == "Paused",
-                            "cancelling": held.job.state == "Cancelling",
-                            "error": false,
-                            "closedOrError": false,
-                        },
-                    },
-                    "temperature": {
-                        "tool0": { "actual": 25.0, "target": held.tool_target, "offset": 0 },
-                        "bed": { "actual": 25.0, "target": held.bed_target, "offset": 0 },
-                    },
-                })
-                .to_string(),
-            )
-        }
+        ("GET", path) if path.starts_with("/api/printer") => printer_body(&held),
         ("GET", "/api/job") => (200, job_body(&held.job).to_string()),
         ("POST", "/api/job") => {
             let command = body["command"].as_str().unwrap_or_default().to_owned();
@@ -550,6 +533,9 @@ fn answer(
             }
             held.job_commands.push(command);
             (204, String::new())
+        }
+        ("POST", "/api/printer/command") if held.refuses_commands => {
+            (409, r#"{"error":"Printer is not operational"}"#.to_owned())
         }
         ("POST", "/api/printer/command") => {
             let printing = held.job.state == "Printing";
@@ -594,6 +580,36 @@ fn answer(
         }
         _ => (404, r#"{"error":"Not found"}"#.to_owned()),
     }
+}
+
+/// What `GET /api/printer` answers for what the stand-in holds: `409` for a
+/// printer that is not operational, as `OctoPrint` answers it.
+fn printer_body(held: &Script) -> (u16, String) {
+    if not_operational(&held.connection) {
+        return (409, NOT_OPERATIONAL.to_owned());
+    }
+    let printing = held.job.state == "Printing";
+    (
+        200,
+        json!({
+            "state": {
+                "text": held.connection,
+                "flags": {
+                    "operational": true,
+                    "printing": printing,
+                    "paused": held.job.state == "Paused",
+                    "cancelling": held.job.state == "Cancelling",
+                    "error": false,
+                    "closedOrError": false,
+                },
+            },
+            "temperature": {
+                "tool0": { "actual": 25.0, "target": held.tool_target, "offset": 0 },
+                "bed": { "actual": 25.0, "target": held.bed_target, "offset": 0 },
+            },
+        })
+        .to_string(),
+    )
 }
 
 /// What `GET /api/job` answers for one job.

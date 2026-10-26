@@ -97,8 +97,7 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
         "JobSnapshot",
         &[
             ("completion", "Reported", false),
-            ("error", "string", false),
-            ("error_report", "JobError", false),
+            ("error", "JobError", false),
             ("estimated_print_time_s", "integer", false),
             ("filament", "array:ToolFilament", false),
             ("file_name", "string", false),
@@ -206,8 +205,8 @@ fn an_absent_optional_is_absent_from_the_serialized_object() {
         }
     }
     assert_eq!(
-        checked, 23,
-        "the twenty-three optional fields were not all checked"
+        checked, 22,
+        "the twenty-two optional fields were not all checked"
     );
 }
 

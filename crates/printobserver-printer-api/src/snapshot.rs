@@ -183,13 +183,9 @@ pub struct JobSnapshot {
     pub print_time_left_s: Option<i64>,
     /// The state the source reports the job to be in.
     pub state: PrinterState,
-    /// The error the source reports, when it reports one.
+    /// The error the source reports, when it reports one, and whose it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    /// The error the source reports with whose it is, when its adapter could
-    /// tell: its text is always `error`'s.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_report: Option<JobError>,
+    pub error: Option<JobError>,
     /// How far into the file the printer has read, in bytes, when the source
     /// reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -306,8 +302,7 @@ impl Sample for JobSnapshot {
             print_time_s: Some(3024),
             print_time_left_s: Some(4176),
             state: PrinterState::Printing,
-            error: Some("Thermal Runaway, system stopped!".to_owned()),
-            error_report: Some(JobError::sample_full()),
+            error: Some(JobError::sample_full()),
             file_position_bytes: Some(1_761_607),
             filament: vec![ToolFilament::sample_full()],
         }
@@ -324,7 +319,6 @@ impl Sample for JobSnapshot {
             print_time_left_s: None,
             state: PrinterState::Printing,
             error: None,
-            error_report: None,
             file_position_bytes: None,
             filament: Vec::new(),
         }

@@ -207,7 +207,6 @@ fn walk_the_job(instance: &Scripted) {
         "this job reports an error after all: {before}"
     );
     assert_eq!(job.error, None);
-    assert_eq!(job.error_report, None);
 }
 
 /// The completion conversion, pinned against `OctoPrint`'s own figure.
