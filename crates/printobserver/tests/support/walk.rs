@@ -243,6 +243,21 @@ fn ordered(world: &World) -> Vec<Entry> {
             Reports::Printing,
             vec![("wait_s".to_owned(), "0".to_owned())],
         ),
+        // The print's events after a registration the world made for the
+        // walk, of one kind and never another, at once: a wait would only be
+        // the walk's own time spent.
+        named(
+            "events",
+            Reports::Printing,
+            vec![
+                ("print_id".to_owned(), world.print_id()),
+                ("after".to_owned(), world.register_history_cursor()),
+                ("kinds".to_owned(), EVENTS_KIND.to_owned()),
+                ("exclude_kinds".to_owned(), "spool_retired".to_owned()),
+                ("wait_s".to_owned(), "0".to_owned()),
+                ("limit".to_owned(), "7".to_owned()),
+            ],
+        ),
     ];
     found.extend(actions(world));
     found.push(named(
@@ -319,6 +334,9 @@ fn ledger(world: &World) -> Vec<Entry> {
         acting("retire-spool", vec![]),
     ]
 }
+
+/// The one kind the walk's events read passes.
+pub const EVENTS_KIND: &str = "spool_registered";
 
 /// The earliest instant the walk's printer history read reads from.
 pub const HISTORY_SINCE: &str = "2020-01-01T00:00:00Z";

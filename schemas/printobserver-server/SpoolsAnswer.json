@@ -1,85 +1,5 @@
 {
   "$defs": {
-    "ChargeKey": {
-      "description": "The durable identity of one debit, so that a replay can never debit twice.",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "description": "One segment of a print this system watched, on one tool.",
-          "properties": {
-            "key": {
-              "const": "print",
-              "type": "string"
-            },
-            "print_id": {
-              "$ref": "#/$defs/PrintId",
-              "description": "The print."
-            },
-            "segment": {
-              "description": "Which segment: zero from the print's start, and one more each time\na mid-print swap or a filament-change signal closes the current one.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "print_id",
-            "tool",
-            "segment"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "One print this system never saw, on one tool.",
-          "properties": {
-            "file_name": {
-              "description": "The file that was printed.",
-              "type": "string"
-            },
-            "generation": {
-              "description": "The file's tally generation, which advances each time the printer's\ntally for the file is reset.",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
-            "key": {
-              "const": "unobserved",
-              "type": "string"
-            },
-            "origin": {
-              "description": "Where the file lives, in the printer's own vocabulary.",
-              "type": "string"
-            },
-            "print_number": {
-              "description": "The print's ordinal in the file's tally — completed and failed\nprints counted up to and including this one — within that\ngeneration.",
-              "format": "int64",
-              "type": "integer"
-            },
-            "tool": {
-              "description": "The tool, in the printer's own numbering.",
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "origin",
-            "file_name",
-            "generation",
-            "print_number",
-            "tool"
-          ],
-          "type": "object"
-        }
-      ]
-    },
     "ChargeMethod": {
       "description": "How the length a charge debits was worked out.",
       "oneOf": [
@@ -146,8 +66,8 @@
           ]
         },
         "charge_key": {
-          "$ref": "#/$defs/ChargeKey",
-          "description": "The key of the print segment the filament was fed in."
+          "$ref": "#/$defs/PrintSegmentKey",
+          "description": "The print segment the filament was fed in, which names the print and\nthe tool that fed it."
         },
         "length_mm": {
           "description": "How much was fed, in millimetres.",
@@ -179,21 +99,10 @@
             }
           ],
           "description": "How far into the file the segment ran, when that was read."
-        },
-        "print_id": {
-          "$ref": "#/$defs/PrintId",
-          "description": "The print it was fed in."
-        },
-        "tool": {
-          "description": "The tool that fed it.",
-          "format": "int64",
-          "type": "integer"
         }
       },
       "required": [
         "charge_key",
-        "print_id",
-        "tool",
         "length_mm",
         "method",
         "pended_at"
@@ -207,12 +116,97 @@
       "title": "PrintId",
       "type": "string"
     },
+    "PrintSegmentKey": {
+      "additionalProperties": false,
+      "description": "One segment of a print this system watched, on one tool: the key of a\n[`ChargeKey::Print`] debit, and the only key filament held pending can be\nunder.",
+      "properties": {
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "segment": {
+          "description": "Which segment, numbered as [`ChargeKey::Print`] numbers it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "print_id",
+        "tool",
+        "segment"
+      ],
+      "type": "object"
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "SpoolId",
       "type": "string"
+    },
+    "SpoolLifecycle": {
+      "description": "Where a spool is in its life.\n\nOne state rather than a loaded tool beside a retirement instant, because a\nretired spool is on no tool: retiring a loaded spool takes it off.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Registered, and loaded on no tool.",
+          "properties": {
+            "state": {
+              "const": "shelved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Loaded on one tool.",
+          "properties": {
+            "state": {
+              "const": "loaded",
+              "type": "string"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "tool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Retired: it takes no further command, and is on no tool.",
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/Timestamp",
+              "description": "When it was retired."
+            },
+            "state": {
+              "const": "retired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "at"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolRecord": {
       "additionalProperties": false,
@@ -244,13 +238,9 @@
           "format": "double",
           "type": "number"
         },
-        "loaded_on_tool": {
-          "description": "The tool the spool is loaded on, when it is loaded.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "lifecycle": {
+          "$ref": "#/$defs/SpoolLifecycle",
+          "description": "Where the spool is in its life: on the shelf, loaded on a tool, or\nretired — and never both of the last two."
         },
         "material": {
           "description": "The material, as given and trimmed, such as `PLA`; never empty.",
@@ -268,17 +258,6 @@
           "description": "The filament left, in grams.\n\nAlways the initial figure less every charge plus every correction. A\ncharge is never refused or clamped, so this may go below zero.",
           "format": "double",
           "type": "number"
-        },
-        "retired_at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Timestamp"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "When the spool was retired, if it has been."
         },
         "tare_g": {
           "description": "The empty spool's own weight, in grams, when the operator gave it.",
@@ -305,6 +284,7 @@
         "density_g_cm3",
         "initial_g",
         "remaining_g",
+        "lifecycle",
         "trust",
         "registered_at",
         "updated_at"

@@ -9,7 +9,9 @@ use printobserver_core::store::{
     BoxFuture, Charge, ChargeRecord, EventDraft, FilamentStore, FileTally, NewSpool, Pend,
     Settlement, SpoolMutation, SpoolWrite, StoreError, TimelineQuery, TimelineStore,
 };
-use printobserver_core::{Actor, FilePosition, PendingCharge, PrintOutcome, SpoolId, SpoolRecord};
+use printobserver_core::{
+    Actor, FilePosition, PendingCharge, PrintOutcome, SpoolId, SpoolLifecycle, SpoolRecord,
+};
 use printobserver_types::{EventRecord, EventSource, PrintId, Timestamp};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params, params_from_iter};
@@ -22,7 +24,7 @@ use crate::rows::{
 };
 use crate::values::{
     database_error, from_json, from_tag, instant_text, is_constraint_violation, json_text,
-    not_found, parsed, refused, tag_text,
+    not_found, parsed, raised, refused, tag_text,
 };
 
 /// The ledger's primitives over one open transaction.
@@ -48,16 +50,19 @@ impl Transaction<'_> {
                     spool.initial_g,
                     spool.remaining_g,
                     spool.tare_g,
-                    spool.loaded_on_tool,
+                    spool.loaded_tool(),
                     trust,
                     instant_text(spool.registered_at),
                     instant_text(spool.updated_at),
-                    spool.retired_at.map(instant_text),
+                    match spool.lifecycle {
+                        SpoolLifecycle::Retired { at } => Some(instant_text(at)),
+                        SpoolLifecycle::Shelved | SpoolLifecycle::Loaded { .. } => None,
+                    },
                 ],
             )
             .map_err(|error| {
                 if is_constraint_violation(&error) {
-                    refused("spools.loaded_on_tool")
+                    refused(raised(&error).unwrap_or("spools.loaded_on_tool"))
                 } else {
                     database_error(&error)
                 }
@@ -109,27 +114,33 @@ impl Ledger for Transaction<'_> {
     }
 
     fn insert_charge(&mut self, record: &ChargeRecord) -> Result<(), StoreError> {
+        let charged = record.charged.as_ref();
         self.connection
             .execute(
                 "INSERT INTO charges (charge_key, print_id, tool, spool_id, length_mm, grams, \
-                 event_id, charged_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 event_id, charged_at, diameter_mm, density_g_cm3, remaining_before_g, \
+                 remaining_after_g) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
-                    record.key.canonical(),
-                    record.print_id.map(|id| id.to_string()),
-                    record.tool,
-                    record.spool_id.map(|id| id.to_string()),
+                    record.identity.key().canonical(),
+                    record.identity.print_id().map(|id| id.to_string()),
+                    record.identity.tool(),
+                    record.spool_id().map(|id| id.to_string()),
                     record.length_mm,
-                    record.grams,
+                    charged.map(|charged| charged.grams),
                     record.event_id.to_string(),
                     instant_text(record.at),
+                    charged.map(|charged| charged.diameter_mm),
+                    charged.map(|charged| charged.density_g_cm3),
+                    charged.map(|charged| charged.remaining_before_g),
+                    charged.map(|charged| charged.remaining_after_g),
                 ],
             )
             .map_err(|error| {
                 let mut candidates = Vec::new();
-                if let Some(print_id) = record.print_id {
+                if let Some(print_id) = record.identity.print_id() {
                     candidates.push(("charges.print_id", "prints", print_id.to_string()));
                 }
-                if let Some(spool_id) = record.spool_id {
+                if let Some(spool_id) = record.spool_id() {
                     candidates.push(("charges.spool_id", "spools", spool_id.to_string()));
                 }
                 SqliteStore::refusal(self.connection, &error, &candidates)
@@ -168,9 +179,9 @@ impl Ledger for Transaction<'_> {
                 "INSERT INTO pending_charges (charge_key, print_id, tool, pending, event_id, \
                  pended_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
-                    pending.charge_key.canonical(),
-                    pending.print_id.to_string(),
-                    pending.tool,
+                    pending.charge_key.charge_key().canonical(),
+                    pending.print_id().to_string(),
+                    pending.tool(),
                     held,
                     event.id.to_string(),
                     instant_text(pending.pended_at),
@@ -183,7 +194,7 @@ impl Ledger for Transaction<'_> {
                     &[(
                         "pending_charges.print_id",
                         "prints",
-                        pending.print_id.to_string(),
+                        pending.print_id().to_string(),
                     )],
                 )
             })?;

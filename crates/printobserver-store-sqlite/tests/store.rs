@@ -36,6 +36,8 @@ mod ledger;
 mod ledger_durability;
 #[path = "journeys/migrations.rs"]
 mod migrations;
+#[path = "journeys/old_shapes.rs"]
+mod old_shapes;
 #[path = "journeys/port_coverage.rs"]
 mod port_coverage;
 #[path = "journeys/schema.rs"]
@@ -46,3 +48,5 @@ mod timeline_volume;
 mod unbounded;
 #[path = "journeys/unreadable.rs"]
 mod unreadable;
+#[path = "journeys/upgrading.rs"]
+mod upgrading;

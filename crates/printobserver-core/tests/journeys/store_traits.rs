@@ -16,8 +16,8 @@ use printobserver_core::block_on;
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
     FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
-    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery,
-    TimelineStore,
+    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal,
+    Stores, TimelineQuery, TimelineStore,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -146,6 +146,22 @@ impl EventStore for TrivialStore {
                 next: None,
             })
         })
+    }
+
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        let _ = query;
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn on_stored(&self, signal: StoredSignal) {
+        let _ = signal;
     }
 }
 
@@ -483,6 +499,16 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
             next: None
         })
     );
+    assert_eq!(
+        block_on(stores.events.stored_after(StoredQuery {
+            after: None,
+            print_id: Some(print_id()),
+            limit: Some(10),
+        })),
+        Ok(Vec::new())
+    );
+    assert_eq!(block_on(stores.events.newest_stored()), Ok(None));
+    stores.events.on_stored(Arc::new(|| {}));
 }
 
 /// Every image, action and intervention method answers its declared type.

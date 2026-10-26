@@ -11,18 +11,19 @@ use std::sync::Arc;
 use crate::block_on::block_on;
 use crate::fixture::{Fixture, Store, draft};
 use crate::ledger_records::{
-    at, change, charge, ended, event_of, kinds, ledger_state, new_spool, newest_timeline_events,
-    pend, print_key, register, tally, unaccounted, unobserved_key, whole_timeline,
+    Change, at, change, charge, ended, event_of, kinds, ledger_state, new_spool,
+    newest_timeline_events, pend, print_key, register, segment_key, tally, unaccounted,
+    unobserved_key, whole_timeline,
 };
 use printobserver_core::kinds::{
     PrintStartedPayload, SpoolUnverifiedPayload, operator_source, system_source,
 };
 use printobserver_core::store::{
-    MAX_HISTORY_LIMIT, Settlement, SpoolChange, SpoolMutation, StoreError, TimelineQuery,
+    MAX_HISTORY_LIMIT, Settlement, SpoolMutation, StoreError, TimelineQuery,
 };
 use printobserver_core::{
     Actor, FilePosition, PrintOutcome, PrintRecord, SpoolId, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, UnverifiedReasonKind,
+    UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind,
 };
 use printobserver_types::{EventKind, EventPayload, EventRecord, PrintId};
 
@@ -92,8 +93,8 @@ fn a_registration_answers_the_spool_and_its_event_from_one_write() {
         .expect("the spool registers");
 
         assert_eq!(spool.updated_at, spool.registered_at, "{name}");
-        assert_eq!(spool.retired_at, None, "{name}");
-        assert_eq!((spool.remaining_g, spool.loaded_on_tool), (800.0, Some(0)));
+        assert!(!spool.is_retired(), "{name}");
+        assert_eq!((spool.remaining_g, spool.loaded_tool()), (800.0, Some(0)));
         assert_eq!(event.print_id, None, "{name}: a registration names a print");
         assert_eq!(event.received_at, at(0), "{name}");
         assert_eq!(event.kind().as_str(), "spool_registered", "{name}");
@@ -141,8 +142,8 @@ fn a_swap_leaves_exactly_one_spool_on_the_tool() {
 
         let write = block_on(port.apply_spool_changes(
             vec![
-                change(outgoing.id, SpoolChange::Unload, at(10)),
-                change(incoming.id, SpoolChange::Load { tool: 0 }, at(10)),
+                change(outgoing.id, Change::Unload, at(10)),
+                change(incoming.id, Change::Load { tool: 0 }, at(10)),
             ],
             Vec::new(),
             Vec::new(),
@@ -153,7 +154,7 @@ fn a_swap_leaves_exactly_one_spool_on_the_tool() {
             write
                 .spools
                 .iter()
-                .map(|spool| (spool.id, spool.loaded_on_tool))
+                .map(|spool| (spool.id, spool.loaded_tool()))
                 .collect::<Vec<_>>(),
             vec![(outgoing.id, None), (incoming.id, Some(0))],
             "{name}: the write does not answer both spools as it left them"
@@ -163,7 +164,7 @@ fn a_swap_leaves_exactly_one_spool_on_the_tool() {
         assert_eq!(
             loaded
                 .iter()
-                .map(|spool| (spool.loaded_on_tool, spool.id))
+                .map(|spool| (spool.loaded_tool(), spool.id))
                 .collect::<Vec<_>>(),
             vec![(Some(0), incoming.id), (Some(1), other.id)],
             "{name}: the tools do not carry exactly one spool each"
@@ -186,7 +187,7 @@ fn a_refused_change_names_its_constraint_and_leaves_no_partial_write() {
         let spare = register(&port, "spare", None, 500.0, at(1));
         let retired = register(&port, "empty", None, 5.0, at(2));
         block_on(port.apply_spool_changes(
-            vec![change(retired.id, SpoolChange::Retire, at(3))],
+            vec![change(retired.id, Change::Retire, at(3))],
             Vec::new(),
             Vec::new(),
         ))
@@ -194,41 +195,33 @@ fn a_refused_change_names_its_constraint_and_leaves_no_partial_write() {
 
         // Each refused call carries a charge and a change that would apply
         // ahead of the one refused, so a partial write would show.
-        let attempts: Vec<(SpoolChange, SpoolId, StoreError)> = vec![
+        let attempts: Vec<(Change, SpoolId, StoreError)> = vec![
             (
-                SpoolChange::Load { tool: 0 },
+                Change::Load { tool: 0 },
                 spare.id,
                 refused("spools.loaded_on_tool"),
             ),
             (
-                SpoolChange::Load { tool: 3 },
+                Change::Load { tool: 3 },
+                retired.id,
+                refused("spools.retired_at"),
+            ),
+            (Change::Unload, retired.id, refused("spools.retired_at")),
+            (
+                Change::SetRemaining { remaining_g: 900.0 },
                 retired.id,
                 refused("spools.retired_at"),
             ),
             (
-                SpoolChange::Unload,
-                retired.id,
-                refused("spools.retired_at"),
-            ),
-            (
-                SpoolChange::SetRemaining { remaining_g: 900.0 },
-                retired.id,
-                refused("spools.retired_at"),
-            ),
-            (
-                SpoolChange::ClearMarks {
+                Change::ClearMarks {
                     kinds: vec![UnverifiedReasonKind::UnchargedPrint],
                 },
                 retired.id,
                 refused("spools.retired_at"),
             ),
+            (Change::Retire, retired.id, refused("spools.retired_at")),
             (
-                SpoolChange::Retire,
-                retired.id,
-                refused("spools.retired_at"),
-            ),
-            (
-                SpoolChange::Unload,
+                Change::Unload,
                 SpoolId::new(),
                 StoreError::NotFound {
                     what: String::new(),
@@ -239,18 +232,14 @@ fn a_refused_change_names_its_constraint_and_leaves_no_partial_write() {
         for (index, (refused_change, spool_id, expected)) in attempts.into_iter().enumerate() {
             let answer = block_on(port.apply_spool_changes(
                 vec![
-                    change(
-                        held.id,
-                        SpoolChange::SetRemaining { remaining_g: 1.0 },
-                        at(20),
-                    ),
+                    change(held.id, Change::SetRemaining { remaining_g: 1.0 }, at(20)),
                     change(spool_id, refused_change, at(20)),
                 ],
                 vec![charge(
                     print_key(print.id, 0, u32::try_from(index).expect("a small index")),
                     Some(print.id),
                     Some(held.id),
-                    Some(10.0),
+                    10.0,
                     at(20),
                 )],
                 Vec::new(),
@@ -285,7 +274,7 @@ fn a_charge_below_zero_is_recorded_and_one_against_a_retired_spool_applied() {
                 print_key(print.id, 0, 0),
                 Some(print.id),
                 Some(spool.id),
-                Some(25.0),
+                25.0,
                 at(5),
             )],
             Vec::new(),
@@ -298,8 +287,8 @@ fn a_charge_below_zero_is_recorded_and_one_against_a_retired_spool_applied() {
 
         block_on(port.apply_spool_changes(
             vec![
-                change(spool.id, SpoolChange::Unload, at(6)),
-                change(spool.id, SpoolChange::Retire, at(6)),
+                change(spool.id, Change::Unload, at(6)),
+                change(spool.id, Change::Retire, at(6)),
             ],
             Vec::new(),
             Vec::new(),
@@ -311,7 +300,7 @@ fn a_charge_below_zero_is_recorded_and_one_against_a_retired_spool_applied() {
                 print_key(print.id, 0, 1),
                 Some(print.id),
                 Some(spool.id),
-                Some(5.0),
+                5.0,
                 at(7),
             )],
             Vec::new(),
@@ -327,7 +316,7 @@ fn a_charge_below_zero_is_recorded_and_one_against_a_retired_spool_applied() {
             block_on(port.charges(print.id))
                 .expect("the charges read")
                 .iter()
-                .map(|record| record.key.clone())
+                .map(|record| record.identity.key().clone())
                 .collect::<Vec<_>>(),
             vec![print_key(print.id, 0, 0), print_key(print.id, 0, 1)],
             "{name}"
@@ -347,7 +336,7 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
             block_on(port.apply_spool_changes(
                 vec![change(
                     spool.id,
-                    SpoolChange::MarkUnverified { reason },
+                    Change::MarkUnverified { reason },
                     at(minute),
                 )],
                 Vec::new(),
@@ -361,7 +350,7 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
         let repeated = mark(uncharged(print.id), 3);
         assert_eq!(repeated.events, Vec::new(), "{name}: a repeated mark wrote");
         let both = SpoolTrust::Unverified {
-            marks: vec![
+            marks: UnverifiedMarks::new(vec![
                 UnverifiedMark {
                     reason: uncharged(print.id),
                     since: at(1),
@@ -370,7 +359,8 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
                     reason: unconfirmed(print.id),
                     since: at(2),
                 },
-            ],
+            ])
+            .expect("two marks"),
         };
         assert_eq!(repeated.spools[0].trust, both, "{name}");
         assert_eq!(unverified_events(&port, spool.id), 2, "{name}");
@@ -378,7 +368,7 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
         let cleared = block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::ClearMarks {
+                Change::ClearMarks {
                     kinds: vec![UnverifiedReasonKind::FilamentChangeUnconfirmed],
                 },
                 at(4),
@@ -395,10 +385,11 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
         assert_eq!(
             cleared.spools[0].trust,
             SpoolTrust::Unverified {
-                marks: vec![UnverifiedMark {
+                marks: UnverifiedMarks::new(vec![UnverifiedMark {
                     reason: uncharged(print.id),
                     since: at(1),
-                }],
+                }])
+                .expect("one mark"),
             },
             "{name}: clearing one kind did not leave the other"
         );
@@ -406,7 +397,7 @@ fn marks_are_kept_per_reason_cleared_by_kind_and_wiped_by_a_correction() {
         let corrected = block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::SetRemaining { remaining_g: 420.0 },
+                Change::SetRemaining { remaining_g: 420.0 },
                 at(5),
             )],
             Vec::new(),
@@ -428,7 +419,7 @@ fn a_retired_spool_takes_a_mark_and_refuses_a_clearing() {
         let print = open(&port, "bracket.gcode");
         let spool = register(&port, "retiring", None, 500.0, at(0));
         block_on(port.apply_spool_changes(
-            vec![change(spool.id, SpoolChange::Retire, at(6))],
+            vec![change(spool.id, Change::Retire, at(6))],
             Vec::new(),
             Vec::new(),
         ))
@@ -436,7 +427,7 @@ fn a_retired_spool_takes_a_mark_and_refuses_a_clearing() {
         let marked = block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::MarkUnverified {
+                Change::MarkUnverified {
                     reason: unconfirmed(print.id),
                 },
                 at(7),
@@ -450,7 +441,7 @@ fn a_retired_spool_takes_a_mark_and_refuses_a_clearing() {
             block_on(port.apply_spool_changes(
                 vec![change(
                     spool.id,
-                    SpoolChange::ClearMarks {
+                    Change::ClearMarks {
                         kinds: vec![UnverifiedReasonKind::FilamentChangeUnconfirmed],
                     },
                     at(8),
@@ -520,7 +511,7 @@ fn a_replayed_charge_debits_nothing_and_writes_no_event_through_every_write() {
                 print_key(print.id, 0, 0),
                 Some(print.id),
                 Some(spool.id),
-                Some(12.5),
+                12.5,
                 at(5),
             )
         };
@@ -600,9 +591,8 @@ fn two_prints_of_one_file_are_two_charges() {
         let first = open(&port, "bracket.gcode");
         let second = open(&port, "bracket.gcode");
         let spool = register(&port, "charged", Some(0), 500.0, at(0));
-        let debit = |key, print_id: Option<PrintId>| {
-            charge(key, print_id, Some(spool.id), Some(10.0), at(5))
-        };
+        let debit =
+            |key, print_id: Option<PrintId>| charge(key, print_id, Some(spool.id), 10.0, at(5));
         let write = block_on(port.apply_spool_changes(
             Vec::new(),
             vec![
@@ -648,12 +638,12 @@ fn a_tally_keeps_its_generation_and_one_below_it_is_refused_writing_nothing() {
                 unobserved_key("bracket.gcode", 2, 1),
                 None,
                 Some(spool.id),
-                Some(30.0),
+                30.0,
                 at(10),
             )],
             vec![change(
                 spool.id,
-                SpoolChange::MarkUnverified {
+                Change::MarkUnverified {
                     reason: UnverifiedReason::TallyReset {
                         file_name: "bracket.gcode".to_owned(),
                         origin: "local".to_owned(),
@@ -690,7 +680,7 @@ fn a_tally_keeps_its_generation_and_one_below_it_is_refused_writing_nothing() {
                     unobserved_key("arm.gcode", 0, 5),
                     None,
                     Some(spool.id),
-                    Some(30.0),
+                    30.0,
                     at(20),
                 )],
                 Vec::new(),
@@ -731,10 +721,10 @@ fn settle_cancelled(
             print_key(print_id, 0, 0),
             Some(print_id),
             Some(spool_id),
-            Some(20.0),
+            20.0,
             at(30),
         )],
-        vec![pend(print_key(print_id, 0, 1), print_id, at(30))],
+        vec![pend(segment_key(print_id, 0, 1), at(30))],
         marks,
     ))
 }
@@ -778,7 +768,7 @@ fn a_print_is_settled_in_one_write_and_only_once() {
             matches!(
                 settle(vec![change(
                     SpoolId::new(),
-                    SpoolChange::MarkUnverified {
+                    Change::MarkUnverified {
                         reason: unconfirmed(print.id),
                     },
                     at(30),
@@ -791,7 +781,7 @@ fn a_print_is_settled_in_one_write_and_only_once() {
 
         let answer = settle(vec![change(
             spool.id,
-            SpoolChange::MarkUnverified {
+            Change::MarkUnverified {
                 reason: unconfirmed(print.id),
             },
             at(30),
@@ -854,15 +844,12 @@ fn a_pend_is_listed_held_once_and_debited_once_by_the_charge_that_takes_it() {
         let print = open(&port, "bracket.gcode");
         let later = open(&port, "arm.gcode");
         let spool = register(&port, "next", None, 500.0, at(0));
-        let held = pend(print_key(print.id, 0, 1), print.id, at(20));
+        let held = pend(segment_key(print.id, 0, 1), at(20));
 
         let write = block_on(port.apply_spool_changes(
             Vec::new(),
             Vec::new(),
-            vec![
-                held.clone(),
-                pend(print_key(print.id, 1, 0), print.id, at(25)),
-            ],
+            vec![held.clone(), pend(segment_key(print.id, 1, 0), at(25))],
         ))
         .expect("the pends hold");
         assert_eq!(kinds(&write.events), ["charge_pended", "charge_pended"]);
@@ -872,7 +859,7 @@ fn a_pend_is_listed_held_once_and_debited_once_by_the_charge_that_takes_it() {
             PrintOutcome::Completed,
             ended(later.id, PrintOutcome::Completed, at(40)),
             Vec::new(),
-            vec![pend(print_key(later.id, 0, 0), later.id, at(10))],
+            vec![pend(segment_key(later.id, 0, 0), at(10))],
             Vec::new(),
         ))
         .expect("the settlement pends");
@@ -880,7 +867,7 @@ fn a_pend_is_listed_held_once_and_debited_once_by_the_charge_that_takes_it() {
             block_on(port.pending_charges(tool))
                 .expect("the pending charges read")
                 .into_iter()
-                .map(|pending| pending.charge_key)
+                .map(|pending| pending.charge_key.charge_key())
                 .collect::<Vec<_>>()
         };
         assert_eq!(
@@ -902,11 +889,11 @@ fn a_pend_is_listed_held_once_and_debited_once_by_the_charge_that_takes_it() {
             print_key(print.id, 0, 1),
             Some(print.id),
             Some(spool.id),
-            Some(5.0),
+            5.0,
             at(50),
         );
         let taken = block_on(port.apply_spool_changes(
-            vec![change(spool.id, SpoolChange::Load { tool: 0 }, at(50))],
+            vec![change(spool.id, Change::Load { tool: 0 }, at(50))],
             vec![taking.clone()],
             Vec::new(),
         ))
@@ -976,7 +963,7 @@ fn timeline_written(port: &Arc<dyn Store>) -> Timeline {
             print_key(second.id, 0, 0),
             Some(second.id),
             Some(spool.id),
-            Some(1.0),
+            1.0,
             at(6),
         )],
         Vec::new(),
@@ -1100,7 +1087,7 @@ fn clearing_marks_the_spool_does_not_hold_changes_nothing() {
         let marked = block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::MarkUnverified {
+                Change::MarkUnverified {
                     reason: uncharged(print.id),
                 },
                 at(1),
@@ -1112,7 +1099,7 @@ fn clearing_marks_the_spool_does_not_hold_changes_nothing() {
         let untouched = block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::ClearMarks {
+                Change::ClearMarks {
                     kinds: vec![
                         UnverifiedReasonKind::TallyReset,
                         UnverifiedReasonKind::FilamentChangeUnconfirmed,
@@ -1141,14 +1128,14 @@ fn retiring_a_loaded_spool_frees_its_tool() {
         let retiring = register(&port, "empty", Some(0), 2.0, at(0));
         let next = register(&port, "full", None, 1_000.0, at(1));
         block_on(port.apply_spool_changes(
-            vec![change(retiring.id, SpoolChange::Retire, at(2))],
+            vec![change(retiring.id, Change::Retire, at(2))],
             Vec::new(),
             Vec::new(),
         ))
         .expect("the spool retires on its tool");
         assert_eq!(block_on(port.loaded_spools()), Ok(Vec::new()), "{name}");
         block_on(port.apply_spool_changes(
-            vec![change(next.id, SpoolChange::Load { tool: 0 }, at(3))],
+            vec![change(next.id, Change::Load { tool: 0 }, at(3))],
             Vec::new(),
             Vec::new(),
         ))
@@ -1162,7 +1149,8 @@ fn retiring_a_loaded_spool_frees_its_tool() {
     }
 }
 
-/// A charge naming no spool, or no grams, is recorded and debits nothing.
+/// A charge naming no spool is recorded uncharged and debits nothing, and one
+/// whose calculation comes to no grams debits nothing either.
 #[test]
 fn a_charge_naming_no_spool_or_no_grams_is_recorded_and_debits_nothing() {
     for store in Fixture::both() {
@@ -1173,12 +1161,12 @@ fn a_charge_naming_no_spool_or_no_grams_is_recorded_and_debits_nothing() {
         let write = block_on(port.apply_spool_changes(
             Vec::new(),
             vec![
-                charge(print_key(print.id, 0, 0), Some(print.id), None, None, at(5)),
+                charge(print_key(print.id, 0, 0), Some(print.id), None, 0.0, at(5)),
                 charge(
                     print_key(print.id, 1, 0),
                     Some(print.id),
                     Some(spool.id),
-                    None,
+                    0.0,
                     at(5),
                 ),
             ],
@@ -1193,9 +1181,12 @@ fn a_charge_naming_no_spool_or_no_grams_is_recorded_and_debits_nothing() {
         assert_eq!(
             block_on(port.charges(print.id)).map(|found| found
                 .iter()
-                .map(|record| (record.spool_id, record.grams))
+                .map(|record| (
+                    record.spool_id(),
+                    record.charged.as_ref().map(|charged| charged.grams)
+                ))
                 .collect::<Vec<_>>()),
-            Ok(vec![(None, None), (Some(spool.id), None)]),
+            Ok(vec![(None, None), (Some(spool.id), Some(0.0))]),
             "{name}"
         );
         assert_grams(remaining(&port, spool.id), 500.0, name);
@@ -1213,7 +1204,7 @@ fn a_charge_older_than_the_spools_last_change_leaves_its_instant() {
         block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::SetRemaining { remaining_g: 400.0 },
+                Change::SetRemaining { remaining_g: 400.0 },
                 at(20),
             )],
             Vec::new(),
@@ -1226,7 +1217,7 @@ fn a_charge_older_than_the_spools_last_change_leaves_its_instant() {
                 print_key(print.id, 0, 0),
                 Some(print.id),
                 Some(spool.id),
-                Some(15.0),
+                15.0,
                 at(10),
             )],
             Vec::new(),
@@ -1268,7 +1259,7 @@ fn a_prints_charges_read_by_tool_then_segment_under_every_key_spelling() {
                 Vec::new(),
                 submitted
                     .iter()
-                    .map(|key| charge(key.clone(), Some(print.id), None, None, at(5)))
+                    .map(|key| charge(key.clone(), Some(print.id), None, 0.0, at(5)))
                     .collect(),
                 Vec::new(),
             ),
@@ -1277,7 +1268,7 @@ fn a_prints_charges_read_by_tool_then_segment_under_every_key_spelling() {
         assert_eq!(
             block_on(port.charges(print.id)).map(|found| found
                 .into_iter()
-                .map(|record| record.key)
+                .map(|record| record.identity.key().clone())
                 .collect::<Vec<_>>()),
             Ok(vec![
                 colons.clone(),
@@ -1290,12 +1281,15 @@ fn a_prints_charges_read_by_tool_then_segment_under_every_key_spelling() {
         );
         let replay = block_on(port.apply_spool_changes(
             Vec::new(),
-            vec![charge(colons.clone(), Some(print.id), None, None, at(6))],
+            vec![charge(colons.clone(), Some(print.id), None, 0.0, at(6))],
             Vec::new(),
         ))
         .expect("the replay answers");
         assert_eq!(
-            (replay.events.len(), replay.charges[0].key.clone()),
+            (
+                replay.events.len(),
+                replay.charges[0].identity.key().clone()
+            ),
             (0, colons),
             "{name}: a key carrying colons was not found recorded"
         );
@@ -1407,7 +1401,7 @@ fn a_charge_or_pend_refused_late_in_a_call_rolls_back_the_taking_before_it() {
         block_on(port.apply_spool_changes(
             Vec::new(),
             Vec::new(),
-            vec![pend(print_key(print.id, 0, 1), print.id, at(5))],
+            vec![pend(segment_key(print.id, 0, 1), at(5))],
         ))
         .expect("the pend holds");
         let taking = || {
@@ -1415,7 +1409,7 @@ fn a_charge_or_pend_refused_late_in_a_call_rolls_back_the_taking_before_it() {
                 print_key(print.id, 0, 1),
                 Some(print.id),
                 Some(spool.id),
-                Some(5.0),
+                5.0,
                 at(10),
             )
         };
@@ -1424,11 +1418,11 @@ fn a_charge_or_pend_refused_late_in_a_call_rolls_back_the_taking_before_it() {
             print_key(ghost, 0, 0),
             Some(ghost),
             Some(spool.id),
-            Some(1.0),
+            1.0,
             at(10),
         );
         unopened.event.print_id = None;
-        let mut orphaned = pend(print_key(ghost, 0, 1), ghost, at(10));
+        let mut orphaned = pend(segment_key(ghost, 0, 1), at(10));
         orphaned.event.print_id = None;
         let attempts = vec![
             (
@@ -1438,7 +1432,7 @@ fn a_charge_or_pend_refused_late_in_a_call_rolls_back_the_taking_before_it() {
                         print_key(print.id, 0, 2),
                         Some(print.id),
                         Some(SpoolId::new()),
-                        Some(1.0),
+                        1.0,
                         at(10),
                     ),
                 ],
@@ -1479,20 +1473,20 @@ fn a_correction_beside_a_taken_pending_charge_is_what_the_spool_reads() {
         block_on(port.apply_spool_changes(
             Vec::new(),
             Vec::new(),
-            vec![pend(print_key(print.id, 0, 1), print.id, at(5))],
+            vec![pend(segment_key(print.id, 0, 1), at(5))],
         ))
         .expect("the pend holds");
         let write = block_on(port.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::SetRemaining { remaining_g: 300.0 },
+                Change::SetRemaining { remaining_g: 300.0 },
                 at(10),
             )],
             vec![charge(
                 print_key(print.id, 0, 1),
                 Some(print.id),
                 Some(spool.id),
-                Some(5.0),
+                5.0,
                 at(10),
             )],
             Vec::new(),

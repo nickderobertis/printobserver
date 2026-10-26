@@ -49,17 +49,18 @@ use crate::error::CoreError;
 use crate::filament::grams_for_length;
 use crate::kinds::{
     ActionExecutedPayload, ActionRequestedPayload, ChargePendedPayload,
-    FilamentChangeSignalledPayload, FilamentConsumedPayload, PrintEndedPayload,
-    PrintStartedPayload, PrintUntrackedPayload, SpoolUnverifiedPayload, system_source,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, PositionFreshness, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, SignalPosition, SpoolUnverifiedPayload,
+    system_source,
 };
 use crate::records::{
-    ActionId, ChargeKey, ChargeMethod, FilePosition, LoadedSpool, PendingCharge, PendingTaken,
-    Preflight, PrintAction, PrintOutcome, PrintRecord, SpoolId, SpoolRecord, SpoolTrust,
-    UnverifiedReason,
+    ActionId, ChargeKey, ChargeMethod, ChargedFilament, FilePosition, LoadedSpool, PendingCharge,
+    PendingTaken, Preflight, PrintAction, PrintOutcome, PrintRecord, SpoolId, SpoolRecord,
+    SpoolTrust, UnverifiedReason,
 };
 use crate::store::{
-    Charge, ChargeRecord, EventDraft, HistoryQuery, MAX_HISTORY_LIMIT, Pend, SpoolChange,
-    SpoolMutation,
+    Charge, ChargeIdentity, ChargeRecord, EventDraft, HistoryQuery, MAX_HISTORY_LIMIT, Pend,
+    SpoolChange, SpoolMutation,
 };
 use crate::supervisor::Supervisor;
 
@@ -101,13 +102,13 @@ impl PrintLedger {
         let charged: f64 = self
             .charges
             .iter()
-            .filter(|charge| charge.tool == tool)
+            .filter(|charge| charge.identity.tool() == tool)
             .map(|charge| charge.length_mm)
             .sum();
         let held: f64 = self
             .pending
             .iter()
-            .filter(|pending| pending.tool == tool)
+            .filter(|pending| pending.tool() == tool)
             .map(|pending| pending.length_mm)
             .sum();
         charged + held
@@ -118,13 +119,13 @@ impl PrintLedger {
         let charged = self
             .charges
             .iter()
-            .filter(|charge| charge.tool == tool)
-            .filter_map(|charge| segment_of(&charge.key));
+            .filter(|charge| charge.identity.tool() == tool)
+            .filter_map(|charge| segment_of(charge.identity.key()));
         let held = self
             .pending
             .iter()
-            .filter(|pending| pending.tool == tool)
-            .filter_map(|pending| segment_of(&pending.charge_key));
+            .filter(|pending| pending.tool() == tool)
+            .map(|pending| pending.charge_key.segment);
         charged.chain(held).max().map_or(0, |highest| highest + 1)
     }
 
@@ -132,17 +133,17 @@ impl PrintLedger {
     pub(crate) fn last_spool(&self, tool: i64) -> Option<SpoolId> {
         self.charges
             .iter()
-            .filter(|charge| charge.tool == tool)
-            .max_by_key(|charge| segment_of(&charge.key))
-            .and_then(|charge| charge.spool_id)
+            .filter(|charge| charge.identity.tool() == tool)
+            .max_by_key(|charge| segment_of(charge.identity.key()))
+            .and_then(ChargeRecord::spool_id)
     }
 
     /// Every tool the print has charged or held anything on.
     fn tools(&self) -> BTreeSet<i64> {
         self.charges
             .iter()
-            .map(|charge| charge.tool)
-            .chain(self.pending.iter().map(|pending| pending.tool))
+            .map(|charge| charge.identity.tool())
+            .chain(self.pending.iter().map(PendingCharge::tool))
             .collect()
     }
 }
@@ -187,23 +188,6 @@ pub(crate) struct Feed {
     pub(crate) position: Option<FilePosition>,
     /// Anything a reader needs to make sense of the figure.
     pub(crate) note: Option<String>,
-}
-
-impl Feed {
-    /// The tool that fed it, as its key names it.
-    const fn tool(&self) -> i64 {
-        match &self.key {
-            ChargeKey::Print { tool, .. } | ChargeKey::Unobserved { tool, .. } => *tool,
-        }
-    }
-
-    /// The print it was fed in, when its key names one.
-    const fn print_id(&self) -> Option<PrintId> {
-        match &self.key {
-            ChargeKey::Print { print_id, .. } => Some(*print_id),
-            ChargeKey::Unobserved { .. } => None,
-        }
-    }
 }
 
 /// Where a print is, and how that is known.
@@ -344,18 +328,12 @@ pub(crate) fn marks_of(spool: &SpoolRecord) -> Vec<UnverifiedReason> {
     }
 }
 
-/// The spool on one tool: the unretired one when there is one, otherwise a
-/// spool retired while it was loaded there — whose charges for what it fed are
-/// still its own.
+/// The spool loaded on one tool, when one is. A retired spool is on no tool:
+/// retiring one loaded mid-print charged it for what it fed up to then.
 pub(crate) fn spool_on_tool(spools: &[SpoolRecord], tool: i64) -> Option<&SpoolRecord> {
-    let on_tool = || {
-        spools
-            .iter()
-            .filter(move |spool| spool.loaded_on_tool == Some(tool))
-    };
-    on_tool()
-        .find(|spool| spool.retired_at.is_none())
-        .or_else(|| on_tool().max_by_key(|spool| spool.updated_at))
+    spools
+        .iter()
+        .find(|spool| spool.loaded_tool() == Some(tool))
 }
 
 /// The open position a job read reports for a print, when it reports one.
@@ -524,35 +502,33 @@ impl Supervisor {
         figures: &mut Figures,
         source: EventSource,
     ) -> Result<Charge, CoreError> {
-        let grams = spool
-            .map(|spool| grams_for_length(feed.length_mm, spool.diameter_mm, spool.density_g_cm3));
-        let figure = match (spool, grams) {
-            (Some(spool), Some(grams)) => Some(figures.debit(spool, grams)),
-            _ => None,
-        };
+        let charged = spool.map(|spool| {
+            let grams = grams_for_length(feed.length_mm, spool.diameter_mm, spool.density_g_cm3);
+            let (remaining_before_g, remaining_after_g) = figures.debit(spool, grams);
+            ChargedFilament {
+                spool_id: spool.id,
+                grams,
+                diameter_mm: spool.diameter_mm,
+                density_g_cm3: spool.density_g_cm3,
+                remaining_before_g,
+                remaining_after_g,
+            }
+        });
         let payload = FilamentConsumedPayload {
             charge_key: feed.key.clone(),
-            tool: feed.tool(),
-            spool_id: spool.map(|spool| spool.id),
+            tool: feed.key.tool(),
             method: feed.method,
             length_mm: feed.length_mm,
-            grams,
-            diameter_mm: spool.map(|spool| spool.diameter_mm),
-            density_g_cm3: spool.map(|spool| spool.density_g_cm3),
+            charged: charged.clone(),
             analysed_length_mm: feed.analysed_length_mm,
             position: feed.position.clone(),
-            remaining_before_g: figure.map(|(before, _)| before),
-            remaining_after_g: figure.map(|(_, after)| after),
             note: feed.note.clone(),
         };
-        let event = self.draft_of(feed.print_id(), source, &payload)?;
+        let event = self.draft_of(feed.key.watched_print(), source, &payload)?;
         Ok(Charge {
-            tool: feed.tool(),
-            print_id: feed.print_id(),
-            key: feed.key,
-            spool_id: spool.map(|spool| spool.id),
+            identity: ChargeIdentity::of(feed.key),
             length_mm: feed.length_mm,
-            grams,
+            charged,
             at: event.received_at,
             event,
         })
@@ -560,11 +536,18 @@ impl Supervisor {
 
     /// The pend one feed makes, held for the next spool loaded onto its tool,
     /// carrying its `charge_pended` event.
-    pub(crate) fn pend_of(&self, feed: Feed, print_id: PrintId) -> Result<Pend, CoreError> {
+    pub(crate) fn pend_of(&self, feed: Feed) -> Result<Pend, CoreError> {
+        let Some(charge_key) = feed.key.print_segment() else {
+            return Err(CoreError::Unrepresentable {
+                detail: format!(
+                    "{} is no print segment, and only a watched print's filament is held",
+                    feed.key.canonical()
+                ),
+            });
+        };
+        let print_id = charge_key.print_id;
         let pending = PendingCharge {
-            tool: feed.tool(),
-            charge_key: feed.key,
-            print_id,
+            charge_key,
             length_mm: feed.length_mm,
             method: feed.method,
             analysed_length_mm: feed.analysed_length_mm,
@@ -600,9 +583,8 @@ impl Supervisor {
         )?;
         Ok(SpoolMutation {
             spool_id,
-            change: SpoolChange::MarkUnverified { reason },
             at: event.received_at,
-            event,
+            change: SpoolChange::MarkUnverified { reason, event },
         })
     }
 
@@ -624,7 +606,7 @@ impl Supervisor {
             };
             charges.push(self.charge_of(
                 Feed {
-                    key: held.charge_key.clone(),
+                    key: held.charge_key.charge_key(),
                     method: held.method,
                     length_mm: held.length_mm,
                     analysed_length_mm: held.analysed_length_mm,
@@ -636,8 +618,8 @@ impl Supervisor {
                 source.clone(),
             )?);
             taken.push(PendingTaken {
-                charge_key: held.charge_key.clone(),
-                print_id: held.print_id,
+                charge_key: held.charge_key.charge_key(),
+                print_id: held.print_id(),
             });
         }
         Ok((charges, taken))
@@ -652,7 +634,7 @@ impl Supervisor {
             .pending_charges(None)
             .await?
             .into_iter()
-            .filter(|held| held.print_id == print_id)
+            .filter(|held| held.print_id() == print_id)
             .collect();
         Ok(PrintLedger { charges, pending })
     }
@@ -695,7 +677,7 @@ impl Supervisor {
             .await?
             .into_iter()
             .filter_map(|spool| {
-                spool.loaded_on_tool.map(|tool| LoadedSpool {
+                spool.loaded_tool().map(|tool| LoadedSpool {
                     tool,
                     spool_id: spool.id,
                 })
@@ -837,7 +819,6 @@ impl Supervisor {
     /// it at all; a print a refused start opened and nothing ever ran is not
     /// a print of the timeline. Any other print is charged by the rule of its
     /// outcome, as this module states.
-    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub(crate) async fn settle_filament(
         &self,
         print: &PrintRecord,
@@ -1020,7 +1001,7 @@ impl Supervisor {
                     .and_then(|id| spools.iter().find(|spool| spool.id == id))
             });
             if judged.is_some_and(|spool| holds_change_mark(spool, print_id)) {
-                pends.push(self.pend_of(feed, print_id)?);
+                pends.push(self.pend_of(feed)?);
             } else {
                 charges.push(self.charge_of(feed, on_tool, &mut figures, system_source())?);
             }
@@ -1169,7 +1150,6 @@ impl Supervisor {
     /// says so, with the mark that says its figure may be overstated. A spool
     /// already holding the print's mark — a second signal before any load —
     /// has its open segment pended instead, and is marked again.
-    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub(crate) async fn handle_signal(
         &self,
         print: &PrintRecord,
@@ -1191,6 +1171,14 @@ impl Supervisor {
         let (whereabouts, job) = self.position_now(print).await?;
         let read_now = matches!(whereabouts, Whereabouts::ReadNow(_));
         let position = whereabouts.position().cloned();
+        let signal_position = position.clone().map(|position| SignalPosition {
+            position,
+            freshness: if read_now {
+                PositionFreshness::ReadAtSignal
+            } else {
+                PositionFreshness::LastRecorded
+            },
+        });
         let file_name = file_of(print);
         let analysis = match &file_name {
             Some(file) => self.analysis_of(file, job.as_ref()).await,
@@ -1208,8 +1196,7 @@ impl Supervisor {
                     tool,
                     spool_id,
                     source_kind: source_kind.clone(),
-                    position: position.clone(),
-                    position_read_at_signal: read_now,
+                    position: signal_position.clone(),
                 },
             )
         };
@@ -1234,7 +1221,7 @@ impl Supervisor {
         let mut pends = Vec::new();
         let mut marks = Vec::new();
         for spool in &loaded {
-            let Some(tool) = spool.loaded_on_tool else {
+            let Some(tool) = spool.loaded_tool() else {
                 continue;
             };
             self.stores()
@@ -1249,7 +1236,7 @@ impl Supervisor {
             };
             match feed {
                 Some(feed) if holds_change_mark(spool, print.id) => {
-                    pends.push(self.pend_of(feed, print.id)?);
+                    pends.push(self.pend_of(feed)?);
                 }
                 Some(feed) => {
                     charges.push(self.charge_of(

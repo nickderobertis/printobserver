@@ -75,6 +75,7 @@ pub mod supervisor;
 pub mod turn_access;
 pub mod turn_lock;
 pub mod unobserved;
+pub mod upgrade;
 
 pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule};
 pub use actions::{ActionOutcome, reported_value};
@@ -100,30 +101,33 @@ pub use kinds::{
     CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
     FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload,
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
-    PortFailureSite, PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, RebaselineDisposition, SpoolAdjustedPayload,
-    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
-    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
-    agent_source, operator_source, system_source,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, RebaselineDisposition, SignalPosition,
+    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
+    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
+    UnaccountedPrintPayload, agent_source, operator_source, system_source,
 };
 pub use look::Look;
 pub use observation::Observed;
 pub use preflight::ANALYSIS_POLL;
 pub use records::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
-    ActorClass, ChargeKey, ChargeMethod, ClearedMark, EffectiveBounds, ExecutionOutcome,
-    FilePosition, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
-    LoadedSpool, ManifestNarrowing, PendingCharge, PendingTaken, PolicyDecision, Preflight,
-    PreflightTool, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, RejectionReason,
-    SafetyEnvelope, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust, UnverifiedMark,
+    ActorClass, ChargeKey, ChargeMethod, ChargedFilament, ClearedMark, DoubtedSpool,
+    EffectiveBounds, ExecutionOutcome, FilePosition, ImageRecord, Intervention, InterventionId,
+    InterventionOutcome, JobManifest, LoadedSpool, ManifestNarrowing, PendingCharge, PendingTaken,
+    PolicyDecision, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    PreflightToolResult, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, PrintSegmentKey,
+    RejectionReason, SafetyEnvelope, ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle,
+    SpoolRecord, SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UnverifiedMark, UnverifiedMarks,
     UnverifiedReason, UnverifiedReasonKind,
 };
 pub use spools::SpoolCommandOutcome;
 pub use store::{
-    ActionStore, AuditPage, Charge, ChargeRecord, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore,
-    FilamentStore, FileTally, HistoryQuery, ImageLookup, ImageStore, MAX_HISTORY_LIMIT, NewSpool,
-    Pend, PrintStore, SessionStore, SettleOutcome, Settlement, SpoolChange, SpoolMutation,
-    SpoolWrite, StoreError, Stores, TimelineQuery, TimelineStore, resolve_history_limit,
+    ActionStore, AuditPage, Charge, ChargeIdentity, ChargeRecord, DEFAULT_HISTORY_WINDOW,
+    EventDraft, EventStore, FilamentStore, FileTally, HistoryQuery, ImageLookup, ImageStore,
+    MAX_HISTORY_LIMIT, NewSpool, Pend, PrintStore, SessionStore, SettleOutcome, Settlement,
+    SpoolChange, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery, TimelineStore,
+    resolve_history_limit,
 };
 pub use supervisor::{Issued, Supervisor};
 pub use turn_access::{OpenedTurn, TurnAuthority};

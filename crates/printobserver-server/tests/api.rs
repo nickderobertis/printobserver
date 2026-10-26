@@ -28,12 +28,16 @@ mod world;
 mod authenticating;
 #[path = "journeys/binding.rs"]
 mod binding;
+#[path = "journeys/coherent_ledger.rs"]
+mod coherent_ledger;
 #[path = "journeys/configuration.rs"]
 mod configuration;
 #[path = "journeys/failing.rs"]
 mod failing;
 #[path = "journeys/finding.rs"]
 mod finding;
+#[path = "journeys/following.rs"]
+mod following;
 #[path = "journeys/images.rs"]
 mod images;
 #[path = "journeys/ingress.rs"]

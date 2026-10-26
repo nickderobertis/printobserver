@@ -676,10 +676,11 @@ async fn every_adjustment_applies_the_duration_it_is_given() {
 
 /// The operations beside the action vocabulary this journey drives.
 ///
-/// `image`, `prints` and `look` are three it does not: an image answer is
-/// a path, and what that path has to be is `images.rs`'s whole subject; what
-/// the listing adopts is `finding.rs`'s; and what a look waits for and records
-/// is `looking.rs`'s. The four reads of the spool ledger are `spooling.rs`'s. Together they are compared against the
+/// `image`, `prints`, `look` and `events` are four it does not: an image
+/// answer is a path, and what that path has to be is `images.rs`'s whole
+/// subject; what the listing adopts is `finding.rs`'s; what a look waits for
+/// and records is `looking.rs`'s; and what an events read waits for and where
+/// its cursor leaves off is `following.rs`'s. The four reads of the spool ledger are `spooling.rs`'s. Together they are compared against the
 /// declared set below, so none of them can fall behind it.
 const DRIVEN_HERE: [&str; 5] = [
     "status",
@@ -696,6 +697,7 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     covered.push("image");
     covered.push("prints");
     covered.push("look");
+    covered.push("events");
     covered.extend(crate::spooling::DRIVEN_THERE);
     covered.sort_unstable();
     let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();

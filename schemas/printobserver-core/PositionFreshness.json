@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How fresh the position a filament change charged up to is.",
+  "oneOf": [
+    {
+      "const": "read_at_signal",
+      "description": "Read from the job as the signal was handled: where the spool stopped.",
+      "type": "string"
+    },
+    {
+      "const": "last_recorded",
+      "description": "The last position recorded before the signal, the job reporting none\nas it was handled: the spool may have fed past it.",
+      "type": "string"
+    }
+  ],
+  "title": "PositionFreshness"
+}

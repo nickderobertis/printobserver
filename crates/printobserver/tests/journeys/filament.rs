@@ -235,13 +235,23 @@ fn the_check_read_alone_records_nothing(world: &World, file: &str, short_of: &Va
         .pointer("/preflight/tools/0")
         .cloned()
         .unwrap_or_else(|| panic!("the check names no tool: {checked}"));
-    for figure in ["required_g", "buffer_g", "remaining_g", "spool_name"] {
+    for (figure, at) in [
+        ("required_g", "/result/need/required_g"),
+        ("buffer_g", "/result/need/buffer_g"),
+        ("remaining_g", "/result/remaining_g"),
+        ("spool_name", "/result/spool/name"),
+    ] {
         assert_eq!(
-            tool[figure], short_of[figure],
+            tool.pointer(at),
+            Some(&short_of[figure]),
             "the check read alone answered another `{figure}`: {checked}"
         );
     }
-    assert_eq!(tool["verdict"], json!("insufficient"), "{checked}");
+    assert_eq!(
+        tool["result"]["verdict"],
+        json!("insufficient"),
+        "{checked}"
+    );
     assert_eq!(
         history(),
         history_before,
@@ -308,7 +318,7 @@ fn a_cancelled_print_is_charged_what_it_fed(world: &World, spool: &str, file: &s
         json!("gcode_extrusion"),
         "the cancelled print was not charged what its own moves fed: {history}"
     );
-    let grams = consumed[0]["payload"]["grams"]
+    let grams = consumed[0]["payload"]["charged"]["grams"]
         .as_f64()
         .expect("the charge carries its grams");
     let length = consumed[0]["payload"]["length_mm"]

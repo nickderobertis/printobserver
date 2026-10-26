@@ -15,12 +15,12 @@ use printobserver_core::kinds::{
     SpoolUnverifiedPayload, operator_source, system_source,
 };
 use printobserver_core::store::{
-    Charge, EventDraft, NewSpool, Pend, Settlement, SpoolChange, SpoolMutation, StoreError, Stores,
-    TimelineQuery,
+    Charge, ChargeIdentity, EventDraft, NewSpool, Pend, Settlement, SpoolChange, SpoolMutation,
+    StoreError, Stores, TimelineQuery,
 };
 use printobserver_core::{
-    Actor, ChargeKey, ChargeMethod, FilePosition, PendingCharge, PrintOutcome, SpoolId,
-    SpoolRecord, SpoolTrust, UnverifiedReason, UnverifiedReasonKind,
+    Actor, ChargeKey, ChargeMethod, ChargedFilament, FilePosition, PendingCharge, PrintOutcome,
+    PrintSegmentKey, SpoolId, SpoolRecord, SpoolTrust, UnverifiedReason, UnverifiedReasonKind,
 };
 use printobserver_printer_api::PrinterState;
 use printobserver_types::contract::Sample;
@@ -74,33 +74,44 @@ fn register(stores: &Stores, loaded_on_tool: Option<i64>, seconds: i64) -> Spool
     .0
 }
 
-/// One change, with an event that names the spool.
-fn change(spool_id: SpoolId, change: SpoolChange, seconds: i64) -> SpoolMutation {
-    let event = match &change {
-        SpoolChange::MarkUnverified { reason } => event_of(
-            None,
-            seconds,
-            &SpoolUnverifiedPayload {
-                spool_id,
-                reason: reason.clone(),
-            },
-        ),
-        _ => event_of(
-            None,
-            seconds,
-            &SpoolRetiredPayload {
-                spool_id,
-                remaining_g: 0.0,
-                actor: Actor::Operator,
-                reason: "a stand-in event for the change".to_owned(),
-            },
-        ),
-    };
+/// One change, carrying a stand-in event that names the spool when it
+/// carries one.
+fn change(
+    spool_id: SpoolId,
+    change: impl FnOnce(EventDraft) -> SpoolChange,
+    seconds: i64,
+) -> SpoolMutation {
+    let event = event_of(
+        None,
+        seconds,
+        &SpoolRetiredPayload {
+            spool_id,
+            remaining_g: 0.0,
+            actor: Actor::Operator,
+            reason: "a stand-in event for the change".to_owned(),
+        },
+    );
     SpoolMutation {
         spool_id,
-        change,
+        change: change(event),
         at: at(seconds),
-        event,
+    }
+}
+
+/// One mark, with its `spool_unverified` event.
+fn marking(spool_id: SpoolId, reason: UnverifiedReason, seconds: i64) -> SpoolMutation {
+    let event = event_of(
+        None,
+        seconds,
+        &SpoolUnverifiedPayload {
+            spool_id,
+            reason: reason.clone(),
+        },
+    );
+    SpoolMutation {
+        spool_id,
+        change: SpoolChange::MarkUnverified { reason, event },
+        at: at(seconds),
     }
 }
 
@@ -111,6 +122,14 @@ fn charge(print_id: PrintId, segment: u32, spool_id: SpoolId, grams: f64) -> Cha
         tool: 0,
         segment,
     };
+    let charged = ChargedFilament {
+        spool_id,
+        grams,
+        diameter_mm: 1.75,
+        density_g_cm3: 1.24,
+        remaining_before_g: 500.0,
+        remaining_after_g: 500.0 - grams,
+    };
     Charge {
         event: event_of(
             Some(print_id),
@@ -118,25 +137,17 @@ fn charge(print_id: PrintId, segment: u32, spool_id: SpoolId, grams: f64) -> Cha
             &FilamentConsumedPayload {
                 charge_key: key.clone(),
                 tool: 0,
-                spool_id: Some(spool_id),
                 method: ChargeMethod::GcodeExtrusion,
                 length_mm: 100.0,
-                grams: Some(grams),
-                diameter_mm: None,
-                density_g_cm3: None,
+                charged: Some(charged.clone()),
                 analysed_length_mm: None,
                 position: None,
-                remaining_before_g: None,
-                remaining_after_g: None,
                 note: None,
             },
         ),
-        key,
-        tool: 0,
-        print_id: Some(print_id),
-        spool_id: Some(spool_id),
+        identity: ChargeIdentity::of(key),
         length_mm: 100.0,
-        grams: Some(grams),
+        charged: Some(charged),
         at: at(10),
     }
 }
@@ -144,13 +155,11 @@ fn charge(print_id: PrintId, segment: u32, spool_id: SpoolId, grams: f64) -> Cha
 /// One charge held for a spool not yet named.
 fn pend(print_id: PrintId, segment: u32, seconds: i64) -> Pend {
     let pending = PendingCharge {
-        charge_key: ChargeKey::Print {
+        charge_key: PrintSegmentKey {
             print_id,
             tool: 0,
             segment,
         },
-        print_id,
-        tool: 0,
         length_mm: 40.0,
         method: ChargeMethod::GcodeExtrusion,
         analysed_length_mm: None,
@@ -249,7 +258,11 @@ fn the_fake_ledger_debits_once_and_refuses_whole_calls() {
     let before = block_on(stores.timeline.timeline(everything())).expect("it reads");
     assert_eq!(
         block_on(stores.filament.apply_spool_changes(
-            vec![change(spare.id, SpoolChange::Load { tool: 0 }, 20)],
+            vec![change(
+                spare.id,
+                |event| SpoolChange::Load { tool: 0, event },
+                20
+            )],
             vec![charge(print.id, 2, held.id, 1.0)],
             Vec::new(),
         )),
@@ -274,7 +287,7 @@ fn the_fake_ledger_keeps_marks_refuses_a_retired_spool_and_settles_once() {
     let stores = stores();
     let print = block_on(stores.prints.open_print(None, None)).expect("a print opens");
     let spool = register(&stores, Some(0), 0);
-    let mark = |reason| change(spool.id, SpoolChange::MarkUnverified { reason }, 3);
+    let mark = |reason| marking(spool.id, reason, 3);
     let uncharged = UnverifiedReason::UnchargedPrint { print_id: print.id };
     let unconfirmed = UnverifiedReason::FilamentChangeUnconfirmed { print_id: print.id };
 
@@ -291,7 +304,7 @@ fn the_fake_ledger_keeps_marks_refuses_a_retired_spool_and_settles_once() {
     let cleared = block_on(stores.filament.apply_spool_changes(
         vec![change(
             spool.id,
-            SpoolChange::ClearMarks {
+            |_| SpoolChange::ClearMarks {
                 kinds: vec![UnverifiedReasonKind::UnchargedPrint],
             },
             4,
@@ -306,7 +319,7 @@ fn the_fake_ledger_keeps_marks_refuses_a_retired_spool_and_settles_once() {
     );
 
     block_on(stores.filament.apply_spool_changes(
-        vec![change(spool.id, SpoolChange::Retire, 5)],
+        vec![change(spool.id, |event| SpoolChange::Retire { event }, 5)],
         Vec::new(),
         Vec::new(),
     ))
@@ -315,7 +328,10 @@ fn the_fake_ledger_keeps_marks_refuses_a_retired_spool_and_settles_once() {
         block_on(stores.filament.apply_spool_changes(
             vec![change(
                 spool.id,
-                SpoolChange::SetRemaining { remaining_g: 9.0 },
+                |event| SpoolChange::SetRemaining {
+                    remaining_g: 9.0,
+                    event,
+                },
                 6
             )],
             Vec::new(),

@@ -5,10 +5,11 @@
 //! The list here is the whole API. It is exactly one operation per variant of
 //! [`PrintAction`](printobserver_core::PrintAction) and of
 //! [`SpoolCommand`](printobserver_core::SpoolCommand) the contracts declare,
-//! plus twelve operations beside them — the prints listing, status, context,
-//! image materialization, history, a fresh look, the manifest's read and
-//! write, and the four reads of the spool ledger: the spools, one spool, the
-//! printer's own history and a filament check — and nothing else. The router is built by folding
+//! plus thirteen operations beside them — the prints listing, status, context,
+//! image materialization, history, the event log followed in the order it was
+//! stored, a fresh look, the manifest's read and write, and the four reads of
+//! the spool ledger: the spools, one spool, the printer's own history and a
+//! filament check — and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
@@ -495,6 +496,7 @@ impl Operation {
             ("context", _) => schema_for!(crate::wire::ContextAnswer),
             ("image", _) => schema_for!(crate::wire::ImageAnswer),
             ("history", _) => schema_for!(crate::wire::HistoryAnswer),
+            ("events", _) => schema_for!(crate::wire::EventsAnswer),
             ("look", _) => schema_for!(crate::wire::LookAnswer),
             ("manifest_get" | "manifest_set", _) => schema_for!(crate::wire::ManifestAnswer),
             (name, _) => panic!("the operation `{name}` has no declared answer shape"),
@@ -789,7 +791,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 28] = [
+pub const OPERATIONS: [Operation; 29] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -806,6 +808,26 @@ pub const OPERATIONS: [Operation; 28] = [
     Operation {
         query: &[Declared::once("limit", false, ValueKind::Integer)],
         ..read("history", "/prints/{print_id}/history")
+    },
+    // The event log in the order it was stored, after a cursor: one print's
+    // events and the printer's, or every event, filtered by kind, waiting up
+    // to `wait_s` seconds for one to pass. A read, so it takes no actor.
+    Operation {
+        query: &[
+            Declared::once("after", false, ValueKind::Text),
+            Declared::once("print_id", false, ValueKind::Text),
+            Declared {
+                repeated: true,
+                ..Declared::once("kinds", false, ValueKind::Text)
+            },
+            Declared {
+                repeated: true,
+                ..Declared::once("exclude_kinds", false, ValueKind::Text)
+            },
+            Declared::once("wait_s", false, ValueKind::Integer),
+            Declared::once("limit", false, ValueKind::Integer),
+        ],
+        ..read("events", "/events")
     },
     read("manifest_get", "/prints/{print_id}/manifest"),
     // A fresh look: waits up to `wait_s` seconds for something to arrive for
@@ -947,19 +969,20 @@ pub const OPERATIONS: [Operation; 28] = [
     ),
 ];
 
-/// The twelve operations this server serves beside the two vocabularies.
+/// The thirteen operations this server serves beside the two vocabularies.
 ///
-/// Eleven of them read and one writes a manifest, which asks nothing of the
+/// Twelve of them read and one writes a manifest, which asks nothing of the
 /// machine; what they have in common is that none of them is an action or a
 /// spool command the contracts declare. A look writes its own record into the
 /// print's history, as every read of the camera is kept, and asks nothing of
 /// the machine either; a filament check records nothing at all.
-pub const BESIDE_THE_ACTIONS: [&str; 12] = [
+pub const BESIDE_THE_ACTIONS: [&str; 13] = [
     "prints",
     "status",
     "context",
     "image",
     "history",
+    "events",
     "manifest_get",
     "look",
     "manifest_set",

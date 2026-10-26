@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use printobserver_core::kinds::{
     ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
-    PrintEndedPayload, SpoolAdjustedPayload, SpoolLoadedPayload,
+    PositionFreshness, PrintEndedPayload, SpoolAdjustedPayload, SpoolLoadedPayload,
 };
 use printobserver_core::store::StoreError;
 use printobserver_core::{
@@ -27,7 +27,7 @@ use crate::shelf::{
     FILE, SIZE, TOTAL_MM, adjust_command, after_an_uncharged_print, assert_close,
     assert_ledger_explains, charges_to, command, command_on, ends, ends_on, every, every_of, grams,
     load, load_command, loaded_spool, on_tool, paused_at, register, request_start, running_at,
-    running_at_on, spool_now, spool_world_with, start,
+    running_at_on, spool_now, spool_of, spool_world_with, start,
 };
 use crate::world::World;
 
@@ -88,7 +88,7 @@ impl Change {
         let charged: f64 = self.charges().iter().map(|charge| charge.length_mm).sum();
         let held: f64 = pending(&self.world)
             .iter()
-            .filter(|held| held.print_id == self.print_id)
+            .filter(|held| held.print_id() == self.print_id)
             .map(|held| held.length_mm)
             .sum();
         charged + held
@@ -208,14 +208,22 @@ fn an_obico_filament_change_charges_the_spool_to_the_stop_point_read_at_the_sign
         signals[0].source_kind.as_str(),
         "obico_printer_notification"
     );
-    assert!(signals[0].position_read_at_signal);
+    assert!(
+        signals[0]
+            .position
+            .as_ref()
+            .is_some_and(|signal| signal.freshness == PositionFreshness::ReadAtSignal)
+    );
     assert_eq!(
-        signals[0].position.as_ref().map(|position| position.bytes),
+        signals[0]
+            .position
+            .as_ref()
+            .map(|signal| signal.position.bytes),
         Some(STOPPED_AT)
     );
     let charges = change.charges();
     assert_eq!(charges.len(), 1);
-    assert_eq!(charges[0].spool_id, Some(change.spool.id));
+    assert_eq!(spool_of(&charges[0]), Some(change.spool.id));
     assert_eq!(charges[0].method, ChargeMethod::GcodeExtrusion);
     assert_close(charges[0].length_mm, STOPPED_MM);
     assert_eq!(
@@ -247,7 +255,7 @@ fn the_remainder_after_an_unconfirmed_change_is_held_and_the_next_load_takes_it(
     assert_close(held.length_mm, TOTAL_MM - STOPPED_MM);
     assert_eq!(held.method, ChargeMethod::SlicerEstimate);
     assert_eq!(
-        held.charge_key,
+        held.charge_key.charge_key(),
         ChargeKey::Print {
             print_id: change.print_id,
             tool: 0,
@@ -289,13 +297,16 @@ fn the_remainder_after_an_unconfirmed_change_is_held_and_the_next_load_takes_it(
 
     let taken = charges_to(world, thick.id);
     assert_eq!(taken.len(), 1);
-    assert_eq!(taken[0].charge_key, held.charge_key);
+    assert_eq!(taken[0].charge_key, held.charge_key.charge_key());
     assert_close(taken[0].length_mm, TOTAL_MM - STOPPED_MM);
     assert_close(
-        taken[0].grams.expect("weighed"),
+        taken[0].charged.as_ref().expect("weighed").grams,
         grams(&thick, TOTAL_MM - STOPPED_MM),
     );
-    assert_eq!(taken[0].diameter_mm, Some(2.85));
+    assert_eq!(
+        taken[0].charged.as_ref().map(|charged| charged.diameter_mm),
+        Some(2.85)
+    );
     assert!(
         taken[0]
             .note
@@ -308,7 +319,10 @@ fn the_remainder_after_an_unconfirmed_change_is_held_and_the_next_load_takes_it(
         .pop()
         .expect("the load is written down");
     assert_eq!(event.took_pending.len(), 1);
-    assert_eq!(event.took_pending[0].charge_key, held.charge_key);
+    assert_eq!(
+        event.took_pending[0].charge_key,
+        held.charge_key.charge_key()
+    );
     assert_eq!(event.replaced, Some(change.spool.id));
     assert_eq!(
         event.cleared_marks,
@@ -342,9 +356,9 @@ fn a_load_during_the_print_takes_what_was_fed_since_the_signal() {
     let to_next = charges_to(world, next.id);
     assert_eq!(to_next.len(), 2);
     assert_close(to_next[0].length_mm, 3_000.0 - STOPPED_MM);
-    assert_eq!(segment(&change, 1).spool_id, Some(next.id));
+    assert_eq!(spool_of(&segment(&change, 1)), Some(next.id));
     assert_close(to_next[1].length_mm, TOTAL_MM - 3_000.0);
-    assert_eq!(segment(&change, 2).spool_id, Some(next.id));
+    assert_eq!(spool_of(&segment(&change, 2)), Some(next.id));
     assert!(every::<ChargePendedPayload>(world).is_empty());
     assert_eq!(charges_to(world, change.spool.id).len(), 1);
     assert_close(change.accounted_mm(), TOTAL_MM);
@@ -411,7 +425,7 @@ fn saying_the_spool_was_never_swapped_charges_it_what_was_held() {
             change
                 .charges()
                 .iter()
-                .all(|charge| charge.spool_id == Some(change.spool.id))
+                .all(|charge| spool_of(charge) == Some(change.spool.id))
         );
         assert_close(change.accounted_mm(), TOTAL_MM);
         assert!(pending(world).is_empty());
@@ -463,9 +477,17 @@ fn a_change_whose_position_could_not_be_read_charges_the_last_position_and_says_
     let world = &change.world;
     let signals = every::<FilamentChangeSignalledPayload>(world);
     assert_eq!(signals.len(), 1);
-    assert!(!signals[0].position_read_at_signal);
+    assert!(
+        signals[0]
+            .position
+            .as_ref()
+            .is_some_and(|signal| signal.freshness == PositionFreshness::LastRecorded)
+    );
     assert_eq!(
-        signals[0].position.as_ref().map(|position| position.bytes),
+        signals[0]
+            .position
+            .as_ref()
+            .map(|signal| signal.position.bytes),
         Some(PERIODIC_AT)
     );
     assert_close(segment(&change, 0).length_mm, PERIODIC_MM);
@@ -658,7 +680,7 @@ fn confirm_in_place(read_ok: bool, fed_since: bool) {
     assert!(
         charges
             .iter()
-            .all(|charge| charge.spool_id == Some(change.spool.id) && charge.length_mm > 0.0),
+            .all(|charge| spool_of(charge) == Some(change.spool.id) && charge.length_mm > 0.0),
         "{case}"
     );
     assert_close(segment(&change, 1).length_mm, TOTAL_MM - charged_to_signal);
@@ -833,7 +855,12 @@ fn a_change_with_no_spool_loaded_charges_nothing() {
     assert_eq!(signals.len(), 1);
     assert_eq!(signals[0].tool, None);
     assert_eq!(signals[0].spool_id, None);
-    assert!(signals[0].position_read_at_signal);
+    assert!(
+        signals[0]
+            .position
+            .as_ref()
+            .is_some_and(|signal| signal.freshness == PositionFreshness::ReadAtSignal)
+    );
     assert!(every_of::<FilamentConsumedPayload>(&world, print_id).is_empty());
 }
 
@@ -915,7 +942,7 @@ fn a_load_onto_a_tool_emptied_after_a_change_takes_what_was_fed_since() {
         change
             .charges()
             .iter()
-            .all(|charge| charge.spool_id.is_some()),
+            .all(|charge| charge.charged.is_some()),
         "a charge went to no spool"
     );
     assert_close(change.accounted_mm(), TOTAL_MM);

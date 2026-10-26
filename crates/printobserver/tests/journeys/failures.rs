@@ -185,7 +185,7 @@ fn the_ledger_refuses_it(world: &World, one: &Driven) {
         printobserver_types::serde_json::from_str(&ran.out)
             .unwrap_or_else(|error| panic!("the refusal is not a document ({error}): {}", ran.out));
     let detail = answer
-        .pointer("/decision/rejected/spool_refused/detail")
+        .pointer("/decision/rejected/spool_refused/message")
         .and_then(printobserver_types::serde_json::Value::as_str)
         .unwrap_or_else(|| {
             panic!(

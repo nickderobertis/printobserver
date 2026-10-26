@@ -167,8 +167,25 @@ fn stated_event_methods() -> Vec<Method> {
             ],
             "BoxFuture<'_,Result<AuditPage,StoreError>>",
         ),
+        method(
+            "stored_after",
+            &[("query", "StoredQuery")],
+            "BoxFuture<'_,Result<Vec<EventRecord>,StoreError>>",
+        ),
+        method(
+            "newest_stored",
+            &[],
+            "BoxFuture<'_,Result<Option<EventId>,StoreError>>",
+        ),
+        method("on_stored", &[("signal", "StoredSignal")], "()"),
     ]
 }
+
+/// The one store method that is a registration rather than a read or a write.
+///
+/// It hands the store a signal to raise after later commits, touches no stored
+/// row and does no I/O, so it has nothing to wait on and nothing to fail with.
+const REGISTRATIONS: &[&str] = &["on_stored"];
 
 /// The image store's stated methods.
 fn stated_image_methods() -> Vec<Method> {
@@ -507,13 +524,22 @@ fn store_error_carries_exactly_the_stated_variants() {
     assert_eq!(enum_variants(&source, "StoreError"), expected);
 }
 
-/// Every store method is asynchronous, in the one shape a trait object carries.
+/// Every store method that reads or writes is asynchronous, in the one shape a
+/// trait object carries; a registration answers nothing at all.
 #[test]
 fn every_store_method_answers_a_boxed_future() {
     let source = parse(&store_source());
     let methods = every_store_method(&source);
     assert!(!methods.is_empty(), "the store traits declare no method");
     for declared in methods {
+        if REGISTRATIONS.contains(&declared.name.as_str()) {
+            assert_eq!(
+                declared.returns, "()",
+                "{} is a registration and answers nothing",
+                declared.name
+            );
+            continue;
+        }
         assert!(
             declared.returns.starts_with("BoxFuture<'_,Result<"),
             "{} answers {}, which is neither asynchronous nor a Result",

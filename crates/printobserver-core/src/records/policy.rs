@@ -143,11 +143,132 @@ pub enum RejectionReason {
         intervention_id: InterventionId,
     },
     /// A spool command could not be carried out.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     SpoolRefused {
-        /// Why, in a sentence naming what to do instead.
-        detail: String,
+        /// Why, in a form a client acts on without reading `message`.
+        cause: SpoolRefusalCause,
+        /// Why, in a sentence naming what to do instead, for a person.
+        message: String,
     },
+}
+
+/// One field of a spool command, as the command names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum SpoolField {
+    /// The operator's own label for the spool.
+    Name,
+    /// The material, such as `PLA`.
+    Material,
+    /// The filament's diameter, in millimetres.
+    DiameterMm,
+    /// The material's density, in grams per cubic centimetre.
+    DensityGCm3,
+    /// The net filament on the spool when full, in grams.
+    InitialG,
+    /// The filament on the spool now, in grams.
+    RemainingG,
+    /// The empty spool's own weight, in grams.
+    TareG,
+    /// A scale reading of the spool, in grams.
+    GrossG,
+}
+
+/// Why the spool ledger refused a command, each cause carrying what a client
+/// needs to choose the next valid request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    tag = "cause",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum SpoolRefusalCause {
+    /// No spool was ever registered under this identifier.
+    UnknownSpool {
+        /// The identifier the command named.
+        spool_id: SpoolId,
+    },
+    /// The spool is retired, and takes no further command.
+    RetiredSpool {
+        /// The retired spool.
+        spool_id: SpoolId,
+    },
+    /// The spool named is already on the tool, and nothing is pending there or
+    /// marked on it for a load to confirm.
+    NothingToConfirm {
+        /// The tool the spool is already on.
+        tool: i64,
+    },
+    /// A figure the command gave is not one the field can hold: not a number,
+    /// or out of the field's range.
+    InvalidAdjustmentFigure {
+        /// The field the figure was given for.
+        field: SpoolField,
+        /// The figure given; always a number, because a figure JSON cannot
+        /// carry is refused as it would be written rather than written as
+        /// `null`.
+        #[serde(serialize_with = "a_number")]
+        value: f64,
+    },
+    /// A scale reading was given for a spool with no tare, so it cannot be
+    /// turned into a figure.
+    TareRequired {
+        /// The spool with no tare.
+        spool_id: SpoolId,
+    },
+    /// The material has no known density, so the command needs one.
+    DensityRequired {
+        /// The spool, when the command was about one that exists; absent for
+        /// a registration.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        spool_id: Option<SpoolId>,
+        /// The material, as given and trimmed.
+        material: String,
+    },
+    /// A field the command needs was empty or absent.
+    MissingField {
+        /// The field; for a correction naming neither figure, `remaining_g`,
+        /// which `gross_g` may stand in for.
+        field: SpoolField,
+    },
+    /// The command gave fields only one of which it may carry.
+    ConflictingFields {
+        /// Every field given that conflicts, in the command's own order.
+        fields: Vec<SpoolField>,
+    },
+    /// The command named a tool the printer cannot have.
+    UnknownTool {
+        /// The tool named.
+        tool: i64,
+    },
+    /// The spool is loaded on no tool, so there is nothing to unload.
+    NotLoaded {
+        /// The spool.
+        spool_id: SpoolId,
+    },
+    /// The ledger refused the write the command made, because the spools
+    /// changed under it; reading them again shows how.
+    LedgerRefused,
+}
+
+/// Write a figure as the number it is, refusing one JSON has no number for:
+/// written as `null`, it would be a refusal no reader could read back.
+// serde hands a `serialize_with` a reference to the field; suppressions.toml has the reason.
+#[expect(clippy::trivially_copy_pass_by_ref)]
+fn a_number<S: printobserver_types::serde::Serializer>(
+    value: &f64,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use printobserver_types::serde::ser::Error as _;
+    if value.is_finite() {
+        serializer.serialize_f64(*value)
+    } else {
+        Err(S::Error::custom(format!(
+            "the figure {value} has no number JSON can carry"
+        )))
+    }
 }
 
 /// The decision policy took on one request.

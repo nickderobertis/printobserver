@@ -73,10 +73,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::records::{
-    ActionId, ActionRecord, ActionRequest, Actor, ChargeKey, ExecutionOutcome, FilePosition,
-    ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest, ManifestNarrowing,
-    PendingCharge, PolicyDecision, PrintOutcome, PrintRecord, SpoolId, SpoolRecord, SpoolTrust,
-    UnverifiedReason, UnverifiedReasonKind,
+    ActionId, ActionRecord, ActionRequest, Actor, ChargeKey, ChargedFilament, ExecutionOutcome,
+    FilePosition, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
+    ManifestNarrowing, PendingCharge, PolicyDecision, PrintOutcome, PrintRecord, SpoolId,
+    SpoolRecord, SpoolTrust, UnverifiedReason, UnverifiedReasonKind,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSession;
@@ -188,6 +188,46 @@ impl HistoryQuery {
         resolve_history_limit(self.limit)
     }
 }
+
+/// One read of the event log in the order the store stored it.
+///
+/// The order is the store's own sequence rather than any field of the
+/// record: `received_at` is the instant its producer stamped, which a late
+/// arrival can carry from before an event stored ahead of it, so a reader
+/// following the log by it would skip what arrived late. Identifiers are not
+/// that order either, because they are minted by whoever appended them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredQuery {
+    /// The event to read after, exclusive. Absent with a print, the read
+    /// starts at that print's first event; absent without one, at the first
+    /// event stored.
+    pub after: Option<EventId>,
+    /// The print to scope to: its own events and every event that belongs to
+    /// no print. Absent, every event.
+    pub print_id: Option<PrintId>,
+    /// How many events to answer; absent means [`DEFAULT_HISTORY_WINDOW`].
+    pub limit: Option<u32>,
+}
+
+impl StoredQuery {
+    /// The limit this query resolves to.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::LimitRefused`] when the limit asked for is above
+    /// [`MAX_HISTORY_LIMIT`].
+    pub fn resolved_limit(&self) -> Result<u32, StoreError> {
+        resolve_history_limit(self.limit)
+    }
+}
+
+/// What a store calls after every write that stored an event has committed.
+///
+/// Raised after the commit rather than before it, so a reader woken by it reads
+/// what woke it; and raised for every write that stored one, whichever
+/// aggregate's method made it. It carries nothing: what was stored is read
+/// back through [`EventStore::stored_after`].
+pub type StoredSignal = Arc<dyn Fn() + Send + Sync>;
 
 /// What the store found when asked for an image.
 ///
@@ -425,6 +465,29 @@ pub trait EventStore: Send + Sync {
         after: Option<EventId>,
         page_size: u32,
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>>;
+
+    /// Read the events stored after a point, in the order they were stored.
+    ///
+    /// Answers **oldest first by the store's own sequence** — the order the
+    /// events were appended in, whatever their `received_at` — scoped as
+    /// [`StoredQuery`] says. A print with no event yet starts after the newest
+    /// event stored. The limit is resolved by [`resolve_history_limit`].
+    ///
+    /// # Errors
+    ///
+    /// Refuses a cursor naming no event with [`StoreError::NotFound`], and a
+    /// limit above [`MAX_HISTORY_LIMIT`] with [`StoreError::LimitRefused`].
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
+
+    /// The newest event stored, by the store's own sequence, when there is one.
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>>;
+
+    /// Raise this signal after every write that stores an event has committed,
+    /// from now on.
+    fn on_stored(&self, signal: StoredSignal);
 }
 
 /// The images stored beside events.
@@ -536,9 +599,9 @@ pub trait SessionStore: Send + Sync {
 
 /// A spool on its way into the store, before the store mints its identifier.
 ///
-/// A [`SpoolRecord`] without the three fields the store sets itself: its `id`,
-/// minted; its `updated_at`, which is `registered_at`; and its `retired_at`,
-/// which is absent.
+/// A [`SpoolRecord`] without what the store sets itself: its `id`, minted; and
+/// its `updated_at`, which is `registered_at`. It is shelved, or loaded on a
+/// tool, and never retired.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewSpool {
     /// The operator's own label for the spool.
@@ -565,23 +628,83 @@ pub struct NewSpool {
     pub registered_at: Timestamp,
 }
 
+/// Whose debit a charge is: its key, which names the tool and — for a print
+/// this system watched — the print, and for a print it never saw, the print
+/// it recorded that one as, when one is linked.
+///
+/// The fields are private, so a watched print's charge cannot carry a second
+/// print beside the one its key names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChargeIdentity {
+    /// The durable identity of the debit.
+    key: ChargeKey,
+    /// For an unobserved print only, the print this system recorded it as.
+    linked_print: Option<PrintId>,
+}
+
+impl ChargeIdentity {
+    /// The identity a key alone gives: a watched print's own, or an unobserved
+    /// print linked to none.
+    #[must_use]
+    pub const fn of(key: ChargeKey) -> Self {
+        Self {
+            key,
+            linked_print: None,
+        }
+    }
+
+    /// An unobserved print's identity, linked to the print this system
+    /// recorded it as.
+    ///
+    /// # Errors
+    ///
+    /// Answers the key back for a watched print's key, whose print is the one
+    /// it names and no other.
+    pub const fn linked(key: ChargeKey, print_id: PrintId) -> Result<Self, ChargeKey> {
+        match key {
+            ChargeKey::Print { .. } => Err(key),
+            ChargeKey::Unobserved { .. } => Ok(Self {
+                key,
+                linked_print: Some(print_id),
+            }),
+        }
+    }
+
+    /// The durable identity of the debit.
+    #[must_use]
+    pub const fn key(&self) -> &ChargeKey {
+        &self.key
+    }
+
+    /// The tool that fed the filament, as the key names it.
+    #[must_use]
+    pub const fn tool(&self) -> i64 {
+        self.key.tool()
+    }
+
+    /// The print the filament was fed in, when it was one this system
+    /// recorded: the one a watched key names, or the one an unobserved print
+    /// is linked to.
+    #[must_use]
+    pub const fn print_id(&self) -> Option<PrintId> {
+        match self.key.watched_print() {
+            Some(print_id) => Some(print_id),
+            None => self.linked_print,
+        }
+    }
+}
+
 /// One debit on its way into the store.
 #[derive(Debug, Clone, PartialEq)]
-// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub struct Charge {
-    /// The durable identity of the debit.
-    pub key: ChargeKey,
-    /// The tool that fed the filament, in the printer's own numbering.
-    pub tool: i64,
-    /// The print it was fed in, when it was fed in one this system recorded.
-    pub print_id: Option<PrintId>,
-    /// The spool charged; absent when nothing was tracked on the tool, and the
-    /// filament is recorded uncharged.
-    pub spool_id: Option<SpoolId>,
+    /// Whose debit it is, from which its tool and print are read.
+    pub identity: ChargeIdentity,
     /// How much was fed, in millimetres.
     pub length_mm: f64,
-    /// What that weighs, in grams; what is subtracted from the spool.
-    pub grams: Option<f64>,
+    /// The spool charged and the whole calculation of what is subtracted from
+    /// it; absent when nothing was tracked on the tool, and the filament is
+    /// recorded uncharged.
+    pub charged: Option<ChargedFilament>,
     /// When the charge was taken.
     pub at: Timestamp,
     /// Its `filament_consumed` event.
@@ -590,24 +713,26 @@ pub struct Charge {
 
 /// What the store holds of one debit.
 #[derive(Debug, Clone, PartialEq)]
-// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub struct ChargeRecord {
-    /// The durable identity of the debit.
-    pub key: ChargeKey,
-    /// The tool that fed the filament, in the printer's own numbering.
-    pub tool: i64,
-    /// The print it was fed in, when it was fed in one this system recorded.
-    pub print_id: Option<PrintId>,
-    /// The spool charged; absent when the filament was recorded uncharged.
-    pub spool_id: Option<SpoolId>,
+    /// Whose debit it is, from which its tool and print are read.
+    pub identity: ChargeIdentity,
     /// How much was fed, in millimetres.
     pub length_mm: f64,
-    /// What that weighs, in grams.
-    pub grams: Option<f64>,
+    /// The spool charged and the whole calculation of what was subtracted;
+    /// absent when the filament was recorded uncharged.
+    pub charged: Option<ChargedFilament>,
     /// When the charge was taken.
     pub at: Timestamp,
     /// Its `filament_consumed` event.
     pub event_id: EventId,
+}
+
+impl ChargeRecord {
+    /// The spool charged, when one was.
+    #[must_use]
+    pub fn spool_id(&self) -> Option<SpoolId> {
+        self.charged.as_ref().map(|charged| charged.spool_id)
+    }
 }
 
 /// A charge held for a spool not yet named, on its way into the store.
@@ -624,49 +749,61 @@ pub struct Pend {
 pub struct SpoolMutation {
     /// The spool changed.
     pub spool_id: SpoolId,
-    /// What changes.
+    /// What changes, carrying the event it writes when it writes one.
     pub change: SpoolChange,
     /// When it changed; the spool's `updated_at` once it has.
     pub at: Timestamp,
-    /// Its event. Written whenever the change is, except for the two changes
-    /// whose own entries below say they write none.
-    pub event: EventDraft,
 }
 
-/// What one [`SpoolMutation`] changes.
+/// What one [`SpoolMutation`] changes, each change that writes an event
+/// carrying it and the one that writes none carrying none.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpoolChange {
     /// Put the spool on a tool.
     Load {
         /// The tool, in the printer's own numbering.
         tool: i64,
+        /// Its `spool_loaded` event.
+        event: EventDraft,
     },
     /// Take the spool off its tool.
-    Unload,
+    Unload {
+        /// Its `spool_unloaded` event.
+        event: EventDraft,
+    },
     /// Set the spool's remaining figure, which clears every mark: the spool
     /// reads `verified` after it.
     SetRemaining {
         /// The filament left, in grams.
         remaining_g: f64,
+        /// Its `spool_adjusted` event.
+        event: EventDraft,
     },
-    /// Add one mark, by [`SpoolTrust::marked`], at the mutation's instant. A
-    /// reason the spool already holds adds nothing and writes no second
-    /// `spool_unverified` event.
+    /// Add one mark, by [`SpoolTrust::marked`], at the mutation's instant.
+    ///
+    /// A reason the spool already holds changes nothing, so it is a no-op: the
+    /// spool is not written and its `event` is not appended, which is how a
+    /// second signal of one change writes no second `spool_unverified`.
     MarkUnverified {
         /// Why the figure is in doubt.
         reason: UnverifiedReason,
+        /// Its `spool_unverified` event, appended only when the mark is new.
+        event: EventDraft,
     },
     /// Remove every mark of these kinds, by [`SpoolTrust::cleared`]. The
     /// domain chooses the kinds through
     /// [`marks_cleared_by`](crate::filament::marks_cleared_by), and the marks
-    /// cleared are named in the command's own event, so this change writes no
-    /// event of its own: the mutation's `event` is not written.
+    /// cleared are named in the command's own event, so this change carries
+    /// and writes no event of its own.
     ClearMarks {
         /// The kinds of mark removed.
         kinds: Vec<UnverifiedReasonKind>,
     },
-    /// Retire the spool.
-    Retire,
+    /// Retire the spool, which takes it off any tool it is loaded on.
+    Retire {
+        /// Its `spool_retired` event.
+        event: EventDraft,
+    },
 }
 
 /// What one [`FilamentStore::apply_spool_changes`] wrote.
@@ -802,13 +939,13 @@ impl TimelineQuery {
 /// [`settle_print`](Self::settle_print) or
 /// [`account_tallies`](Self::account_tallies) — the same rules hold:
 ///
-/// * A charge whose key is **not yet recorded** subtracts its `grams` from its
-///   spool — a retired spool included, since retirement refuses later commands
+/// * A charge whose key is **not yet recorded** subtracts its charged grams
+///   from its spool — a retired spool included, since retirement refuses later commands
 ///   rather than the settlement of earlier prints, and below zero included,
 ///   since a charge is never refused or clamped — records the charge, and
 ///   appends its event. The spool's `updated_at` becomes the later of its own
-///   and the charge's instant. A charge naming no spool, or no grams,
-///   subtracts nothing and is still recorded.
+///   and the charge's instant. A charge naming no spool subtracts nothing and
+///   is still recorded.
 /// * A charge whose key is **already recorded** is a replay: it subtracts
 ///   nothing and appends no event.
 /// * A charge whose key is **pending** takes it: the pending charge is removed
@@ -825,8 +962,9 @@ impl TimelineQuery {
 /// # A spool change, and what refuses one
 ///
 /// A mutation applies its [`SpoolChange`], sets the spool's `updated_at` to its
-/// instant, and appends its event — except where the change's own entry says
-/// it writes none. The trust functions are the contract's,
+/// instant, and appends the event the change carries — a `clear_marks` carries
+/// none, and a `mark_unverified` the spool already holds is a no-op that
+/// appends nothing. The trust functions are the contract's,
 /// [`SpoolTrust::marked`] and [`SpoolTrust::cleared`], and no implementation
 /// restates them. Every refusal is the whole call's:
 ///

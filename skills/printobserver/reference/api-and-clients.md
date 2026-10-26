@@ -82,8 +82,8 @@ policy refused it. A rejection is not a transport failure — the body is the sa
 action record, carrying the rejection's own reason, the value asked for and the
 range allowed. A spool command's answer is `SpoolCommandAnswer` either way, and
 carries its `decision` at the top rather than in a record: `actor_may_not_request`
-when the grants refuse it and `spool_refused`, with a `detail`, when the ledger
-cannot carry it out.
+when the grants refuse it and `spool_refused`, with a tagged `cause` and a
+`message`, when the ledger cannot carry it out.
 
 ## The operations
 
@@ -183,6 +183,39 @@ The print's events, newest first.
 `GET /v1/prints/{print_id}/history` — answers success.
 
 Takes `print_id` (path), `limit` (query, optional).
+
+### events
+
+The event log after a cursor, oldest first in the order it was stored, waiting
+up to `wait_s` seconds for an event to pass. A read: it takes no actor. The
+`watch` command follows it as one stream.
+
+`GET /v1/events` — answers success.
+
+Takes `after` (query, optional), `print_id` (query, optional), `kinds` (query,
+optional, repeatable), `exclude_kinds` (query, optional, repeatable), `wait_s`
+(query, optional), `limit` (query, optional).
+
+- `after` is an event id; only events stored after it are answered. With no
+  `after`, the read starts after the newest event stored at the request — or,
+  with `print_id`, at that print's first event, so a print is replayed and then
+  followed.
+- `print_id` scopes the read to that print's events and every event that
+  belongs to no print. Without it every event is in scope.
+- `kinds` passes only those kinds; `exclude_kinds` never passes them. Each must
+  match `^[a-z][a-z0-9_]*$` or the request is refused `400`; a well-formed kind
+  nothing declares is taken.
+- `wait_s` is 0 to 60, default 0: with nothing passing after the cursor, the read
+  waits up to that long and answers the moment a passing event is stored.
+- `limit` is 1 to 500, default 100. A value out of range is refused `400`
+  naming it.
+
+It answers `EventsAnswer`: `events`, each an `EventRecord` exactly as `history`
+serves it; `cursor`, the last event the read examined whether or not it passed,
+to give as `after` next, or `null` when there was nothing to start after; and,
+with `print_id` only, `print_ended` — the print's end as stored, an object of
+its `print_ended` event's `event_id`, `received_at` and `outcome`, reported
+whatever `kinds` and `exclude_kinds` say, and `null` while the print is open.
 
 ### look
 
@@ -477,6 +510,13 @@ materialized path on the server's host.
 #### history
 
 `client.history(print_id, limit)` returns `HistoryAnswer`; `limit` is optional.
+
+#### events
+
+`client.events(after, print_id, kinds, exclude_kinds, wait_s, limit)` reads the
+event log after a cursor and returns `EventsAnswer`; every value is optional,
+and each `kinds` and `exclude_kinds` entry is sent as a value of its own. Give
+the answer's `cursor` as `after` to read on.
 
 #### look
 

@@ -105,6 +105,50 @@
         }
       ]
     },
+    "ChargedFilament": {
+      "additionalProperties": false,
+      "description": "What a charge took from a spool, and the whole calculation behind it.\n\nPresent or absent as one: a debit names its spool exactly when it carries\nthe grams, the figures they were worked out with, and the spool's figure\neither side of them.",
+      "properties": {
+        "density_g_cm3": {
+          "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
+          "format": "double",
+          "type": "number"
+        },
+        "diameter_mm": {
+          "description": "The diameter the grams were worked out with, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "grams": {
+          "description": "What the length weighs, in grams; what is subtracted from the spool.",
+          "format": "double",
+          "type": "number"
+        },
+        "remaining_after_g": {
+          "description": "The spool's figure after it, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "remaining_before_g": {
+          "description": "The spool's figure before the charge, in grams.",
+          "format": "double",
+          "type": "number"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool charged."
+        }
+      },
+      "required": [
+        "spool_id",
+        "grams",
+        "diameter_mm",
+        "density_g_cm3",
+        "remaining_before_g",
+        "remaining_after_g"
+      ],
+      "type": "object"
+    },
     "FilePosition": {
       "additionalProperties": false,
       "description": "How far into its file a print had got, and when that was read.",
@@ -170,29 +214,16 @@
       "$ref": "#/$defs/ChargeKey",
       "description": "The durable identity of this debit."
     },
-    "density_g_cm3": {
-      "description": "The density the grams were worked out with, in grams per cubic\ncentimetre.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "diameter_mm": {
-      "description": "The diameter the grams were worked out with, in millimetres.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "grams": {
-      "description": "What that length weighs, in grams, when a spool gave its diameter and\ndensity.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
+    "charged": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ChargedFilament"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool charged and the whole calculation of what it was charged;\nabsent when nothing was tracked on the tool, and the filament was\nrecorded uncharged."
     },
     "length_mm": {
       "description": "How much was fed, in millimetres.",
@@ -221,35 +252,8 @@
       ],
       "description": "How far into the file the charge runs, when that was read."
     },
-    "remaining_after_g": {
-      "description": "The spool's figure after it, in grams.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "remaining_before_g": {
-      "description": "The spool's figure before the charge, in grams.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    },
-    "spool_id": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/SpoolId"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "The spool charged; absent when nothing was tracked on the tool, and the\nfilament was recorded uncharged."
-    },
     "tool": {
-      "description": "The tool that fed it.",
+      "description": "The tool that fed it, as its key names it.",
       "format": "int64",
       "type": "integer"
     }

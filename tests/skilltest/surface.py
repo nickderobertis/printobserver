@@ -132,7 +132,7 @@ def surface() -> Surface:
                 located=option["located"],
                 forms=forms,
                 file_forms=files,
-                repeated=bool(parameter.get("repeated")),
+                repeated=bool(option.get("repeated") or parameter.get("repeated")),
             )
         commands.append(
             CommandSpec(

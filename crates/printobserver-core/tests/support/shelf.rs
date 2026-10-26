@@ -252,8 +252,14 @@ pub fn every_of<P: EventPayload + DeserializeOwned>(world: &World, print_id: Pri
 pub fn charges_to(world: &World, spool_id: SpoolId) -> Vec<FilamentConsumedPayload> {
     every::<FilamentConsumedPayload>(world)
         .into_iter()
-        .filter(|charge| charge.spool_id == Some(spool_id))
+        .filter(|charge| spool_of(charge) == Some(spool_id))
         .collect()
+}
+
+/// The spool one charge was taken from, when it was taken from one.
+#[must_use]
+pub fn spool_of(charge: &FilamentConsumedPayload) -> Option<SpoolId> {
+    charge.charged.as_ref().map(|charged| charged.spool_id)
 }
 
 /// The start of the file, by one actor, overriding the check or not.
@@ -392,15 +398,18 @@ pub fn assert_ledger_explains(world: &World, spool_id: SpoolId) {
             figure = Some(registered.spool.remaining_g);
         }
         if let Some(Ok(charge)) = event.payload_as::<FilamentConsumedPayload>()
-            && charge.spool_id == Some(spool_id)
+            && let Some(charged) = charge.charged
+            && charged.spool_id == spool_id
         {
-            let before = charge
-                .remaining_before_g
-                .expect("a charge names its figure");
-            assert_close(before, figure.expect("registered first"));
-            let after = charge.remaining_after_g.expect("a charge names its figure");
-            assert_close(after, before - charge.grams.expect("a charge weighs"));
-            figure = Some(after);
+            assert_close(
+                charged.remaining_before_g,
+                figure.expect("registered first"),
+            );
+            assert_close(
+                charged.remaining_after_g,
+                charged.remaining_before_g - charged.grams,
+            );
+            figure = Some(charged.remaining_after_g);
         }
         if let Some(Ok(adjusted)) = event.payload_as::<SpoolAdjustedPayload>()
             && adjusted.spool_id == spool_id

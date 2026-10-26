@@ -93,10 +93,30 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ),
     ("ChargeMethod", &[]),
     (
+        "ChargedFilament",
+        &[
+            ("density_g_cm3", "number", true),
+            ("diameter_mm", "number", true),
+            ("grams", "number", true),
+            ("remaining_after_g", "number", true),
+            ("remaining_before_g", "number", true),
+            ("spool_id", "SpoolId", true),
+        ],
+    ),
+    (
         "ClearedMark",
         &[
             ("reason", "UnverifiedReason", true),
             ("spool_id", "SpoolId", true),
+        ],
+    ),
+    (
+        "DoubtedSpool",
+        &[
+            ("marks", "array:UnverifiedMark", true),
+            ("need", "PreflightNeed", false),
+            ("remaining_g", "number", true),
+            ("spool", "PreflightSpool", true),
         ],
     ),
     ("EffectiveBounds", &[("allowed", "map:Range", true)]),
@@ -173,14 +193,12 @@ const DECLARED_FIELDS: &[StatedType] = &[
         "PendingCharge",
         &[
             ("analysed_length_mm", "number", false),
-            ("charge_key", "ChargeKey", true),
+            ("charge_key", "PrintSegmentKey", true),
             ("length_mm", "number", true),
             ("method", "ChargeMethod", true),
             ("note", "string", false),
             ("pended_at", "Timestamp", true),
             ("position", "FilePosition", false),
-            ("print_id", "PrintId", true),
-            ("tool", "integer", true),
         ],
     ),
     (
@@ -201,16 +219,39 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     (
+        "PreflightNeed",
+        &[("buffer_g", "number", true), ("required_g", "number", true)],
+    ),
+    (
+        "PreflightObjection",
+        &[
+            ("marks", "array:UnverifiedMark", false),
+            ("need", "PreflightNeed", false),
+            ("remaining_g", "number", true),
+            ("spool", "PreflightSpool", true),
+            ("verdict", "string", true),
+        ],
+    ),
+    (
+        "PreflightSpool",
+        &[("id", "SpoolId", true), ("name", "string", true)],
+    ),
+    (
         "PreflightTool",
         &[
-            ("buffer_g", "number", false),
-            ("marks", "array:UnverifiedMark", false),
-            ("remaining_g", "number", false),
-            ("required_g", "number", false),
-            ("spool_id", "SpoolId", false),
-            ("spool_name", "string", false),
+            ("result", "PreflightToolResult", true),
             ("tool", "integer", true),
-            ("verdict", "PreflightVerdict", true),
+        ],
+    ),
+    (
+        "PreflightToolResult",
+        &[
+            ("marks", "array:UnverifiedMark", false),
+            ("need", "PreflightNeed", false),
+            ("objection", "PreflightObjection", true),
+            ("remaining_g", "number", true),
+            ("spool", "PreflightSpool", true),
+            ("verdict", "string", true),
         ],
     ),
     ("PreflightVerdict", &[]),
@@ -266,6 +307,14 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     (
+        "PrintSegmentKey",
+        &[
+            ("print_id", "PrintId", true),
+            ("segment", "integer", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
         "SafetyEnvelope",
         &[
             ("actions", "map:array:ActionKind", true),
@@ -294,6 +343,24 @@ const DECLARED_FIELDS: &[StatedType] = &[
     ),
     ("SpoolId", &[]),
     (
+        "ShortSpool",
+        &[
+            ("marks", "array:UnverifiedMark", false),
+            ("need", "PreflightNeed", true),
+            ("remaining_g", "number", true),
+            ("spool", "PreflightSpool", true),
+        ],
+    ),
+    ("SpoolField", &[]),
+    (
+        "SpoolLifecycle",
+        &[
+            ("at", "Timestamp", true),
+            ("state", "string", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
         "SpoolRecord",
         &[
             ("color", "string", false),
@@ -301,15 +368,26 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("diameter_mm", "number", true),
             ("id", "SpoolId", true),
             ("initial_g", "number", true),
-            ("loaded_on_tool", "integer", false),
+            ("lifecycle", "SpoolLifecycle", true),
             ("material", "string", true),
             ("name", "string", true),
             ("registered_at", "Timestamp", true),
             ("remaining_g", "number", true),
-            ("retired_at", "Timestamp", false),
             ("tare_g", "number", false),
             ("trust", "SpoolTrust", true),
             ("updated_at", "Timestamp", true),
+        ],
+    ),
+    (
+        "SpoolRefusalCause",
+        &[
+            ("cause", "string", true),
+            ("field", "SpoolField", true),
+            ("fields", "array:SpoolField", true),
+            ("material", "string", true),
+            ("spool_id", "SpoolId", false),
+            ("tool", "integer", true),
+            ("value", "number", true),
         ],
     ),
     (
@@ -317,6 +395,13 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[
             ("marks", "array:UnverifiedMark", true),
             ("state", "string", true),
+        ],
+    ),
+    (
+        "UnanalysedSpool",
+        &[
+            ("remaining_g", "number", true),
+            ("spool", "PreflightSpool", true),
         ],
     ),
     (
