@@ -9,15 +9,16 @@
 use printobserver_core::kinds::{
     FilamentConsumedPayload, PrintEndedPayload, UnaccountedPrintPayload,
 };
-use printobserver_core::store::PrintStore as _;
+use printobserver_core::store::{PrintStore as _, SessionStore as _, StoreError};
 use printobserver_core::{
     Actor, ChargeRule, Clock as _, ExecutionOutcome, PolicyDecision, PrintAction, PrintOutcome,
-    PrintRecord, block_on, charge_rule,
+    PrintRecord, RejectionReason, block_on, charge_rule,
 };
 use printobserver_printer_api::{PrinterError, PrinterState};
+use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::PrintId;
 
-use crate::fakes::PrinterMethod;
+use crate::fakes::{PrinterMethod, StoreMethod};
 use crate::shelf::{
     FILE, assert_close, charges_to, ends, every, every_of, loaded_spool, on_tool, running_at,
     spool_now, spool_world, start, tally_success,
@@ -183,5 +184,142 @@ fn an_interrupted_print_is_charged_as_a_failed_one() {
         ),
     ] {
         assert_eq!(charge_rule(outcome), rule, "{outcome:?}");
+    }
+}
+
+/// A record that names no file cannot be told apart from whatever job the
+/// printer holds, so any job printing holds it open; once the printer shows
+/// nothing running it closes.
+#[test]
+fn a_record_naming_no_file_is_held_open_by_any_running_job() {
+    let world = spool_world();
+    let print = block_on(world.store.open_print(Some(31), None)).expect("the record opens");
+    world.printer.reports_state(PrinterState::Printing);
+    world
+        .printer
+        .reports_job(Some("another.gcode"), PrinterState::Printing);
+
+    assert_eq!(
+        close(&world, print.id, PrintOutcome::Interrupted),
+        PolicyDecision::Rejected(RejectionReason::PrintStillActive {
+            state: PrinterState::Printing,
+        })
+    );
+    assert_eq!(record(&world, print.id).ended_at, None);
+
+    world.printer.reports_state(PrinterState::Operational);
+    world
+        .printer
+        .reports_job(Some("another.gcode"), PrinterState::Operational);
+    assert_eq!(
+        close(&world, print.id, PrintOutcome::Interrupted),
+        PolicyDecision::Accepted
+    );
+    assert!(record(&world, print.id).ended_at.is_some());
+}
+
+/// A close whose end could not be written leaves the print settled and open,
+/// and the next close only ends it: no second `print_ended`, and no charge.
+#[test]
+fn a_close_whose_end_failed_is_finished_by_the_next_close() {
+    let world = spool_world();
+    let spool = loaded_spool(&world, "Recovered", 1_000.0);
+    let print_id = stale_print(&world);
+    let before = spool_now(&world, spool.id).remaining_g;
+    world.store.fails(
+        StoreMethod::EndPrint,
+        StoreError::Database {
+            detail: "the disk went away".to_owned(),
+        },
+    );
+
+    world
+        .request(
+            print_id,
+            PrintAction::ClosePrint {
+                outcome: PrintOutcome::Interrupted,
+                reason: REASON.to_owned(),
+                actor: Actor::Operator,
+            },
+        )
+        .expect_err("the end could not be written");
+    assert_eq!(record(&world, print_id).ended_at, None);
+    assert_eq!(every_of::<PrintEndedPayload>(&world, print_id).len(), 1);
+
+    world.store.heals();
+    assert_eq!(
+        close(&world, print_id, PrintOutcome::Interrupted),
+        PolicyDecision::Accepted
+    );
+
+    assert!(record(&world, print_id).ended_at.is_some());
+    let ended = every_of::<PrintEndedPayload>(&world, print_id);
+    assert_eq!(ended.len(), 1, "the second close ended the print again");
+    assert_eq!(ended[0].outcome, PrintOutcome::Interrupted);
+    assert_eq!(
+        every_of::<FilamentConsumedPayload>(&world, print_id),
+        Vec::new()
+    );
+    assert_close(spool_now(&world, spool.id).remaining_g, before);
+}
+
+/// A close closes the print's open session in the record the store holds,
+/// and leaves one already closed with the closure it has.
+#[test]
+fn a_close_closes_an_open_session_and_keeps_a_closed_ones_closure() {
+    let world = spool_world();
+    let open = stale_print(&world);
+    block_on(world.store.put_session(session(open, None))).expect("the session is stored");
+    assert_eq!(
+        close(&world, open, PrintOutcome::Interrupted),
+        PolicyDecision::Accepted
+    );
+    let closed = block_on(world.store.session(open))
+        .expect("the store reads")
+        .expect("the session is held");
+    assert!(
+        closed.closed_at.is_some(),
+        "the open session was not closed"
+    );
+    assert_eq!(
+        closed.close_reason.as_deref(),
+        Some(format!("closed by the operator: {REASON}").as_str())
+    );
+
+    let earlier = world.clock.now();
+    let already = block_on(world.store.open_print(Some(32), Some(FILE.to_owned())))
+        .expect("the record opens");
+    block_on(world.store.put_session(session(
+        already.id,
+        Some((earlier, "the harness closed it")),
+    )))
+    .expect("the session is stored");
+    world.clock.advance(60);
+    assert_eq!(
+        close(&world, already.id, PrintOutcome::Cancelled),
+        PolicyDecision::Accepted
+    );
+    let kept = block_on(world.store.session(already.id))
+        .expect("the store reads")
+        .expect("the session is held");
+    assert_eq!(kept.closed_at, Some(earlier));
+    assert_eq!(kept.close_reason.as_deref(), Some("the harness closed it"));
+}
+
+/// One print's supervision session, closed at an instant for a reason or
+/// still open.
+fn session(
+    print_id: PrintId,
+    closed: Option<(printobserver_types::Timestamp, &str)>,
+) -> SupervisionSession {
+    let at = printobserver_types::Timestamp::now();
+    SupervisionSession {
+        print_id,
+        session_name: format!("print-{print_id}"),
+        harness_identity: "claude-code".to_owned(),
+        created_at: at,
+        last_turn_at: at,
+        closed_at: closed.map(|(when, _)| when),
+        close_reason: closed.map(|(_, why)| why.to_owned()),
     }
 }
