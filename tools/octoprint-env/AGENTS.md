@@ -25,8 +25,10 @@ the repository-wide rules; this file holds the ones only this script carries.
   and the provisioned key written to a path the script names on its own output.
   Turning authentication off would prove a configuration nobody runs.
 - **Started, not raced.** `up` answers only once the instance answers its own
-  API *and* reports a connected printer, and `--port auto` takes a free port so
-  two runs on one host do not collide. In `--mode virtual` it also uploads
+  API *and* reports a connected printer, and `--port auto` starts OctoPrint on
+  port zero and reads back the port it bound, off its own process tree's
+  listening sockets, so two runs on one host do not collide and no port is
+  reserved and released for another process to take first. In `--mode virtual` it also uploads
   `tools/octoprint-env/gcode/hold.gcode`, selects it and starts it, and states
   in `HOLD_SECONDS` the minimum that print keeps running for — which is what
   gives the tier something to act on. It does **not** start a print in

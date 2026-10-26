@@ -316,36 +316,42 @@ def free_port() -> int:
 # ~~ provisioning the sources and the images
 
 
-def install(stack: Stack) -> dict[str, int]:
-    """Clone the pinned sources and build the images, doing nothing already done.
-
-    Returns:
-        The host port chosen for each service that publishes one.
-    """
+def install(stack: Stack) -> None:
+    """Clone the pinned sources and build the images, doing nothing already done."""
     _require_docker()
     _make_state_dir(stack)
     _clone(stack)
-    ports = _chosen_ports(stack)
-    _write_override(stack, ports)
+    _write_override(stack)
     _build(stack)
-    return ports
 
 
-def _chosen_ports(stack: Stack) -> dict[str, int]:
-    """The host port for each published service, keeping a running stack's own.
+def published_ports(stack: Stack) -> dict[str, int]:
+    """The host port Docker published each service on, read back from Docker itself.
 
-    Fresh ports on every call would be a different override on every call, and
-    `docker compose up -d` would then recreate four containers each time `up` is
-    run against a stack that is already up — which is what a caller running the
-    bring-up recipe and then the tier does.
+    The override names no host port, so Docker binds a free one as it starts each
+    container: nothing reserved a port and released it for Docker to take, so no
+    other process can have taken it first.
+
+    Raises:
+        StartupError: If Docker names no port for a service it was told to publish.
     """
-    published = [service.name for service in SERVICES if service.port is not None]
-    if stack.record.is_file() and running(stack):
-        recorded = json.loads(stack.record.read_text(encoding="utf-8")).get("ports", {})
-        if all(name in recorded for name in published):
-            note(f"keeping the ports the running stack already published: {recorded}")
-            return {name: int(recorded[name]) for name in published}
-    return {name: free_port() for name in published}
+    ports: dict[str, int] = {}
+    for service in SERVICES:
+        if service.port is None:
+            continue
+        asked = run_program(stack.compose("port", service.name, str(service.port)), timeout=120)
+        _, _, port = asked.stdout.strip().rpartition(":")
+        if asked.returncode != 0 or not port.isdigit():
+            raise StartupError(
+                "port-unpublished",
+                f"Docker published no host port for {service.name}'s {service.port}:\n"
+                f"{asked.stdout}",
+            )
+        ports[service.name] = int(port)
+    note(
+        "published " + ", ".join(f"{name} on {HOST}:{port}" for name, port in sorted(ports.items()))
+    )
+    return ports
 
 
 def _require_docker() -> None:
@@ -405,18 +411,19 @@ def _clone(stack: Stack) -> None:
         )
 
 
-def override(ports: dict[str, int], webhook_host: str = CONTAINER_HOST_ALIAS) -> str:
+def override(webhook_host: str = CONTAINER_HOST_ALIAS) -> str:
     """The compose override this script writes over Obico's own composition.
 
     Obico's own `docker-compose.yml` is left exactly as that project ships it —
     this is a self-hosted Obico rather than a rewrite of one. The override adds
-    two things and nothing else: a published host port per service, so two runs
-    on one host do not collide and a caller can poll each service itself, and
+    two things and nothing else: a host port per service, left for Docker to
+    choose so two runs on one host do not collide and a caller can poll each
+    service itself on the port `published_ports` reads back, and
     the host alias the webhook is delivered to, because the plugin posts from a
     container and the caller listens on the host.
     """
     published = {
-        service.name: [f"{HOST}:{ports[service.name]}:{service.port}"]
+        service.name: [f"{HOST}::{service.port}"]
         for service in SERVICES
         if service.port is not None
     }
@@ -433,12 +440,13 @@ def override(ports: dict[str, int], webhook_host: str = CONTAINER_HOST_ALIAS) ->
     return "\n".join(lines) + "\n"
 
 
-def _write_override(stack: Stack, ports: dict[str, int]) -> None:
-    """Write the override beside the state directory, naming the chosen ports."""
-    stack.override_file.write_text(override(ports), encoding="utf-8")
-    note(
-        "published " + ", ".join(f"{name} on {HOST}:{port}" for name, port in sorted(ports.items()))
-    )
+def _write_override(stack: Stack) -> None:
+    """Write the override beside the state directory.
+
+    It is the same document on every run, so `docker compose up -d` against a
+    stack that is already up recreates nothing and the ports it published stay.
+    """
+    stack.override_file.write_text(override(), encoding="utf-8")
 
 
 def _build(stack: Stack) -> None:
@@ -691,9 +699,10 @@ def up(
     """
     if announcing:
         announce(webhook_url)
-    ports = install(stack)
+    install(stack)
     start(stack)
     try:
+        ports = published_ports(stack)
         wait_for_services(stack, ports, timeout)
         site = f"localhost:{ports['web']}"
         provisioned = provision(stack, site=site, webhook_url=webhook_url)
@@ -827,7 +836,11 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "down":
             answer = down(stack)
         elif arguments.command == "install":
-            answer = {"state_dir": str(stack.state_dir), "ports": install(stack)}
+            install(stack)
+            answer = {
+                "state_dir": str(stack.state_dir),
+                "override_file": str(stack.override_file),
+            }
         else:
             answer = up(
                 stack,

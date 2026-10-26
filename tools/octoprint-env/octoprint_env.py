@@ -718,11 +718,78 @@ def multipart(fields: dict[str, str], file_name: str, content: bytes) -> tuple[b
 # ~~ starting, waiting and stopping
 
 
-def free_port() -> int:
-    """A port nothing is listening on, so two runs on one host do not collide."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind((HOST, 0))
-        return int(probe.getsockname()[1])
+#: The port a server is told to listen on when it is to choose a free one itself.
+ANY_PORT = 0
+
+#: What reads the TCP ports a process tree is listening on. It runs under the
+#: instance's own interpreter, which carries `psutil` as one of OctoPrint's own
+#: dependencies, and it reads the whole tree because a Windows console-script
+#: launcher starts the interpreter that listens as a child of its own.
+LISTENING_PORTS = (
+    "import json, sys, psutil\n"
+    "root = psutil.Process(int(sys.argv[1]))\n"
+    "ports = set()\n"
+    "for process in [root, *root.children(recursive=True)]:\n"
+    "    try:\n"
+    "        connections = process.net_connections('tcp')\n"
+    "    except psutil.Error:\n"
+    "        continue\n"
+    "    ports.update(c.laddr.port for c in connections if c.status == psutil.CONN_LISTEN)\n"
+    "print(json.dumps(sorted(ports)))\n"
+)
+
+
+def listening_ports(venv: Path, pid: int) -> list[int]:
+    """The TCP ports the process tree rooted at `pid` is listening on now.
+
+    `venv` is the instance's environment, whose interpreter does the reading.
+    """
+    python = environment_program(venv, "python")
+    ran = _run([str(python), "-c", LISTENING_PORTS, str(pid)], timeout=60)
+    if ran.returncode != 0:
+        return []
+    try:
+        ports = json.loads(ran.stdout)
+    except json.JSONDecodeError:
+        return []
+    return [port for port in ports if isinstance(port, int)] if isinstance(ports, list) else []
+
+
+def bound_port(instance: Instance, pid: int, timeout: float) -> int:
+    """The port a server started on port zero bound for itself, once its API answers there.
+
+    Nothing reserved the port and let it go for the server to take, so no other
+    process can have taken it first. Its own API answering is what identifies
+    it: OctoPrint first serves a start-up page from an intermediary server on a
+    port of its own, closes that, and only then binds the one it serves on.
+
+    Raises:
+        StartupError: If the server stops, or never answers on a port it bound.
+    """
+    key = api_key(instance)
+    deadline = time.monotonic() + timeout
+    seen: list[int] = []
+    while time.monotonic() < deadline:
+        if not alive_after_reaping(pid):
+            raise StartupError(
+                "never-answered",
+                f"the server exited before it answered; read {instance.server_log}",
+            )
+        seen = listening_ports(instance.venv, pid)
+        for candidate in seen:
+            try:
+                status, _ = call(f"http://{HOST}:{candidate}", key, "/api/version", timeout=5.0)
+            except OSError, http.client.HTTPException:
+                continue
+            if status == 200:
+                note(f"OctoPrint chose port {candidate} and is answering its own API there")
+                return candidate
+        time.sleep(1.0)
+    raise StartupError(
+        "never-answered",
+        f"the server answered its API on none of the ports it listened on ({seen}) within "
+        f"{timeout:.0f}s; read {instance.server_log}",
+    )
 
 
 def claim_port(port: int) -> None:
@@ -855,7 +922,8 @@ def start_server(instance: Instance, port: int) -> int:
         argv.append("--iknowwhatimdoing")
     with instance.server_log.open("a", encoding="utf-8") as log:
         process = _spawn(argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    note(f"started OctoPrint on {HOST}:{port} as process {process.pid}")
+    where = "a port of its own choosing" if port == ANY_PORT else f"port {port}"
+    note(f"started OctoPrint on {HOST}, {where}, as process {process.pid}")
     return process.pid
 
 
@@ -1169,8 +1237,11 @@ def up(instance: Instance, port: int | None, *, printing: bool, timeout: float) 
     # reason to install OctoPrint first.
     claim_device(instance.connection)
     install(instance)
-    chosen = free_port() if port is None else port
-    claim_port(chosen)
+    # Given no port, the server binds a free one itself and is asked which, so
+    # no port is reserved and released for another process to take first.
+    chosen = ANY_PORT if port is None else port
+    if port is not None:
+        claim_port(port)
 
     url = f"http://{HOST}:{chosen}"
     pid = start_server(instance, chosen)
@@ -1190,6 +1261,11 @@ def up(instance: Instance, port: int | None, *, printing: bool, timeout: float) 
     instance.record.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     try:
+        if port is None:
+            chosen = bound_port(instance, pid, timeout)
+            url = f"http://{HOST}:{chosen}"
+            summary.update(url=url, port=chosen)
+            instance.record.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         wait_for_api(instance, url, pid, timeout)
         wait_for_printer(instance, url, timeout)
         if printing:

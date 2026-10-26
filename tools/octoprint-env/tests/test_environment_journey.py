@@ -29,6 +29,7 @@ from environment import (
     said,
     script,
 )
+from octoprint_env import ANY_PORT, command_of, listening_ports
 from repo_checks.expect import contains, equal, passing, truth
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -156,6 +157,21 @@ def _starts_answering_and_connected(state: str) -> dict[str, object]:
     equal(status, 200, describing=f"the API of {url} at the moment the start returned")
     truth(isinstance(version, dict), describing="a decoded /api/version answer")
     contains(CONNECTED, printer_state(url, key), describing="printer states that are connected")
+
+    # The port was the server's own choice rather than one reserved and let go
+    # for it: it was started on port zero, and the port reported is one its own
+    # process tree is listening on.
+    pid = int(str(started["pid"]))
+    contains(
+        command_of(pid),
+        f"--port {ANY_PORT}",
+        describing="the command line the server was started with",
+    )
+    contains(
+        listening_ports(Path(state) / "venv", pid),
+        started["port"],
+        describing="the ports the server's own process tree listens on",
+    )
     return started
 
 
