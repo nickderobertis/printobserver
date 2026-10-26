@@ -3,10 +3,12 @@
 Every platform reports two required contexts, `gate (<platform>)` and
 `integration (<platform>)`. Either may be one job, or — where its work does not
 fit one runner in the time a platform is held to — shard jobs and an aggregating
-job that keeps the required name and `needs` every shard. Whichever it is, what a
-pull request waits on is the span from the first of those jobs to start to the
-aggregator's end, and this module is the one reading of that span: the four name
-formats are declared here and nowhere else, `ci.yml`'s job names are held to them
+job that keeps the required name and `needs` every shard. A platform may instead
+run both kinds' work in one combined job, whose two lanes the two required jobs
+each report; both contexts are then waited on for that whole job. Whichever it
+is, what a pull request waits on is the span from the first of those jobs to
+start to the aggregator's end, and this module is the one reading of that span:
+the five name formats are declared here and nowhere else, `ci.yml`'s job names are held to them
 by a test, and whatever measures or budgets the wait imports `platform_span`
 rather than restating it.
 
@@ -30,6 +32,7 @@ from datetime import datetime
 from typing import Literal
 
 __all__ = [
+    "COMBINED_JOB",
     "GATE_JOB",
     "INTEGRATION_JOB",
     "INTEGRATION_SHARD_JOB",
@@ -49,6 +52,9 @@ SHARD_JOB = "gate-shard ({platform}, {index}/{count})"
 INTEGRATION_JOB = "integration ({platform})"
 #: One shard of a sharded integration job, `index` from 1 to `count`.
 INTEGRATION_SHARD_JOB = "integration-shard ({platform}, {index}/{count})"
+#: One job running both the gate's and the integration tier's work of a
+#: platform, each lane reported by that kind's required job: behind both contexts.
+COMBINED_JOB = "{platform} (gate, integration)"
 
 #: Each kind's required name and shard name.
 _FORMATS: dict[str, tuple[str, str]] = {
@@ -98,7 +104,8 @@ class GateSpan:
     kind: str
     #: The earliest recorded start among the platform's jobs of this kind.
     started_at: datetime
-    #: The aggregator — the job carrying the required name — and then its shards.
+    #: The aggregator — the job carrying the required name — then the platform's
+    #: combined job where it has one, and then its shards.
     jobs: tuple[GateJob, ...]
 
     def seconds_to(self, now: datetime) -> float:
@@ -182,18 +189,23 @@ def platform_span(
     kind: Literal["gate", "integration"],
     platform: str,
 ) -> GateSpan:
-    """The span of `platform`'s required job of `kind`, and of every shard of it.
+    """The span of `platform`'s required job of `kind`, and of every job behind it.
+
+    Behind it are its shards, and the platform's combined job where one ran
+    both kinds' work.
 
     Raises:
         GateJobsError: Naming the kind and platform, if the job carrying the
-            required name is absent or reported twice, none of its jobs has
-            started, or its shards' indices are not 1 to their count under one
-            count.
+            required name or the combined job is reported twice, the former is
+            absent, none of its jobs has started, or its shards' indices are not
+            1 to their count under one count.
     """
     required_name, shard_name = _FORMATS[kind]
     required = required_name.format(platform=platform)
+    combined_name = COMBINED_JOB.format(platform=platform)
     shard_pattern = _pattern(shard_name)
     aggregator: GateJob | None = None
+    combined: GateJob | None = None
     shards: dict[int, GateJob] = {}
     counts: set[int] = set()
     for entry in jobs:
@@ -203,6 +215,12 @@ def platform_span(
                 msg = f"{required}: reported twice, so which is its verdict is not known"
                 raise GateJobsError(msg)
             aggregator = _job(entry, kind, platform)
+            continue
+        if name == combined_name:
+            if combined is not None:
+                msg = f"{required}: {combined_name} is reported twice"
+                raise GateJobsError(msg)
+            combined = _job(entry, kind, platform)
             continue
         matched = shard_pattern.match(name) if isinstance(name, str) else None
         if matched is None or matched["platform"] != platform:
@@ -222,7 +240,8 @@ def platform_span(
             f"1 to their count under one count"
         )
         raise GateJobsError(msg)
-    span_jobs = (aggregator, *(shards[index] for index in sorted(shards)))
+    behind = () if combined is None else (combined,)
+    span_jobs = (aggregator, *behind, *(shards[index] for index in sorted(shards)))
     starts = [job.started_at for job in span_jobs if job.started_at is not None]
     if not starts:
         msg = f"{required}: no job of the {kind} of {platform} has started"

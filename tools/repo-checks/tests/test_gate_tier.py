@@ -314,6 +314,13 @@ def test_an_empty_tier_from_a_selector_that_failed_is_refused_by_the_gate() -> N
     failing(ran, naming="unknown tier ''")
 
 
+#: The one condition a required macOS job runs under: the lane is owed, or a pull
+#: request's classification could not be read, since unknown is never omission.
+MACOS_OWED = (
+    "!cancelled() && (needs.classify.outputs.macos-required == 'true' || "
+    "(github.event_name == 'pull_request' && needs.classify.result != 'success'))"
+)
+
 #: The status contexts a pull request to the base branch must always report,
 #: whatever the affected set reaches — the fixed contract this repository's
 #: protection names, as the plan read it.
@@ -362,18 +369,38 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
         job = jobs[context.job]
         condition = job.get("if")
         needs = job.get("needs")
+        if needs == "classify":
+            # A macOS lane's job runs where the classifier owes the lane, and on
+            # a pull request it could not classify; where it is not owed the
+            # job is skipped, which the forge reports as a passing context.
+            equal(
+                " ".join(str(condition).split()),
+                MACOS_OWED,
+                describing=f"`{context.job}`'s condition, waiting on the classifier",
+            )
+            continue
         if needs is not None:
             # A carrier of a consolidated lane, or the aggregator of a sharded
             # context, waits on the jobs doing the work and reports whatever
             # they ended as: `always()` is what no result can skip. A shard it
-            # waits on is held to running on every pull request instead.
+            # waits on is held to running on every pull request instead — but
+            # the macOS gate's, which runs where the classifier owes the lane,
+            # and whose aggregator is skipped exactly where they all were.
+            waited = [needs] if isinstance(needs, str) else needs
+            owed = [key for key in waited if jobs[key].get("needs") == "classify"]
             equal(
-                condition,
-                "always()",
+                " ".join(str(condition).split()),
+                f"always() && needs.{owed[0]}.result != 'skipped'" if owed else "always()",
                 describing=f"`{context.job}`'s condition, waiting on {needs}",
             )
-            for key in [needs] if isinstance(needs, str) else needs:
-                if not is_shard_job(jobs[key]):
+            for key in owed:
+                equal(
+                    " ".join(str(jobs[key].get("if")).split()),
+                    MACOS_OWED,
+                    describing=f"`{key}`'s condition, waiting on the classifier",
+                )
+            for key in waited:
+                if not is_shard_job(jobs[key]) or key in owed:
                     continue
                 equal(jobs[key].get("needs"), None, describing=f"what `{key}` waits on")
                 truth(

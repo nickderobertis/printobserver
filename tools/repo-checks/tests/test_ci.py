@@ -82,9 +82,13 @@ def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
 
 
 def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
-    """A configuration with no complete-gate job proves nothing."""
+    """A configuration with no complete-gate job proves nothing.
+
+    The gate's cells and the macOS gate each run it, so it is taken from every one.
+    """
     broken = tree()
-    broken.edit(CI, GATE_STEP, "")
+    while GATE_STEP in broken.read(CI):
+        broken.edit(CI, GATE_STEP, "")
 
     findings = continuous_integration(broken.repo)
 
@@ -96,7 +100,8 @@ def test_a_gate_job_omitting_the_bootstrap_recipe_is_refused(
 ) -> None:
     """A gate that never bootstrapped is a gate over somebody else's environment."""
     broken = tree()
-    broken.edit(CI, "      - run: just bootstrap\n", "      - run: just install-tools\n")
+    while "      - run: just bootstrap\n" in broken.read(CI):
+        broken.edit(CI, "      - run: just bootstrap\n", "      - run: just install-tools\n")
 
     findings = continuous_integration(broken.repo)
 

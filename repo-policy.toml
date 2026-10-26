@@ -776,7 +776,7 @@ waived_steps = [
 ]
 waived_report = "GITHUB_STEP_SUMMARY"
 
-# A platform cell ONE consolidated job carries for several platform-dependent
+# A platform cell a consolidated job carries for one or more platform-dependent
 # jobs, each of which then omits it. Not a cell that does not run — it runs,
 # inside the carrier — so it is recorded here rather than in AGENTS.md's
 # exclusions block, whose entries are bring-ups still owed. `just check-repo`
@@ -785,16 +785,10 @@ waived_report = "GITHUB_STEP_SUMMARY"
 # consolidated macOS lanes" is the prose half.
 [[workflows.carried]]
 platform = "macos-aarch64"
-jobs = ["gate", "integration"]
-carrier = "ci.yml:macos"
-runs = [
-  "just bootstrap",
-  "just check",
-  "just octoprint-up",
-  "just test-integration",
-  "just octoprint-down",
-]
-reason = "the account's few macOS slots are shared with other repositories, so a pull request's gate and printer integration tier run as one macOS job, owed only where the classifier says so; `gate (macos-aarch64)` and `integration (macos-aarch64)` are carried from Linux, each reporting that job's own lane"
+jobs = ["integration"]
+carrier = "ci.yml:integration-macos"
+runs = ["just bootstrap", "just octoprint-up", "just test-integration", "just octoprint-down"]
+reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS printer integration tier runs as a job of its own beside the macOS gate job, owed only where the classifier says so, and reports `integration (macos-aarch64)` itself"
 
 [[workflows.carried]]
 platform = "macos-aarch64"
@@ -953,6 +947,20 @@ command = "gh"
 version = "2.100.0"
 bootstrap = false
 install = "uv run -q python -m repo_checks install-gh {version}"
+
+# onebudgetspec, which checks the root `budgets.yaml`'s `gate-time` in the
+# `gate-time` step of every required gate and integration job, and which
+# `repo_checks gate_time_budget` reports that figure through. Held at the
+# release the budget was registered on, 2026-10-25. The `dev` dependency group
+# pins `onebudgetspec-sdk` at this same release — `test_gate_time_budget.py`
+# holds the two together — and that SDK requires `onebudgetspec-cli` at its
+# own release, whose wheel puts this binary in the environment `uv run` gives
+# every recipe; where a host's PATH carries no copy at all, `install` puts this
+# release on it.
+[[toolchain.tool]]
+command = "onebudgetspec"
+version = "0.1.5"
+install = "uv tool install onebudgetspec-cli=={version}"
 
 # PowerShell, for the three end-to-end journeys that drive the committed
 # PowerShell install script and the Windows service installer the way a caller

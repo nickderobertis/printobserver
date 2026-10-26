@@ -16,7 +16,7 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from closures import closure
@@ -24,6 +24,7 @@ from repo_checks import gate_jobs
 from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal
 from repo_checks.gate_jobs import (
+    COMBINED_JOB,
     GATE_JOB,
     INTEGRATION_JOB,
     INTEGRATION_SHARD_JOB,
@@ -51,10 +52,18 @@ IN_FLIGHT = 38710213811
 #: split into two shards: each queued 2 s, and the aggregator queued 60 s for its
 #: runner after the last shard completed.
 SHARDED = 38887035697
+#: A finished pull-request run at bb2fc63: both Windows gates in four shards, and
+#: the combined `macos-aarch64 (gate, integration)` job running both macOS lanes
+#: for 2,573 s, its two contexts carried from Linux after it.
+COMBINED = 40235536077
+#: A finished push to `main` at b75c483: the classifier owed no macOS lane, so the
+#: combined job was skipped and both macOS contexts carried that omission.
+OMITTED = 40239073093
 
 CI = ".github/workflows/ci.yml"
-#: The job keys whose cells report a gate or integration context.
-KEYS = ("gate", "integration")
+#: The job keys whose cells report a gate or integration context, or the
+#: combined job behind a platform's two.
+KEYS = ("gate", "integration", "macos")
 
 
 def recorded(run: int) -> list[dict[str, Any]]:
@@ -78,6 +87,7 @@ def test_the_module_exposes_exactly_the_contract() -> None:
         sorted(gate_jobs.__all__),
         sorted(
             [
+                "COMBINED_JOB",
                 "GATE_JOB",
                 "SHARD_JOB",
                 "INTEGRATION_JOB",
@@ -96,6 +106,7 @@ def test_the_module_exposes_exactly_the_contract() -> None:
     equal(
         INTEGRATION_SHARD_JOB.format(platform="p", index=2, count=2), "integration-shard (p, 2/2)"
     )
+    equal(COMBINED_JOB.format(platform="p"), "p (gate, integration)")
 
 
 def test_an_unsharded_gate_spans_its_one_job_from_its_start_to_its_completion() -> None:
@@ -224,6 +235,56 @@ def test_a_sharded_gate_missing_a_shard_is_refused_naming_it() -> None:
     contains(str(refused.value), "not 1 to their count")
 
 
+@pytest.mark.parametrize(
+    ("kind", "carrier_completed", "seconds"),
+    [("gate", "22:11:21", 2581.0), ("integration", "22:11:22", 2582.0)],
+)
+def test_both_macos_contexts_span_the_combined_job_and_their_carrier(
+    kind: Literal["gate", "integration"], carrier_completed: str, seconds: float
+) -> None:
+    """Each macOS context is waited on from the combined job's start to its own carrier's end."""
+    span = platform_span(recorded(COMBINED), kind, "macos-aarch64")
+
+    equal(span.started_at, at("2026-10-25T21:28:20"))
+    equal(
+        [job.name for job in span.jobs],
+        [f"{kind} (macos-aarch64)", "macos-aarch64 (gate, integration)"],
+    )
+    equal(span.jobs[1].queue_seconds, 3.0)
+    equal(span.jobs[1].duration_seconds, 2573.0)
+    equal(span.jobs[0].completed_at, at(f"2026-10-25T{carrier_completed}"))
+    equal(span.completed_seconds, seconds)
+
+
+def test_a_skipped_combined_job_leaves_the_carrier_its_own_span() -> None:
+    """A run owing no macOS lane skipped the combined job, which never started."""
+    span = platform_gate(recorded(OMITTED), "macos-aarch64")
+
+    equal([job.started_at for job in span.jobs], [at("2026-10-25T22:12:51"), None])
+    equal(span.started_at, at("2026-10-25T22:12:51"))
+    equal(span.completed_seconds, 8.0)
+
+
+def test_the_combined_job_reported_twice_is_refused_naming_it() -> None:
+    """Two combined jobs are two answers to which ran the platform's lanes."""
+    jobs = recorded(COMBINED)
+    combined = next(job for job in jobs if job["name"] == "macos-aarch64 (gate, integration)")
+
+    with pytest.raises(GateJobsError) as refused:
+        platform_span([*jobs, combined], "integration", "macos-aarch64")
+    contains(
+        str(refused.value),
+        "integration (macos-aarch64): macos-aarch64 (gate, integration) is reported twice",
+    )
+
+
+def test_another_platform_s_combined_job_is_not_behind_this_one() -> None:
+    """Linux's gate is its one job, whatever macOS combined."""
+    span = platform_gate(recorded(COMBINED), "linux-x86_64")
+
+    equal([job.name for job in span.jobs], ["gate (linux-x86_64)"])
+
+
 def _with(run: int, name: str, **fields: object) -> list[dict[str, Any]]:
     """One recorded document's jobs, with job `name`'s `fields` replaced.
 
@@ -327,7 +388,8 @@ def drifted(repo: Repo) -> list[str]:
     drift seen from the other side.
     """
     formats = [
-        _pattern(one) for one in (GATE_JOB, SHARD_JOB, INTEGRATION_JOB, INTEGRATION_SHARD_JOB)
+        _pattern(one)
+        for one in (GATE_JOB, SHARD_JOB, INTEGRATION_JOB, INTEGRATION_SHARD_JOB, COMBINED_JOB)
     ]
     reported = [
         context.name

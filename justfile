@@ -634,6 +634,14 @@ install-pool-maintenance:
 pool-maintenance:
     cargo-prune-superseded --keep-within 2d target
 
+# The `gate-time` step every required gate and integration job ends with: the
+# onebudgetspec check of the root `budgets.yaml`'s `gate-time`, for the context
+# `GATE_TIME_KIND` and `PRINTOBSERVER_PLATFORM` name, read off the current run's
+# jobs. Over its threshold it fails that required context, except on the
+# release pull request's full sweep, where it reports the figure and passes.
+gate-time:
+    uv run -q python -m repo_checks gate_time_budget check
+
 # Whether this run owes the macOS lane, as the `name=value` lines the `classify`
 # job of `ci.yml` appends to its outputs: `macos-required` and `reason`. EVENT
 # is the forge's event payload, BASE and HEAD the two commits the pull request

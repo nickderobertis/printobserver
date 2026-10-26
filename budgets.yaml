@@ -1,0 +1,27 @@
+schema_version: 1
+budgets:
+  - id: gate-time
+    description: >-
+      The critical path of one platform's required context — `gate
+      (<platform>)` or `integration (<platform>)` — in its jobs' own running
+      time, read from the current workflow run's recorded jobs: the longest job
+      behind the context (a shard, or the combined `macos-aarch64 (gate,
+      integration)` job of older runs), from its start to its end, and then the
+      reporting job from its start to the start of its own `gate-time` step.
+      It is how long a pull request's check takes to run. Inner measure, because
+      a figure read inside the required job is what lets an over-budget context
+      fail its own required check, and a job waiting for a runner is GitHub
+      capacity outside the repository's control: every queue, and the span on
+      the clock from the first start, is reported in the detail beside every
+      job behind the context with its start, end and queue seconds and each
+      step's recorded duration. Sized for 10 required contexts — gate and
+      integration on each of 5 platforms — on every pull-request push and push
+      to main, about 1.6 merged pull requests a day. Enforced by the `gate-time`
+      step of every job reporting one of those contexts; the release pull
+      request's full sweep is measured and reported but not enforced.
+    measure: reported
+    command: ["uv", "run", "python", "-m", "repo_checks", "gate_time_budget"]
+    unit: seconds
+    direction: max
+    threshold: 1800
+    timeout_seconds: 120

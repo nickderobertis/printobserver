@@ -10,6 +10,7 @@ from collections.abc import Callable
 import yaml
 from closures import closure
 from repo_checks.checks_ci import platform_dependent_kinds, platforms, platforms_of
+from repo_checks.checks_integration import integration_tier
 from repo_checks.expect import (
     absent,
     accepted,
@@ -23,7 +24,7 @@ from repo_checks.model import Repo
 from treecopy import Tree
 
 #: The files the checks this module drives read; see `closures`.
-CLOSURE = closure("platforms")
+CLOSURE = closure("platforms", "integration-tier")
 
 EMPTY_BLOCK = "[//]: # (BEGIN supported-platforms)\n[//]: # (END supported-platforms)"
 AARCH64 = (
@@ -93,7 +94,7 @@ def test_a_policy_whose_table_is_not_a_table_is_refused(
         "repo-policy.toml", "schema_version = 1\n", 'schema_version = 1\nworkflows = "yes"\n'
     )
     broken.edit("repo-policy.toml", "\n[workflows]\n", "\n[workflow-settings]\n")
-    for _ in range(2):
+    while "[[workflows.carried]]" in broken.read("repo-policy.toml"):
         broken.edit("repo-policy.toml", "[[workflows.carried]]", "[[workflow-settings.carried]]")
 
     findings = platforms(broken.repo)
@@ -324,24 +325,34 @@ def test_a_carried_cell_whose_carrier_runs_on_another_runner_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "carrier `ci.yml:macos`", "does not run on `macos-15`")
-    refused_naming(findings, "job `gate`'s matrix omits platform `macos-aarch64`")
+    refused_naming(findings, "carrier `ci.yml:integration-macos`", "does not run on `macos-15`")
+    refused_naming(
+        integration_tier(broken.repo),
+        "the integration job `integration`'s matrix omits platform `macos-aarch64`",
+    )
 
 
 def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """The one macOS job owes the integration tier as much as the gate."""
+    """The macOS integration job owes the integration tier its cell ran."""
     broken = tree()
+    carried = (
+        "          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}\n"
+        "      - run: just release-program\n"
+        "      - run: just octoprint-up\n"
+    )
     broken.edit(
         ".github/workflows/ci.yml",
-        "        run: just test-integration\n",
-        "        run: just octoprint-down\n",
+        carried + "      - run: just test-integration\n",
+        carried + "      - run: just octoprint-down\n",
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "carrier `ci.yml:macos`", "does not run `just test-integration`")
+    refused_naming(
+        findings, "carrier `ci.yml:integration-macos`", "does not run `just test-integration`"
+    )
 
 
 def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
