@@ -17,6 +17,7 @@ serving a working artifact passes.
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import os
@@ -633,6 +634,42 @@ def test_the_stand_in_answers_nothing_for_a_path_it_does_not_serve(
 
     equal(answer.status, 404, describing="what a name nothing is published under answers")
     contains(answer.body.decode(), "not served here", describing="what it said")
+
+
+def test_a_replaced_stand_ins_stop_leaves_its_replacement_answering(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """Stopping the stand-in a later one took over stops nothing the later one answers.
+
+    The listener is the replacement's from the handover on, so a reader asking
+    after the replaced one was stopped is answered, and by the replacement
+    alone; only the replacement's own stop closes the address.
+    """
+    replaced = Registries(repo, tmp_path / "replaced")
+    replacement = Registries(repo, tmp_path / "replacement", replacing=replaced)
+    host, port = replacement.base.removeprefix("http://").rsplit(":", 1)
+
+    def ask(path: str) -> int:
+        connection = http.client.HTTPConnection(host, int(port), timeout=10)
+        try:
+            connection.request("GET", path)
+            return connection.getresponse().status
+        finally:
+            connection.close()
+
+    try:
+        replaced.stop()
+        equal(ask("/npm/asked-after-the-stop"), 404, describing="what the replacement answered")
+        equal(
+            replacement.asked,
+            ["/npm/asked-after-the-stop"],
+            describing="the reads the replacement answered",
+        )
+        equal(replaced.asked, [], describing="the reads the replaced stand-in answered")
+    finally:
+        replacement.stop()
+    with pytest.raises(ConnectionRefusedError):
+        ask("/npm/asked-after-both-stopped")
 
 
 @ROUTE_PROOF
