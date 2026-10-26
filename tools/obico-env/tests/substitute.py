@@ -17,8 +17,10 @@ from __future__ import annotations
 import json
 import threading
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any
+
+from repo_checks.loopback import LoopbackServer
 
 CONTROL_PATH = "/control/alert"
 IMAGE_PATH = "/snapshot.jpg"
@@ -67,7 +69,7 @@ class Substitute:
             def log_message(self, format: str, *args: object) -> None:
                 """Say nothing: the journey's own assertions are the signal."""
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = LoopbackServer(Handler)
         self.port = int(self.server.server_address[1])
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 

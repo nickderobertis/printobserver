@@ -22,9 +22,11 @@ import json
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Self
 from urllib.parse import parse_qs, unquote, urlsplit
+
+from repo_checks.loopback import LoopbackServer
 
 from release_artifacts.github_issues import (
     CREATE_COMMENT,
@@ -120,7 +122,7 @@ class IssuesForge:
         self._refused: dict[tuple[str, str], tuple[int, str]] = {}
         self._garbled: set[tuple[str, str]] = set()
         self._lock = threading.Lock()
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(self))
+        self._server = LoopbackServer(_handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

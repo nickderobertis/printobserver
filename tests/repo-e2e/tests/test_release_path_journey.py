@@ -30,7 +30,7 @@ import shutil
 import threading
 import tomllib
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
@@ -49,6 +49,7 @@ from journey import (
 from release_artifacts import arming, bumping
 from release_artifacts.arming import DRAFTED_SAMPLE
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
 from test_release_program import step_arguments
@@ -111,7 +112,7 @@ class EmptyIndex:
     def __init__(self) -> None:
         """Start answering on a port the operating system chooses."""
         self.asked: list[str] = []
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self._server = LoopbackServer(self._handler())
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 
@@ -634,7 +635,7 @@ class DraftingForge:
         self.owner, self.name = owner, name
         self.asked: list[str] = []
         self.opened: list[str] = []
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self._server = LoopbackServer(self._handler())
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

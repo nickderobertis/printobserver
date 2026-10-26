@@ -67,7 +67,7 @@ import time
 import tomllib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path, PurePath, PurePosixPath
 from typing import NewType, Protocol
 
@@ -88,6 +88,7 @@ from journey import (
 from repo_checks import install_path as ip
 from repo_checks.checks_service import ACTIVATION_NAMES, installer_for
 from repo_checks.expect import absent, contains, equal, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.model import Repo
 from repo_checks.platforms import ServiceManager
 from repo_checks.shell import run as shell_run
@@ -158,7 +159,7 @@ class _AnswersEveryRead(BaseHTTPRequestHandler):
 def octoprint() -> Iterator[str]:
     """Where a stand-in OctoPrint answers, for as long as the journey runs."""
     # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _AnswersEveryRead)
+    server = LoopbackServer(_AnswersEveryRead)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

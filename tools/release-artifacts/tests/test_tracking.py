@@ -19,6 +19,7 @@ from release_artifacts.issues_standin import IssuesForge
 from release_artifacts.registries import RefusedError, Token, exchange
 from release_artifacts.tracking import LABEL, TITLE, outcomes
 from repo_checks.expect import contains, equal, truth
+from repo_checks.loopback import name_service_refused
 
 REPOSITORY = "nickderobertis/printobserver"
 #: What the stand-in authenticates the run by: minted per load, never a real token.
@@ -35,6 +36,19 @@ def forge(monkeypatch: pytest.MonkeyPatch) -> Iterator[IssuesForge]:
         monkeypatch.setenv("GITHUB_REPOSITORY", REPOSITORY)
         monkeypatch.setenv("GITHUB_TOKEN", CREDENTIAL)
         yield standing
+
+
+def test_the_forge_is_ready_with_every_lookup_refused() -> None:
+    """Started where nothing resolves, the stand-in forge answers its first request."""
+    with name_service_refused():
+        standing = IssuesForge(REPOSITORY, CREDENTIAL)
+    try:
+        answered = json.loads(
+            exchange(f"{standing.api}/repos/{REPOSITORY}/issues", token=CREDENTIAL, expect=200)
+        )
+    finally:
+        standing.stop()
+    equal(answered, [], describing="the issues a forge with none answers")
 
 
 def broken(run: int, *jobs: str) -> int:

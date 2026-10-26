@@ -31,13 +31,14 @@ import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import NamedTuple
 
 import pytest
 from journey import REPO_ROOT, clean_environment, plain
 from repo_checks.expect import absent, contains, equal, passing, truth
+from repo_checks.loopback import LoopbackServer
 from repo_checks.release_declaration import joined
 from repo_checks.shell import run
 
@@ -192,7 +193,7 @@ def _home(tmp_path: Path) -> Path:
 def probe(tmp_path: Path) -> Iterator[Probe]:
     """The probe, on a PATH whose `curl` reaches the doubled registries and nothing else."""
     registries = Registries()
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(registries))
+    server = LoopbackServer(_handler(registries))
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

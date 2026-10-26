@@ -249,7 +249,7 @@ class Registries:
         self._next_id = 1
         #: What a write of one artifact is refused with, by registry and name.
         self._refusals: dict[tuple[str, str], _Refusal] = {}
-        self._server = QuietServer(("127.0.0.1", 0), _handler(self))
+        self._server = QuietServer(_handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 

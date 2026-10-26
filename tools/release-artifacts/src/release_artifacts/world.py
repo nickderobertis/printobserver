@@ -21,7 +21,6 @@ import json
 import os
 import queue
 import secrets
-import socketserver
 import sqlite3
 import subprocess
 import sys
@@ -29,18 +28,19 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from socket import socket
 from types import TracebackType
 from typing import IO, NewType
 from urllib.parse import urlsplit
 
+from repo_checks.loopback import LoopbackServer
 from repo_checks.shell import run, start
 
 
-class QuietServer(ThreadingHTTPServer):
-    """A server whose peers may go away mid-connection without a traceback for it.
+class QuietServer(LoopbackServer):
+    """A loopback server whose peers may go away mid-connection without a traceback for it.
 
     The supervisor keeps its connections to the stand-in machine open, and
     stopping it closes them from its end. On Windows that reaches the handler
@@ -51,19 +51,6 @@ class QuietServer(ThreadingHTTPServer):
     proof's output needs, and on a tier whose pass is one line per proof, it is
     noise the journeys refuse.
     """
-
-    def server_bind(self) -> None:
-        """Bind, and name the server by the address it bound rather than by a lookup of it.
-
-        The base names itself with `socket.getfqdn`, a reverse lookup of the
-        bound address that nothing here reads, and on a hosted macOS runner that
-        lookup waits out a resolver timeout of about 35 seconds: once per
-        world, and so once per client journey.
-        """
-        socketserver.TCPServer.server_bind(self)
-        host, port = self.server_address[:2]
-        self.server_name = str(host)
-        self.server_port = int(port)
 
     def handle_error(self, request: socket | tuple[bytes, socket], client_address: object) -> None:
         """Say nothing of a peer that went away; report anything else as the base does."""
@@ -187,7 +174,7 @@ class Machine:
     def __init__(self) -> None:
         """Start answering on a port the operating system chooses."""
         self.asked: list[str] = []
-        self._server = QuietServer(("127.0.0.1", 0), _machine_handler(self))
+        self._server = QuietServer(_machine_handler(self))
         self._serving = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._serving.start()
 
