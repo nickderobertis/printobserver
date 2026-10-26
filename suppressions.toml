@@ -2344,6 +2344,12 @@ site = "def _spool_answers("
 reason = "This function composes the spool ledger's answers and events a stub hands the agent as the JSON documents the server would serve, and holds the spool, the preflight and every event payload to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the answer it returns is checked against each operation's answer schema by skilltest-wiring. A Python model would restate those schemas a second time beside the generated ones."
 
 [[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "def refused_closes("
+reason = "This method composes the answer a stub gives a refused close as the JSON document the server would serve, the module's convention its docstring states: it takes each document from the sibling `record` composer and changes only what a rejection changes (no execution or outcome, and the rejection's own decision), and skilltest-wiring holds every one to the server's generated `ActionAnswer` schema and to the field names of the documented example. A Python model would restate that schema a second time beside the generated one."
+
+[[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/store.rs"
 site = "pub file_name: String,"

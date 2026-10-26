@@ -695,6 +695,7 @@ class _Composer:
         """The records successive requests of one action answer, each its own."""
         return [self.record(operation, action, sequence) for sequence in range(RECORDS_PER_ACTION)]
 
+    # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
     def refused_closes(self, state: str) -> list[dict[str, Any]]:
         """The records successive closes of this print answer: each refused, as the page shows.
 
