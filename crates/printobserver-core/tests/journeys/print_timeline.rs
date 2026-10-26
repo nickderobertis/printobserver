@@ -21,8 +21,8 @@ use printobserver_types::PrintId;
 use crate::fakes::{PrinterMethod, StoreMethod};
 use crate::shelf::{
     FILE, SIZE, TOTAL_MM, assert_close, assert_ledger_explains, charges_to, ends, ends_on, every,
-    every_of, facts, grams, load, loaded_spool, on_tool, register, running_at, running_at_on,
-    spool_now, spool_world, start, tally_success,
+    every_of, facts, finishes, finishes_on, grams, load, loaded_spool, on_tool, register,
+    running_at, running_at_on, spool_now, spool_world, start, tally_success,
 };
 use crate::world::World;
 
@@ -86,7 +86,7 @@ fn a_completed_print_charges_the_analysed_length() {
     let print_id = start(&world);
     running_at(&world, SIZE / 2);
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     let started = started_of(&world, print_id);
     assert_eq!(
@@ -340,7 +340,7 @@ fn a_job_started_at_the_printer_is_adopted_and_charged() {
     let listing = block_on(world.core.list_and_adopt_prints()).expect("listed");
     let print_id = listing.active.expect("the job was adopted");
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     let started = started_of(&world, print_id);
     assert_eq!(started.started_by, None);
@@ -380,7 +380,7 @@ fn a_mid_print_swap_splits_the_print_between_the_two_spools() {
     let swap = load(&world, incoming.id, 0);
     assert_eq!(swap.decision, printobserver_core::PolicyDecision::Accepted);
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     let out = charges_to(&world, outgoing.id);
     let into = charges_to(&world, incoming.id);
@@ -419,7 +419,7 @@ fn a_tool_with_no_tracked_spool_is_recorded_uncharged() {
     let spool = loaded_spool(&world, "Tool Zero", 1_000.0);
     let print_id = start(&world);
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     let charges = charges_of(&world, print_id);
     assert_eq!(charges.len(), 2);
@@ -462,7 +462,7 @@ fn an_sd_card_print_marks_the_loaded_spool_uncharged() {
         .active
         .expect("adopted");
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Completed);
     assert!(charges_of(&world, print_id).is_empty());
@@ -538,7 +538,7 @@ fn the_same_file_printed_twice_is_two_prints_each_charged_once() {
     for _ in 0..2 {
         let print_id = start(&world);
         running_at(&world, SIZE);
-        ends(&world, PrinterState::Operational);
+        finishes(&world);
         tally_success(&world, world.clock.now());
         prints.push(print_id);
     }
@@ -668,7 +668,7 @@ fn a_restart_after_a_mid_print_swap_charges_only_the_remainder() {
 
     let restarted = world.restarted();
     running_at_on(&world, &restarted, SIZE);
-    ends_on(&world, &restarted, PrinterState::Operational);
+    finishes_on(&world, &restarted);
 
     let into = charges_to(&world, incoming.id);
     assert_eq!(into.len(), 1);
@@ -765,12 +765,53 @@ fn a_look_whose_position_is_refused_is_answered_and_a_later_read_records_it() {
     );
 }
 
-/// A print whose job reports itself complete as it ends is completed, though
-/// its last position fell short of the file's end and no tally says so; a
-/// completion reported for another file's job is not this print's.
+/// A print is completed only by a job read reporting both completion 1.0 and
+/// a file position at the file's size, of the print's own file — though its
+/// last running position fell short of the end and no tally says so. Either
+/// alone is no finish, and a finish reported for another file's job is not
+/// this print's: each of those ends it as a stop at the printer, charged what
+/// it extruded to its last position.
 #[test]
-fn a_job_reporting_its_own_completion_completes_the_print() {
-    for same_file in [true, false] {
+fn only_completion_at_the_file_s_size_completes_the_print() {
+    let cases = [
+        ("both", FILE, Some(1.0), Some(SIZE), PrintOutcome::Completed),
+        (
+            "completion alone",
+            FILE,
+            Some(1.0),
+            None,
+            PrintOutcome::Cancelled,
+        ),
+        (
+            "completion short of the end",
+            FILE,
+            Some(1.0),
+            Some(990_000),
+            PrintOutcome::Cancelled,
+        ),
+        (
+            "position alone",
+            FILE,
+            None,
+            Some(SIZE),
+            PrintOutcome::Cancelled,
+        ),
+        (
+            "position at the end, completion short",
+            FILE,
+            Some(0.99),
+            Some(SIZE),
+            PrintOutcome::Cancelled,
+        ),
+        (
+            "another file's finish",
+            "calibration.gcode",
+            Some(1.0),
+            Some(SIZE),
+            PrintOutcome::Cancelled,
+        ),
+    ];
+    for (case, file, completion, position, outcome) in cases {
         let world = spool_world();
         let spool = loaded_spool(&world, "Reported Complete", 1_000.0);
         let print_id = start(&world);
@@ -779,36 +820,27 @@ fn a_job_reporting_its_own_completion_completes_the_print() {
             .printer
             .extrudes(FILE, 990_000, vec![on_tool(0, 4_950.0)]);
         world.clock.advance(60);
-        world.printer.reports_completion(Some(1.0));
+        world.printer.reports_completion(completion);
         world.printer.reports_state(PrinterState::Operational);
-        let file = if same_file { FILE } else { "calibration.gcode" };
         world
             .printer
             .reports_job(Some(file), PrinterState::Operational);
-        world.printer.reports_position(None, Some(SIZE));
+        world.printer.reports_position(position, Some(SIZE));
         block_on(world.core.list_and_adopt_prints()).expect("listed");
 
-        let ended = ended_of(&world, print_id);
-        let charge = &charges_of(&world, print_id)[0];
-        if same_file {
-            assert_eq!(ended.outcome, PrintOutcome::Completed);
-            assert_charge(
-                charge,
-                spool.id,
-                &world,
-                ChargeMethod::SlicerEstimate,
-                TOTAL_MM,
-            );
+        assert_eq!(ended_of(&world, print_id).outcome, outcome, "{case}");
+        let (method, length) = if outcome == PrintOutcome::Completed {
+            (ChargeMethod::SlicerEstimate, TOTAL_MM)
         } else {
-            assert_eq!(ended.outcome, PrintOutcome::Cancelled);
-            assert_charge(
-                charge,
-                spool.id,
-                &world,
-                ChargeMethod::GcodeExtrusion,
-                4_950.0,
-            );
-        }
+            (ChargeMethod::GcodeExtrusion, 4_950.0)
+        };
+        assert_charge(
+            &charges_of(&world, print_id)[0],
+            spool.id,
+            &world,
+            method,
+            length,
+        );
     }
 }
 
@@ -879,7 +911,7 @@ fn a_print_an_alert_opens_is_started_charged_and_never_untracked() {
     );
 
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Completed);
     let charges = charges_of(&world, print_id);

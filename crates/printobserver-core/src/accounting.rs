@@ -388,8 +388,6 @@ struct Ending<'a> {
     job: Option<&'a JobSnapshot>,
     /// The print's file, when it is known as a name a file API takes.
     file_name: Option<&'a FileName>,
-    /// The last position recorded.
-    position: Option<&'a FilePosition>,
     /// The file's size, when it is known.
     size_bytes: Option<i64>,
     /// What the file's tally says of a print since this one was opened.
@@ -455,18 +453,7 @@ enum Canceller {
 impl Ending<'_> {
     /// The outcome these say the print ended with.
     fn outcome(&self) -> PrintOutcome {
-        let reached_the_end = self.position.is_some_and(|position| {
-            let size = position.size_bytes.or(self.size_bytes);
-            size.is_some_and(|size| size > 0 && position.bytes >= size)
-        });
-        let reported_complete = self.job.is_some_and(|job| {
-            self.file_name
-                .is_none_or(|file| job.file_name.as_deref() == Some(file.as_str()))
-                && job
-                    .completion
-                    .is_some_and(|completion| completion.value() >= 1.0)
-        });
-        if reached_the_end || reported_complete || self.tally == Tally::CompletedSince {
+        if self.read_finished() || self.tally == Tally::CompletedSince {
             return PrintOutcome::Completed;
         }
         if self.cancelled_by == Canceller::Here {
@@ -483,6 +470,31 @@ impl Ending<'_> {
             _ if self.pushes.reset => PrintOutcome::Interrupted,
             _ => PrintOutcome::Cancelled,
         }
+    }
+
+    /// Whether the job read at the stop shows the print finished: one read of
+    /// the print's own file reporting both completion 100.0 and a file
+    /// position at the file's size.
+    ///
+    /// Neither alone is a finish. A position at the end is where a print
+    /// stands while its last moves still run, and a completion of 100.0 is
+    /// a rounding of a print short of its end; only the two in one read are
+    /// what `OctoPrint` reports of a print it finished.
+    fn read_finished(&self) -> bool {
+        self.job.is_some_and(|job| {
+            let same_file = self
+                .file_name
+                .is_none_or(|file| job.file_name.as_deref() == Some(file.as_str()));
+            let complete = job
+                .completion
+                .is_some_and(|completion| completion.value() >= 1.0);
+            let size = job.size_bytes.or(self.size_bytes).filter(|size| *size > 0);
+            let at_the_end = job
+                .file_position_bytes
+                .zip(size)
+                .is_some_and(|(bytes, size)| bytes >= size);
+            same_file && complete && at_the_end
+        })
     }
 
     /// Whether a stop that went offline or into `error` was the printer's own
@@ -943,7 +955,6 @@ impl Supervisor {
                 state,
                 job,
                 file_name: file_name.as_ref(),
-                position: position.as_ref(),
                 size_bytes: analysis.size_bytes(),
                 tally,
                 cancelled_by,
@@ -1069,7 +1080,6 @@ impl Supervisor {
                 state,
                 job: closing_job,
                 file_name: named.as_ref(),
-                position: None,
                 size_bytes: None,
                 tally: Tally::NoCompletion,
                 cancelled_by: Canceller::NotHere,

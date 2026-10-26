@@ -433,6 +433,52 @@ async fn a_finish_whose_finishing_no_poll_saw_ends_completed() {
     );
 }
 
+/// Completion 100.0 alone, or a file position at the file's size alone, is no
+/// finish: a running print reporting either stays open, and one that stops
+/// at the printer reporting only one of them ends `cancelled`, never
+/// `completed`.
+#[tokio::test(flavor = "multi_thread")]
+async fn completion_or_a_position_at_the_end_alone_leaves_the_print_open() {
+    let alone = [
+        ("completion alone", Some(100.0), None, Some(700)),
+        ("the position alone", None, Some(SIZE), None),
+    ];
+    for (case, completion, filepos, landed_filepos) in alone {
+        let watch = Watch::open().await;
+        watch.connected().await;
+        let print_id = watch.printing(700).await;
+
+        watch.octoprint.reports(
+            "Printing",
+            JobScript {
+                completion,
+                filepos: filepos.or(Some(700)),
+                ..JobScript::printing(FILE, SIZE, 700, 60)
+            },
+        );
+        tokio::time::sleep(POLL * 5).await;
+        assert!(
+            watch.of_kind("print_ended").await.is_empty(),
+            "{case}: a running print was ended"
+        );
+
+        watch.octoprint.reports(
+            "Operational",
+            JobScript {
+                completion,
+                filepos: landed_filepos.or(filepos),
+                ..landed_idle()
+            },
+        );
+        watch.until("print_ended", 1).await;
+        assert_eq!(
+            ended(&watch.history().await, &print_id),
+            "cancelled",
+            "{case}"
+        );
+    }
+}
+
 /// A reset while idle, which nothing a read reports shows, is recorded with
 /// no print it happened during.
 #[tokio::test(flavor = "multi_thread")]

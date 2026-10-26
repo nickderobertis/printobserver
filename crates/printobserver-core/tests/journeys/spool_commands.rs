@@ -20,8 +20,8 @@ use printobserver_printer_api::PrinterState;
 
 use crate::shelf::{
     FILE, SIZE, TOTAL_MM, adjust_command, assert_close, assert_ledger_explains, charges_to,
-    command, ends, envelope_without_spools_for, every, grams, load, load_command, loaded_spool,
-    on_tool, register, running_at, spool_now, spool_world, start, timeline,
+    command, ends, envelope_without_spools_for, every, finishes, grams, load, load_command,
+    loaded_spool, on_tool, register, running_at, spool_now, spool_world, start, timeline,
 };
 use crate::world::{World, agent_actor};
 
@@ -715,7 +715,7 @@ fn a_spool_unloaded_mid_print_is_charged_to_the_unload() {
     );
     assert_eq!(unloaded.decision, PolicyDecision::Accepted);
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     let charged = charges_to(&world, spool.id);
     assert_eq!(charged.len(), 1);
@@ -799,7 +799,7 @@ fn a_spool_retired_while_loaded_is_charged_for_what_it_fed_before_a_swap() {
         PolicyDecision::Accepted
     );
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
 
     let to_retired = charges_to(&world, retired.id);
     assert_eq!(to_retired.len(), 1);
