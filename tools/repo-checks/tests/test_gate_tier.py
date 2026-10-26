@@ -313,6 +313,13 @@ def test_an_empty_tier_from_a_selector_that_failed_is_refused_by_the_gate() -> N
     failing(ran, naming="unknown tier ''")
 
 
+#: The one condition a required macOS job runs under: the lane is owed, or a pull
+#: request's classification could not be read, since unknown is never omission.
+MACOS_OWED = (
+    "!cancelled() && (needs.classify.outputs.macos-required == 'true' || "
+    "(github.event_name == 'pull_request' && needs.classify.result != 'success'))"
+)
+
 #: The status contexts a pull request to the base branch must always report,
 #: whatever the affected set reaches — the fixed contract this repository's
 #: protection names, as the plan read it.
@@ -361,6 +368,16 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
         job = jobs[context.job]
         condition = job.get("if")
         needs = job.get("needs")
+        if needs == "classify":
+            # A macOS lane's job runs where the classifier owes the lane, and on
+            # a pull request it could not classify; where it is not owed the
+            # job is skipped, which the forge reports as a passing context.
+            equal(
+                " ".join(str(condition).split()),
+                MACOS_OWED,
+                describing=f"`{context.job}`'s condition, waiting on the classifier",
+            )
+            continue
         if needs is not None:
             # A carrier of a consolidated lane, or the aggregator of a sharded
             # context, waits on the jobs doing the work and reports whatever

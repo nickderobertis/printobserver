@@ -95,6 +95,11 @@ tool-version TOOL:
 # Nx's plugin workers past the time they are given to start. Continuous
 # integration splits both Windows gates into shards (`just check-shard`), which
 # run their tiers in turn too.
+#
+# `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere` leaves out the three steps that read
+# the committed tree alone and answer the same on every host — the Windows-target
+# lint, the workflow lint and the repository checks — for a gate cell whose run
+# has another cell running them: `ci.yml`'s macOS gate, beside the Linux cells.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -105,8 +110,10 @@ check tier="affected":
     just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} && \
+    if [ "${PRINTOBSERVER_HOST_INDEPENDENT:-here}" = here ]; then \
     just lint-workflows && \
-    just check-repo || status=$?; \
+    just check-repo \
+    ; fi || status=$?; \
     if {{E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
     elif [ "$status" = 0 ]; then \
     just test-e2e {{quote(tier)}} || status=$?; \
@@ -170,7 +177,9 @@ format-check tier="affected":
 lint tier="affected":
     just node-modules
     uv run -q python -m repo_checks.gate_tier run {{quote(tier)}} lint
-    uv run -q python -m repo_checks lint-windows-target
+    if [ "${PRINTOBSERVER_HOST_INDEPENDENT:-here}" = here ]; then \
+    uv run -q python -m repo_checks lint-windows-target; \
+    fi
 
 # Type-check every project with its language's type checker — every Python
 # project for this host and for each platform `repo-policy.toml` declares, so a

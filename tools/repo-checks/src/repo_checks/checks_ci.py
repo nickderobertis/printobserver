@@ -414,8 +414,8 @@ def _carried(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
     """Each cell `repo-policy.toml` records as carried by one consolidated job, and why.
 
     A carried cell is not a cell that does not run: it runs, inside another job
-    — the one macOS job a pull request occupies runs the gate and the printer
-    integration tier in turn, and the release's macOS build cell proves its own
+    — a pull request's two macOS jobs run the gate and the printer integration
+    tier as jobs of their own, and the release's macOS build cell proves its own
     artifacts in place of the registry proofs — and the job it is carried for
     omits it so that one change does not occupy several of the few shared
     macOS slots. So a record is admitted only where its carrier verifiably
@@ -488,6 +488,26 @@ def _carried(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
         for carried_job in jobs:
             carried[platform_id, carried_job] = f"carried by `{carrier}`: {reason.strip()}"
     return carried, findings
+
+
+def _carriers(repo: Repo) -> set[str]:
+    """Every `<workflow>:<job>` a `workflows.carried` record names and `_carried` admits.
+
+    Such a job runs a platform cell of a matrixed job in that cell's place, so it
+    declares no matrix of its own: its record holds it to the platform's runner
+    and to every command the cell ran.
+    """
+    carried, _ = _carried(repo)
+    declared = policy_table(repo, "workflows").get(CARRIED, [])
+    entries = declared if isinstance(declared, list) else []
+    return {
+        str(entry["carrier"])
+        for entry in entries
+        if isinstance(entry, dict)
+        and isinstance(entry.get("jobs"), list)
+        and entry["jobs"]
+        and all((entry.get("platform"), job) in carried for job in entry["jobs"])
+    }
 
 
 def _exclusions(repo: Repo) -> tuple[dict[tuple[str, str], str], list[str]]:
@@ -631,6 +651,7 @@ def platforms(repo: Repo) -> list[str]:
     artifact = artifact_commands(repo)
     routed = route_commands(repo)
     sharded = sharded_platforms(repo)
+    carriers = _carriers(repo)
     job_names: set[str] = set()
     for file_name, workflow in _workflows(repo).items():
         for job_name, job in jobs_of(workflow).items():
@@ -656,6 +677,8 @@ def platforms(repo: Repo) -> list[str]:
                     )
                 continue
             if entries is None:
+                if f"{file_name}:{job_name}" in carriers:
+                    continue
                 findings.append(
                     f"{file_name}: job `{job_name}` is a {kind} job but declares no platform matrix"
                 )

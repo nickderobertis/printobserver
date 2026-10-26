@@ -6,8 +6,8 @@ this budget was built on, and three things are held of it:
 * every check context a pull request was reported before is reported still, and
   each of the ten required gate and integration contexts by jobs running every
   Nx target, over every project carrying it, that the context ran at `BASELINE`
-  — the two macOS contexts exactly those, so nothing done to bring macOS
-  under 30 minutes dropped anything from it;
+  — the two macOS contexts exactly those, so splitting the combined macOS job
+  into one job per lane dropped nothing from either;
 * every job reporting one of the ten ends with the `gate-time` step, waived by
   no `continue-on-error`, naming its own context, and with nothing but
   `actions: read` added to the permissions it had;
@@ -29,6 +29,7 @@ import pytest
 import yaml
 from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, truth
+from repo_checks.gate_jobs import COMBINED_JOB, INTEGRATION_SHARD_JOB, SHARD_JOB
 from repo_checks.gate_time_budget import BUDGET, KIND, PLATFORM, STEP_RUN
 from repo_checks.model import Repo
 from repo_checks.parsing import Recipe, jobs_of, load_workflow, recipes, run_commands, steps_of
@@ -88,6 +89,21 @@ def workflow(repo: Repo) -> dict[str, Any]:
     return load_workflow(repo.root / CI)
 
 
+def internal(name: str) -> bool:
+    """Whether a context is a job's own rather than a check a change is held to.
+
+    A shard or the combined macOS job is internal to the context it is behind,
+    so it may be renamed, split or retired; nothing else may.
+    """
+    for template in (COMBINED_JOB, SHARD_JOB, INTEGRATION_SHARD_JOB):
+        pattern = re.escape(template)
+        for field in ("platform", "index", "count"):
+            pattern = pattern.replace(re.escape("{" + field + "}"), r"[^,()]+")
+        if re.fullmatch(pattern, name):
+            return True
+    return False
+
+
 def pull_request_contexts(repo: Repo) -> dict[str, str]:
     """Every check context a pull request's run of a workflow reports, and the job reporting it."""
     reported: dict[str, str] = {}
@@ -133,6 +149,19 @@ def behind(repo: Repo, context: str) -> list[str]:
     return keys
 
 
+def _lane_commands(job: dict[str, Any], kind: str) -> list[str]:
+    """The commands a job behind a context runs for it.
+
+    The combined job the baseline ran macOS in did both kinds' work, each lane
+    in a step whose `id` is its kind, so only that lane's step is that kind's.
+    """
+    name = job.get("name")
+    platform = name.split(" ", 1)[0] if isinstance(name, str) else ""
+    if name != COMBINED_JOB.format(platform=platform):
+        return run_commands(job)
+    return [str(step["run"]) for step in steps_of(job) if step.get("id") == kind]
+
+
 def nx_work(repo: Repo, context: str) -> set[tuple[str, str]]:
     """Every (project, target) the jobs behind `context` run, at the tier its run selects.
 
@@ -143,9 +172,10 @@ def nx_work(repo: Repo, context: str) -> set[tuple[str, str]]:
     """
     bodies = recipes((repo.root / "justfile").read_text(encoding="utf-8"))
     jobs = jobs_of(workflow(repo))
+    kind = context.split(" ", 1)[0]
     targets: set[str] = set()
     for key in behind(repo, context):
-        for command in run_commands(jobs[key]):
+        for command in _lane_commands(jobs[key], kind):
             called = CALLS.match(command)
             if called is None:
                 continue
@@ -169,8 +199,9 @@ def test_every_context_a_pull_request_reported_is_reported_still(
 ) -> None:
     """`llmlint`, `skill-install`, `supply-chain`, `pr-title` and the ten among them."""
     before, now = pull_request_contexts(baseline), pull_request_contexts(committed_repo)
+    retired = [name for name in set(before) - set(now) if not internal(name)]
 
-    equal(sorted(set(before) - set(now)), [], describing="contexts no longer reported")
+    equal(sorted(retired), [], describing="contexts no longer reported")
     for name in (*REQUIRED, "llmlint", "skill-install", "supply-chain", "pr-title"):
         truth(name in now, describing=f"{name} reported on a pull request")
 
@@ -190,12 +221,14 @@ def test_each_required_context_runs_all_the_nx_work_it_ran(
 def test_the_macos_lever_runs_exactly_the_work_macos_ran(
     baseline: Repo, committed_repo: Repo, context: str
 ) -> None:
-    """Both lanes still run in the one combined job, behind both contexts."""
+    """Each lane, once a step of the combined job, is the whole of its own macOS job."""
     now, before = nx_work(committed_repo, context), nx_work(baseline, context)
+    truth(bool(before), describing=f"{context} ran Nx work at the baseline")
     equal(sorted(now ^ before), [], describing=f"what {context} runs that it did not, or no longer")
     equal(
         behind(committed_repo, context),
-        [{"gate (macos-aarch64)": "gate-macos"}.get(context, "integration-macos"), "macos"],
+        [{"gate (macos-aarch64)": "gate-macos"}.get(context, "integration-macos")],
+        describing=f"the jobs behind {context}",
     )
 
 
@@ -319,7 +352,7 @@ def test_the_step_s_own_script_fails_an_over_budget_context_but_on_the_release_s
 
 
 def test_every_required_job_s_step_runs_the_same_script(committed_repo: Repo) -> None:
-    """One script for all ten, so running the macOS carriers' runs every one of them."""
+    """One script for all ten, so running the macOS jobs' runs every one of them."""
     scripts = {key: _step(committed_repo, key)[0] for key in reporting_jobs(committed_repo)}
 
     equal(set(scripts.values()), {STEP_RUN})

@@ -774,7 +774,7 @@ waived_steps = [
 ]
 waived_report = "GITHUB_STEP_SUMMARY"
 
-# A platform cell ONE consolidated job carries for several platform-dependent
+# A platform cell a consolidated job carries for one or more platform-dependent
 # jobs, each of which then omits it. Not a cell that does not run — it runs,
 # inside the carrier — so it is recorded here rather than in AGENTS.md's
 # exclusions block, whose entries are bring-ups still owed. `just check-repo`
@@ -783,16 +783,17 @@ waived_report = "GITHUB_STEP_SUMMARY"
 # consolidated macOS lanes" is the prose half.
 [[workflows.carried]]
 platform = "macos-aarch64"
-jobs = ["gate", "integration"]
-carrier = "ci.yml:macos"
-runs = [
-  "just bootstrap",
-  "just check",
-  "just octoprint-up",
-  "just test-integration",
-  "just octoprint-down",
-]
-reason = "the account's few macOS slots are shared with other repositories, so a pull request's gate and printer integration tier run as one macOS job, owed only where the classifier says so; `gate (macos-aarch64)` and `integration (macos-aarch64)` are carried from Linux, each reporting that job's own lane"
+jobs = ["gate"]
+carrier = "ci.yml:gate-macos"
+runs = ["just bootstrap", "just check"]
+reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS gate runs as a job of its own beside the macOS integration job, owed only where the classifier says so, and reports `gate (macos-aarch64)` itself"
+
+[[workflows.carried]]
+platform = "macos-aarch64"
+jobs = ["integration"]
+carrier = "ci.yml:integration-macos"
+runs = ["just bootstrap", "just octoprint-up", "just test-integration", "just octoprint-down"]
+reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS printer integration tier runs as a job of its own beside the macOS gate job, owed only where the classifier says so, and reports `integration (macos-aarch64)` itself"
 
 [[workflows.carried]]
 platform = "macos-aarch64"
