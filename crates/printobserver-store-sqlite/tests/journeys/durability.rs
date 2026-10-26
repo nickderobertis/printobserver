@@ -13,7 +13,7 @@ use crate::block_on::block_on;
 use crate::child;
 use crate::contracts::record_kinds;
 use crate::fixture::{Store, draft, instant, manifest, request, session};
-use crate::ledger_records::{new_spool, pend, print_key};
+use crate::ledger_records::{new_spool, pend, print_key, segment_key};
 use printobserver_core::kinds::operator_source;
 use printobserver_core::store::{HistoryQuery, ImageLookup};
 use printobserver_core::{
@@ -226,7 +226,7 @@ fn read_spool_back(port: &dyn Store, reported: &Value) {
         .expect("the spool reads")
         .expect("the spool survived the process that wrote it");
     assert_eq!(spool.registered_at, instant(WRITTEN_AT));
-    assert_eq!(spool.loaded_on_tool, Some(0));
+    assert_eq!(spool.loaded_tool(), Some(0));
 }
 
 /// The pending charge survives, under its key.
@@ -236,7 +236,7 @@ fn read_pending_back(port: &dyn Store, reported: &Value) {
     assert_eq!(
         pending
             .iter()
-            .map(|held| (held.charge_key.clone(), held.pended_at))
+            .map(|held| (held.charge_key.charge_key(), held.pended_at))
             .collect::<Vec<_>>(),
         vec![(print_key(print_id, 0, 1), instant(WRITTEN_AT))],
         "the pending charge did not survive the process that wrote it"
@@ -316,7 +316,7 @@ fn the_child_writes_one_of_every_record_kind() {
     block_on(port.apply_spool_changes(
         Vec::new(),
         Vec::new(),
-        vec![pend(print_key(print.id, 0, 1), print.id, at)],
+        vec![pend(segment_key(print.id, 0, 1), at)],
     ))
     .expect("a pend is held");
     block_on(port.record_file_position(

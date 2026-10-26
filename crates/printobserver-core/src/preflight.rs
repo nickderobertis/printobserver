@@ -28,8 +28,9 @@ use crate::delay::Delay;
 use crate::error::CoreError;
 use crate::filament::{buffer_g, grams_for_length};
 use crate::records::{
-    ActionKind, Actor, ActorClass, Preflight, PreflightTool, PreflightVerdict, RejectionReason,
-    SpoolRecord, SpoolTrust,
+    ActionKind, Actor, ActorClass, DoubtedSpool, Preflight, PreflightNeed, PreflightObjection,
+    PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict, RejectionReason,
+    ShortSpool, SpoolRecord, SpoolTrust, UnanalysedSpool, UnverifiedMark,
 };
 use crate::supervisor::Supervisor;
 
@@ -69,88 +70,109 @@ const fn severity(verdict: PreflightVerdict) -> u8 {
 fn worst(tools: &[PreflightTool]) -> PreflightVerdict {
     tools
         .iter()
-        .map(|tool| tool.verdict)
+        .map(|tool| tool.result.verdict())
         .min_by_key(|verdict| severity(*verdict))
         .unwrap_or(PreflightVerdict::Unchecked)
 }
 
-/// Whether a verdict is one a start in mode `refuse` is refused for.
-const fn objects(verdict: PreflightVerdict) -> bool {
-    matches!(
-        verdict,
-        PreflightVerdict::Insufficient
-            | PreflightVerdict::UnverifiedSpool
-            | PreflightVerdict::NoAnalysis
-    )
-}
-
 /// The marks a spool holds, oldest first.
-fn marks(spool: &SpoolRecord) -> Vec<crate::records::UnverifiedMark> {
+fn marks(spool: &SpoolRecord) -> Vec<UnverifiedMark> {
     match &spool.trust {
         SpoolTrust::Verified => Vec::new(),
         SpoolTrust::Unverified { marks } => marks.clone(),
     }
 }
 
+/// A spool, as a check names it.
+fn named(spool: &SpoolRecord) -> PreflightSpool {
+    PreflightSpool {
+        id: spool.id,
+        name: spool.name.clone(),
+    }
+}
+
+/// What one tool's spool, judged against what the print needs from it, is
+/// found to be: short, in doubt, or enough.
+fn judged(spool: &SpoolRecord, need: PreflightNeed) -> PreflightToolResult {
+    let marks = marks(spool);
+    if spool.remaining_g < need.required_g + need.buffer_g {
+        return PreflightToolResult::Insufficient(ShortSpool {
+            spool: named(spool),
+            remaining_g: spool.remaining_g,
+            need,
+            marks,
+        });
+    }
+    if marks.is_empty() {
+        return PreflightToolResult::Passed {
+            spool: named(spool),
+            remaining_g: spool.remaining_g,
+            need,
+        };
+    }
+    PreflightToolResult::UnverifiedSpool(DoubtedSpool {
+        spool: named(spool),
+        remaining_g: spool.remaining_g,
+        need: Some(need),
+        marks,
+    })
+}
+
+/// What one tool's spool is found to be when the file has no analysis: in
+/// doubt when it holds a mark, otherwise unanalysed.
+fn unanalysed(spool: &SpoolRecord) -> PreflightToolResult {
+    let marks = marks(spool);
+    if marks.is_empty() {
+        PreflightToolResult::NoAnalysis(UnanalysedSpool {
+            spool: named(spool),
+            remaining_g: spool.remaining_g,
+        })
+    } else {
+        PreflightToolResult::UnverifiedSpool(DoubtedSpool {
+            spool: named(spool),
+            remaining_g: spool.remaining_g,
+            need: None,
+            marks,
+        })
+    }
+}
+
 /// The refusal one check makes, when it makes one: the first short tool, else
 /// the first unverified one, else a file still unanalysed.
 fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
-    let short = preflight.tools.iter().find_map(|tool| {
-        match (
-            tool.verdict,
-            tool.spool_id,
-            &tool.spool_name,
-            tool.required_g,
-            tool.buffer_g,
-            tool.remaining_g,
-        ) {
-            (
-                PreflightVerdict::Insufficient,
-                Some(spool_id),
-                Some(spool_name),
-                Some(required_g),
-                Some(buffer_g),
-                Some(remaining_g),
-            ) => Some(RejectionReason::InsufficientFilament {
-                tool: tool.tool,
-                spool_id,
-                spool_name: spool_name.clone(),
-                required_g,
-                buffer_g,
-                remaining_g,
-                unverified: tool.marks.first().map(|mark| mark.reason.clone()),
-            }),
-            _ => None,
-        }
+    let short = preflight.tools.iter().find_map(|tool| match &tool.result {
+        PreflightToolResult::Insufficient(short) => Some(RejectionReason::InsufficientFilament {
+            tool: tool.tool,
+            spool_id: short.spool.id,
+            spool_name: short.spool.name.clone(),
+            required_g: short.need.required_g,
+            buffer_g: short.need.buffer_g,
+            remaining_g: short.remaining_g,
+            unverified: short.marks.first().map(|mark| mark.reason.clone()),
+        }),
+        _ => None,
     });
     let unverified = || {
-        preflight.tools.iter().find_map(|tool| {
-            match (
-                tool.verdict,
-                tool.spool_id,
-                &tool.spool_name,
-                tool.marks.first(),
-            ) {
-                (
-                    PreflightVerdict::UnverifiedSpool,
-                    Some(spool_id),
-                    Some(spool_name),
-                    Some(mark),
-                ) => Some(RejectionReason::UnverifiedSpool {
-                    tool: tool.tool,
-                    spool_id,
-                    spool_name: spool_name.clone(),
-                    reason: mark.reason.clone(),
-                }),
-                _ => None,
+        preflight.tools.iter().find_map(|tool| match &tool.result {
+            PreflightToolResult::UnverifiedSpool(doubted) => {
+                doubted
+                    .marks
+                    .first()
+                    .map(|mark| RejectionReason::UnverifiedSpool {
+                        tool: tool.tool,
+                        spool_id: doubted.spool.id,
+                        spool_name: doubted.spool.name.clone(),
+                        reason: mark.reason.clone(),
+                    })
             }
+            _ => None,
         })
     };
     let unanalysed = || {
         preflight
             .tools
             .iter()
-            .any(|tool| tool.verdict == PreflightVerdict::NoAnalysis)
+            .any(|tool| matches!(tool.result, PreflightToolResult::NoAnalysis(_)))
             .then(|| RejectionReason::AnalysisUnavailable {
                 file_name: preflight.file_name.clone(),
                 waited_s,
@@ -159,13 +181,33 @@ fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
     short.or_else(unverified).or_else(unanalysed)
 }
 
-/// The same check, with every objecting tool's verdict replaced by one that
-/// let the start go ahead.
-fn let_through(mut preflight: Preflight, verdict: PreflightVerdict) -> Preflight {
+/// How a start that went ahead despite an objection went ahead.
+#[derive(Debug, Clone, Copy)]
+enum LetThrough {
+    /// An operator overrode the check.
+    Overridden,
+    /// The check is set to warn.
+    Warned,
+}
+
+/// The same check, with every objecting tool's result replaced by one that
+/// let the start go ahead, carrying what it objected to.
+fn let_through(mut preflight: Preflight, how: LetThrough) -> Preflight {
     for tool in &mut preflight.tools {
-        if objects(tool.verdict) {
-            tool.verdict = verdict;
-        }
+        let objection = match tool.result.clone() {
+            PreflightToolResult::Insufficient(short) => PreflightObjection::Insufficient(short),
+            PreflightToolResult::UnverifiedSpool(doubted) => {
+                PreflightObjection::UnverifiedSpool(doubted)
+            }
+            PreflightToolResult::NoAnalysis(unanalysed) => {
+                PreflightObjection::NoAnalysis(unanalysed)
+            }
+            _ => continue,
+        };
+        tool.result = match how {
+            LetThrough::Overridden => PreflightToolResult::Overridden { objection },
+            LetThrough::Warned => PreflightToolResult::Warned { objection },
+        };
     }
     preflight.verdict = worst(&preflight.tools);
     preflight
@@ -180,7 +222,6 @@ impl Supervisor {
     /// # Errors
     ///
     /// Returns the store's own error when the loaded spools could not be read.
-    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub async fn preflight(&self, file_name: &FileName) -> Result<Preflight, CoreError> {
         let facts = self.read_file_facts(file_name.clone()).await.ok();
         let loaded = self.stores().filament.loaded_spools().await?;
@@ -198,54 +239,34 @@ impl Supervisor {
         let on_tool = |tool: i64| {
             loaded
                 .iter()
-                .find(|spool| spool.loaded_on_tool == Some(tool))
-        };
-        let named = |spool: Option<&SpoolRecord>, tool: i64, verdict| PreflightTool {
-            tool,
-            spool_id: spool.map(|spool| spool.id),
-            spool_name: spool.map(|spool| spool.name.clone()),
-            required_g: None,
-            buffer_g: None,
-            remaining_g: spool.map(|spool| spool.remaining_g),
-            marks: spool.map(marks).unwrap_or_default(),
-            verdict,
+                .find(|spool| spool.loaded_tool() == Some(tool))
         };
         let tools: Vec<PreflightTool> = match facts.and_then(|facts| facts.filament.as_deref()) {
             Some(filament) => lengths_of(filament)
                 .into_iter()
                 .filter(|(_, length)| *length > NOTHING_MM)
-                .map(|(tool, length)| match on_tool(tool) {
-                    None => named(None, tool, PreflightVerdict::Unchecked),
-                    Some(spool) => {
-                        let required =
+                .map(|(tool, length)| PreflightTool {
+                    tool,
+                    result: on_tool(tool).map_or(PreflightToolResult::Unchecked, |spool| {
+                        let required_g =
                             grams_for_length(length, spool.diameter_mm, spool.density_g_cm3);
-                        let buffer = buffer_g(required, policy);
-                        let marks = marks(spool);
-                        let verdict = if spool.remaining_g < required + buffer {
-                            PreflightVerdict::Insufficient
-                        } else if marks.is_empty() {
-                            PreflightVerdict::Passed
-                        } else {
-                            PreflightVerdict::UnverifiedSpool
-                        };
-                        PreflightTool {
-                            required_g: Some(required),
-                            buffer_g: Some(buffer),
-                            ..named(Some(spool), tool, verdict)
-                        }
-                    }
+                        judged(
+                            spool,
+                            PreflightNeed {
+                                required_g,
+                                buffer_g: buffer_g(required_g, policy),
+                            },
+                        )
+                    }),
                 })
                 .collect(),
             None => loaded
                 .iter()
                 .filter_map(|spool| {
-                    let tool = spool.loaded_on_tool?;
-                    let verdict = if marks(spool).is_empty() {
-                        PreflightVerdict::NoAnalysis
-                    } else {
-                        PreflightVerdict::UnverifiedSpool
-                    };
-                    Some(named(Some(spool), tool, verdict))
+                    Some(PreflightTool {
+                        tool: spool.loaded_tool()?,
+                        result: unanalysed(spool),
+                    })
                 })
                 .collect(),
         };
@@ -297,7 +318,6 @@ impl Supervisor {
             }
             // A wait the system will not take a thread for ends the wait: the
             // start is judged on what the file says now.
-            // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
             if Delay::new(ANALYSIS_POLL).await.is_err() {
                 return Ok(());
             }
@@ -315,7 +335,6 @@ impl Supervisor {
     /// # Errors
     ///
     /// Returns the store's own error when the loaded spools could not be read.
-    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub(crate) async fn check_start(
         &self,
         file_name: &FileName,
@@ -339,9 +358,9 @@ impl Supervisor {
             return Ok((preflight, None));
         };
         Ok(match policy.preflight {
-            PreflightMode::Warn => (let_through(preflight, PreflightVerdict::Warned), None),
+            PreflightMode::Warn => (let_through(preflight, LetThrough::Warned), None),
             _ if asked == Override::Asked && actor.class() == ActorClass::Operator => {
-                (let_through(preflight, PreflightVerdict::Overridden), None)
+                (let_through(preflight, LetThrough::Overridden), None)
             }
             _ => (preflight, Some(reason)),
         })

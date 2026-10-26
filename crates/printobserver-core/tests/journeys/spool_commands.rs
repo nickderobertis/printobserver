@@ -13,7 +13,8 @@ use printobserver_core::kinds::{
 };
 use printobserver_core::{
     ActionKind, Actor, ActorClass, DEFAULT_DIAMETER_MM, PolicyDecision, RejectionReason,
-    SpoolCommand, SpoolId, SpoolTrust, block_on, density_for,
+    SpoolCommand, SpoolField, SpoolId, SpoolRecord, SpoolRefusalCause, SpoolTrust, block_on,
+    density_for,
 };
 use printobserver_printer_api::PrinterState;
 
@@ -99,7 +100,7 @@ fn each_spool_command_is_granted_or_refused_by_the_envelope_per_actor_class() {
     }
     assert_eq!(every::<SpoolCommandRejectedPayload>(&world).len(), 5);
     let untouched = spool_now(&world, spool.id);
-    assert_eq!(untouched.loaded_on_tool, None);
+    assert_eq!(untouched.loaded_tool(), None);
     assert_close(untouched.remaining_g, 1_000.0);
 
     for asked in each_command(spool.id, &Actor::Operator) {
@@ -111,7 +112,7 @@ fn each_spool_command_is_granted_or_refused_by_the_envelope_per_actor_class() {
             "the operator was refused {kind:?}"
         );
     }
-    assert!(spool_now(&world, spool.id).retired_at.is_some());
+    assert!(spool_now(&world, spool.id).is_retired());
     assert_eq!(
         ActionKind::RetireSpool,
         SpoolCommand::RetireSpool {
@@ -123,17 +124,22 @@ fn each_spool_command_is_granted_or_refused_by_the_envelope_per_actor_class() {
     );
 }
 
-/// The refusal one command earns, which must be the ledger's own.
+/// The refusal one command earns, which must be the ledger's own: its cause,
+/// and a message naming what the cause says.
 #[track_caller]
-fn refused_with(world: &World, asked: &SpoolCommand, naming: &str) {
+fn refused_with(world: &World, asked: &SpoolCommand, cause: &SpoolRefusalCause, naming: &str) {
     let outcome = command(world, asked.clone());
-    let PolicyDecision::Rejected(RejectionReason::SpoolRefused { detail }) = &outcome.decision
+    let PolicyDecision::Rejected(RejectionReason::SpoolRefused {
+        cause: given,
+        message,
+    }) = &outcome.decision
     else {
         panic!("expected a spool refusal, found {:?}", outcome.decision);
     };
+    assert_eq!(given, cause, "the refusal {message:?} has another cause");
     assert!(
-        detail.contains(naming),
-        "the refusal {detail:?} does not name {naming:?}"
+        message.contains(naming),
+        "the refusal {message:?} does not name {naming:?}"
     );
     let written = every::<SpoolCommandRejectedPayload>(world);
     let last = written.last().expect("the refusal is written down");
@@ -150,8 +156,19 @@ fn refused_with(world: &World, asked: &SpoolCommand, naming: &str) {
 fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
     let world = spool_world();
     let unknown = SpoolId::new();
-    refused_with(&world, &load_command(unknown, 0), "there is no spool");
-    refused_with(&world, &adjust_command(unknown, 10.0), "there is no spool");
+    let not_known = SpoolRefusalCause::UnknownSpool { spool_id: unknown };
+    refused_with(
+        &world,
+        &load_command(unknown, 0),
+        &not_known,
+        "there is no spool",
+    );
+    refused_with(
+        &world,
+        &adjust_command(unknown, 10.0),
+        &not_known,
+        "there is no spool",
+    );
 
     let retired = register(&world, "Old Spool", 1_000.0);
     let outcome = command(
@@ -163,8 +180,21 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
         },
     );
     assert_eq!(outcome.decision, PolicyDecision::Accepted);
-    refused_with(&world, &load_command(retired.id, 0), "is retired");
-    refused_with(&world, &adjust_command(retired.id, 10.0), "is retired");
+    let is_retired = SpoolRefusalCause::RetiredSpool {
+        spool_id: retired.id,
+    };
+    refused_with(
+        &world,
+        &load_command(retired.id, 0),
+        &is_retired,
+        "is retired",
+    );
+    refused_with(
+        &world,
+        &adjust_command(retired.id, 10.0),
+        &is_retired,
+        "is retired",
+    );
     refused_with(
         &world,
         &SpoolCommand::RetireSpool {
@@ -172,13 +202,24 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
             reason: "again".to_owned(),
             actor: Actor::Operator,
         },
+        &is_retired,
         "is retired",
     );
 
     let loaded = loaded_spool(&world, "On The Printer", 1_000.0);
-    refused_with(&world, &load_command(loaded.id, 0), "already on tool 0");
-    refused_with(&world, &load_command(loaded.id, -1), "there is no tool -1");
-    assert_eq!(spool_now(&world, loaded.id).loaded_on_tool, Some(0));
+    refused_with(
+        &world,
+        &load_command(loaded.id, 0),
+        &SpoolRefusalCause::NothingToConfirm { tool: 0 },
+        "already on tool 0",
+    );
+    refused_with(
+        &world,
+        &load_command(loaded.id, -1),
+        &SpoolRefusalCause::UnknownTool { tool: -1 },
+        "there is no tool -1",
+    );
+    assert_eq!(spool_now(&world, loaded.id).loaded_tool(), Some(0));
 
     let both = SpoolCommand::AdjustSpool {
         spool_id: loaded.id,
@@ -187,7 +228,14 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
         reason: "weighed".to_owned(),
         actor: Actor::Operator,
     };
-    refused_with(&world, &both, "exactly one of remaining_g and gross_g");
+    refused_with(
+        &world,
+        &both,
+        &SpoolRefusalCause::ConflictingFields {
+            fields: vec![SpoolField::RemainingG, SpoolField::GrossG],
+        },
+        "exactly one of remaining_g and gross_g",
+    );
     let neither = SpoolCommand::AdjustSpool {
         spool_id: loaded.id,
         remaining_g: None,
@@ -195,7 +243,14 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
         reason: "weighed".to_owned(),
         actor: Actor::Operator,
     };
-    refused_with(&world, &neither, "exactly one of remaining_g and gross_g");
+    refused_with(
+        &world,
+        &neither,
+        &SpoolRefusalCause::MissingField {
+            field: SpoolField::RemainingG,
+        },
+        "exactly one of remaining_g and gross_g",
+    );
 
     let no_tare = command(
         &world,
@@ -223,6 +278,9 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
             reason: "weighed".to_owned(),
             actor: Actor::Operator,
         },
+        &SpoolRefusalCause::TareRequired {
+            spool_id: no_tare.id,
+        },
         "has no tare",
     );
 
@@ -240,6 +298,10 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
             reason: "bought".to_owned(),
             actor: Actor::Operator,
         },
+        &SpoolRefusalCause::DensityRequired {
+            spool_id: None,
+            material: "PEEK".to_owned(),
+        },
         "PEEK has no known density",
     );
     assert_eq!(
@@ -251,6 +313,124 @@ fn every_case_the_ledger_cannot_carry_out_is_refused_saying_why() {
         0,
         "a refused registration wrote a spool"
     );
+}
+
+/// A registration with an empty name or material, or a figure no spool can
+/// have, an unload of a spool on no tool, and a correction to a weight below
+/// zero are each refused with the cause that names the field or the spool, and
+/// nothing is written but the refusal.
+#[test]
+fn every_figure_and_field_a_command_cannot_carry_is_refused_naming_it() {
+    let world = spool_world();
+    let registration = |name: &str, material: &str| SpoolCommand::RegisterSpool {
+        name: name.to_owned(),
+        material: material.to_owned(),
+        color: None,
+        diameter_mm: None,
+        density_g_cm3: None,
+        initial_g: 1_000.0,
+        remaining_g: None,
+        tare_g: None,
+        reason: "bought".to_owned(),
+        actor: Actor::Operator,
+    };
+    let with = |edit: Edit| {
+        let mut asked = registration("Bad Figure", "PLA");
+        edit(&mut asked);
+        asked
+    };
+    let figure = |field, value| SpoolRefusalCause::InvalidAdjustmentFigure { field, value };
+    refused_with(
+        &world,
+        &registration("  ", "PLA"),
+        &SpoolRefusalCause::MissingField {
+            field: SpoolField::Name,
+        },
+        "needs a name",
+    );
+    refused_with(
+        &world,
+        &registration("No Material", " "),
+        &SpoolRefusalCause::MissingField {
+            field: SpoolField::Material,
+        },
+        "needs its material",
+    );
+    let cases: [(Edit, SpoolRefusalCause, &str); 4] = [
+        (
+            |asked| {
+                if let SpoolCommand::RegisterSpool { diameter_mm, .. } = asked {
+                    *diameter_mm = Some(0.0);
+                }
+            },
+            figure(SpoolField::DiameterMm, 0.0),
+            "a diameter of 0mm",
+        ),
+        (
+            |asked| {
+                if let SpoolCommand::RegisterSpool { density_g_cm3, .. } = asked {
+                    *density_g_cm3 = Some(-1.0);
+                }
+            },
+            figure(SpoolField::DensityGCm3, -1.0),
+            "a density of -1g/cm3",
+        ),
+        (
+            |asked| {
+                if let SpoolCommand::RegisterSpool { initial_g, .. } = asked {
+                    *initial_g = 0.0;
+                }
+            },
+            figure(SpoolField::InitialG, 0.0),
+            "a full spool of 0g",
+        ),
+        (
+            |asked| {
+                if let SpoolCommand::RegisterSpool { tare_g, .. } = asked {
+                    *tare_g = Some(-5.0);
+                }
+            },
+            figure(SpoolField::TareG, -5.0),
+            "at least zero grams",
+        ),
+    ];
+    for (edit, cause, naming) in cases {
+        refused_with(&world, &with(edit), &cause, naming);
+    }
+    assert!(
+        block_on(world.core.spools(true))
+            .expect("listed")
+            .is_empty(),
+        "a refused registration wrote a spool"
+    );
+
+    let shelved = register(&world, "On The Shelf", 1_000.0);
+    refused_with(
+        &world,
+        &SpoolCommand::UnloadSpool {
+            spool_id: shelved.id,
+            reason: "tidying".to_owned(),
+            actor: Actor::Operator,
+        },
+        &SpoolRefusalCause::NotLoaded {
+            spool_id: shelved.id,
+        },
+        "is not loaded on any tool",
+    );
+    let weighed = register(&world, "Weighed", 1_000.0);
+    refused_with(
+        &world,
+        &SpoolCommand::AdjustSpool {
+            spool_id: weighed.id,
+            remaining_g: None,
+            gross_g: Some(-10.0),
+            reason: "weighed".to_owned(),
+            actor: Actor::Operator,
+        },
+        &figure(SpoolField::GrossG, -10.0),
+        "not a weight in grams",
+    );
+    assert_close(spool_now(&world, weighed.id).remaining_g, 1_000.0);
 }
 
 /// A registration naming neither diameter nor density takes 1.75 mm and the
@@ -323,18 +503,18 @@ fn a_swap_leaves_exactly_one_spool_on_the_tool_and_names_the_one_replaced() {
     let outcome = load(&world, second.id, 0);
     assert_eq!(outcome.decision, PolicyDecision::Accepted);
     assert_eq!(
-        outcome.spool.as_ref().map(|spool| spool.loaded_on_tool),
+        outcome.spool.as_ref().map(SpoolRecord::loaded_tool),
         Some(Some(0))
     );
 
     let on_tool: Vec<SpoolId> = block_on(world.core.spools(false))
         .expect("listed")
         .into_iter()
-        .filter(|spool| spool.loaded_on_tool == Some(0))
+        .filter(|spool| spool.loaded_tool() == Some(0))
         .map(|spool| spool.id)
         .collect();
     assert_eq!(on_tool, vec![second.id]);
-    assert_eq!(spool_now(&world, first.id).loaded_on_tool, None);
+    assert_eq!(spool_now(&world, first.id).loaded_tool(), None);
 
     let loaded = every::<SpoolLoadedPayload>(&world);
     let swap = loaded.last().expect("the swap is written down");
@@ -436,10 +616,8 @@ fn a_correction_racing_a_close_out_loses_neither_the_correction_nor_the_charge()
             })
             .expect("the close-out charged the spool");
         assert_close(charge.length_mm, TOTAL_MM / 2.0);
-        assert_close(
-            charge.grams.expect("weighed"),
-            grams(&spool, TOTAL_MM / 2.0),
-        );
+        let charged = charge.charged.clone().expect("weighed");
+        assert_close(charged.grams, grams(&spool, TOTAL_MM / 2.0));
         let adjusted = every::<SpoolAdjustedPayload>(&world)
             .pop()
             .expect("the correction is in the timeline");
@@ -453,17 +631,11 @@ fn a_correction_racing_a_close_out_loses_neither_the_correction_nor_the_charge()
         };
         let charged_first = place("filament_consumed") < place("spool_adjusted");
         let last_after = if charged_first {
-            assert_close(
-                adjusted.remaining_before_g,
-                charge.remaining_after_g.expect("a figure"),
-            );
+            assert_close(adjusted.remaining_before_g, charged.remaining_after_g);
             adjusted.remaining_after_g
         } else {
-            assert_close(
-                charge.remaining_before_g.expect("a figure"),
-                adjusted.remaining_after_g,
-            );
-            charge.remaining_after_g.expect("a figure")
+            assert_close(charged.remaining_before_g, adjusted.remaining_after_g);
+            charged.remaining_after_g
         };
         assert_close(spool_now(&world, spool.id).remaining_g, last_after);
         assert_ledger_explains(&world, spool.id);
@@ -473,116 +645,6 @@ fn a_correction_racing_a_close_out_loses_neither_the_correction_nor_the_charge()
 
 /// One change to a registration, for the walk over the ones refused.
 type Edit = fn(&mut SpoolCommand);
-
-/// A registration naming a figure no spool has is refused saying which, and
-/// writes no spool: no name, no material, a diameter, density or full figure
-/// at or below zero, a tare below zero.
-#[test]
-fn a_registration_naming_an_impossible_figure_is_refused() {
-    let world = spool_world();
-    let valid = |edit: Edit| {
-        let mut asked = SpoolCommand::RegisterSpool {
-            name: "Valid".to_owned(),
-            material: "PLA".to_owned(),
-            color: None,
-            diameter_mm: None,
-            density_g_cm3: None,
-            initial_g: 1_000.0,
-            remaining_g: None,
-            tare_g: None,
-            reason: "bought".to_owned(),
-            actor: Actor::Operator,
-        };
-        edit(&mut asked);
-        asked
-    };
-    let cases: [(Edit, &str); 6] = [
-        (
-            |asked| {
-                if let SpoolCommand::RegisterSpool { name, .. } = asked {
-                    "  ".clone_into(name);
-                }
-            },
-            "needs a name",
-        ),
-        (
-            |asked| {
-                if let SpoolCommand::RegisterSpool { material, .. } = asked {
-                    String::new().clone_into(material);
-                }
-            },
-            "needs its material",
-        ),
-        (
-            |asked| {
-                if let SpoolCommand::RegisterSpool { diameter_mm, .. } = asked {
-                    *diameter_mm = Some(0.0);
-                }
-            },
-            "is not one a filament has",
-        ),
-        (
-            |asked| {
-                if let SpoolCommand::RegisterSpool { density_g_cm3, .. } = asked {
-                    *density_g_cm3 = Some(-1.0);
-                }
-            },
-            "is not one a material has",
-        ),
-        (
-            |asked| {
-                if let SpoolCommand::RegisterSpool { initial_g, .. } = asked {
-                    *initial_g = 0.0;
-                }
-            },
-            "holds nothing",
-        ),
-        (
-            |asked| {
-                if let SpoolCommand::RegisterSpool { tare_g, .. } = asked {
-                    *tare_g = Some(-5.0);
-                }
-            },
-            "at least zero grams",
-        ),
-    ];
-    for (edit, naming) in cases {
-        refused_with(&world, &valid(edit), naming);
-    }
-    assert!(
-        block_on(world.core.spools(true))
-            .expect("listed")
-            .is_empty()
-    );
-}
-
-/// Unloading a spool that is on no tool, and correcting one from a negative
-/// scale reading, are refused saying why.
-#[test]
-fn an_unload_of_an_unloaded_spool_and_a_negative_reading_are_refused() {
-    let world = spool_world();
-    let spool = register(&world, "On The Shelf", 1_000.0);
-    refused_with(
-        &world,
-        &SpoolCommand::UnloadSpool {
-            spool_id: spool.id,
-            reason: "tidying".to_owned(),
-            actor: Actor::Operator,
-        },
-        "is not loaded on any tool",
-    );
-    refused_with(
-        &world,
-        &SpoolCommand::AdjustSpool {
-            spool_id: spool.id,
-            remaining_g: None,
-            gross_g: Some(-10.0),
-            reason: "weighed".to_owned(),
-            actor: Actor::Operator,
-        },
-        "is not a weight in grams",
-    );
-}
 
 /// A spool unloaded during a print is charged for what it fed up to where the
 /// print is, and what the tool feeds after it, with no spool on it, is
@@ -613,7 +675,7 @@ fn a_spool_unloaded_mid_print_is_charged_to_the_unload() {
     assert_close(charged[0].length_mm, 2_000.0);
     let rest: Vec<FilamentConsumedPayload> = every::<FilamentConsumedPayload>(&world)
         .into_iter()
-        .filter(|charge| charge.spool_id.is_none())
+        .filter(|charge| charge.charged.is_none())
         .collect();
     assert_eq!(rest.len(), 1);
     assert_close(rest[0].length_mm, TOTAL_MM - 2_000.0);
@@ -649,9 +711,10 @@ fn the_commands_driven_here_are_the_whole_declared_vocabulary() {
     assert_eq!(granted, declared);
 }
 
-/// A spool retired while it is loaded is still charged for what it fed: a
-/// spool loaded over it mid-print charges the retired spool up to the swap and
-/// the incoming one only the remainder.
+/// A spool retired while it is loaded is charged for what it fed up to its
+/// retirement and taken off its tool in the same write, so it is retired and
+/// on no tool; a spool loaded after it mid-print is charged only the
+/// remainder.
 #[test]
 fn a_spool_retired_while_loaded_is_charged_for_what_it_fed_before_a_swap() {
     let world = spool_world();
@@ -671,6 +734,19 @@ fn a_spool_retired_while_loaded_is_charged_for_what_it_fed_before_a_swap() {
         },
     );
     assert_eq!(retire.decision, PolicyDecision::Accepted);
+    let kinds: Vec<&str> = retire
+        .events
+        .iter()
+        .map(|event| event.kind().as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["filament_consumed", "spool_unloaded", "spool_retired"],
+        "retiring a loaded spool mid-print did not charge, unload and retire it"
+    );
+    let after = spool_now(&world, retired.id);
+    assert!(after.is_retired(), "{after:?}");
+    assert_eq!(after.loaded_tool(), None, "a retired spool kept its tool");
     assert_eq!(
         load(&world, incoming.id, 0).decision,
         PolicyDecision::Accepted
@@ -687,15 +763,15 @@ fn a_spool_retired_while_loaded_is_charged_for_what_it_fed_before_a_swap() {
     assert!(
         every::<FilamentConsumedPayload>(&world)
             .iter()
-            .all(|charge| charge.spool_id.is_some()),
+            .all(|charge| charge.charged.is_some()),
         "a charge went to no spool"
     );
     assert_ledger_explains(&world, retired.id);
 }
 
 /// A change the store refuses on one of its own constraints is answered as a
-/// spool refusal naming the constraint, written down like any other, and
-/// changes nothing.
+/// spool refusal whose cause names no storage constraint, written down like
+/// any other, and changes nothing.
 #[test]
 fn a_change_the_store_refuses_is_answered_as_a_refusal() {
     let world = spool_world();
@@ -706,7 +782,12 @@ fn a_change_the_store_refuses_is_answered_as_a_refusal() {
             constraint: "spools.loaded_on_tool".to_owned(),
         },
     );
-    refused_with(&world, &load_command(spool.id, 0), "spools.loaded_on_tool");
+    refused_with(
+        &world,
+        &load_command(spool.id, 0),
+        &SpoolRefusalCause::LedgerRefused,
+        "the spools changed while this command was carried out",
+    );
     world.store.heals();
-    assert_eq!(spool_now(&world, spool.id).loaded_on_tool, None);
+    assert_eq!(spool_now(&world, spool.id).loaded_tool(), None);
 }

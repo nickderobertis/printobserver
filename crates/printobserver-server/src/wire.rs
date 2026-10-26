@@ -423,7 +423,7 @@ impl SpoolsAnswer {
 #[must_use]
 pub fn at_a_glance(spool: &SpoolRecord) -> String {
     let place = spool
-        .loaded_on_tool
+        .loaded_tool()
         .map_or_else(|| "not loaded".to_owned(), |tool| format!("on tool {tool}"));
     let trust = match &spool.trust {
         SpoolTrust::Verified => "verified".to_owned(),
@@ -442,11 +442,7 @@ pub fn at_a_glance(spool: &SpoolRecord) -> String {
             }
         }
     };
-    let retired = if spool.retired_at.is_some() {
-        " | retired"
-    } else {
-        ""
-    };
+    let retired = if spool.is_retired() { " | retired" } else { "" };
     format!(
         "{} | {} | {:.1} g of {:.1} g left | {place} | {trust}{retired}",
         spool.name, spool.material, spool.remaining_g, spool.initial_g

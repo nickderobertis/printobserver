@@ -40,17 +40,23 @@ pub use action::{
     ExecutionOutcome, PrintAction,
 };
 pub use charge::{
-    ChargeKey, ChargeMethod, FilePosition, PendingCharge, PendingTaken, PrintOutcome,
+    ChargeKey, ChargeMethod, ChargedFilament, FilePosition, PendingCharge, PendingTaken,
+    PrintOutcome, PrintSegmentKey,
 };
 pub use ids::{ActionId, InterventionId, SpoolId};
 pub use image::ImageRecord;
 pub use intervention::{Intervention, InterventionOutcome};
 pub use manifest::JobManifest;
-pub use policy::{EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope};
-pub use preflight::{Preflight, PreflightTool, PreflightVerdict};
+pub use policy::{
+    EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
+};
+pub use preflight::{
+    DoubtedSpool, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    PreflightToolResult, PreflightVerdict, ShortSpool, UnanalysedSpool,
+};
 pub use print::{ManifestNarrowing, PrintRecord};
 pub use spool::{
-    ClearedMark, LoadedSpool, SpoolRecord, SpoolTrust, UnverifiedMark, UnverifiedReason,
-    UnverifiedReasonKind,
+    ClearedMark, LoadedSpool, SpoolLifecycle, SpoolRecord, SpoolTrust, UnverifiedMark,
+    UnverifiedReason, UnverifiedReasonKind,
 };
 pub use spool_command::SpoolCommand;

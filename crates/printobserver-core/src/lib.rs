@@ -74,6 +74,7 @@ pub mod supervisor;
 pub mod turn_access;
 pub mod turn_lock;
 pub mod unobserved;
+pub mod upgrade;
 
 pub use accounting::UNTRACKED_REASON;
 pub use actions::{ActionOutcome, reported_value};
@@ -110,19 +111,22 @@ pub use observation::Observed;
 pub use preflight::ANALYSIS_POLL;
 pub use records::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
-    ActorClass, ChargeKey, ChargeMethod, ClearedMark, EffectiveBounds, ExecutionOutcome,
-    FilePosition, ImageRecord, Intervention, InterventionId, InterventionOutcome, JobManifest,
-    LoadedSpool, ManifestNarrowing, PendingCharge, PendingTaken, PolicyDecision, Preflight,
-    PreflightTool, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, RejectionReason,
-    SafetyEnvelope, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust, UnverifiedMark,
-    UnverifiedReason, UnverifiedReasonKind,
+    ActorClass, ChargeKey, ChargeMethod, ChargedFilament, ClearedMark, DoubtedSpool,
+    EffectiveBounds, ExecutionOutcome, FilePosition, ImageRecord, Intervention, InterventionId,
+    InterventionOutcome, JobManifest, LoadedSpool, ManifestNarrowing, PendingCharge, PendingTaken,
+    PolicyDecision, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    PreflightToolResult, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, PrintSegmentKey,
+    RejectionReason, SafetyEnvelope, ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle,
+    SpoolRecord, SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UnverifiedMark, UnverifiedReason,
+    UnverifiedReasonKind,
 };
 pub use spools::SpoolCommandOutcome;
 pub use store::{
-    ActionStore, AuditPage, Charge, ChargeRecord, DEFAULT_HISTORY_WINDOW, EventDraft, EventStore,
-    FilamentStore, FileTally, HistoryQuery, ImageLookup, ImageStore, MAX_HISTORY_LIMIT, NewSpool,
-    Pend, PrintStore, SessionStore, SettleOutcome, Settlement, SpoolChange, SpoolMutation,
-    SpoolWrite, StoreError, Stores, TimelineQuery, TimelineStore, resolve_history_limit,
+    ActionStore, AuditPage, Charge, ChargeIdentity, ChargeRecord, DEFAULT_HISTORY_WINDOW,
+    EventDraft, EventStore, FilamentStore, FileTally, HistoryQuery, ImageLookup, ImageStore,
+    MAX_HISTORY_LIMIT, NewSpool, Pend, PrintStore, SessionStore, SettleOutcome, Settlement,
+    SpoolChange, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery, TimelineStore,
+    resolve_history_limit,
 };
 pub use supervisor::{Issued, Supervisor};
 pub use turn_access::{OpenedTurn, TurnAuthority};

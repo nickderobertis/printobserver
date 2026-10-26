@@ -6,7 +6,7 @@
 
 use crate::block_on::block_on;
 use crate::fixture::{Store, draft, instant, request};
-use crate::ledger_records::{at, charge, ended, pend, print_key, register, tally};
+use crate::ledger_records::{at, charge, ended, pend, print_key, register, segment_key, tally};
 use printobserver_core::store::{HistoryQuery, StoreError};
 use printobserver_core::{
     ActionId, ExecutionOutcome, FilePosition, PolicyDecision, PrintOutcome, SpoolId,
@@ -55,6 +55,39 @@ fn corrupt(dir: &TempDir, statement: &str) {
     connection
         .execute(statement, [])
         .unwrap_or_else(|error| panic!("the column is overwritten: {error}"));
+}
+
+/// Overwrite a ledger row the way a build before the schema's own refusals,
+/// or a hand at the database, could have: past the triggers that refuse such a
+/// write now, which are put back after it.
+fn corrupt_past_refusals(dir: &TempDir, statement: &str) {
+    let connection = connect(&dir.path().join(DATABASE_FILE_NAME)).expect("a connection opens");
+    let triggers: Vec<String> = connection
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger'")
+        .and_then(|mut found| {
+            found
+                .query_map([], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .expect("the triggers are catalogued");
+    for name in [
+        "spools_retired_on_no_tool_insert",
+        "spools_retired_on_no_tool_update",
+        "charges_coherent_insert",
+        "charges_coherent_update",
+    ] {
+        connection
+            .execute(&format!("DROP TRIGGER {name}"), [])
+            .expect("a trigger drops");
+    }
+    connection
+        .execute(statement, [])
+        .unwrap_or_else(|error| panic!("the column is overwritten: {error}"));
+    for trigger in triggers {
+        connection
+            .execute(&trigger, [])
+            .expect("a trigger is put back");
+    }
 }
 
 /// The whole history of one print, as far as a read gets.
@@ -249,10 +282,10 @@ fn seeded_ledger() -> (TempDir, PrintId, SpoolId) {
             print_key(print.id, 0, 0),
             Some(print.id),
             Some(spool.id),
-            Some(5.0),
+            5.0,
             at(1),
         )],
-        vec![pend(print_key(print.id, 0, 1), print.id, at(1))],
+        vec![pend(segment_key(print.id, 0, 1), at(1))],
     ))
     .expect("a charge and a pend are written");
     block_on(store.record_file_position(
@@ -301,7 +334,7 @@ fn charges_read(store: &SqliteStore, print_id: PrintId, _: SpoolId) -> Result<()
 fn a_ledger_row_this_build_cannot_read_is_reported() {
     // `{print}` is the seeded print's identifier: a key naming it with its
     // segment spelled `00` reads as a key, and spells a different one again.
-    let cases: [(&str, LedgerRead); 10] = [
+    let cases: [(&str, LedgerRead); 15] = [
         ("UPDATE spools SET trust = 'not json'", spool_read),
         (
             "UPDATE spools SET registered_at = 'not an instant'",
@@ -322,6 +355,28 @@ fn a_ledger_row_this_build_cannot_read_is_reported() {
         (
             "UPDATE charges SET charged_at = 'not an instant'",
             charges_read,
+        ),
+        // The projection a charge is stored with disagreeing with its key, a
+        // spool named with half a calculation, and a spool both retired and
+        // loaded are each reported rather than read as one of the two.
+        ("UPDATE charges SET tool = 5", charges_read),
+        (
+            "UPDATE charges SET print_id = (SELECT id FROM prints LIMIT 1), \
+             charge_key = 'print:0191f0a0-0000-7000-8000-0000000000ff:0:0'",
+            charges_read,
+        ),
+        ("UPDATE charges SET diameter_mm = NULL", charges_read),
+        (
+            "UPDATE spools SET retired_at = '2026-03-01T12:30:00.000000000Z'",
+            spool_read,
+        ),
+        (
+            "UPDATE spools SET loaded_on_tool = 0, \
+             retired_at = '2026-03-01T12:30:00.000000000Z'",
+            |store, _, _| {
+                let port: &dyn Store = store;
+                block_on(port.spools(true)).map(|_| ())
+            },
         ),
         (
             "UPDATE pending_charges SET pending = 'not json'",
@@ -353,7 +408,7 @@ fn a_ledger_row_this_build_cannot_read_is_reported() {
     for (statement, read) in cases {
         let (dir, print_id, spool_id) = seeded_ledger();
         let statement = statement.replace("{print}", &print_id.to_string());
-        corrupt(&dir, &statement);
+        corrupt_past_refusals(&dir, &statement);
         let store = SqliteStore::open(dir.path()).expect("the store opens");
         let answer = read(&store, print_id, spool_id);
         assert!(

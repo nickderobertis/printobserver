@@ -776,14 +776,19 @@ fn assert_the_ledger_indexes(after: &Connection) {
 fn the_ledger_step_creates_exactly_the_stated_schema() {
     let dir = TempDir::new().expect("a temporary state directory");
     let before = Connection::open(dir.path().join("before.sqlite3")).expect("a database opens");
+    let after = Connection::open(dir.path().join("after.sqlite3")).expect("a database opens");
     for step in MIGRATIONS
         .iter()
         .filter(|step| step.version <= BEFORE_THE_LEDGER)
     {
         before.execute_batch(step.sql).expect("the step applies");
     }
-    drop(SqliteStore::open(dir.path()).expect("the store opens"));
-    let after = Connection::open(dir.path().join(DATABASE_FILE_NAME)).expect("a database opens");
+    for step in MIGRATIONS
+        .iter()
+        .filter(|step| step.version <= BEFORE_THE_LEDGER + 1)
+    {
+        after.execute_batch(step.sql).expect("the step applies");
+    }
 
     let added: Vec<String> = objects(&after)
         .into_iter()

@@ -42,20 +42,59 @@ pub struct SpoolRecord {
     /// The empty spool's own weight, in grams, when the operator gave it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tare_g: Option<f64>,
-    /// The tool the spool is loaded on, when it is loaded.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub loaded_on_tool: Option<i64>,
+    /// Where the spool is in its life: on the shelf, loaded on a tool, or
+    /// retired — and never both of the last two.
+    pub lifecycle: SpoolLifecycle,
     /// How far the remaining figure can be trusted.
     pub trust: SpoolTrust,
     /// When the spool was registered.
     pub registered_at: Timestamp,
     /// When anything about the spool last changed.
     pub updated_at: Timestamp,
-    /// When the spool was retired, if it has been.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retired_at: Option<Timestamp>,
+}
+
+impl SpoolRecord {
+    /// The tool the spool is loaded on, when it is loaded.
+    #[must_use]
+    pub const fn loaded_tool(&self) -> Option<i64> {
+        match self.lifecycle {
+            SpoolLifecycle::Loaded { tool } => Some(tool),
+            SpoolLifecycle::Shelved | SpoolLifecycle::Retired { .. } => None,
+        }
+    }
+
+    /// Whether the spool has been retired.
+    #[must_use]
+    pub const fn is_retired(&self) -> bool {
+        matches!(self.lifecycle, SpoolLifecycle::Retired { .. })
+    }
+}
+
+/// Where a spool is in its life.
+///
+/// One state rather than a loaded tool beside a retirement instant, because a
+/// retired spool is on no tool: retiring a loaded spool takes it off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    tag = "state",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum SpoolLifecycle {
+    /// Registered, and loaded on no tool.
+    Shelved,
+    /// Loaded on one tool.
+    Loaded {
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// Retired: it takes no further command, and is on no tool.
+    Retired {
+        /// When it was retired.
+        at: Timestamp,
+    },
 }
 
 /// How far a spool's remaining figure can be trusted.

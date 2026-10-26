@@ -17,10 +17,10 @@
 //! happened during one, in which case it carries that print's.
 
 use crate::records::{
-    AcknowledgementDisposition, ActionId, Actor, ChargeKey, ChargeMethod, ClearedMark,
-    FilePosition, InterventionId, InterventionOutcome, LoadedSpool, PendingCharge, PendingTaken,
-    PolicyDecision, Preflight, PrintAction, PrintOutcome, SpoolCommand, SpoolId, SpoolRecord,
-    UnverifiedReason,
+    AcknowledgementDisposition, ActionId, Actor, ChargeKey, ChargeMethod, ChargedFilament,
+    ClearedMark, FilePosition, InterventionId, InterventionOutcome, LoadedSpool, PendingCharge,
+    PendingTaken, PolicyDecision, Preflight, PrintAction, PrintOutcome, SpoolCommand, SpoolId,
+    SpoolRecord, UnverifiedReason,
 };
 use printobserver_printer_api::{Adjustable, JobSnapshot, PrinterSnapshot, PrinterState};
 use printobserver_supervisor_api::AgentAssessment;
@@ -494,43 +494,26 @@ impl Sample for PrintEndedPayload {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
-// llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub struct FilamentConsumedPayload {
     /// The durable identity of this debit.
     pub charge_key: ChargeKey,
-    /// The tool that fed it.
+    /// The tool that fed it, as its key names it.
     pub tool: i64,
-    /// The spool charged; absent when nothing was tracked on the tool, and the
-    /// filament was recorded uncharged.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub spool_id: Option<SpoolId>,
     /// How the length was worked out.
     pub method: ChargeMethod,
     /// How much was fed, in millimetres.
     pub length_mm: f64,
-    /// What that length weighs, in grams, when a spool gave its diameter and
-    /// density.
+    /// The spool charged and the whole calculation of what it was charged;
+    /// absent when nothing was tracked on the tool, and the filament was
+    /// recorded uncharged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub grams: Option<f64>,
-    /// The diameter the grams were worked out with, in millimetres.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diameter_mm: Option<f64>,
-    /// The density the grams were worked out with, in grams per cubic
-    /// centimetre.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub density_g_cm3: Option<f64>,
+    pub charged: Option<ChargedFilament>,
     /// The file's analysed length for the tool, in millimetres, when it had one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analysed_length_mm: Option<f64>,
     /// How far into the file the charge runs, when that was read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<FilePosition>,
-    /// The spool's figure before the charge, in grams.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub remaining_before_g: Option<f64>,
-    /// The spool's figure after it, in grams.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub remaining_after_g: Option<f64>,
     /// Anything a reader needs to make sense of the figure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
@@ -545,16 +528,11 @@ impl Sample for FilamentConsumedPayload {
         Self {
             charge_key: ChargeKey::sample_full(),
             tool: 0,
-            spool_id: Some(sample_spool_id()),
             method: ChargeMethod::GcodeExtrusion,
             length_mm: 1_000.0,
-            grams: Some(2.98),
-            diameter_mm: Some(1.75),
-            density_g_cm3: Some(1.24),
+            charged: Some(ChargedFilament::sample_full()),
             analysed_length_mm: Some(5_120.0),
             position: Some(FilePosition::sample_full()),
-            remaining_before_g: Some(745.48),
-            remaining_after_g: Some(742.5),
             note: Some("charged up to the filament change".to_owned()),
         }
     }
@@ -563,16 +541,11 @@ impl Sample for FilamentConsumedPayload {
         Self {
             charge_key: ChargeKey::sample_full(),
             tool: 0,
-            spool_id: None,
             method: ChargeMethod::SlicerEstimate,
             length_mm: 5_120.0,
-            grams: None,
-            diameter_mm: None,
-            density_g_cm3: None,
+            charged: None,
             analysed_length_mm: None,
             position: None,
-            remaining_before_g: None,
-            remaining_after_g: None,
             note: None,
         }
     }
@@ -803,7 +776,11 @@ impl Sample for SpoolCommandRejectedPayload {
         Self {
             command: SpoolCommand::sample_full(),
             decision: PolicyDecision::Rejected(crate::records::RejectionReason::SpoolRefused {
-                detail: "PEEK has no known density, so the spool needs one".to_owned(),
+                cause: crate::records::SpoolRefusalCause::DensityRequired {
+                    spool_id: None,
+                    material: "PEEK".to_owned(),
+                },
+                message: "PEEK has no known density, so the spool needs one".to_owned(),
             }),
         }
     }
@@ -853,13 +830,23 @@ pub struct FilamentChangeSignalledPayload {
     pub spool_id: Option<SpoolId>,
     /// The kind of the alert that carried the signal.
     pub source_kind: EventKind,
-    /// The position the spool was charged up to, when one was known.
+    /// The position the spool was charged up to, and how fresh it is, when one
+    /// was known; absent, there is no position and so no claim about one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub position: Option<FilePosition>,
-    /// Whether that position was read when the signal was handled, rather than
-    /// being the last one recorded; never with no position at all.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    pub position_read_at_signal: bool,
+    pub position: Option<SignalPosition>,
+}
+
+/// The position a filament change charged up to, and whether it was read at
+/// the signal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SignalPosition {
+    /// The position.
+    pub position: FilePosition,
+    /// Whether it was read when the signal was handled, rather than being the
+    /// last one recorded.
+    pub read_at_signal: bool,
 }
 
 impl EventPayload for FilamentChangeSignalledPayload {
@@ -872,8 +859,10 @@ impl Sample for FilamentChangeSignalledPayload {
             tool: Some(0),
             spool_id: Some(sample_spool_id()),
             source_kind: EventKind::new("obico_printer_notification").expect("a kind name"),
-            position: Some(FilePosition::sample_full()),
-            position_read_at_signal: true,
+            position: Some(SignalPosition {
+                position: FilePosition::sample_full(),
+                read_at_signal: true,
+            }),
         }
     }
 
@@ -882,7 +871,6 @@ impl Sample for FilamentChangeSignalledPayload {
             tool: None,
             spool_id: None,
             position: None,
-            position_read_at_signal: false,
             ..Self::sample_full()
         }
     }

@@ -8,7 +8,7 @@
 use crate::block_on::block_on;
 use crate::contracts::{Reference, record_kinds, references};
 use crate::fixture::{Store, draft, instant, manifest, request, session};
-use crate::ledger_records::{at, charge, ended, new_spool, pend, print_key, tally};
+use crate::ledger_records::{at, charge, ended, new_spool, pend, print_key, segment_key, tally};
 use printobserver_core::kinds::operator_source;
 use printobserver_core::store::StoreError;
 use printobserver_core::{
@@ -83,10 +83,10 @@ fn seed_the_ledger(port: &dyn Store, print_id: PrintId) {
             print_key(print_id, 0, 0),
             Some(print_id),
             Some(spool.id),
-            Some(5.0),
+            5.0,
             at(1),
         )],
-        vec![pend(print_key(print_id, 0, 1), print_id, at(2))],
+        vec![pend(segment_key(print_id, 0, 1), at(2))],
     ))
     .expect("a charge and a pend are written");
     block_on(port.record_file_position(

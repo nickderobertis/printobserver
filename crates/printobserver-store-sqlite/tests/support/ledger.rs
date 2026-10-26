@@ -14,11 +14,12 @@ use printobserver_core::kinds::{
     UnaccountedPrintPayload, operator_source, system_source,
 };
 use printobserver_core::store::{
-    Charge, ChargeRecord, EventDraft, FileTally, NewSpool, Pend, SpoolChange, SpoolMutation,
-    TimelineQuery,
+    Charge, ChargeIdentity, ChargeRecord, EventDraft, FileTally, NewSpool, Pend, SpoolChange,
+    SpoolMutation, TimelineQuery,
 };
 use printobserver_core::{
-    Actor, ChargeKey, ChargeMethod, PendingCharge, PrintOutcome, SpoolId, SpoolRecord, SpoolTrust,
+    Actor, ChargeKey, ChargeMethod, ChargedFilament, PendingCharge, PrintOutcome, PrintSegmentKey,
+    SpoolId, SpoolRecord, SpoolTrust,
 };
 use printobserver_printer_api::PrinterState;
 use printobserver_types::{EventBody, EventPayload, EventRecord, PrintId, Timestamp};
@@ -96,90 +97,128 @@ fn reason() -> String {
     "the operator said so".to_owned()
 }
 
+/// One change a journey asks of a spool, before the event the domain writes
+/// for it is attached.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Change {
+    /// Put the spool on a tool.
+    Load {
+        /// The tool.
+        tool: i64,
+    },
+    /// Take the spool off its tool.
+    Unload,
+    /// Set the spool's remaining figure.
+    SetRemaining {
+        /// The filament left, in grams.
+        remaining_g: f64,
+    },
+    /// Add one mark.
+    MarkUnverified {
+        /// Why the figure is in doubt.
+        reason: printobserver_core::UnverifiedReason,
+    },
+    /// Remove every mark of these kinds; it carries no event.
+    ClearMarks {
+        /// The kinds removed.
+        kinds: Vec<printobserver_core::UnverifiedReasonKind>,
+    },
+    /// Retire the spool.
+    Retire,
+}
+
 /// One change to one spool, with the event the domain writes for it.
-pub fn change(spool_id: SpoolId, change: SpoolChange, at: Timestamp) -> SpoolMutation {
-    let event = match &change {
-        SpoolChange::Load { tool } => event_of(
-            None,
-            at,
-            &SpoolLoadedPayload {
-                spool_id,
-                tool: *tool,
-                replaced: None,
-                took_pending: Vec::new(),
-                cleared_marks: Vec::new(),
-                actor: Actor::Operator,
-                reason: reason(),
-            },
-        ),
-        SpoolChange::Unload => event_of(
-            None,
-            at,
-            &SpoolUnloadedPayload {
-                spool_id,
-                tool: 0,
-                actor: Actor::Operator,
-                reason: reason(),
-            },
-        ),
-        SpoolChange::SetRemaining { remaining_g } => event_of(
-            None,
-            at,
-            &SpoolAdjustedPayload {
-                spool_id,
-                remaining_before_g: 0.0,
-                remaining_after_g: *remaining_g,
-                gross_g: None,
-                took_pending: Vec::new(),
-                cleared_marks: Vec::new(),
-                actor: Actor::Operator,
-                reason: reason(),
-            },
-        ),
-        SpoolChange::MarkUnverified { reason } => event_of(
-            None,
-            at,
-            &SpoolUnverifiedPayload {
-                spool_id,
-                reason: reason.clone(),
-            },
-        ),
-        SpoolChange::ClearMarks { .. } => event_of(
-            None,
-            at,
-            &SpoolAdjustedPayload {
-                spool_id,
-                remaining_before_g: 0.0,
-                remaining_after_g: 0.0,
-                gross_g: None,
-                took_pending: Vec::new(),
-                cleared_marks: Vec::new(),
-                actor: Actor::Operator,
-                reason: reason(),
-            },
-        ),
-        SpoolChange::Retire => event_of(
-            None,
-            at,
-            &SpoolRetiredPayload {
-                spool_id,
-                remaining_g: 0.0,
-                actor: Actor::Operator,
-                reason: reason(),
-            },
-        ),
+pub fn change(spool_id: SpoolId, change: Change, at: Timestamp) -> SpoolMutation {
+    let change = match change {
+        Change::Load { tool } => SpoolChange::Load {
+            tool,
+            event: event_of(
+                None,
+                at,
+                &SpoolLoadedPayload {
+                    spool_id,
+                    tool,
+                    replaced: None,
+                    took_pending: Vec::new(),
+                    cleared_marks: Vec::new(),
+                    actor: Actor::Operator,
+                    reason: reason(),
+                },
+            ),
+        },
+        Change::Unload => SpoolChange::Unload {
+            event: event_of(
+                None,
+                at,
+                &SpoolUnloadedPayload {
+                    spool_id,
+                    tool: 0,
+                    actor: Actor::Operator,
+                    reason: reason(),
+                },
+            ),
+        },
+        Change::SetRemaining { remaining_g } => SpoolChange::SetRemaining {
+            remaining_g,
+            event: event_of(
+                None,
+                at,
+                &SpoolAdjustedPayload {
+                    spool_id,
+                    remaining_before_g: 0.0,
+                    remaining_after_g: remaining_g,
+                    gross_g: None,
+                    took_pending: Vec::new(),
+                    cleared_marks: Vec::new(),
+                    actor: Actor::Operator,
+                    reason: reason(),
+                },
+            ),
+        },
+        Change::MarkUnverified { reason } => SpoolChange::MarkUnverified {
+            event: event_of(
+                None,
+                at,
+                &SpoolUnverifiedPayload {
+                    spool_id,
+                    reason: reason.clone(),
+                },
+            ),
+            reason,
+        },
+        Change::ClearMarks { kinds } => SpoolChange::ClearMarks { kinds },
+        Change::Retire => SpoolChange::Retire {
+            event: event_of(
+                None,
+                at,
+                &SpoolRetiredPayload {
+                    spool_id,
+                    remaining_g: 0.0,
+                    actor: Actor::Operator,
+                    reason: reason(),
+                },
+            ),
+        },
     };
     SpoolMutation {
         spool_id,
         change,
         at,
-        event,
     }
 }
 
 /// The key of one segment of a watched print on one tool.
 pub const fn print_key(print_id: PrintId, tool: i64, segment: u32) -> ChargeKey {
     ChargeKey::Print {
+        print_id,
+        tool,
+        segment,
+    }
+}
+
+/// The same segment, as the key a pending charge is held under.
+pub const fn segment_key(print_id: PrintId, tool: i64, segment: u32) -> PrintSegmentKey {
+    PrintSegmentKey {
         print_id,
         tool,
         segment,
@@ -197,59 +236,62 @@ pub fn unobserved_key(file_name: &str, generation: u32, print_number: i64) -> Ch
     }
 }
 
-/// The tool a key names.
-const fn tool_of(key: &ChargeKey) -> i64 {
-    match key {
-        ChargeKey::Print { tool, .. } | ChargeKey::Unobserved { tool, .. } => *tool,
+/// What a debit of `grams` from a spool took, as the domain works it out.
+pub fn charged(spool_id: SpoolId, grams: f64) -> ChargedFilament {
+    ChargedFilament {
+        spool_id,
+        grams,
+        diameter_mm: 1.75,
+        density_g_cm3: 1.24,
+        remaining_before_g: 1_000.0,
+        remaining_after_g: 1_000.0 - grams,
     }
 }
 
-/// One debit, with its `filament_consumed` event.
+/// One debit, with its `filament_consumed` event: against a spool when one is
+/// named, and recorded uncharged otherwise. An unobserved key with a print is
+/// linked to that print.
 pub fn charge(
     key: ChargeKey,
     print_id: Option<PrintId>,
     spool_id: Option<SpoolId>,
-    grams: Option<f64>,
+    grams: f64,
     at: Timestamp,
 ) -> Charge {
-    let tool = tool_of(&key);
+    let charged = spool_id.map(|spool_id| charged(spool_id, grams));
     let event = event_of(
         print_id,
         at,
         &FilamentConsumedPayload {
             charge_key: key.clone(),
-            tool,
-            spool_id,
+            tool: key.tool(),
             method: ChargeMethod::GcodeExtrusion,
             length_mm: 1_000.0,
-            grams,
-            diameter_mm: None,
-            density_g_cm3: None,
+            charged: charged.clone(),
             analysed_length_mm: None,
             position: None,
-            remaining_before_g: None,
-            remaining_after_g: None,
             note: None,
         },
     );
+    let identity = match (key.watched_print(), print_id) {
+        (None, Some(linked)) => {
+            ChargeIdentity::linked(key, linked).expect("an unobserved key links to a print")
+        }
+        _ => ChargeIdentity::of(key),
+    };
     Charge {
-        key,
-        tool,
-        print_id,
-        spool_id,
+        identity,
         length_mm: 1_000.0,
-        grams,
+        charged,
         at,
         event,
     }
 }
 
 /// One charge held for a spool not yet named, with its `charge_pended` event.
-pub fn pend(key: ChargeKey, print_id: PrintId, at: Timestamp) -> Pend {
+pub fn pend(key: PrintSegmentKey, at: Timestamp) -> Pend {
     let pending = PendingCharge {
-        tool: tool_of(&key),
         charge_key: key,
-        print_id,
         length_mm: 400.0,
         method: ChargeMethod::GcodeExtrusion,
         analysed_length_mm: None,
@@ -258,7 +300,7 @@ pub fn pend(key: ChargeKey, print_id: PrintId, at: Timestamp) -> Pend {
         pended_at: at,
     };
     let event = event_of(
-        Some(print_id),
+        Some(key.print_id),
         at,
         &ChargePendedPayload {
             pending: pending.clone(),

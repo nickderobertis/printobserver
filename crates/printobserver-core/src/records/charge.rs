@@ -11,6 +11,8 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{PrintId, Timestamp};
 
+use super::ids::SpoolId;
+
 /// How a print ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
@@ -104,6 +106,93 @@ impl ChargeKey {
     }
 }
 
+/// One segment of a print this system watched, on one tool: the key of a
+/// [`ChargeKey::Print`] debit, and the only key filament held pending can be
+/// under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PrintSegmentKey {
+    /// The print.
+    pub print_id: PrintId,
+    /// The tool, in the printer's own numbering.
+    pub tool: i64,
+    /// Which segment, numbered as [`ChargeKey::Print`] numbers it.
+    pub segment: u32,
+}
+
+impl PrintSegmentKey {
+    /// The charge key this segment is debited under.
+    #[must_use]
+    pub const fn charge_key(&self) -> ChargeKey {
+        ChargeKey::Print {
+            print_id: self.print_id,
+            tool: self.tool,
+            segment: self.segment,
+        }
+    }
+}
+
+impl ChargeKey {
+    /// The tool the debit is for, as every key names it.
+    #[must_use]
+    pub const fn tool(&self) -> i64 {
+        match self {
+            Self::Print { tool, .. } | Self::Unobserved { tool, .. } => *tool,
+        }
+    }
+
+    /// The watched print the debit is for, when the key names one.
+    #[must_use]
+    pub const fn watched_print(&self) -> Option<PrintId> {
+        match self {
+            Self::Print { print_id, .. } => Some(*print_id),
+            Self::Unobserved { .. } => None,
+        }
+    }
+
+    /// The print segment this key names, when it names one.
+    #[must_use]
+    pub const fn print_segment(&self) -> Option<PrintSegmentKey> {
+        match self {
+            Self::Print {
+                print_id,
+                tool,
+                segment,
+            } => Some(PrintSegmentKey {
+                print_id: *print_id,
+                tool: *tool,
+                segment: *segment,
+            }),
+            Self::Unobserved { .. } => None,
+        }
+    }
+}
+
+/// What a charge took from a spool, and the whole calculation behind it.
+///
+/// Present or absent as one: a debit names its spool exactly when it carries
+/// the grams, the figures they were worked out with, and the spool's figure
+/// either side of them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct ChargedFilament {
+    /// The spool charged.
+    pub spool_id: SpoolId,
+    /// What the length weighs, in grams; what is subtracted from the spool.
+    pub grams: f64,
+    /// The diameter the grams were worked out with, in millimetres.
+    pub diameter_mm: f64,
+    /// The density the grams were worked out with, in grams per cubic
+    /// centimetre.
+    pub density_g_cm3: f64,
+    /// The spool's figure before the charge, in grams.
+    pub remaining_before_g: f64,
+    /// The spool's figure after it, in grams.
+    pub remaining_after_g: f64,
+}
+
 /// How far into its file a print had got, and when that was read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
@@ -127,14 +216,9 @@ pub struct FilePosition {
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct PendingCharge {
-    /// The key of the print segment the filament was fed in.
-    pub charge_key: ChargeKey,
-    /// The print it was fed in.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    pub print_id: PrintId,
-    /// The tool that fed it.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
-    pub tool: i64,
+    /// The print segment the filament was fed in, which names the print and
+    /// the tool that fed it.
+    pub charge_key: PrintSegmentKey,
     /// How much was fed, in millimetres.
     pub length_mm: f64,
     /// How that length was worked out.
@@ -150,6 +234,20 @@ pub struct PendingCharge {
     pub note: Option<String>,
     /// When it was held.
     pub pended_at: Timestamp,
+}
+
+impl PendingCharge {
+    /// The print the filament was fed in.
+    #[must_use]
+    pub const fn print_id(&self) -> PrintId {
+        self.charge_key.print_id
+    }
+
+    /// The tool that fed it.
+    #[must_use]
+    pub const fn tool(&self) -> i64 {
+        self.charge_key.tool
+    }
 }
 
 /// One pending charge a spool command took.

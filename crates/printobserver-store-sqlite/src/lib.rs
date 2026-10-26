@@ -87,6 +87,7 @@ pub use hold::{HoldPoint, HoldPoints, settle_label};
 pub use images::{IMAGE_DIRECTORY, StoredImage, digest_of};
 pub use memory::MemoryStore;
 pub use schema::{
-    CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, LOCK_TIMEOUT, MIGRATIONS, Migration, connect,
+    CURRENT_SCHEMA_VERSION, DATABASE_FILE_NAME, LOCK_TIMEOUT, MIGRATIONS, Migration, MigrationNote,
+    connect,
 };
 pub use sqlite::SqliteStore;

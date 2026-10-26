@@ -142,7 +142,6 @@ impl Supervisor {
     /// Returns the printer's own error when its tallies could not be read, and
     /// the store's own when the accounting could not be written — in which case
     /// nothing of this run was.
-    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     pub async fn account_unobserved_prints(&self) -> Result<Vec<EventRecord>, CoreError> {
         let files = self
             .read_printed_files()
@@ -315,7 +314,7 @@ impl Supervisor {
                     }
                     let spool = loaded
                         .iter()
-                        .find(|spool| spool.loaded_on_tool == Some(*tool));
+                        .find(|spool| spool.loaded_tool() == Some(*tool));
                     charged |= spool.is_some();
                     accounting.charges.push(self.charge_of(
                         Feed {
@@ -381,7 +380,7 @@ fn spools_for<'a>(file: &FileFacts, loaded: &'a [SpoolRecord]) -> Vec<&'a SpoolR
             .iter()
             .filter(|spool| {
                 spool
-                    .loaded_on_tool
+                    .loaded_tool()
                     .is_some_and(|tool| lengths.get(&tool).is_some_and(|l| *l > NOTHING_MM))
             })
             .collect(),
