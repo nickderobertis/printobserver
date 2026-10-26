@@ -459,3 +459,58 @@ fn a_client_without_the_credential_in_force_is_refused_by_a_real_supervisor() {
     );
     standing.stop();
 }
+
+/// An events read's `print_ended` is answered the three ways the supervisor
+/// sends it: absent from a read naming no print, and null from one naming the
+/// print still running — each re-serialized as it was sent.
+///
+/// Through a recording proxy, so what the client answered is held to the body
+/// the real supervisor sent rather than to what a client would think it sent.
+#[test]
+fn an_events_read_answers_print_ended_absent_or_null_as_the_supervisor_sent_it() {
+    let root = tempfile::tempdir().expect("this journey's own root");
+    let mut standing = supervisor::standing(root.path(), false);
+    let world = standing.at.clone();
+    let proxy = live::Proxy::in_front_of(&world.server);
+    let client = Client::new(proxy.url(), Actor::Operator).with_credential(&*world.credential);
+
+    let unscoped = client
+        .events(None, None, None, None, Some(0), Some(20))
+        .expect("an events read naming no print is answered");
+    let sent: serde_json::Value =
+        serde_json::from_str(&proxy.last().answer).expect("the supervisor sent a document");
+    assert!(
+        sent.get("print_ended").is_none(),
+        "the supervisor sent a print_ended to a read naming no print: {sent}"
+    );
+    assert_eq!(
+        unscoped.print_ended, None,
+        "an absent print_ended was not read as absent"
+    );
+    live::same("events", &unscoped, &proxy.last().answer);
+
+    let scoped = client
+        .events(
+            None,
+            Some(world.print_id.clone()),
+            None,
+            None,
+            Some(0),
+            Some(20),
+        )
+        .expect("an events read naming the running print is answered");
+    let sent: serde_json::Value =
+        serde_json::from_str(&proxy.last().answer).expect("the supervisor sent a document");
+    assert_eq!(
+        sent.get("print_ended"),
+        Some(&serde_json::Value::Null),
+        "the supervisor did not send a running print's print_ended as null: {sent}"
+    );
+    assert_eq!(
+        scoped.print_ended,
+        Some(None),
+        "a null print_ended was not read as null"
+    );
+    live::same("events", &scoped, &proxy.last().answer);
+    standing.stop();
+}
