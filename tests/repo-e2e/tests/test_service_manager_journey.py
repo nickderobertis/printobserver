@@ -279,8 +279,8 @@ class Manager(Protocol):
     def started(self, pid: int) -> str:
         """When process `pid` started, as the host records it, or empty while there is none.
 
-        A host hands an ended process's id to the next process it starts —
-        Windows at once — so an id names one process only together with this.
+        A host may hand an ended process's id to a later process it starts,
+        so an id names one process only together with this.
         """
 
     def listening_on(self, pid: int) -> list[str]:
@@ -1629,13 +1629,23 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
         raise AssertionError(message)
     manager.end_abruptly(before.pid)
 
-    # Another process rather than another id: the brought-back process may be
-    # handed the very id the ended one had, which Windows does at once.
-    _eventually(
-        manager,
-        "the service brought back with a new process",
-        lambda: _another_process(before, _service_process(manager)),
-    )
+    # Another process rather than another id: a host may hand the brought-back
+    # process the very id the ended one had. Every process the manager reports
+    # is kept, so a failure says which of three it was: the ended process still
+    # reported (same id, same start), no live process behind the reported id
+    # (no start), or none reported at all.
+    seen: list[Process | None] = []
+
+    def brought_back() -> bool:
+        seen.append(_service_process(manager))
+        return _another_process(before, seen[-1])
+
+    try:
+        _eventually(manager, "the service brought back with a new process", brought_back)
+    except AssertionError as failed:
+        last = seen[-1] if seen else None
+        message = f"{failed}\nended: {before}; last reported as the service's: {last}"
+        raise AssertionError(message) from None
     # The process that answered before is gone, so an answer now is the
     # brought-back process's own.
     again = _answered(manager, activated.served)
@@ -1658,7 +1668,7 @@ def test_activated_it_starts_automatically_and_comes_back_after_an_abrupt_end(
 
 
 #: In a process-id namespace of its own, a process that ends abruptly and a
-#: later one handed its very id, as Windows hands the service's brought-back
+#: later one handed its very id, as a host may hand the service's brought-back
 #: process the ended one's; each's `/proc/<pid>/stat` is printed.
 REUSED_ID = (
     'sleep 30 & first=$!; cat /proc/"$first"/stat; kill -KILL "$first"; wait "$first"; '
