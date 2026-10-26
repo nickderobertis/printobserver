@@ -147,6 +147,8 @@ struct Watching {
     lines: mpsc::Receiver<String>,
     /// Every line read so far.
     seen: Vec<String>,
+    /// Everything it said on standard error.
+    said: std::sync::Arc<std::sync::Mutex<String>>,
 }
 
 /// Start `watch` with these arguments against a journey's own supervisor.
@@ -164,9 +166,20 @@ fn watch_with(arguments: &[&str], config: &std::path::Path) -> Watching {
         .env_remove("PRINTOBSERVER_SERVER")
         .env_remove("PRINTOBSERVER_CREDENTIAL")
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("the watch starts");
+    let mut err = child.stderr.take().expect("the watch's error output");
+    let said = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let keeping = std::sync::Arc::clone(&said);
+    std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = std::io::Read::read_to_string(&mut err, &mut text);
+        keeping
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push_str(&text);
+    });
     let out = child.stdout.take().expect("the watch's output");
     let (sending, lines) = mpsc::channel();
     std::thread::spawn(move || {
@@ -180,6 +193,7 @@ fn watch_with(arguments: &[&str], config: &std::path::Path) -> Watching {
         child,
         lines,
         seen: Vec::new(),
+        said,
     }
 }
 
@@ -203,8 +217,21 @@ impl Watching {
         }
     }
 
+    /// Wait for the stream to end, and answer every line, the exit and what
+    /// it said on standard error.
+    fn finished_saying(mut self) -> (Vec<String>, ExitStatus, String) {
+        let (lines, status) = self.wait_out();
+        let said = self.said();
+        (lines, status, said)
+    }
+
     /// Wait for the stream to end, and answer every line and the exit.
     fn finished(mut self) -> (Vec<String>, ExitStatus) {
+        self.wait_out()
+    }
+
+    /// Wait for the stream to end, and answer every line and the exit.
+    fn wait_out(&mut self) -> (Vec<String>, ExitStatus) {
         let deadline = Instant::now() + PATIENCE;
         loop {
             if let Some(status) = self.child.try_wait().expect("the watch is waited on") {
@@ -222,6 +249,22 @@ impl Watching {
                 "the stream did not end: {:#?}",
                 self.seen
             );
+        }
+    }
+
+    /// Everything the stream has said on standard error, once it has ended.
+    fn said(&self) -> String {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let said = self
+                .said
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            if !said.is_empty() || Instant::now() > deadline {
+                return said;
+            }
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
 
@@ -1017,12 +1060,15 @@ fn a_quiet_watch_in_words_beats_and_ends_in_words() {
             >= 2
     });
     own.stop();
-    let (lines, status) = stream.finished();
+    let (lines, status, said) = stream.finished_saying();
 
-    let last = lines.last().expect("a last line");
     assert!(
-        last.starts_with("watch ended: the supervisor could not be reached."),
-        "{lines:#?}"
+        lines.iter().all(|line| line.contains("still watching")),
+        "a failure was printed among the stream's lines: {lines:#?}"
+    );
+    assert!(
+        said.starts_with("watch ended: the supervisor could not be reached."),
+        "the failure was not said on standard error: {said}"
     );
     assert_eq!(status.code(), Some(3), "{lines:#?}");
 }

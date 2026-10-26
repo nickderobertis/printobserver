@@ -564,7 +564,8 @@ print:
 
 A malformed `--sample` exits 2, and a missing configuration 4, before the
 stream starts and with no ending line. Without `--json`, `watch` prints one line
-per event and the same ending in words; that rendering is not a contract.
+per event and the same ending in words — on standard error when it is
+`unreachable` or `refused`; that rendering is not a contract.
 
 `watch` is built on one read, `printobserver events` (`GET /v1/events`), which a
 client can use directly: it answers the events stored after `--after` that pass

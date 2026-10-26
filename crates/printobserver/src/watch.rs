@@ -64,6 +64,10 @@ pub const EXCLUDE_KIND_FIELD: &str = "exclude_kind";
 /// nothing else, in seconds.
 pub const DEFAULT_RECONNECT_S: u64 = 30;
 
+/// The longest heartbeat or retry a watch takes, in seconds: a day. Longer is
+/// no heartbeat and no retry anybody is waiting on.
+const MAX_SECONDS: i64 = 86_400;
+
 /// How long one read waits on the server for an event to pass, in seconds.
 ///
 /// Well inside the server's own bound; a heartbeat is this program's own
@@ -134,9 +138,10 @@ impl Watch {
         let seconds = |name: &str, least: i64, otherwise: u64| -> Result<u64, String> {
             match values.get(name).and_then(Value::as_i64) {
                 None => Ok(otherwise),
-                Some(given) if given >= least => Ok(given.unsigned_abs()),
+                Some(given) if (least..=MAX_SECONDS).contains(&given) => Ok(given.unsigned_abs()),
                 Some(given) => Err(format!(
-                    "`--{}` takes a whole number of seconds from {least}, and `{given}` is not one",
+                    "`--{}` takes a whole number of seconds from {least} to {MAX_SECONDS}, and \
+                     `{given}` is not one",
                     name.replace('_', "-")
                 )),
             }
@@ -404,7 +409,14 @@ impl Lines {
             Ending::Unreachable => "the supervisor could not be reached",
             Ending::Refused => "the supervisor refused it",
         };
-        Self::write(&format!("watch ended: {why}. {detail}"));
+        let said = format!("watch ended: {why}. {detail}");
+        // In words, a stream that failed says so where a failure is said; one
+        // that ended as asked says so where its lines went.
+        if matches!(ending, Ending::Unreachable | Ending::Refused) {
+            eprintln!("{said}");
+        } else {
+            Self::write(&said);
+        }
     }
 }
 
@@ -725,8 +737,12 @@ mod tests {
             let said = watch(&[("sample", json!([refused]))]).expect_err(refused);
             assert!(said.contains("--sample"), "{refused}: {said}");
         }
-        let said = watch(&[("reconnect_s", json!(-1))]).expect_err("a negative reconnection");
-        assert!(said.contains("--reconnect-s"), "{said}");
+        for refused in [json!(-1), json!(86_401)] {
+            let said = watch(&[("reconnect_s", refused.clone())]).expect_err("out of range");
+            assert!(said.contains("--reconnect-s"), "{refused}: {said}");
+        }
+        let said = watch(&[("heartbeat_s", json!(i64::MAX))]).expect_err("a heartbeat too long");
+        assert!(said.contains("--heartbeat-s"), "{said}");
         let said = watch(&[("print_id", json!("not-a-print"))]).expect_err("a malformed print");
         assert!(said.contains("--print-id"), "{said}");
     }

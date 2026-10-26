@@ -484,3 +484,33 @@ async fn a_repeated_single_value_a_missing_print_and_a_missing_cursor_are_refuse
     assert_eq!(status, reqwest::StatusCode::NOT_FOUND, "{refused}");
     world.server.stop().await;
 }
+
+/// A read whose filters reject more stored events than it examines at once
+/// reads on past them to the one that passes, and its cursor is the last event
+/// it examined.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_examines_past_every_event_its_filters_reject_to_the_one_that_passes() {
+    let world = World::open().await;
+    let print_id = world.open_print().await;
+    let first = store(&world, Some(print_id), OTHER).await;
+    for _ in 0..1_200 {
+        store(&world, Some(print_id), OTHER).await;
+    }
+    let passing = store(&world, Some(print_id), MARKER).await;
+
+    let (status, answer) = world
+        .get(&events_url(
+            &world,
+            &[
+                ("print_id", print_id.to_string()),
+                ("after", first.id.to_string()),
+                ("kinds", MARKER.to_owned()),
+            ],
+        ))
+        .await;
+
+    assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+    assert_eq!(ids(&answer), vec![passing.id.to_string()], "{answer}");
+    assert_eq!(answer["cursor"], json!(passing.id.to_string()), "{answer}");
+    world.server.stop().await;
+}
