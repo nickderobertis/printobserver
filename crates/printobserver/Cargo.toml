@@ -86,8 +86,8 @@ sha2 = "0.10"
 # back the bytes that were drawn rather than the length of their spelling.
 base64.workspace = true
 tempfile = "3"
-# A socket bound and never listened on: the address a journey hands out as
-# unreachable stays held for the journey's lifetime, which `std` cannot bind.
+# A socket bound and never listened on, which `std` cannot bind: the port a
+# tracing suite watches the kernel refuse a connection to.
 socket2 = "0.6"
 # The reader `tests/service.rs` holds a launchd property list to: the one the
 # installer writes on macOS is read as a document, on every host, rather than

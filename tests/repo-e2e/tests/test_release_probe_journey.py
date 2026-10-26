@@ -37,7 +37,7 @@ from typing import NamedTuple
 import pytest
 from journey import REPO_ROOT, clean_environment, plain
 from repo_checks.expect import absent, contains, equal, passing, truth
-from repo_checks.loopback import LoopbackServer, unreachable
+from repo_checks.loopback import UNREACHABLE, LoopbackServer
 from repo_checks.release_declaration import joined
 from repo_checks.shell import run
 
@@ -574,10 +574,9 @@ def test_a_probe_asked_about_nothing_or_two_things_is_a_usage_error(probe: Probe
 
 
 def test_a_registry_nobody_can_reach_is_not_answered(tmp_path: Path) -> None:
-    """A connection refused is curl's failure, which says nothing about a release."""
-    with unreachable() as (_, port):
-        nobody = Probe(Registries(), _search_path(tmp_path / "bin", port), _home(tmp_path))
-        _not_answered(nobody("pypi:printobserver-cli"), "so no registry answered")
+    """A connection that fails is curl's failure, which says nothing about a release."""
+    nobody = Probe(Registries(), _search_path(tmp_path / "bin", UNREACHABLE[1]), _home(tmp_path))
+    _not_answered(nobody("pypi:printobserver-cli"), "so no registry answered")
 
 
 @pytest.mark.parametrize("missing", ["curl", *[p for p in PROGRAMS if p not in ("bash", "env")]])

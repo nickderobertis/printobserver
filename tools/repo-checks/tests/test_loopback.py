@@ -8,7 +8,6 @@ host whose resolver happens to be quick.
 from __future__ import annotations
 
 import ast
-import os
 import socket
 import threading
 from collections.abc import Iterator
@@ -19,10 +18,10 @@ from pathlib import Path
 import pytest
 from repo_checks.expect import contains, equal, truth
 from repo_checks.loopback import (
+    UNREACHABLE,
     LoopbackServer,
     NameServiceRefusedError,
     name_service_refused,
-    unreachable,
 )
 from standin_release import Release, serving
 from treecopy import REPO_ROOT
@@ -139,44 +138,31 @@ def test_the_release_stand_in_is_ready_with_every_lookup_refused() -> None:
         )
 
 
-def test_a_held_unreachable_address_is_refused_while_listeners_come_and_go() -> None:
-    """Refused for as long as it is held, however many ephemeral listeners come and go.
+def test_the_unreachable_address_stays_so_while_listeners_come_and_go() -> None:
+    """No listener can come to be listening at the address handed out as unreachable.
 
-    The held socket is what keeps it so: no listener asking for port zero is
-    handed the port — reusing addresses off Windows the way the standard
-    servers do — and
-    nothing binding it without `SO_REUSEADDR` can take it until the block ends.
+    Each is a standard server — reusing addresses where the platform does —
+    asked for that very address, and each is handed some other port, so every
+    connection there fails for as long as the listeners come and go.
     """
-    handed: list[int] = []
+    listening: list[tuple[str, int]] = []
 
     def churn() -> None:
-        for _ in range(2000):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-                if os.name != "nt":
-                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                listener.bind(("127.0.0.1", 0))
-                listener.listen()
-                handed.append(int(listener.getsockname()[1]))
+        for _ in range(500):
+            host, port = UNREACHABLE
+            with LoopbackServer(BaseHTTPRequestHandler, port=port, host=host) as server:
+                listening.append((server.server_name, server.server_port))
 
-    with unreachable() as (host, port):
-        binding = threading.Thread(target=churn)
-        binding.start()
-        while True:
-            with (
-                pytest.raises(ConnectionRefusedError),
-                socket.create_connection((host, port), timeout=30),
-            ):
-                pass
-            with (
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taker,
-                pytest.raises(OSError),
-            ):
-                taker.bind((host, port))
-            if not binding.is_alive():
-                break
-        binding.join()
-    equal(len(handed), 2000, describing="how many listeners were handed a port")
-    truth(port not in handed, describing="no listener was handed the held port")
+    binding = threading.Thread(target=churn)
+    binding.start()
+    while True:
+        with pytest.raises(OSError), socket.create_connection(UNREACHABLE, timeout=30):
+            pass
+        if not binding.is_alive():
+            break
+    binding.join()
+    equal(len(listening), 500, describing="how many listeners bound")
+    truth(UNREACHABLE not in listening, describing="no listener listening at the address")
 
 
 def _builds_a_standard_server(source: str) -> list[int]:

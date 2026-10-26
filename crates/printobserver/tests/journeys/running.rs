@@ -6,12 +6,12 @@
 //! what a command did by running another command, which is what "through this
 //! same surface" means.
 
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 use printobserver_types::serde_json::{self, Value};
 
 use crate::traced::{Ran, traced};
-use crate::unreachable::Unreachable;
 use crate::walk::Invocation;
 use crate::world::World;
 
@@ -75,18 +75,26 @@ pub fn read(world: &World, arguments: &[&str]) -> Value {
         .unwrap_or_else(|error| panic!("{arguments:?} answered {error}: {}", ran.out))
 }
 
+/// An address no supervisor can be answering at: port zero on IPv4 loopback.
+///
+/// Nothing can listen on port zero — a listener asking for it is handed some
+/// other port — so nothing is held and nothing can come to take it. Connecting
+/// there fails on every host, refused on Linux and refused before any packet is
+/// sent on Darwin and Windows, and the program reports every connect failure
+/// as unreachable.
+pub fn nowhere() -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+}
+
 /// One command run against a supervisor that is not there.
 pub fn against_nothing(world: &World, arguments: &[String], credential: &str) -> Ran {
-    // A port held bound and never listened on for the whole command, so what it
-    // meets is a refused connection rather than whatever else came to listen.
-    let nowhere = Unreachable::held();
     with(
         world,
         arguments,
         &[
             (
                 "PRINTOBSERVER_SERVER".to_owned(),
-                format!("http://{}", nowhere.address()),
+                format!("http://{}", nowhere()),
             ),
             ("PRINTOBSERVER_CREDENTIAL".to_owned(), credential.to_owned()),
         ],

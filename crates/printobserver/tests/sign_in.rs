@@ -215,7 +215,8 @@ fn names_in(directory: &Path) -> Vec<String> {
 }
 
 /// An address on loopback nothing is listening on, held bound and unlistened
-/// for as long as the answer lives so nothing else can come to listen there.
+/// for as long as the answer lives, so the control run's connection to it is
+/// one the kernel really attempts and the recorder sees.
 fn nothing_listening() -> Unreachable {
     Unreachable::held()
 }
@@ -398,7 +399,7 @@ fn signing_in_reaches_no_printer_and_no_failure_detector() {
     let library = recorder(host.root.path());
     let recording = host.root.path().join("network");
     let entry = &SIGN_INS[0];
-    // Both are held for the whole journey, so neither can come to be listened on.
+    // Both are held bound and unlistened for the whole journey.
     let (no_octoprint, no_listener) = (nothing_listening(), nothing_listening());
     let (octoprint, listen) = (no_octoprint.address(), no_listener.address());
     // Every value but the two signing in reads either names an address nothing

@@ -10,9 +10,7 @@
 use core::fmt::Write as _;
 use core::time::Duration;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex, OnceLock};
-
-use socket2::{Domain, Socket, Type};
+use std::sync::{Arc, Mutex};
 
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
@@ -105,38 +103,20 @@ impl Drop for ImageHost {
     }
 }
 
-/// An address nothing is listening on.
+/// An address nothing is listening on, so what the fetch meets is a failed
+/// connection rather than a served refusal — the one failure no response a host
+/// can write will produce.
 ///
-/// A port is bound once and never listened on, and held until this test
-/// process exits, so what the fetch meets is a refused connection rather than a
-/// served refusal — which is the one failure no response a host can write will
-/// produce — however late the fetch comes and whatever binds beside it.
+/// Port zero on IPv4 loopback: nothing can listen on port zero — a listener
+/// asking for it is handed some other port — so nothing is held and nothing can
+/// come to take it, whatever binds beside it. A connection there fails on every
+/// host: refused on Linux, and refused before any packet is sent on Darwin and
+/// Windows, where port zero is no address to connect to.
 pub fn unreachable_url() -> String {
-    static HELD: OnceLock<(Socket, std::net::TcpStream, SocketAddr)> = OnceLock::new();
-    let (_, _, address) = HELD.get_or_init(|| {
-        let socket =
-            Socket::new(Domain::IPV4, Type::STREAM, None).expect("a loopback socket opens");
-        socket
-            .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
-            .expect("a loopback port binds");
-        let address = socket
-            .local_addr()
-            .expect("the bound address reads")
-            .as_socket()
-            .expect("the bound address is an internet address");
-        // Darwin silently drops SYNs for an unconnected bound socket. An
-        // established socket reserves the same port without matching a new
-        // caller's peer tuple, so that caller receives a reset on every host.
-        // Neither end is closed until the reservation is released.
-        let listener =
-            std::net::TcpListener::bind((address.ip(), 0)).expect("a peer listener binds");
-        socket
-            .connect(&listener.local_addr().expect("the peer address").into())
-            .expect("the reservation connects to its peer");
-        let (peer, _) = listener.accept().expect("the peer accepts the reservation");
-        (socket, peer, address)
-    });
-    format!("http://{address}/snapshot.jpg")
+    format!(
+        "http://{}/snapshot.jpg",
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+    )
 }
 
 /// Read one request and write the answer.

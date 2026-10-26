@@ -5,16 +5,9 @@
 //! the arguments and reading the configuration — so nothing here needs a
 //! server, and every journey that does is `tests/journeys.rs`.
 
-use std::net::{TcpListener, TcpStream};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
-
-use socket2::{Domain, Socket, Type};
-
-#[path = "support/unreachable.rs"]
-mod unreachable;
-
-use unreachable::Unreachable;
 
 use printobserver::failure::Exit;
 use printobserver::surface::{MAX_DURATION_SECONDS, MIN_DURATION_SECONDS};
@@ -48,54 +41,57 @@ fn running(arguments: &[&str], environment: &[(&str, &str)]) -> (Option<i32>, St
     )
 }
 
-/// An address nothing is listening on, for as long as the answer lives.
+/// An address no supervisor can be answering at: port zero on IPv4 loopback.
 ///
-/// The port stays bound and is never listened on, so what a read meets is a
-/// refused connection rather than a served refusal, however many listeners the
-/// suite binds beside it.
-fn nothing_listening() -> Unreachable {
-    Unreachable::held()
+/// Nothing can listen on port zero — a listener asking for it is handed some
+/// other port — so nothing is held and nothing can come to take it, however
+/// many listeners the suite binds beside it. Connecting there fails on every
+/// host: refused on Linux, and refused before any packet is sent on Darwin and
+/// Windows, where port zero is no address to connect to.
+fn nothing_listening() -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
 }
 
-/// An address handed out as unreachable stays refused for as long as it is
-/// held, while listeners on ephemeral ports come and go beside it, because the
-/// held socket keeps the port: no listener asking for port zero is handed it,
-/// and nothing binding it without `SO_REUSEADDR` can take it until it is let go.
+/// An address handed out as unreachable stays unreachable for the whole of its
+/// use while listeners come and go beside it, each bound the way a standard
+/// listener binds — `SO_REUSEADDR` where the platform sets it — and asked for
+/// that very address: none of them can come to be listening there, so every
+/// connection to it fails and the program reports every run as unreachable.
 #[test]
-fn a_held_unreachable_address_is_refused_while_listeners_come_and_go() {
+fn an_unreachable_address_stays_unreachable_while_listeners_come_and_go() {
     let nowhere = nothing_listening();
-    let address = nowhere.address();
+    let server = format!("http://{nowhere}");
     let binding = std::thread::spawn(move || {
         for _ in 0..2000 {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("an ephemeral listener");
-            let handed = listener.local_addr().expect("the listener's address");
+            let listener = TcpListener::bind(nowhere).expect("a standard listener binds");
+            let listening = listener.local_addr().expect("the listener's address");
             assert_ne!(
-                handed.port(),
-                address.port(),
-                "a listener was handed {address}"
+                listening, nowhere,
+                "a listener came to be listening at {nowhere}"
             );
-            drop(listener);
         }
     });
     loop {
-        let refused = TcpStream::connect(address).expect_err("nothing answers there");
-        assert_eq!(
-            refused.kind(),
-            std::io::ErrorKind::ConnectionRefused,
-            "{address} answered something other than a refusal: {refused}"
+        assert!(
+            TcpStream::connect(nowhere).is_err(),
+            "something answered a connection at {nowhere}"
         );
-        let claimant = Socket::new(Domain::IPV4, Type::STREAM, None).expect("a socket opens");
-        let taken = claimant
-            .bind(&address.into())
-            .expect_err("the held port cannot be bound");
-        assert_eq!(taken.kind(), std::io::ErrorKind::AddrInUse, "{taken}");
+        let (code, said) = running(
+            &["status", "--print-id", A_PRINT],
+            &[("PRINTOBSERVER_SERVER", &server)],
+        );
+        assert_eq!(
+            code,
+            Some(i32::from(Exit::Unreachable.status())),
+            "a run against {nowhere} was not reported unreachable: {said}"
+        );
         if binding.is_finished() {
             break;
         }
     }
     binding
         .join()
-        .expect("no listener was handed the held port");
+        .expect("no listener came to be listening at the address handed out");
 }
 
 /// The program prints its surface and exits zero.
@@ -376,8 +372,7 @@ fn the_environment_names_the_server_and_wins_over_the_file() {
         "pointed.toml",
         "[client]\nserver = \"http://127.0.0.1:1\"\n",
     );
-    let nowhere = nothing_listening();
-    let elsewhere = format!("http://{}", nowhere.address());
+    let elsewhere = format!("http://{}", nothing_listening());
 
     let (code, said) = running(
         &[
@@ -401,8 +396,7 @@ fn the_environment_names_the_server_and_wins_over_the_file() {
 #[test]
 fn the_servers_own_configuration_file_configures_a_client() {
     let root = tempfile::TempDir::new().expect("a journey's own root");
-    let nowhere = nothing_listening();
-    let address = format!("http://{}", nowhere.address());
+    let address = format!("http://{}", nothing_listening());
     let served = write(
         root.path(),
         "config.toml",
@@ -435,8 +429,7 @@ fn the_servers_own_configuration_file_configures_a_client() {
 /// rather than from the ones it could have been.
 #[test]
 fn a_read_of_a_supervisor_that_is_not_there_says_where_it_looked() {
-    let nowhere = nothing_listening();
-    let address = format!("http://{}", nowhere.address());
+    let address = format!("http://{}", nothing_listening());
 
     let (code, said) = running(
         &["history", "--print-id", A_PRINT],
