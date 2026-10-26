@@ -695,7 +695,6 @@ class _Composer:
         """The records successive requests of one action answer, each its own."""
         return [self.record(operation, action, sequence) for sequence in range(RECORDS_PER_ACTION)]
 
-    # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
     def refused_closes(self, state: str) -> list[dict[str, Any]]:
         """The records successive closes of this print answer: each refused, as the page shows.
 
@@ -703,14 +702,18 @@ class _Composer:
         it is rejected naming the state that read found, and nothing executes.
         """
         active = state if state in ("printing", "paused", "cancelling") else "printing"
-        action = {"outcome": "interrupted", "reason": ECHOED_REASON}
-        refused = []
-        for document in self.records("close-print", action):
-            record = document["record"]
-            del record["executed_at"], record["outcome"]
-            record["decision"] = {"rejected": {"print_still_active": {"state": active}}}
-            refused.append(document)
-        return refused
+        closes = self.records("close-print", {"outcome": "interrupted", "reason": ECHOED_REASON})
+        unexecuted = ("executed_at", "outcome")
+        # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
+        return [
+            {
+                "record": {
+                    **{k: v for k, v in close["record"].items() if k not in unexecuted},
+                    "decision": {"rejected": {"print_still_active": {"state": active}}},
+                }
+            }
+            for close in closes
+        ]
 
     def recorded_acknowledgements(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Each acknowledgement the case's own turn was answered, by its event and disposition."""

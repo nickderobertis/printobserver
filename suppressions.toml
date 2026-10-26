@@ -2346,7 +2346,7 @@ reason = "This function composes the spool ledger's answers and events a stub ha
 [[suppression]]
 rule = "modern_domain_modeling"
 file = "tests/skilltest/scenario.py"
-site = "def refused_closes("
+site = "return ["
 reason = "This method composes the answer a stub gives a refused close as the JSON document the server would serve, the module's convention its docstring states: it takes each document from the sibling `record` composer and changes only what a rejection changes (no execution or outcome, and the rejection's own decision), and skilltest-wiring holds every one to the server's generated `ActionAnswer` schema and to the field names of the documented example. A Python model would restate that schema a second time beside the generated one."
 
 [[suppression]]
