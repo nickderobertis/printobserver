@@ -1657,6 +1657,12 @@ reason = "This environment's suites are already split by target and by file rath
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_package_isolation.py"
+site = "A second clean environment on the same cache receives the published file."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target names its fast suites file by file, and `test-integration` runs the whole `tests/` directory, where every journey that provisions a real OctoPrint already lives. This journey provisions through the same `install` command those journeys bring an instance up with, and proves a property of that command; moving it into a project of its own would split one script's provisioning tier across two and leave the install it exercises in neither alone."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/octoprint-env/tests/test_startup_failures.py"
 site = "A file put on an instance nothing started is refused naming what comes first."
 reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suite that already drives that instance for every way `up` can fail, beside the journeys for its other commands; moving one command's journey into a project of its own would split one script's integration tier across two."

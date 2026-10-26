@@ -51,10 +51,20 @@ rather than found by a dispatch that ran something else.
   arms as there are families to choose between before the one it falls back
   to — which are the shapes the install-route jobs report their waived steps
   with. Any other expression is refused.
-* A job-level `env:` value that is a literal is carried; one that is an
-  expression is not, because it reads a run this dispatch is not — the
+* A job-level `env:` value that is a literal is carried, and so is
+  `${{ matrix.platform.id }}`, read as the platform the dispatch names, which
+  is how the gate and integration jobs tell their recipes where they run. Any
+  other expression is not, because it reads a run this dispatch is not — the
   registry proofs carry a version that way, and carried none prove the newest
   their registry serves.
+* A step hands the steps after it an environment the way Actions has it do:
+  by appending `NAME=value` lines to the file `$GITHUB_ENV` names, which is
+  how the Windows cells' runner-temp setup moves `TEMP` and `TMP`. Every step
+  is handed a file of the dispatcher's own, read once the step has succeeded,
+  so what it exported reaches every later step and nothing it did not. The
+  multi-line `NAME<<DELIMITER` form, any other line, and a `$GITHUB_PATH`
+  entry are written by no source job, and a step writing one is refused naming
+  the form, as a failure the job's `always()` steps still run after.
 """
 
 from __future__ import annotations
@@ -124,6 +134,19 @@ OS_CHOICE = re.compile(
     r"steps\.(?P<otherwise>[A-Za-z0-9_-]+)\.outcome\s*\}\}$"
 )
 EXPRESSION = re.compile(r"\$\{\{.*\}\}", re.DOTALL)
+
+#: The one job-level expression a dispatch reads, as the platform it names.
+MATRIX_PLATFORM = re.compile(r"^\$\{\{\s*matrix\.platform\.id\s*\}\}$")
+
+#: The files Actions hands a step to export through: the environment the steps
+#: after it run with, and the directories put in front of their `PATH`.
+ENVIRONMENT_FILE = "GITHUB_ENV"
+PATH_FILE = "GITHUB_PATH"
+
+#: One `NAME=value` line of an environment file, and the start of the
+#: multi-line `NAME<<DELIMITER` form, which no source job writes.
+EXPORTED = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>.*)$")
+MULTILINE_EXPORT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*<<")
 
 
 class DispatchError(ValueError):
@@ -304,7 +327,7 @@ def plan(source: Source, runner_os: str) -> list[Step]:
         DispatchError: If the job's own `env` or a step carries a shape this
             executor cannot run, naming the job or the step and the shape.
     """
-    job_environment(source)
+    _declared_job_environment(source)
     planned: list[Step] = []
     for position, step in enumerate(steps_of(source.job), start=1):
         where = f"{source.workflow}'s job `{source.name}`, step {position}"
@@ -412,21 +435,70 @@ def _scalar_environment(where: str, declared: object) -> dict[str, str]:
     return environment
 
 
-def job_environment(source: Source) -> dict[str, str]:
-    """The job-level `env:` values a dispatch carries: the literal ones.
+def _declared_job_environment(source: Source) -> dict[str, str]:
+    """The job's own `env:` as written, held to a mapping of scalars.
 
-    An expression at job level is left out rather than refused, because the
-    one the committed workflows carry names the version a release published,
-    and a dispatch by hand proves the newest instead. What the job declares is
-    held to the same shape as a step's: a mapping of scalars, or a refusal
-    naming the job.
+    Raises:
+        DispatchError: If it is not one, naming the job.
+    """
+    return _scalar_environment(f"{source.workflow}'s job `{source.name}`", source.job.get("env"))
+
+
+def job_environment(source: Source, platform: Platform) -> dict[str, str]:
+    """The job-level `env:` values a dispatch carries: the literal ones, and the platform.
+
+    `${{ matrix.platform.id }}` is the platform the dispatch names, because
+    that is the cell of the matrix it runs. Any other expression at job level
+    is left out rather than refused, because the one the committed workflows
+    carry names the version a release published, and a dispatch by hand proves
+    the newest instead. What the job declares is held to the same shape as a
+    step's: a mapping of scalars, or a refusal naming the job.
 
     Raises:
         DispatchError: If the job's `env` is not a mapping of scalars.
     """
-    where = f"{source.workflow}'s job `{source.name}`"
-    declared = _scalar_environment(where, source.job.get("env"))
-    return {name: text for name, text in declared.items() if not EXPRESSION.search(text)}
+    carried: dict[str, str] = {}
+    for name, text in _declared_job_environment(source).items():
+        if MATRIX_PLATFORM.match(text.strip()):
+            carried[name] = platform.id
+        elif not EXPRESSION.search(text):
+            carried[name] = text
+    return carried
+
+
+def exported(environment_file: Path, path_file: Path) -> dict[str, str]:
+    """What one step exported for the steps after it, read off the files it was handed.
+
+    Raises:
+        DispatchError: If it wrote a form no source job writes, naming the form.
+    """
+    if path_file.read_text(encoding="utf-8-sig").strip():
+        msg = (
+            f"the step added to `${PATH_FILE}`, which no source job a dispatch runs writes; "
+            f"export a variable through `${ENVIRONMENT_FILE}` instead"
+        )
+        raise DispatchError(msg)
+    values: dict[str, str] = {}
+    lines = environment_file.read_text(encoding="utf-8-sig").splitlines()
+    for number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        if MULTILINE_EXPORT.match(line):
+            msg = (
+                f"line {number} of what the step wrote to `${ENVIRONMENT_FILE}` uses the "
+                f"multi-line `NAME<<DELIMITER` form, which no source job writes; write one "
+                f"`NAME=value` line per variable"
+            )
+            raise DispatchError(msg)
+        match = EXPORTED.match(line)
+        if match is None:
+            msg = (
+                f"line {number} of what the step wrote to `${ENVIRONMENT_FILE}`, `{line}`, is "
+                f"not a `NAME=value` line, the one form a source job writes"
+            )
+            raise DispatchError(msg)
+        values[match["name"]] = match["value"]
+    return values
 
 
 def _value(text: str, outcomes: dict[str, Outcome], runner_os: str) -> str:
@@ -444,55 +516,82 @@ def _value(text: str, outcomes: dict[str, Outcome], runner_os: str) -> str:
     return text
 
 
+def _on_standard_error(line: str) -> None:
+    """Print one line to standard error, where a refusal belongs."""
+    print(line, file=sys.stderr)
+
+
 def execute(
     resolved: Resolved,
     *,
     cwd: Path,
     environment: dict[str, str] | None = None,
     say: Callable[[str], object] = print,
+    refuse: Callable[[str], object] = _on_standard_error,
 ) -> int:
     """Run the source job's steps on this host, and answer the job's exit.
 
     Every step's command runs under bash — or under `pwsh`, where the step
-    names it — with the job's literal environment and its own, and what it
-    prints reaches the caller's streams as it happens. A step that fails and is
-    not waived fails the job and stops every step after it but those on
-    `always()`; the exit is that first failure's.
+    names it — with the job's carried environment, what the steps before it
+    exported, and its own, and what it prints reaches the caller's streams as
+    it happens. A step that fails and is not waived fails the job and stops
+    every step after it but those on `always()`; the exit is that first
+    failure's. What the executor says of each step goes to `say`, and a
+    refusal of what a step exported to `refuse` — standard error by default,
+    where `main` prints every other refusal.
 
     Raises:
         DispatchError: If the source job carries a shape this cannot run.
     """
     steps = plan(resolved.source, resolved.runner_os)
     inherited = dict(os.environ if environment is None else environment)
-    inherited.update(job_environment(resolved.source))
+    inherited.update(job_environment(resolved.source, resolved.platform))
     outcomes: dict[str, Outcome] = {}
     failed = 0
-    for step in steps:
-        # What Actions does: a step naming no condition, or a family's, runs
-        # only while nothing before it has failed; `always()` runs regardless.
-        if not step.runs_on(resolved.runner_os) or (failed and step.condition != ALWAYS):
-            outcomes[step.id] = Outcome.SKIPPED
-            continue
-        say(f"platform-dispatch: {resolved.source.name} on {resolved.platform.id}: {step.command}")
-        environment_here = dict(inherited)
-        environment_here.update(
-            {
-                name: _value(value, outcomes, resolved.runner_os)
-                for name, value in step.environment.items()
-            }
-        )
-        run_under = _run_under_pwsh if step.shell == PWSH else _run_under_bash
-        code = run_under(step.command, cwd, environment_here)
-        if code == 0:
-            outcomes[step.id] = Outcome.SUCCESS
-            continue
-        outcomes[step.id] = Outcome.FAILURE
-        named = f"`{step.command.strip()}`"
-        if step.waived:
-            say(f"platform-dispatch: {named} failed with {code}, and its failure is waived")
-        elif not failed:
-            failed = code
-            say(f"platform-dispatch: {named} failed with {code}")
+    with tempfile.TemporaryDirectory(prefix="platform-dispatch-files-") as files:
+        for number, step in enumerate(steps):
+            # What Actions does: a step naming no condition, or a family's, runs
+            # only while nothing before it has failed; `always()` runs regardless.
+            if not step.runs_on(resolved.runner_os) or (failed and step.condition != ALWAYS):
+                outcomes[step.id] = Outcome.SKIPPED
+                continue
+            say(
+                f"platform-dispatch: {resolved.source.name} on {resolved.platform.id}: "
+                f"{step.command}"
+            )
+            environment_file = Path(files, f"env-{number}")
+            path_file = Path(files, f"path-{number}")
+            environment_file.touch()
+            path_file.touch()
+            environment_here = dict(inherited)
+            environment_here.update(
+                {
+                    name: _value(value, outcomes, resolved.runner_os)
+                    for name, value in step.environment.items()
+                }
+            )
+            environment_here[ENVIRONMENT_FILE] = str(environment_file)
+            environment_here[PATH_FILE] = str(path_file)
+            run_under = _run_under_pwsh if step.shell == PWSH else _run_under_bash
+            code = run_under(step.command, cwd, environment_here)
+            named = f"`{step.command.strip()}`"
+            if code == 0:
+                try:
+                    inherited.update(exported(environment_file, path_file))
+                except DispatchError as error:
+                    # Refused as a failure rather than raised, so the job's
+                    # `always()` steps still run after it, as its teardown.
+                    refuse(f"platform-dispatch: refused: {named}: {error}")
+                    code = REFUSED
+            if code == 0:
+                outcomes[step.id] = Outcome.SUCCESS
+                continue
+            outcomes[step.id] = Outcome.FAILURE
+            if step.waived:
+                say(f"platform-dispatch: {named} failed with {code}, and its failure is waived")
+            elif not failed:
+                failed = code
+                say(f"platform-dispatch: {named} failed with {code}")
     return failed
 
 

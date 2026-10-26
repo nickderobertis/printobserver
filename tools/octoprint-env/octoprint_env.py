@@ -448,6 +448,12 @@ def _install_octoprint(instance: Instance) -> None:
             _uv(),
             "pip",
             "install",
+            # Copied rather than hard-linked from `uv`'s cache, which every
+            # environment on the host is installed from: a linked file edited in
+            # place — a diagnosis trying a fix in an installed module — would
+            # rewrite what every later install receives.
+            "--link-mode",
+            "copy",
             "--python",
             str(environment_program(instance.venv, "python")),
             OCTOPRINT_REQUIREMENT,
@@ -462,9 +468,10 @@ def _repair_virtual_printer(instance: Instance) -> None:
     """Replace the virtual printer's heater simulation with one that cannot raise.
 
     The repaired module is written beside the installed one and renamed over
-    it, never edited in place: `uv` installs by hard link from its own cache, so
-    an edit in place would rewrite the cached copy every other environment on
-    the host is installed from.
+    it, never edited in place. The environment is installed by copy, so an edit
+    in place would no longer reach `uv`'s cache; the rename is kept so that an
+    environment installed before that, by hard link, is repaired without
+    rewriting the cached copy every other environment on the host shares.
 
     Raises:
         RuntimeError: If the module is not where the pinned release keeps it,

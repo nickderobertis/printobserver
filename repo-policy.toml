@@ -564,6 +564,8 @@ schema_lock_holders = [
     "crates/printobserver-supervisor-api/tests/schemas.rs",
     "crates/printobserver-oneharness/tests/supervision/support.rs",
     "tools/repo-checks/tests/treecopy.py",
+    "tools/repo-checks/src/repo_checks/scratch.py",
+    "tools/repo-checks/tests/test_cli.py",
 ]
 
 [clients]

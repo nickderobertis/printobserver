@@ -23,6 +23,8 @@ def copy_tree(destination: Path) -> Path:
     The copy carries a link to the committed tree's JavaScript dependencies
     rather than a second install: the generator runs the formatter the gate
     will hold the file to, and that is the version the locked install put there.
+    The copy is taken under the shared schema lock, which `scratch_trees` holds
+    for all of it, so no schema it carries is one caught mid-rewrite.
     """
     return scratch_trees.copy_tree(REPO_ROOT, destination)
 

@@ -50,7 +50,14 @@ the repository-wide rules; this file holds the ones only this script carries.
   release's `_simulateTemps`, which leaves `factor` unassigned for a heater
   exactly `delta` short of its target, and refuses a module carrying neither
   the defect nor the repair. Replace the module, **never edit it in place**:
-  `uv` hard-links it from its cache, which every environment on the host shares.
+  an environment installed before the one below was hard-linked from `uv`'s
+  cache, which every environment on the host shares.
+- **Installed by copy, never by link.** `install` passes `--link-mode copy`, so
+  no file in the environment is an alias of `uv`'s cache. With `uv`'s default
+  hard links, an in-place edit of an installed module — a diagnosis trying a
+  fix — rewrites what every later environment on the host receives, and the
+  next one reads that edit as the published package.
+  `test_package_isolation.py` edits one in place and installs a second.
 - **Diagnosed, not timed out.** Every way starting can fail is one of the
   script's `FAILURE_CLASSES`, reported by name with a next action; anything
   outside that closed set is reported with the underlying error's own text. One

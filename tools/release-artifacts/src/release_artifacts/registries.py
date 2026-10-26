@@ -247,6 +247,11 @@ CRATES_INDEX = "sparse+https://index.crates.io/"
 STANDIN_CRATES_NAME = "printobserver-standin"
 STANDIN_CRATES_INDEX_VARIABLE = "CARGO_REGISTRIES_PRINTOBSERVER_STANDIN_INDEX"
 
+#: Where `cargo` keeps what it downloads from a registry, and where it builds:
+#: each set per proof for the Rust client, so no two proofs share either.
+CARGO_HOME = "CARGO_HOME"
+CARGO_TARGET_DIR = "CARGO_TARGET_DIR"
+
 #: Where a stand-in takes a wheel: the legacy multipart form, on the path the
 #: real registry serves it at under its own upload host.
 STANDIN_PYPI_UPLOAD = f"{STANDIN_PYPI}/legacy/"
@@ -1410,7 +1415,9 @@ def _rust_client(
     no registry resolves from, or the stand-in's own sparse index otherwise,
     configured for `cargo` under `STANDIN_CRATES_NAME`. What is built against
     is what the registry served, and the consumer is the client's own committed
-    smoke check.
+    smoke check. It is built under a Cargo home and a target directory of the
+    proof's own, so nothing another proof downloaded or compiled is built
+    against in its place.
 
     Raises:
         InstallError: If the consumer would not build.
@@ -1445,7 +1452,17 @@ def _rust_client(
         ),
         encoding="utf-8",
     )
-    environment_variables = dict(os.environ)
+    environment_variables = {
+        **os.environ,
+        # A Cargo home and a target directory of this proof's own. `cargo` keys
+        # what it has downloaded, extracted and compiled by the registry's URL,
+        # name and version — never by the bytes — and a stand-in's URL is a
+        # loopback port the next run may be handed too. Shared, a proof could
+        # build the crate another run's stand-in served under the same port.
+        # The toolchain is untouched: `rustup` keeps it under its own home.
+        CARGO_HOME: str(environment / "cargo-home"),
+        CARGO_TARGET_DIR: str(environment / "target"),
+    }
     if standing_in:
         environment_variables[STANDIN_CRATES_INDEX_VARIABLE] = bases.crates_index
     ran(

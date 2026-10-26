@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from closures import CHECKS, closure
 from repo_checks.expect import equal, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.registry import ALL
 from repo_checks.shell import run
@@ -109,7 +110,7 @@ def _source(root: Path) -> Path:
         (root / name).write_text(f"{name}\n", encoding="utf-8")
     (root / ".gitignore").write_text("ignored.txt\ntarget/\n", encoding="utf-8")
     (root / "link.txt").symlink_to("kept.txt")
-    run(["git", "init", "-q"], cwd=root, check=True)
+    init_repository(root)
     run(["git", "add", "-A"], cwd=root, check=True)
     run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"],

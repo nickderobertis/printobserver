@@ -18,6 +18,7 @@ import pytest
 from repo_checks.checks_ci import status_contexts
 from repo_checks.checks_shards import is_shard_job
 from repo_checks.expect import contains, equal, failing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
@@ -48,7 +49,7 @@ def repository(tmp_path: Path, *, branch: str = "main") -> Repo:
         )
         (root / name / "source.txt").write_text(f"{name}\n", encoding="utf-8")
     (root / "repo-policy.toml").write_text(POLICY, encoding="utf-8")
-    git(root, "init", "-q", "-b", branch)
+    init_repository(root, branch=branch)
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "chore: two projects")
     return Repo(root)
@@ -423,7 +424,7 @@ def test_a_tree_with_no_history_inside_a_checkout_sweeps_as_it_does_outside_one(
 
     enclosing = tmp_path / "enclosing"
     copy = a_tree_with_no_history(enclosing / "scratch" / "copy")
-    git(enclosing, "init", "-q", "-b", "main")
+    init_repository(enclosing)
     git(enclosing, "add", "-A")
     git(enclosing, "commit", "-q", "-m", "chore: a checkout holding a scratch directory")
     equal(
@@ -440,7 +441,7 @@ def test_a_tree_with_no_history_inside_a_checkout_sweeps_as_it_does_outside_one(
     equal(scope.nx("lint"), swept, describing="the tier of the bounded copy")
     contains(scope.reason, "no merge base of HEAD with origin/main or main")
 
-    git(copy, "init", "-q", "-b", "main")
+    init_repository(copy)
     git(copy, "add", "-A")
     git(copy, "commit", "-q", "-m", "chore: the copy's own history")
     equal(

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from journey import REPO_ROOT, clean_environment, copy_tracked, pythonpath, run
 from repo_checks.expect import equal, passing, truth
+from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run as shell_run
 
 
@@ -37,7 +38,7 @@ def test_a_checkout_under_windows_line_ending_default_carries_no_carriage_return
     checkout's last commit carried.
     """
     source = copy_tracked(tmp_path / "source")
-    _git(["init", "-q", "-b", "main"], source)
+    init_repository(source)
     _git(["add", "-A"], source)
     _git(
         ["-c", "user.name=journey", "-c", "user.email=journey@invalid", "commit", "-q", "-m", "t"],
