@@ -371,27 +371,37 @@ impl World {
         }
     }
 
-    /// Open, directly in the store, a print record of one file that nothing
-    /// will close but a read finding its job over, watched by a supervision
-    /// session of its own; answer its identifier.
+    /// Open, directly in the store, a print record of one file — or of none
+    /// — that nothing will close but a read finding its job over, watched by a
+    /// supervision session of its own, open or already closed for a reason;
+    /// answer its identifier.
     #[must_use]
-    pub fn open_record_with_a_session(&self, file: &str) -> String {
+    pub fn open_record_with_a_session(
+        &self,
+        file: Option<&str>,
+        closed_for: Option<&str>,
+    ) -> String {
         with_the_store(self.root.path().join("state"), |store, runtime| {
             runtime.block_on(async {
                 use printobserver_core::store::SessionStore as _;
                 let print = store
-                    .open_print(None, Some(file.to_owned()))
+                    .open_print(None, file.map(str::to_owned))
                     .await
                     .expect("a record opens");
                 let now = printobserver_types::Timestamp::now();
-                let session = printobserver_types::serde_json::from_value(json!({
+                let mut fields = json!({
                     "print_id": print.id,
                     "session_name": format!("print-{}", print.id),
                     "harness_identity": "claude-code",
                     "created_at": now,
                     "last_turn_at": now,
-                }))
-                .expect("a session reads from its own fields");
+                });
+                if let Some(reason) = closed_for {
+                    fields["closed_at"] = json!(now);
+                    fields["close_reason"] = json!(reason);
+                }
+                let session = printobserver_types::serde_json::from_value(fields)
+                    .expect("a session reads from its own fields");
                 store
                     .put_session(session)
                     .await

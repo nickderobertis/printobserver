@@ -25,6 +25,9 @@ use super::running;
 /// The reason every close here gives.
 const REASON: &str = "the printer was switched off mid-print and the print is over";
 
+/// Why a session the journey opens already closed was closed.
+const EARLIER_CLOSE: &str = "the harness closed this session before the record was";
+
 /// What the record's end reason and its `print_ended` say for that reason.
 fn closed_for() -> String {
     format!("closed by the operator: {REASON}")
@@ -241,9 +244,8 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         return;
     }
     world.wants(Reports::Printing);
-    let left = world.open_record_with_a_session(STALE_FILE);
-    let running_one = world.open_record_with_a_session(RUNNING_FILE);
-    let adjusted = world.open_record_with_a_session(STALE_FILE);
+    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
+    let running_one = world.open_record_with_a_session(Some(RUNNING_FILE), None);
     let spools = holdings(world);
 
     // A blank reason is refused before anything reaches the supervisor.
@@ -280,8 +282,41 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         still_open(world, &running_one);
     }
 
-    // An adjustment of the record still standing holds it open, naming it.
+    // A record naming no file cannot be told apart from the job the machine
+    // runs, so that job holds it open.
     world.wants(Reports::Printing);
+    let nameless = world.open_record_with_a_session(None, None);
+    let ran = close(world, &nameless, "interrupted", REASON);
+    let refusal = rejected(world, &nameless, &ran, "print_still_active");
+    assert_eq!(refusal["state"], "printing", "{refusal}");
+    still_open(world, &nameless);
+
+    // A session already closed keeps the closure it has.
+    let watched_before = world.open_record_with_a_session(Some(STALE_FILE), Some(EARLIER_CLOSE));
+    let session_before = status(world, &watched_before)["session"].clone();
+    let ran = close(world, &watched_before, "cancelled", REASON);
+    assert_eq!(
+        ran.code,
+        Some(0),
+        "the close did not go through: {}",
+        ran.said()
+    );
+    let after = status(world, &watched_before);
+    assert!(
+        after["print"]["ended_at"].is_string(),
+        "the record was not ended: {after}"
+    );
+    assert_eq!(
+        after["session"]["closed_at"], session_before["closed_at"],
+        "{after}"
+    );
+    assert_eq!(after["session"]["close_reason"], EARLIER_CLOSE, "{after}");
+
+    // An adjustment of the record still standing holds it open, naming it.
+    // The store files an action under the most recently opened open record,
+    // so the record the adjustment is about is opened last.
+    world.wants(Reports::Printing);
+    let adjusted = world.open_record_with_a_session(Some(STALE_FILE), None);
     let adjusting = running::read(
         world,
         &[
@@ -333,7 +368,7 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
     // A machine showing no job closes a record in the state it reports. Every
     // read after it finds the machine idle and closes what else is open, so
     // this is the journey's last close.
-    let idle = world.open_record_with_a_session(STALE_FILE);
+    let idle = world.open_record_with_a_session(Some(STALE_FILE), None);
     world.wants(Reports::Operational);
     let ran = close(world, &idle, "failed", REASON);
     closed(world, &idle, &ran, "failed", "operational");

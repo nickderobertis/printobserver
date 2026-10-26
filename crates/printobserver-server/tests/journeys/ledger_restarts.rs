@@ -604,3 +604,130 @@ async fn a_held_remainder_survives_a_restart_and_is_taken_once_by_the_next_load(
     );
     world.server.stop().await;
 }
+
+/// Ask the operator's close of one print, for one outcome.
+async fn closes(world: &World, print_id: &str, outcome: &str) -> (reqwest::StatusCode, Value) {
+    let path = printobserver_server::operation("close_print")
+        .expect("the operation is declared")
+        .full_path();
+    let print = print_id.parse().expect("a print identifier");
+    world
+        .post(
+            &world.operation_url(&path, print),
+            &json!({
+                "outcome": outcome,
+                "reason": "the printer finished while the supervisor was not looking",
+                "actor": "operator",
+            }),
+        )
+        .await
+}
+
+/// A print the machine is running, adopted by a listing, over a tally the
+/// supervisor has already taken as its baseline; answers the print.
+async fn an_adopted_print(world: World) -> (World, String, String) {
+    analysed(&world);
+    world.printer.in_state(PrinterState::Operational);
+    let spool = registered(&world, "PLA white", FULL_G).await;
+    loaded(&world, &spool, 0).await;
+    let world = world.restart().await;
+    world.printer.in_state(PrinterState::Printing);
+    world.printer.at_byte(1_024);
+    let listing = look_at_the_job(&world).await;
+    let print_id = listing["active"]
+        .as_str()
+        .expect("the job was adopted")
+        .to_owned();
+    (world, print_id, spool)
+}
+
+/// (e) A print the operator closed as completed is the print the machine's
+/// tally counts: the next start accounts no unseen print for it, and no close
+/// or start debits its spool.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_print_the_operator_closed_is_not_charged_again_as_unseen() {
+    let (world, print_id, spool) = an_adopted_print(World::open().await).await;
+    // The job finishes with nothing reading the machine, so the record stays
+    // open until the operator closes it.
+    finishes(&world);
+    let (status, closed) = closes(&world, &print_id, "completed").await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{closed}");
+
+    let world = world.restart().await;
+    assert!(
+        world
+            .server
+            .reconciliation()
+            .unobserved
+            .accounted()
+            .is_empty(),
+        "the start after the close accounted the closed print as unseen: {:?}",
+        world.server.reconciliation()
+    );
+    let events = the_ledger_balances(&world).await;
+    assert!(
+        of_kind(&events, "unaccounted_print").is_empty(),
+        "{events:?}"
+    );
+    assert!(debited(&events, &spool).is_empty(), "{events:?}");
+    let ended = of_kind(&events, "print_ended");
+    assert_eq!(ended.len(), 1, "{ended:?}");
+    assert_eq!(ended[0]["payload"]["outcome"], json!("completed"));
+    world.server.stop().await;
+}
+
+/// (f) A close whose settlement committed and whose caller was told it did
+/// not leaves the print settled and open; the next close only ends it, with no
+/// second `print_ended` and no debit.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_close_whose_settlement_committed_and_died_is_finished_by_the_next_close() {
+    let (world, print_id, spool) = an_adopted_print(World::open().await).await;
+    let state_dir = world.state_dir();
+    let world = world
+        .restart_over(|_| {
+            CommitThenFail::once(
+                SqliteStore::open(&state_dir).expect("the store opens"),
+                "settle_print",
+            )
+        })
+        .await;
+    world.printer.in_state(PrinterState::Printing);
+    look_at_the_job(&world).await;
+    world.printer.in_state(PrinterState::Operational);
+
+    let (status, failed) = closes(&world, &print_id, "interrupted").await;
+    assert_eq!(
+        status,
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        "{failed}"
+    );
+    assert!(
+        failed["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains(DETAIL),
+        "{failed}"
+    );
+    let (status, finished) = closes(&world, &print_id, "interrupted").await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{finished}");
+
+    let listing = look_at_the_job(&world).await;
+    let ended = listing["prints"]
+        .as_array()
+        .and_then(|prints| prints.iter().find(|print| print["id"] == json!(print_id)))
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        !ended["ended_at"].is_null(),
+        "the print was not ended: {ended}"
+    );
+    let events = the_ledger_balances(&world).await;
+    let ends = of_kind(&events, "print_ended");
+    assert_eq!(ends.len(), 1, "{ends:?}");
+    assert_eq!(ends[0]["payload"]["outcome"], json!("interrupted"));
+    assert!(debited(&events, &spool).is_empty(), "{events:?}");
+
+    let world = world.restart().await;
+    assert_eq!(the_ledger_balances(&world).await, events);
+    world.server.stop().await;
+}
