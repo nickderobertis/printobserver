@@ -494,6 +494,13 @@ class World:
     def stop(self) -> None:
         """Stop the supervisor and the machine, leaving no process behind."""
         if self._supervisor is not None:
+            if sys.platform == "win32":
+                # A program reached through a launcher — a `.cmd` shim, as a
+                # package manager installs one — is a shell whose child is the
+                # supervisor, and ending the shell alone leaves that child
+                # serving, holding its directory open. Windows ends a process
+                # outright either way, so the whole tree is ended at once.
+                run(["taskkill", "/PID", str(self._supervisor.pid), "/T", "/F"], timeout=60)
             self._supervisor.terminate()
             try:
                 self._supervisor.wait(timeout=30)

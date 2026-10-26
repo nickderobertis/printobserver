@@ -10,6 +10,10 @@ for something that never comes:
   finished supervision turn ever is;
 - `absent`: no store is ever written;
 - `tableless`: a store holding a table of prints and nothing else.
+
+Its own process identifier is written beside the configuration as `serving.pid`
+before it says where it serves, so a journey can ask whether stopping the world
+left it running.
 """
 
 from __future__ import annotations
@@ -61,6 +65,7 @@ class Loopback(HTTPServer):
 
 
 server = Loopback(("127.0.0.1", 0), Ingress)
+(Path(sys.argv[3]).parent / "serving.pid").write_text(str(os.getpid()), encoding="utf-8")
 sys.stderr.write(f"{SERVING_ON}127.0.0.1:{server.server_port}\n")
 sys.stderr.flush()
 server.serve_forever()
