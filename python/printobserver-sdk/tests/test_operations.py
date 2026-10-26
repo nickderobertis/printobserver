@@ -249,6 +249,46 @@ def test_history_sends_what_it_declares_and_answers_what_was_sent() -> None:
     equal(answered, answer, describing="what this call answered")
 
 
+def test_events_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`events` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"cursor": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events":'
+        ' [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"'
+        'id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed'
+        '", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-1234567'
+        '89abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
+        '"raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc"}], "print_ended": {"event_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "comple'
+        'ted", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.events(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            ["0198f0a1-2b3c-7d4e-8f90-123456789abc"],
+            ["0198f0a1-2b3c-7d4e-8f90-123456789abc"],
+            7,
+            7,
+        )
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(
+        received.target,
+        "/v1/events?after=0198f0a1-2b3c-7d4e-8f90-123456789abc&print_id=0198f0a1-2b3c-7d4e-8f90-123456789abc&kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&exclude_kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&wait_s=7&limit=7",
+    )
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
 def test_manifest_get_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`manifest_get` sends what it declares and answers what the server sent."""
     answer = json.loads(

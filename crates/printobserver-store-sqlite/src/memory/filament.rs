@@ -258,7 +258,12 @@ impl MemoryStore {
             (answer, working.filament, working.events)
         };
         records.filament = filament;
+        let appended = !events.is_empty();
         records.events.extend(events);
+        drop(records);
+        if appended {
+            self.signals.raise();
+        }
         Ok(answer)
     }
 

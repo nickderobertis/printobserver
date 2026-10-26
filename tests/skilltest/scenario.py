@@ -921,6 +921,17 @@ def _answers(
             }
         ],
         "history": [{"events": list(reversed(composer.earlier_events(event)))}],
+        # Read on from the newest event the turn was handed, nothing is stored
+        # after it yet, and the print is still running.
+        "events": [
+            {
+                "cursor": next(
+                    (held["id"] for held in reversed(composer.earlier_events(event))), None
+                ),
+                "events": [],
+                "print_ended": None,
+            }
+        ],
         "manifest-get": [{"narrowings": []}],
         "manifest-set": [
             {"manifest": _manifest(composer.file_name, composer.bounds()), "narrowings": []}

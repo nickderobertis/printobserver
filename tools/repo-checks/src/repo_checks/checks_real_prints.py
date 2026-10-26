@@ -41,7 +41,7 @@ HISTORY = "printobserver-history.json"
 HISTORY_SCHEMA = "schemas/printobserver-server/HistoryAnswer.json"
 SERVICE_CONFIG = f"{ROOT}/service-config.toml"
 OPERATIONS = "schemas/printobserver-server/operations.json"
-PRINTER_STATE = "schemas/printobserver-printer-api/PrinterState.json"
+PRINTER_STATE = "schemas/printobserver-types/PrinterState.json"
 
 # A file name as a case.json's prose names one: an optional relative directory,
 # then a name with one of the extensions a case carries. A path after `@` or `:`

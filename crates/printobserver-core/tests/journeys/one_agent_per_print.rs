@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use printobserver_printer_api::PrinterState;
+use printobserver_types::serde_json::{json, to_value};
 
 use crate::world::{World, detector_paused_alert, failure_alert};
 
@@ -81,12 +82,12 @@ fn a_turn_is_told_its_situation() {
     let _ = world.handle(failure_alert(7)).expect("handled");
     let turns = world.agent.turns();
     let detected = &turns[0].situation;
-    assert_eq!(detected.printer_state.as_deref(), Some("paused"));
+    assert_eq!(detected.printer_state, Some(PrinterState::Paused));
     assert_eq!(detected.detector_warned, Some(false));
     assert_eq!(detected.detector_paused_the_print, Some(true));
     assert!(detected.arrived_while_busy.is_empty());
     let undetected = &turns[1].situation;
-    assert_eq!(undetected.printer_state.as_deref(), Some("printing"));
+    assert_eq!(undetected.printer_state, Some(PrinterState::Printing));
     assert_eq!(undetected.detector_warned, None);
     assert_eq!(undetected.detector_paused_the_print, None);
 }
@@ -122,32 +123,29 @@ fn an_ended_print_releases_its_inbox() {
     assert_eq!(world.agent.turns().len(), 1);
 }
 
-/// The situation's printer state is the printer contract's own spelling of
-/// the state the printer reported, for every state that contract spells as a
-/// word, and nothing else is ever written there.
+/// The situation's printer state is the state the printer reported, written
+/// in the printer contract's own spelling: a word for every state the
+/// vocabulary names, and the printer's own word under `unknown` for one it
+/// does not — never dropped to `null`.
 #[test]
 fn the_situations_printer_state_is_the_printer_contracts_own_spelling() {
-    for state in [
-        PrinterState::Operational,
-        PrinterState::Paused,
-        PrinterState::Printing,
-        PrinterState::Cancelling,
-        PrinterState::Error,
-        PrinterState::Offline,
-        PrinterState::Unknown("resuming".to_owned()),
+    for (state, spelled) in [
+        (PrinterState::Operational, json!("operational")),
+        (PrinterState::Paused, json!("paused")),
+        (PrinterState::Printing, json!("printing")),
+        (PrinterState::Cancelling, json!("cancelling")),
+        (PrinterState::Error, json!("error")),
+        (PrinterState::Offline, json!("offline")),
+        (
+            PrinterState::Unknown("resuming".to_owned()),
+            json!({"unknown": "resuming"}),
+        ),
     ] {
         let world = World::new();
         world.printer.reports_state(state.clone());
         let _ = world.handle(failure_alert(7)).expect("handled");
-        let spelled = printobserver_types::serde_json::to_value(&state)
-            .expect("a state renders")
-            .as_str()
-            .map(str::to_owned);
-        assert_eq!(
-            world.agent.turns()[0].situation.printer_state,
-            spelled,
-            "{state:?}"
-        );
+        let situation = to_value(&world.agent.turns()[0].situation).expect("a situation renders");
+        assert_eq!(situation["printer_state"], spelled, "{state:?}");
     }
 }
 

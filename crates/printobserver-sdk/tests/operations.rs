@@ -163,6 +163,39 @@ fn history_sends_what_it_declares_and_answers_what_the_server_sent() {
     );
 }
 
+/// `events` sends what it declares and answers what the server sent.
+#[test]
+fn events_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"cursor": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "print_ended": {"event_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "completed", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .events(
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(vec!["0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()]),
+            Some(vec!["0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()]),
+            Some(7),
+            Some(7),
+        )
+        .expect("`events` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(
+        received.target,
+        "/v1/events?after=0198f0a1-2b3c-7d4e-8f90-123456789abc&print_id=0198f0a1-2b3c-7d4e-8f90-123456789abc&kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&exclude_kinds=0198f0a1-2b3c-7d4e-8f90-123456789abc&wait_s=7&limit=7"
+    );
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
 /// `manifest_get` sends what it declares and answers what the server sent.
 #[test]
 fn manifest_get_sends_what_it_declares_and_answers_what_the_server_sent() {

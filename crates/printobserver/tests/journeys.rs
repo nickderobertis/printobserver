@@ -41,6 +41,8 @@ mod machine;
 mod proxy;
 #[path = "support/scripted.rs"]
 mod scripted;
+#[path = "support/standalone.rs"]
+mod standalone;
 #[path = "support/traced.rs"]
 mod traced;
 #[path = "support/walk.rs"]
@@ -81,6 +83,8 @@ mod redaction;
 mod running;
 #[path = "journeys/spooling.rs"]
 mod spooling;
+#[path = "journeys/streaming.rs"]
+mod streaming;
 #[path = "journeys/tainting.rs"]
 mod tainting;
 #[path = "journeys/tier.rs"]

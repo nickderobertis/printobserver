@@ -147,7 +147,8 @@ fn main() -> ExitCode {
         | Invocation::Serve { .. }
         | Invocation::SignIn { .. }
         | Invocation::CredentialIssue { .. }
-        | Invocation::CredentialVerifier { .. } => {
+        | Invocation::CredentialVerifier { .. }
+        | Invocation::Watch(_) => {
             eprintln!("this variant is a client command and nothing else");
             return ExitCode::from(Exit::Usage.status());
         }

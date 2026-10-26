@@ -142,6 +142,89 @@
       "effect": "read",
       "image_path_field": null,
       "method": "GET",
+      "name": "events",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "after",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "print_id",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "kinds",
+          "repeated": true,
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "exclude_kinds",
+          "repeated": true,
+          "required": false,
+          "shape": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "wait_s",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "limit",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/events",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "EventsAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
       "name": "manifest_get",
       "parameters": [
         {

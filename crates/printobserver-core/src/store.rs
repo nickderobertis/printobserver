@@ -189,6 +189,46 @@ impl HistoryQuery {
     }
 }
 
+/// One read of the event log in the order the store stored it.
+///
+/// The order is the store's own sequence rather than any field of the
+/// record: `received_at` is the instant its producer stamped, which a late
+/// arrival can carry from before an event stored ahead of it, so a reader
+/// following the log by it would skip what arrived late. Identifiers are not
+/// that order either, because they are minted by whoever appended them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredQuery {
+    /// The event to read after, exclusive. Absent with a print, the read
+    /// starts at that print's first event; absent without one, at the first
+    /// event stored.
+    pub after: Option<EventId>,
+    /// The print to scope to: its own events and every event that belongs to
+    /// no print. Absent, every event.
+    pub print_id: Option<PrintId>,
+    /// How many events to answer; absent means [`DEFAULT_HISTORY_WINDOW`].
+    pub limit: Option<u32>,
+}
+
+impl StoredQuery {
+    /// The limit this query resolves to.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::LimitRefused`] when the limit asked for is above
+    /// [`MAX_HISTORY_LIMIT`].
+    pub fn resolved_limit(&self) -> Result<u32, StoreError> {
+        resolve_history_limit(self.limit)
+    }
+}
+
+/// What a store calls after every write that stored an event has committed.
+///
+/// Raised after the commit rather than before it, so a reader woken by it reads
+/// what woke it; and raised for every write that stored one, whichever
+/// aggregate's method made it. It carries nothing: what was stored is read
+/// back through [`EventStore::stored_after`].
+pub type StoredSignal = Arc<dyn Fn() + Send + Sync>;
+
 /// What the store found when asked for an image.
 ///
 /// The record and the bytes are two facts rather than one: a record whose file
@@ -425,6 +465,29 @@ pub trait EventStore: Send + Sync {
         after: Option<EventId>,
         page_size: u32,
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>>;
+
+    /// Read the events stored after a point, in the order they were stored.
+    ///
+    /// Answers **oldest first by the store's own sequence** — the order the
+    /// events were appended in, whatever their `received_at` — scoped as
+    /// [`StoredQuery`] says. A print with no event yet starts after the newest
+    /// event stored. The limit is resolved by [`resolve_history_limit`].
+    ///
+    /// # Errors
+    ///
+    /// Refuses a cursor naming no event with [`StoreError::NotFound`], and a
+    /// limit above [`MAX_HISTORY_LIMIT`] with [`StoreError::LimitRefused`].
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>>;
+
+    /// The newest event stored, by the store's own sequence, when there is one.
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>>;
+
+    /// Raise this signal after every write that stores an event has committed,
+    /// from now on.
+    fn on_stored(&self, signal: StoredSignal);
 }
 
 /// The images stored beside events.

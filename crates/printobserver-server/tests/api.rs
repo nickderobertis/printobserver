@@ -36,6 +36,8 @@ mod configuration;
 mod failing;
 #[path = "journeys/finding.rs"]
 mod finding;
+#[path = "journeys/following.rs"]
+mod following;
 #[path = "journeys/images.rs"]
 mod images;
 #[path = "journeys/ingress.rs"]

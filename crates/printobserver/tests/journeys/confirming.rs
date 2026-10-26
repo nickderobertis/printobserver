@@ -213,6 +213,7 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
         "image" => assert_eq!(at(&said, "record.id"), world.image_id),
         "history" => the_history_it_answers_is_this_prints(world, &said),
         "look" => the_look_took_this_worlds_frame(world, &said),
+        "events" => the_events_it_answers_are_this_prints_of_its_kind(world, &said),
         // A write and the read beside it are confirmed the same way and
         // deliberately so: what a write did is what the read answers, and the
         // manifest both are about is the one the write drove. What is compared
@@ -539,6 +540,38 @@ fn the_history_it_answers_is_this_prints(world: &World, said: &BTreeMap<String, 
     assert!(
         seen > 0 && seen <= limit,
         "a history read asked for at most {limit} events and answered {seen}"
+    );
+}
+
+/// An events read scoped to this world's print answers only its events and the
+/// printer's, of the one kind it asked for, a cursor, and the print as open.
+fn the_events_it_answers_are_this_prints_of_its_kind(
+    world: &World,
+    said: &BTreeMap<String, String>,
+) {
+    for (key, value) in said {
+        let mut place = key.split('.');
+        if place.next() != Some("events") {
+            continue;
+        }
+        match place.nth(1) {
+            Some("print_id") => assert_eq!(
+                value,
+                &world.print_id(),
+                "an events read answered another print's event: {said:#?}"
+            ),
+            Some("kind") => assert_eq!(value, walk::EVENTS_KIND, "{said:#?}"),
+            _ => {}
+        }
+    }
+    assert!(
+        said.contains_key("cursor"),
+        "an events read answered no cursor: {said:#?}"
+    );
+    assert_eq!(
+        said.get("print_ended").map(String::as_str),
+        Some("null"),
+        "an events read about an open print answered it as ended: {said:#?}"
     );
 }
 

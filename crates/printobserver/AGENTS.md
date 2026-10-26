@@ -26,3 +26,12 @@ client with no `[client]` table takes the address the server listens on. With
 `PRINTOBSERVER_CREDENTIAL` win over any file, and with both set and no
 `--config` no file is opened at all, which is how a supervision turn runs:
 `tests/service.rs` traces the open calls to hold that order.
+
+## `watch` wakes only on the supervisor's own writes
+
+A waiting `events` read is woken by the store's signal, raised by writes the
+running supervisor makes. A row written through a second connection — how
+`tests/journeys/streaming.rs` records observations with chosen `received_at`
+values — raises none, so those journeys follow each such write with a `look`
+the supervisor records itself (`support/standalone.rs`'s `nudge`); without it a
+read finds the rows only at its deadline.

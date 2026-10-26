@@ -27,8 +27,11 @@ from contract_codegen.schemas import (
 )
 from repo_checks.expect import contains, equal
 
-#: The one value of the committed surface a request may carry more than once.
+#: A value of the committed surface a request may carry more than once.
 REPEATED = ("printer_history", "kinds")
+
+#: Every value of the committed surface a request may carry more than once.
+EVERY_REPEATED = [("events", "kinds"), ("events", "exclude_kinds"), REPEATED]
 
 
 def _described(copy: Path, alter: Callable[[dict[str, Any]], None]) -> None:
@@ -66,7 +69,7 @@ def test_the_committed_description_is_the_version_this_reader_reads(
         for parameter in operation.parameters
         if parameter.repeated
     ]
-    equal([(name, parameter.name) for name, parameter in repeated], [REPEATED])
+    equal([(name, parameter.name) for name, parameter in repeated], EVERY_REPEATED)
     kinds = repeated[0][1]
     equal(kinds.located, "query")
     equal(kinds.carried, ListOf(Scalar("string")))

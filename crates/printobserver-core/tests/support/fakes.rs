@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 use printobserver_core::store::{
     ActionStore, AuditPage, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore, FileTally,
     HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore, SettleOutcome,
-    Settlement, SpoolMutation, SpoolWrite, StoreError, TimelineQuery, TimelineStore,
-    resolve_history_limit,
+    Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal, TimelineQuery,
+    TimelineStore, resolve_history_limit,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -462,6 +462,10 @@ pub enum StoreMethod {
     AccountTallies,
     /// `record_file_position`.
     RecordFilePosition,
+    /// `history`, which the agent's interval is read back from.
+    History,
+    /// `due_interventions`, which the interventions left active are read by.
+    DueInterventions,
 }
 
 /// Everything the fake store holds.
@@ -1083,6 +1087,9 @@ impl EventStore for FakeStore {
         query: HistoryQuery,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
         self.journal.record(Call::ReadHistory);
+        if let Some(error) = self.induced(StoreMethod::History) {
+            return ready(Err(error));
+        }
         let limit = match resolve_history_limit(query.limit) {
             Ok(limit) => limit as usize,
             Err(error) => return ready(Err(error)),
@@ -1134,6 +1141,46 @@ impl EventStore for FakeStore {
         };
         ready(Ok(AuditPage { events, next }))
     }
+
+    // The supervisor never reads the log in stored order, so neither read is
+    // journaled: nothing the supervision tier asserts reaches them.
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        let limit = match query.resolved_limit() {
+            Ok(limit) => limit as usize,
+            Err(error) => return ready(Err(error)),
+        };
+        let held = self.held.lock().expect("the store holds");
+        let from = query
+            .after
+            .and_then(|cursor| held.events.iter().position(|event| event.id == cursor))
+            .map_or(0, |index| index + 1);
+        let answered = held
+            .events
+            .iter()
+            .skip(from)
+            .filter(|event| {
+                query
+                    .print_id
+                    .is_none_or(|print_id| event.print_id.is_none_or(|own| own == print_id))
+            })
+            .take(limit)
+            .cloned()
+            .collect();
+        ready(Ok(answered))
+    }
+
+    fn newest_stored(
+        &self,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        let held = self.held.lock().expect("the store holds");
+        ready(Ok(held.events.last().map(|event| event.id)))
+    }
+
+    // Nothing in the supervision tier waits on the log.
+    fn on_stored(&self, _signal: StoredSignal) {}
 }
 
 impl ImageStore for FakeStore {
@@ -1340,6 +1387,9 @@ impl ActionStore for FakeStore {
         &self,
         at: Timestamp,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Vec<Intervention>, StoreError>> {
+        if let Some(error) = self.induced(StoreMethod::DueInterventions) {
+            return ready(Err(error));
+        }
         let due: Vec<Intervention> = self
             .held
             .lock()

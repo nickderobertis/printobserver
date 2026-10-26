@@ -7,7 +7,9 @@
 //! public operation the server serves — and puts the four commands that are not
 //! requests to a running server beside them: the one that runs the server, the
 //! one that signs its harness in, and the two that issue and verify the
-//! operator's credential. Each client command's options are built from that
+//! operator's credential. One more composes an operation rather than being
+//! one: [`WATCH_COMMAND`] asks the `events` read again and again, and takes
+//! that read's own values beside three of its own. Each client command's options are built from that
 //! operation's own [`request`](printobserver_server::Operation::request), whose
 //! body for an action is the fields the contracts' `PrintAction` declares for
 //! that variant. So the set of commands, the set of options each takes, and
@@ -23,7 +25,7 @@
 //! configuration file's path is one of them while the address and the
 //! credential it carries are not.
 
-use printobserver_server::{Located, OPERATIONS, Operation, Parameter};
+use printobserver_server::{Located, OPERATIONS, Operation, Parameter, ValueKind, operation};
 
 /// The flag that asks for machine-readable output.
 pub const JSON_OPTION: &str = "--json";
@@ -66,6 +68,13 @@ pub const LOCAL_COMMANDS: [&str; 4] = [
     CREDENTIAL_ISSUE_COMMAND,
     CREDENTIAL_VERIFIER_COMMAND,
 ];
+
+/// The command that follows the event log as one stream, composing the
+/// `events` read rather than being one.
+pub const WATCH_COMMAND: &str = "watch";
+
+/// The operation [`WATCH_COMMAND`] composes.
+pub const WATCHED_OPERATION: &str = "events";
 
 /// The flags one command that is not a request takes of its own: only
 /// `credential issue` has one, the flag that lets it replace a configuration
@@ -263,7 +272,59 @@ pub fn surface() -> Vec<Command> {
         fields: operation.request().into_iter().map(Field::of).collect(),
         flags: Vec::new(),
     }));
+    found.push(watch_command());
     found
+}
+
+/// The command that follows the event log as one stream.
+///
+/// Its values are the `events` read's own — the print and the cursor as that
+/// read names them, and each kind filter given one kind at a time, so spelled
+/// singular — beside the three that are the stream's alone: the sampling, the
+/// heartbeat and how long to retry a server that cannot be reached.
+///
+/// # Panics
+///
+/// Panics when the server serves no `events` read, which is the command and
+/// the operation it composes having come apart.
+#[must_use]
+pub fn watch_command() -> Command {
+    let read = operation(WATCHED_OPERATION)
+        .unwrap_or_else(|| panic!("the server serves no `{WATCHED_OPERATION}` read"));
+    let mut fields: Vec<Field> = Vec::new();
+    for parameter in read.request() {
+        let renamed = match parameter.name.as_str() {
+            "print_id" | "after" => parameter.name.clone(),
+            "kinds" => crate::watch::KIND_FIELD.to_owned(),
+            "exclude_kinds" => crate::watch::EXCLUDE_KIND_FIELD.to_owned(),
+            // How long one read waits and how many it answers are the
+            // stream's to choose for every read it makes.
+            _ => continue,
+        };
+        fields.push(Field::of(Parameter {
+            name: renamed,
+            ..parameter
+        }));
+    }
+    for (name, kind, repeated) in [
+        (crate::watch::SAMPLE_FIELD, ValueKind::Text, true),
+        (crate::watch::HEARTBEAT_FIELD, ValueKind::Integer, false),
+        (crate::watch::RECONNECT_FIELD, ValueKind::Integer, false),
+    ] {
+        fields.push(Field::of(Parameter {
+            name: name.to_owned(),
+            required: false,
+            located: Located::Query,
+            kind,
+            repeated,
+        }));
+    }
+    Command {
+        name: WATCH_COMMAND.to_owned(),
+        operation: None,
+        fields,
+        flags: Vec::new(),
+    }
 }
 
 /// The command of one name, when this program has one.

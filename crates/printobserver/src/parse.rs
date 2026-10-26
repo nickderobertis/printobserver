@@ -29,7 +29,7 @@ use crate::config::DEFAULT_CONFIG_PATH;
 use crate::surface::{
     CONFIG_OPTION, CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, CREDENTIAL_WORD, Command,
     Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, SERVE_COMMAND,
-    SIGN_IN_COMMAND, Supply, VERSION_OPTION, command, is_duration, usage,
+    SIGN_IN_COMMAND, Supply, VERSION_OPTION, WATCH_COMMAND, command, is_duration, usage,
 };
 
 /// One request to a running supervisor, as the caller asked for it.
@@ -168,6 +168,8 @@ pub enum Invocation {
     },
     /// Make one request to a running supervisor.
     Call(Box<Call>),
+    /// Follow the event log as one stream until it ends.
+    Watch(Box<crate::watch::Watch>),
     /// The arguments do not name anything this program does.
     Refused {
         /// What to tell the caller.
@@ -274,8 +276,31 @@ pub fn parse(arguments: &[String]) -> Invocation {
         }
     }
 
+    finished(
+        command,
+        config,
+        !flagged.is_empty(),
+        machine_readable,
+        values,
+    )
+}
+
+/// What one command, its options read, was asked to do.
+fn finished(
+    command: Command,
+    config: Option<PathBuf>,
+    flagged: bool,
+    machine_readable: bool,
+    values: BTreeMap<String, Value>,
+) -> Invocation {
+    if command.name == WATCH_COMMAND {
+        return match crate::watch::Watch::of(config, machine_readable, &values) {
+            Ok(watch) => Invocation::Watch(Box::new(watch)),
+            Err(detail) => refused(detail),
+        };
+    }
     if !command.is_client() {
-        return local(&command.name, config, !flagged.is_empty(), machine_readable);
+        return local(&command.name, config, flagged, machine_readable);
     }
     for field in &command.fields {
         if field.required() && !values.contains_key(&field.parameter.name) {

@@ -6,7 +6,8 @@ use std::sync::{Mutex, PoisonError};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
-    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, resolve_history_limit,
+    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, StoredQuery, StoredSignal,
+    resolve_history_limit,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
@@ -27,9 +28,10 @@ use crate::rows::{
     session_from_row,
 };
 use crate::schema::{DATABASE_FILE_NAME, MigrationNote, connect, migration_report, open_database};
+use crate::stored::{Signals, note_appended, take_appended};
 use crate::values::{
-    database_error, instant_text, is_constraint_violation, json_text, not_found, raised, refused,
-    tag_text,
+    database_error, instant_text, is_constraint_violation, json_text, not_found, parsed, raised,
+    refused, tag_text,
 };
 
 mod filament;
@@ -51,6 +53,8 @@ pub struct SqliteStore {
     points: HoldPoints,
     /// What the migrations this open applied wrote down.
     migrated: Vec<MigrationNote>,
+    /// What is raised once a write that stored an event has committed.
+    signals: Signals,
 }
 
 impl SqliteStore {
@@ -69,6 +73,7 @@ impl SqliteStore {
             idle: Mutex::new(vec![connection]),
             points: HoldPoints::default(),
             migrated,
+            signals: Signals::default(),
         })
     }
 
@@ -116,11 +121,20 @@ impl SqliteStore {
             Some(connection) => connection,
             None => connect(&self.state_dir.join(DATABASE_FILE_NAME))?,
         };
+        // Whatever an earlier unit of work on this thread left noted is not
+        // this one's.
+        take_appended();
         let answer = work(&mut connection);
         self.idle
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(connection);
+        // Every unit of work commits before it returns, so an append it made
+        // is readable by the time the signal reaches anybody. One that rolled
+        // back raises it too, which costs a reader one read that finds nothing.
+        if take_appended() {
+            self.signals.raise();
+        }
         answer
     }
 
@@ -424,6 +438,7 @@ impl SqliteStore {
                     .unwrap_or_default();
                 Self::refusal(connection, &error, &candidates)
             })?;
+        note_appended();
         Ok(record)
     }
 
@@ -875,6 +890,75 @@ impl SqliteStore {
         Ok(AuditPage { events, next })
     }
 
+    /// Read the events stored after a point, in the order they were stored.
+    ///
+    /// The store's own sequence is the table's row identifier, which an append
+    /// takes one past the greatest — so it is the order the rows were written
+    /// in, whatever instant each carries.
+    fn read_stored_after(&self, query: &StoredQuery) -> Result<Vec<EventRecord>, StoreError> {
+        let limit = resolve_history_limit(query.limit)?;
+        let from = self.on_connection(|connection| {
+            let at = |sql: &str, identifier: String| {
+                connection
+                    .query_row(sql, params![identifier], |row| row.get::<_, Option<i64>>(0))
+                    .optional()
+                    .map(Option::flatten)
+                    .map_err(|error| database_error(&error))
+            };
+            let newest = || {
+                connection
+                    .query_row("SELECT max(rowid) FROM events", [], |row| {
+                        row.get::<_, Option<i64>>(0)
+                    })
+                    .map(|newest| newest.unwrap_or(0))
+                    .map_err(|error| database_error(&error))
+            };
+            match (query.after, query.print_id) {
+                (Some(cursor), _) => {
+                    at("SELECT rowid FROM events WHERE id = ?1", cursor.to_string())?
+                        .ok_or_else(|| not_found(&format!("event {cursor}")))
+                }
+                (None, Some(print_id)) => {
+                    match at(
+                        "SELECT min(rowid) FROM events WHERE print_id = ?1",
+                        print_id.to_string(),
+                    )? {
+                        Some(first) => Ok(first - 1),
+                        None => newest(),
+                    }
+                }
+                (None, None) => Ok(0),
+            }
+        })?;
+        let mut values = vec![Value::Integer(from)];
+        let mut sql = format!("{EVENT_SELECT} WHERE e.rowid > ?1");
+        if let Some(print_id) = query.print_id {
+            values.push(Value::Text(print_id.to_string()));
+            let _ = write!(
+                sql,
+                " AND (e.print_id = ?{} OR e.print_id IS NULL)",
+                values.len()
+            );
+        }
+        values.push(Value::Integer(i64::from(limit)));
+        let _ = write!(sql, " ORDER BY e.rowid ASC LIMIT ?{}", values.len());
+        self.read_events(&sql, params_from_iter(values.iter()))
+    }
+
+    /// The newest event stored, by the table's row identifier.
+    fn read_newest_stored(&self) -> Result<Option<EventId>, StoreError> {
+        self.on_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT id FROM events ORDER BY rowid DESC LIMIT 1",
+                    [],
+                    |row| parsed(row, 0),
+                )
+                .optional()
+                .map_err(|error| database_error(&error))
+        })
+    }
+
     /// When one event was received, as the cursor a page follows spells it.
     fn instant_of(&self, event_id: EventId) -> Result<String, StoreError> {
         self.on_connection(|connection| {
@@ -1009,6 +1093,21 @@ impl EventStore for SqliteStore {
         page_size: u32,
     ) -> BoxFuture<'_, Result<AuditPage, StoreError>> {
         Box::pin(async move { self.read_audit_page(print_id, after, page_size) })
+    }
+
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        Box::pin(async move { self.read_stored_after(&query) })
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        Box::pin(async move { self.read_newest_stored() })
+    }
+
+    fn on_stored(&self, signal: StoredSignal) {
+        self.signals.add(signal);
     }
 }
 

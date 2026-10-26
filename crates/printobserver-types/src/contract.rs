@@ -23,6 +23,7 @@ use crate::event::{EventBody, EventKind, EventPayload, EventRecord, EventSource}
 use crate::file_name::FileName;
 use crate::ids::{EventId, ImageId, PrintId};
 use crate::image::ImageRef;
+use crate::printer_state::PrinterState;
 use crate::raw::RawBytes;
 use crate::reported::{Range, Reported};
 use crate::timestamp::Timestamp;
@@ -209,6 +210,7 @@ pub fn declared() -> Vec<TypeContract> {
         ImageId,
         ImageRef,
         PrintId,
+        PrinterState,
         Range,
         RawBytes,
         Reported<f64> => "Reported",
