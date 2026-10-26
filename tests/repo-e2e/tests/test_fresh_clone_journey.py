@@ -86,6 +86,7 @@ def test_a_gate_tier_runs_in_a_clone_that_never_bootstrapped(
     no_daemon_left_running(fresh)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_clones_commands_sync_its_own_environment_and_start_no_daemon(tmp_path: Path) -> None:
     """The copy's commands see no inherited `UV_NO_SYNC`, and `NX_DAEMON=false`.
 

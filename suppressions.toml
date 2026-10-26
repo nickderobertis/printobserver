@@ -2739,3 +2739,9 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/repo-checks/src/repo_checks/release_probes.py"
 site = "def _environment() -> dict[str, str]:"
 reason = "This restates onevcs's probe contract (docs/contract.md, \"What a probe prints\"): a probe is spawned with `PATH` and `HOME` alone and no credential. It cannot be reconciled by running the probe through onevcs instead, because onevcs runs a declared probe only for a repository registered with its host (`onevcs release discover` refuses an unregistered path), and the scheduled install proof that calls `just probe-registries` runs on a hosted runner with no onevcs host state. The pinned onevcs reader in `just check-repo`'s `release-declaration` reconciles the declaration itself; the bound and environment here only make this reconciliation ask the probe no more generously than onevcs would, so a drift would make it stricter or looser than a consumer's engine, never let a wrong answer through to a consumer."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_fresh_clone_journey.py"
+site = "def test_a_clones_commands_sync_its_own_environment_and_start_no_daemon"
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the journey proves a copy's own `uv run` syncs the copy's lock under a caller exporting `UV_NO_SYNC`, which only an environment that does not already hold the dependencies can show, and with uv's cache warm from the shared environment that sync links rather than downloads."
