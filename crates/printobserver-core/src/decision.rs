@@ -14,10 +14,10 @@ use crate::records::{
     ActionKind, Actor, ActorClass, EffectiveBounds, PolicyDecision, PrintAction, PrintRecord,
     RejectionReason, SafetyEnvelope,
 };
+use core::time::Duration;
 use printobserver_printer_api::{Adjustable, PrinterState};
-use printobserver_types::Timestamp;
 
-use crate::clock::seconds_between;
+use printobserver_types::Timestamp;
 
 /// Everything one decision is taken from.
 #[derive(Debug, Clone, Copy)]
@@ -43,8 +43,12 @@ pub struct DecisionInput<'a> {
     pub bounds: &'a EffectiveBounds,
     /// The operator's safety envelope.
     pub envelope: &'a SafetyEnvelope,
-    /// When the agent last acted on this print, if it has.
-    pub last_agent_action: Option<Timestamp>,
+    /// How long ago the agent last changed the machine on this print, if it
+    /// has, measured on [`Clock::elapsed`](crate::Clock::elapsed) — time
+    /// passing rather than the wall clock moving, so that a host's time
+    /// synchronisation stepping the wall clock neither lets the agent act again
+    /// early nor holds it back longer than the interval.
+    pub since_last_agent_action: Option<Duration>,
 }
 
 /// What an adjustment asks to change, and the value it asks for.
@@ -155,9 +159,9 @@ pub fn decide(input: &DecisionInput<'_>) -> PolicyDecision {
     if actor_class == ActorClass::Agent
         && changes_the_machine(kind)
         && !adjusting_a_paused_print
-        && let Some(last) = input.last_agent_action
+        && let Some(since_last) = input.since_last_agent_action
     {
-        let since_last_s = seconds_between(last, input.requested_at);
+        let since_last_s = i64::try_from(since_last.as_secs()).unwrap_or(i64::MAX);
         if since_last_s < input.envelope.agent_min_interval_s {
             return PolicyDecision::Rejected(RejectionReason::MinIntervalNotElapsed {
                 interval_s: input.envelope.agent_min_interval_s,

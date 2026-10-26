@@ -47,6 +47,9 @@ mod rejections;
 #[path = "journeys/interventions.rs"]
 mod interventions;
 
+#[path = "journeys/clock_steps.rs"]
+mod clock_steps;
+
 #[path = "journeys/event_loop.rs"]
 mod event_loop;
 

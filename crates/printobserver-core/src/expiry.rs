@@ -4,6 +4,18 @@
 //! injected clock and nothing else, so expiry is driven by time passing and by
 //! nothing else, and a test drives it by advancing that clock alone.
 //!
+//! # Time passing, not the wall clock moving
+//!
+//! An intervention's deadline is persisted as an absolute instant, so that a
+//! restart knows when it was due. But a live expiry is decided on
+//! [`Clock::elapsed`](crate::Clock::elapsed), which nothing steps: each
+//! active intervention's remaining time is taken **once** from its persisted
+//! deadline — when this supervisor applies it, or, for one a previous
+//! supervisor left active, against the [`ClockReading`] this one took as it
+//! started — and is counted down on the clock nothing steps from then on. A
+//! host whose time synchronisation steps the wall clock therefore neither cuts
+//! a bounded change short nor draws it out.
+//!
 //! Expiry has exactly three outcomes and this module is the one place they are
 //! decided, so that the sweep and a print's terminal cleanup cannot drift into
 //! handling different sets of them:
@@ -24,16 +36,83 @@
 //! forbids it, and absorbing a transient store failure belongs behind the store
 //! port rather than here.
 
+use core::time::Duration;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::records::{
-    Actor, Intervention, InterventionOutcome, PolicyDecision, PrintAction, RejectionReason,
+    Actor, Intervention, InterventionId, InterventionOutcome, PolicyDecision, PrintAction,
+    RejectionReason,
 };
 use printobserver_printer_api::Adjustable;
-use printobserver_types::PrintId;
+use printobserver_types::{PrintId, Timestamp};
 
+use crate::clock::ClockReading;
 use crate::decision::{DecisionInput, decide};
 use crate::error::CoreError;
 use crate::store::{EventDraft, SettleOutcome};
 use crate::supervisor::Supervisor;
+
+/// The last instant a timestamp can hold, at or before which every active
+/// intervention is due: reading what is due by then reads every one.
+const LATEST_SECONDS: i64 = 253_402_300_799;
+
+/// The active interventions this supervisor is counting down, each with the
+/// reading of [`Clock::elapsed`](crate::Clock::elapsed) it expires at.
+#[derive(Debug, Default)]
+pub(crate) struct Deadlines {
+    /// Each intervention, by its identifier, and when it expires.
+    counting: Mutex<BTreeMap<InterventionId, (Intervention, Duration)>>,
+    /// Whether the interventions a previous supervisor left active have been
+    /// read and are being counted down.
+    adopted: AtomicBool,
+}
+
+impl Deadlines {
+    /// Count one intervention down from `reading`, replacing any count of it.
+    fn count(&self, intervention: &Intervention, reading: ClockReading) {
+        let due = reading.elapsed_at(intervention.expires_at);
+        self.counting()
+            .insert(intervention.id, (intervention.clone(), due));
+    }
+
+    /// Count one intervention down from `reading`, unless it is already.
+    fn adopt(&self, intervention: &Intervention, reading: ClockReading) {
+        let due = reading.elapsed_at(intervention.expires_at);
+        self.counting()
+            .entry(intervention.id)
+            .or_insert_with(|| (intervention.clone(), due));
+    }
+
+    /// Stop counting one intervention down.
+    fn forget(&self, intervention_id: InterventionId) {
+        self.counting().remove(&intervention_id);
+    }
+
+    /// Every intervention whose count has reached `elapsed`, soonest first.
+    fn due(&self, elapsed: Duration) -> Vec<Intervention> {
+        let mut due: Vec<(Duration, Intervention)> = self
+            .counting()
+            .values()
+            .filter(|(_, at)| *at <= elapsed)
+            .map(|(intervention, at)| (*at, intervention.clone()))
+            .collect();
+        due.sort_by_key(|(at, _)| *at);
+        due.into_iter()
+            .map(|(_, intervention)| intervention)
+            .collect()
+    }
+
+    /// The counts, held for one read or write.
+    fn counting(
+        &self,
+    ) -> std::sync::MutexGuard<'_, BTreeMap<InterventionId, (Intervention, Duration)>> {
+        self.counting
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
 
 /// The reason a restoring request carries, so the record says why it was made.
 const RESTORE_REASON: &str = "the bounded intervention expired";
@@ -130,26 +209,57 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
 }
 
 impl Supervisor {
-    /// Expire every bounded intervention that is due at the clock's own instant.
+    /// Expire every bounded intervention whose time has passed.
     ///
     /// One intervention's failure does not cost the rest: every one that is due
     /// is attempted on the same sweep.
     ///
-    /// The expiry driver calls this on its own poll, and a composition root
-    /// calls it once on start so that an intervention left past its expiry by a
-    /// restart is expired then rather than up to one poll later.
+    /// The expiry driver calls this on its own poll. Its first sweep reads the
+    /// interventions a previous supervisor left active and counts each down
+    /// from the reading this supervisor took as it started; every later one
+    /// reads nothing, because every intervention opened since is counted down
+    /// from the moment it was applied.
     ///
     /// # Errors
     ///
-    /// Returns the store's own error when the due interventions could not be
-    /// read. A failure settling one of them is recorded on that intervention
-    /// rather than answered here.
+    /// Returns the store's own error when the interventions left active could
+    /// not be read, which the next sweep reads again. A failure settling one of
+    /// them is recorded on that intervention rather than answered here.
     pub async fn sweep_expired(&self) -> Result<(), CoreError> {
-        let at = self.clock().now();
-        for intervention in self.stores().actions.due_interventions(at).await? {
+        self.adopt_left_active().await?;
+        for intervention in self.deadlines().due(self.clock().elapsed()) {
             let _ = self.expire_intervention(&intervention).await;
         }
         Ok(())
+    }
+
+    /// Count down every intervention a previous supervisor left active, once.
+    async fn adopt_left_active(&self) -> Result<(), CoreError> {
+        let deadlines = self.deadlines();
+        if deadlines.adopted.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let latest = Timestamp::from_unix_seconds(LATEST_SECONDS).map_err(|error| {
+            CoreError::Unrepresentable {
+                detail: error.to_string(),
+            }
+        })?;
+        for intervention in self.stores().actions.due_interventions(latest).await? {
+            deadlines.adopt(&intervention, self.started());
+        }
+        deadlines.adopted.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    /// Count one intervention this supervisor just applied down from now.
+    pub(crate) fn count_down(&self, intervention: &Intervention) {
+        self.deadlines()
+            .count(intervention, ClockReading::of(self.clock().as_ref()));
+    }
+
+    /// Stop counting down one intervention settled other than by expiring.
+    pub(crate) fn stop_counting_down(&self, intervention_id: InterventionId) {
+        self.deadlines().forget(intervention_id);
     }
 
     /// Expire every intervention still active on one print.
@@ -181,6 +291,16 @@ impl Supervisor {
     ///
     /// Returns the store's own error when the outcome could not be settled.
     pub async fn expire_intervention(
+        &self,
+        intervention: &Intervention,
+    ) -> Result<InterventionOutcome, CoreError> {
+        let outcome = self.expire_once(intervention).await?;
+        self.deadlines().forget(intervention.id);
+        Ok(outcome)
+    }
+
+    /// Expire one intervention, whatever was counting it down.
+    async fn expire_once(
         &self,
         intervention: &Intervention,
     ) -> Result<InterventionOutcome, CoreError> {
@@ -237,7 +357,7 @@ impl Supervisor {
             printer_state: None,
             bounds: &bounds.effective,
             envelope: &self.config().envelope,
-            last_agent_action: None,
+            since_last_agent_action: None,
         });
         let request = crate::records::ActionRequest {
             action,

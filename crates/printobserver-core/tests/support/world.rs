@@ -149,6 +149,24 @@ impl World {
         core
     }
 
+    /// Stop this world's supervisor and go on with a restarted one over the
+    /// same store, printer, ports and clock, as a restart of the service does.
+    ///
+    /// Answers once the first is gone, its expiry driver with it, so nothing
+    /// the first was counting down can be expired by it afterwards.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the first supervisor does not stop.
+    pub fn restart(&mut self) {
+        let stopped = Arc::downgrade(&self.core);
+        self.core = self.restarted();
+        self.agent.attach(&self.core);
+        wait_until("the first supervisor to stop", || {
+            stopped.upgrade().is_none()
+        });
+    }
+
     /// A world under one envelope, its turn authority installed or not.
     fn built(envelope: SafetyEnvelope, authority: bool) -> Self {
         Self::configured(envelope, authority, |_| {})
