@@ -1371,12 +1371,13 @@ class RetainedInstance(TypedDict):
 
 
 class Retention(TypedDict):
-    """What `retain` kept of one instance's logs, and what it never wrote."""
+    """What `retain` kept of one instance's logs, what it never wrote, and what it cannot read."""
 
     instance: RetainedInstance
     into: str
     retained: list[str]
     absent: list[str]
+    unreadable: dict[str, str]
 
 
 def retain(instance: Instance, into: Path) -> Retention:
@@ -1386,8 +1387,10 @@ def retain(instance: Instance, into: Path) -> Retention:
     keeps its evidence rather than leaving it to a rerun that may pass. Each
     required log is copied whole with this instance's secrets redacted, because
     what is kept is uploaded; a log the instance never wrote is reported absent
-    by name rather than skipped, and a copy an earlier run left of it is
-    removed so nothing stale passes for this run's. The instance is named by its
+    by name rather than skipped, one that is there and cannot be read is
+    reported unreadable with the reason rather than as never written, and a copy
+    an earlier run left of either is removed so nothing stale passes for this
+    run's. The instance is named by its
     state directory and by the record `up` wrote, where it wrote one.
     """
     redacted = redactor(instance)
@@ -1401,19 +1404,32 @@ def retain(instance: Instance, into: Path) -> Retention:
     )
     retained: list[str] = []
     absent: list[str] = []
+    unreadable: dict[str, str] = {}
     for name, source in required_logs(instance).items():
         kept = into / name
         try:
             text = source.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except FileNotFoundError, NotADirectoryError:
+            # Nothing is at that path: no file, or a parent that is no directory.
             absent.append(name)
             _writable(kept.unlink, kept, missing_ok=True)
             note(f"{name} is absent: the instance under {instance.state_dir} never wrote it")
             continue
+        except OSError as error:
+            unreadable[name] = f"{type(error).__name__}: {error.strerror or error}"
+            _writable(kept.unlink, kept, missing_ok=True)
+            note(f"{name} is unreadable under {instance.state_dir}: {unreadable[name]}")
+            continue
         _writable(kept.parent.mkdir, kept.parent, parents=True, exist_ok=True)
         _writable(kept.write_text, kept, redacted(text), encoding="utf-8")
         retained.append(name)
-    answer = Retention(instance=named, into=str(into.resolve()), retained=retained, absent=absent)
+    answer = Retention(
+        instance=named,
+        into=str(into.resolve()),
+        retained=retained,
+        absent=absent,
+        unreadable=unreadable,
+    )
     record_path = into / RETAINED_RECORD
     _writable(
         record_path.write_text, record_path, json.dumps(answer, indent=2) + "\n", encoding="utf-8"
@@ -1424,7 +1440,7 @@ def retain(instance: Instance, into: Path) -> Retention:
 def retained_line(retention: Retention) -> str:
     """The one line `retain` answers with: how many logs it kept, and where the record is."""
     kept = len(retention["retained"])
-    every = kept + len(retention["absent"])
+    every = kept + len(retention["absent"]) + len(retention["unreadable"])
     record = Path(retention["into"]) / RETAINED_RECORD
     return f"kept {kept} of {every} logs under {retention['into']}; the record is {record}"
 

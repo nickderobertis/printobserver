@@ -142,6 +142,7 @@ def holds_every_log_the_instance_wrote(state: Path, kept: Path) -> None:
     )
     equal(retained["retained"], list(REQUIRED_LOGS), describing="the logs kept")
     equal(retained["absent"], [], describing="the logs reported absent")
+    equal(retained["unreadable"], {}, describing="the logs reported unreadable")
     for name, written in REQUIRED_LOGS.items():
         text = (kept / name).read_text(encoding="utf-8")
         truth(bool(text), describing=f"the kept {name} to carry what the instance wrote")

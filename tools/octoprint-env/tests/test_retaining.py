@@ -16,6 +16,7 @@ import os
 import shutil
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from environment import SCRIPT, answer, script
 from repo_checks.expect import contains, equal, failing, passing, truth
@@ -93,6 +94,7 @@ def test_a_tier_that_fails_keeps_every_log_before_the_bring_down(
     )
     equal(retained["retained"], REQUIRED, describing="the logs kept")
     equal(retained["absent"], [], describing="the logs reported absent")
+    equal(retained["unreadable"], {}, describing="the logs reported unreadable")
     for name, written in WRITTEN.items():
         text = (kept / name).read_text(encoding="utf-8")
         truth(bool(text), describing=f"the kept {name} to carry what the instance wrote")
@@ -102,14 +104,15 @@ def test_a_tier_that_fails_keeps_every_log_before_the_bring_down(
         )
 
 
-def _retained(state: str, into: Path) -> dict[str, object]:
+def _retained(state: str, into: Path) -> dict[str, Any]:
     kept = script("retain", "--state-dir", state, "--into", str(into))
     passing(kept, describing="keeping the instance's logs")
     record = json.loads((into / "retained.json").read_text(encoding="utf-8"))
     count = len(record["retained"])
     equal(
         kept.stdout,
-        f"kept {count} of {count + len(record['absent'])} logs under {into.resolve()}; "
+        f"kept {count} of {count + len(record['absent']) + len(record['unreadable'])} logs "
+        f"under {into.resolve()}; "
         f"the record is {into.resolve() / 'retained.json'}\n",
         describing="the one line `retain` answers with, against the record it kept",
     )
@@ -138,6 +141,35 @@ def test_an_instance_refused_before_it_started_has_every_log_reported_absent(
     equal(record["absent"], REQUIRED, describing="the logs reported absent")
     for name in REQUIRED:
         truth(not (into / name).exists(), describing=f"no kept {name}")
+
+
+def test_a_log_that_is_there_and_cannot_be_read_is_unreadable_rather_than_absent(
+    state_dir: Callable[[str], str], tmp_path: Path
+) -> None:
+    """A log path holding something no read can take is named unreadable, with why.
+
+    `server.log` is made a directory, which exists and which no host reads as a
+    file: reporting that as a log the instance never wrote would send whoever
+    reads the record after the wrong cause. A copy an earlier run left of it is
+    removed rather than passed off as this run's.
+    """
+    state = state_dir("unreadable")
+    (Path(state) / "server.log").mkdir(parents=True)
+    into = tmp_path / "kept"
+    into.mkdir()
+    (into / "server.log").write_text("an earlier run's server log\n", encoding="utf-8")
+
+    record = _retained(state, into)
+
+    equal(record["retained"], [], describing="the logs kept")
+    equal(record["absent"], REQUIRED[1:], describing="the logs reported absent")
+    equal(list(record["unreadable"]), ["server.log"], describing="the logs reported unreadable")
+    contains(
+        record["unreadable"]["server.log"],
+        "Error",
+        describing="why server.log could not be read",
+    )
+    truth(not (into / "server.log").exists(), describing="no kept server.log")
 
 
 def test_an_instance_that_died_before_logging_keeps_what_it_said_and_names_the_rest(
