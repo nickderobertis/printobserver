@@ -180,6 +180,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
             "detector_warned": null,
             "detector_paused_the_print": null,
             "arrived_while_busy": [],
+            "noticed": null,
         })
     );
     assert_ne!(

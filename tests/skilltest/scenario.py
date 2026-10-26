@@ -102,6 +102,10 @@ BED_C = 60.0
 PAUSED_NOZZLE_C = 184.17
 # An idle printer waiting for a print, heaters off.
 IDLE_C = 24.0
+# No detector health check configured, as the server answers when
+# `obico.ml_api_url` is unset: every case here has the detector's alerts but
+# no health route to read.
+UNCHECKED_DETECTOR: dict[str, Any] = {"since": None, "status": "unchecked"}
 
 # How long a look says it waited, which a fixed answer cannot take from the
 # command it answers.
@@ -632,6 +636,7 @@ class _Composer:
             "detector_warned": self.scenario.detector_warned,
             "detector_paused_the_print": self.scenario.detector_paused_the_print,
             "arrived_while_busy": [],
+            "noticed": None,
         }
 
     def earlier_events(self, event: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -667,6 +672,7 @@ class _Composer:
         image = self.image(self.scenario.event_image)
         context: dict[str, Any] = {
             "bounds": {"allowed": self.bounds()},
+            "detector": dict(UNCHECKED_DETECTOR),
             "interventions": [],
             "job": _job(reading, self.file_name),
             "latest_image": {"id": image.id, "sha256": image.sha256},
@@ -913,6 +919,7 @@ def _answers(
         "prints": [{"active": composer.print_id, "prints": [composer.print_record()]}],
         "status": [
             {
+                "detector": dict(UNCHECKED_DETECTOR),
                 "interventions": [],
                 "job": {
                     **context["context"].get("job", _job(first, composer.file_name)),
