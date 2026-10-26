@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a check of the failure detector's own health found.",
+  "oneOf": [
+    {
+      "const": "available",
+      "description": "It answered its health check.",
+      "type": "string"
+    },
+    {
+      "const": "unavailable",
+      "description": "It did not: refused, reset, answered otherwise, or not in time.",
+      "type": "string"
+    }
+  ],
+  "title": "DetectorStatus"
+}

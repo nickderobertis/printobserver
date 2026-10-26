@@ -2,8 +2,10 @@
 //!
 //! [`PrintContext`] is the supervision domain's own view of one print: the
 //! record, the printer and job as the printer port last reported them, the
-//! manifest and the bounds in force, the interventions still active and the
-//! events most recently written down. The loop collects it when it handles an
+//! manifest and the bounds in force, the interventions still active, the
+//! events most recently written down — the print's own, and what the printer
+//! watch recorded of the machine since the print opened — and the failure
+//! detector's health. The loop collects it when it handles an
 //! event, holds it for the turn that event prompts, and answers it to the
 //! `context` operation, so what the agent reasons about is the state the event
 //! was handled at rather than whatever the machine has drifted to since.
@@ -13,6 +15,7 @@
 //! this crate and regenerates the clients, and nothing central.
 
 use crate::records::{EffectiveBounds, Intervention, JobManifest, PrintRecord};
+use crate::watch::DetectorHealth;
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
@@ -44,6 +47,9 @@ pub struct PrintContext {
     /// The most recent image, when there is one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_image: Option<ImageRef>,
+    /// The failure detector's health, and since when it has been so.
+    #[serde(default)]
+    pub detector: DetectorHealth,
 }
 
 impl Sample for PrintContext {
@@ -57,6 +63,7 @@ impl Sample for PrintContext {
             interventions: vec![Intervention::sample_full()],
             recent_events: vec![EventRecord::sample_full()],
             latest_image: Some(ImageRef::sample_full()),
+            detector: DetectorHealth::sample_full(),
         }
     }
 
@@ -70,6 +77,7 @@ impl Sample for PrintContext {
             interventions: vec![],
             recent_events: vec![],
             latest_image: None,
+            detector: DetectorHealth::sample_minimal(),
         }
     }
 }

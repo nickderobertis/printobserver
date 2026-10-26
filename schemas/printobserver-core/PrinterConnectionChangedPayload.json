@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer's connection changed into or out of `offline` or `error`: a\nserial disconnect, a reconnect, a printer error.\n\nThe printer's rather than any print's, so it is written with no print.",
+  "properties": {
+    "detail": {
+      "description": "What the watch read, in words.",
+      "type": "string"
+    },
+    "from": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state the previous read found."
+    },
+    "to": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state this read found."
+    }
+  },
+  "required": [
+    "from",
+    "to",
+    "detail"
+  ],
+  "title": "PrinterConnectionChangedPayload",
+  "type": "object",
+  "x-event-kind": "printer_connection_changed"
+}

@@ -252,6 +252,11 @@ impl FakePrinter {
         });
     }
 
+    /// Report the job's error text, or none.
+    pub fn reports_error(&self, error: Option<&str>) {
+        self.job.lock().expect("the printer holds").error = error.map(str::to_owned);
+    }
+
     /// Report this snapshot from now on.
     pub fn reports(&self, snapshot: PrinterSnapshot) {
         *self.snapshot.lock().expect("the printer holds") = snapshot;

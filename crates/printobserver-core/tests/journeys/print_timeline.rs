@@ -261,7 +261,8 @@ fn a_look_records_where_the_print_had_got() {
     );
 }
 
-/// A print that ended in error ends `failed`; when the file itself cannot be
+/// A print that ended in error, reporting a printer's own message while no
+/// push channel said otherwise, ends `failed`; when the file itself cannot be
 /// read, it is charged the analysed length scaled by how far in it got, with a
 /// note saying why.
 #[test]
@@ -276,6 +277,9 @@ fn a_failed_print_whose_file_cannot_be_read_charges_a_file_fraction() {
             detail: "the file is gone".to_owned(),
         },
     );
+    world.printer.reports_error(Some(
+        "Thermal Runaway, system stopped! Printer halted. kill() called!",
+    ));
     ends(&world, PrinterState::Error);
 
     assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Failed);
@@ -294,10 +298,11 @@ fn a_failed_print_whose_file_cannot_be_read_charges_a_file_fraction() {
     assert_ledger_explains(&world, spool.id);
 }
 
-/// A print that ended offline ends `failed` and charges the extrusion to the
-/// last position read.
+/// A print that went offline with no error of the printer's own ends
+/// `interrupted` and charges the extrusion to the last position read, as a
+/// failed one is charged.
 #[test]
-fn a_print_that_went_offline_fails_and_charges_the_extrusion() {
+fn a_print_that_went_offline_is_interrupted_and_charges_the_extrusion() {
     let world = spool_world();
     let spool = loaded_spool(&world, "Offline", 1_000.0);
     let print_id = start(&world);
@@ -305,8 +310,14 @@ fn a_print_that_went_offline_fails_and_charges_the_extrusion() {
     world
         .printer
         .extrudes(FILE, 100_000, vec![on_tool(0, 512.0)]);
+    world
+        .printer
+        .reports_error(Some("SerialTimeoutException: "));
     ends(&world, PrinterState::Offline);
-    assert_eq!(ended_of(&world, print_id).outcome, PrintOutcome::Failed);
+    assert_eq!(
+        ended_of(&world, print_id).outcome,
+        PrintOutcome::Interrupted
+    );
     assert_charge(
         &charges_of(&world, print_id)[0],
         spool.id,

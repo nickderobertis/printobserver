@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "FrameCause": {
+      "description": "Why a camera frame was not one to hand the agent.",
+      "oneOf": [
+        {
+          "const": "blank",
+          "description": "It decoded, but is near-uniform grey: its grey-level spread is below\nthe configured blank-frame bound.",
+          "type": "string"
+        },
+        {
+          "const": "undecodable",
+          "description": "It is not a whole image: a strict decode refused it.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The camera gave no usable frame for a look or a periodic observation,\nhowever many times it was asked.\n\nWritten in place of the look or the observation it was for, so that no\nframe the camera could not give is handed to the agent as one it did.",
+  "properties": {
+    "attempts": {
+      "description": "How many frames were fetched, every one of them bad.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cause": {
+      "$ref": "#/$defs/FrameCause",
+      "description": "Why the last of them was bad."
+    },
+    "detail": {
+      "description": "What was wrong with each, in words.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "attempts",
+    "cause",
+    "detail"
+  ],
+  "title": "CameraDegradedPayload",
+  "type": "object",
+  "x-event-kind": "camera_degraded"
+}

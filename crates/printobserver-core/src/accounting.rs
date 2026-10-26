@@ -63,6 +63,7 @@ use crate::store::{
     SpoolChange, SpoolMutation,
 };
 use crate::supervisor::Supervisor;
+use crate::watch::PushFacts;
 
 /// Below this many millimetres a length is nothing, and no charge is written
 /// for it: a zero-length charge would be a record of nothing having happened.
@@ -395,6 +396,8 @@ struct Ending<'a> {
     tally: Tally,
     /// Who cancelled it, as far as this system knows.
     cancelled_by: Canceller,
+    /// What the printer pushed during the stop.
+    pushes: PushFacts,
 }
 
 /// How a print's closing charge is worked out, by the outcome it ended with.
@@ -466,14 +469,65 @@ impl Ending<'_> {
         if reached_the_end || reported_complete || self.tally == Tally::CompletedSince {
             return PrintOutcome::Completed;
         }
-        if self.cancelled_by == Canceller::Here || *self.state == PrinterState::Cancelling {
+        if self.cancelled_by == Canceller::Here {
             return PrintOutcome::Cancelled;
         }
         match self.state {
-            PrinterState::Error | PrinterState::Offline => PrintOutcome::Failed,
+            PrinterState::Error | PrinterState::Offline => {
+                if self.printer_errored() {
+                    PrintOutcome::Failed
+                } else {
+                    PrintOutcome::Interrupted
+                }
+            }
+            _ if self.pushes.reset => PrintOutcome::Interrupted,
             _ => PrintOutcome::Cancelled,
         }
     }
+
+    /// Whether a stop that went offline or into `error` was the printer's own
+    /// error.
+    ///
+    /// The push channel says so outright: the printer pushes an error of its
+    /// own for exactly that stop, and for no serial drop or reset. Only when
+    /// the channel was down during the stop is the job's error text read
+    /// instead — a printer's own message there is its error, and an exception
+    /// name is the host losing the line.
+    fn printer_errored(&self) -> bool {
+        if self.pushes.firmware_error {
+            return true;
+        }
+        self.pushes.gap
+            && self
+                .job
+                .and_then(|job| job.error.as_deref())
+                .is_some_and(is_printer_message)
+    }
+}
+
+/// Whether a job's error text is a printer's own message rather than the name
+/// of an exception the host raised, such as `SerialTimeoutException: `.
+#[must_use]
+pub fn is_printer_message(error: &str) -> bool {
+    let text = error.trim();
+    !text.is_empty() && !is_exception_name(text)
+}
+
+/// Whether text begins with an exception name and its colon: an identifier,
+/// dotted or not, ending `Exception` or `Error`.
+fn is_exception_name(text: &str) -> bool {
+    let Some((name, _)) = text.split_once(':') else {
+        return false;
+    };
+    let mut characters = name.chars();
+    let starts = characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_');
+    starts
+        && name
+            .chars()
+            .all(|each| each.is_ascii_alphanumeric() || each == '_' || each == '.')
+        && (name.ends_with("Exception") || name.ends_with("Error"))
 }
 
 impl Supervisor {
@@ -917,6 +971,7 @@ impl Supervisor {
             size_bytes: analysis.size_bytes(),
             tally,
             cancelled_by,
+            pushes: self.push_facts(),
         }
         .outcome();
         let rule = charge_rule(outcome);
@@ -1036,6 +1091,7 @@ impl Supervisor {
             size_bytes: None,
             tally: Tally::NoCompletion,
             cancelled_by: Canceller::NotHere,
+            pushes: self.push_facts(),
         }
         .outcome();
         // The `print_untracked` goes first, once: a close-out replayed after

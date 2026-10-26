@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer reset: its firmware restarted, and whatever it held is gone.\n\nRecorded on each reset the printer pushed, one while idle included, which\nchanges nothing a read of its state reports. The printer's rather than any\nprint's, so it is written with no print; `during_print` names the print it\nhappened during, when one was running.",
+  "properties": {
+    "detail": {
+      "description": "What the watch knew of it, in words.",
+      "type": "string"
+    },
+    "during_print": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The print that was running when it reset, `null` when none was."
+    }
+  },
+  "required": [
+    "detail"
+  ],
+  "title": "PrinterResetPayload",
+  "type": "object",
+  "x-event-kind": "printer_reset"
+}

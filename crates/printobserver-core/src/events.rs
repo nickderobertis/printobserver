@@ -46,6 +46,7 @@ use crate::inbox::Arrival;
 use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
 use crate::listing::{self, ObservedJob, reached_reason};
 use crate::supervisor::Supervisor;
+use crate::watch::{concerns_its_end, noticed_of};
 
 /// One event written down, and the turn it claimed, when it claimed one.
 #[derive(Debug, Clone, PartialEq)]
@@ -393,7 +394,7 @@ impl Supervisor {
             .prints
             .print(print.id)
             .await?
-            .is_none_or(|held| held.ended_at.is_some())
+            .is_none_or(|held| held.ended_at.is_some() && !concerns_its_end(event.kind()))
         {
             return Ok(Supervised::Ended);
         }
@@ -416,6 +417,7 @@ impl Supervisor {
                 .detection
                 .map(|detection| detection.paused_the_print),
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
+            noticed: noticed_of(event),
         };
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
@@ -549,17 +551,7 @@ impl Supervisor {
         let manifest = self.stores().prints.manifest(print.id).await?;
         let bounds = self.bounds_for(Some(print), print.id).await?;
         let interventions = self.stores().actions.active_interventions(print.id).await?;
-        let recent_events = self
-            .stores()
-            .events
-            .history(HistoryQuery {
-                print_id: print.id,
-                kinds: Vec::new(),
-                since: None,
-                until: None,
-                limit: Some(self.config().recent_events),
-            })
-            .await?;
+        let recent_events = self.recent_events_of(print).await?;
         let latest_image = recent_events.iter().find_map(|record| record.image.clone());
         Ok(PrintContext {
             print: print.clone(),
@@ -570,7 +562,46 @@ impl Supervisor {
             interventions,
             recent_events,
             latest_image,
+            detector: self.detector_health(),
         })
+    }
+
+    /// One print's most recent events, newest first: its own, and what the
+    /// printer watch recorded of the machine since it opened, which is the
+    /// printer's and carries no print.
+    async fn recent_events_of(&self, print: &PrintRecord) -> Result<Vec<EventRecord>, CoreError> {
+        let limit = self.config().recent_events;
+        let mut events = self
+            .stores()
+            .events
+            .history(HistoryQuery {
+                print_id: print.id,
+                kinds: Vec::new(),
+                since: None,
+                until: None,
+                limit: Some(limit),
+            })
+            .await?;
+        let kinds = crate::watch::PRINTER_WATCH_KINDS
+            .iter()
+            .filter_map(|kind| printobserver_types::EventKind::new(*kind).ok())
+            .collect();
+        let watched = self
+            .stores()
+            .timeline
+            .timeline(crate::store::TimelineQuery {
+                kinds,
+                since: Some(print.opened_at),
+                until: None,
+                spool_id: None,
+                before: None,
+                limit: Some(limit),
+            })
+            .await?;
+        events.extend(watched.into_iter().filter(|event| event.print_id.is_none()));
+        events.sort_by_key(|event| core::cmp::Reverse((event.received_at, event.id)));
+        events.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+        Ok(events)
     }
 
     /// Where one image's bytes are, when the store still has them.
@@ -647,6 +678,7 @@ impl Supervisor {
             )
             .await?;
         self.close_session_of(print_id, reason).await?;
+        self.after_close_out(print_id).await?;
         Ok(true)
     }
 

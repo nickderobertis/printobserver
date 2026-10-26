@@ -1,0 +1,39 @@
+{
+  "$defs": {
+    "DetectorStatus": {
+      "description": "What a check of the failure detector's own health found.",
+      "oneOf": [
+        {
+          "const": "available",
+          "description": "It answered its health check.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "It did not: refused, reset, answered otherwise, or not in time.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The failure detector's own health changed.\n\nThe printer's rather than any print's, so it is written with no print.",
+  "properties": {
+    "detail": {
+      "description": "What it was answered, in words.",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/DetectorStatus",
+      "description": "What the check found."
+    }
+  },
+  "required": [
+    "status",
+    "detail"
+  ],
+  "title": "DetectorHealthChangedPayload",
+  "type": "object",
+  "x-event-kind": "detector_health_changed"
+}

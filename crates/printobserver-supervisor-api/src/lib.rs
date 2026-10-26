@@ -94,6 +94,13 @@ pub struct TurnSituation {
     /// newest of them, and is not repeated here.
     #[serde(default)]
     pub arrived_while_busy: Vec<EventRecord>,
+    /// What the printer watch noticed that prompted this turn — how the print
+    /// ended, what the printer did on its own after it, that the camera gave
+    /// no usable frame, that the failure detector stopped answering — in
+    /// words beginning with the event's kind; null when the turn was prompted
+    /// by anything else.
+    #[serde(default)]
+    pub noticed: Option<String>,
 }
 
 impl Sample for TurnSituation {
@@ -103,6 +110,11 @@ impl Sample for TurnSituation {
             detector_warned: Some(false),
             detector_paused_the_print: Some(true),
             arrived_while_busy: vec![EventRecord::sample_full()],
+            noticed: Some(
+                "print_ended: the print ended interrupted, the printer reporting Offline \
+                 (the print reached Offline)"
+                    .to_owned(),
+            ),
         }
     }
 

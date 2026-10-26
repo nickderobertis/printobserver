@@ -107,6 +107,11 @@ pub struct CoreConfig {
     pub observation_interval: Duration,
     /// How spools are checked before a print, and the margin asked for.
     pub spools: SpoolPolicy,
+    /// How often the printer watch reads the machine.
+    pub printer_poll: Duration,
+    /// How long after an `interrupted` or `failed` ending the printer acting
+    /// on its own is recorded.
+    pub unattended_window: Duration,
 }
 
 impl CoreConfig {
@@ -122,6 +127,8 @@ impl CoreConfig {
             detector_resume_grace: DEFAULT_DETECTOR_RESUME_GRACE,
             observation_interval: DEFAULT_OBSERVATION_INTERVAL,
             spools: SpoolPolicy::default(),
+            printer_poll: crate::watch::DEFAULT_PRINTER_POLL,
+            unattended_window: crate::watch::DEFAULT_UNATTENDED_WINDOW,
         }
     }
 
