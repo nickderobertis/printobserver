@@ -19,8 +19,11 @@ halves of that split, so the workflow carries no selection of its own:
   `test-e2e[2/2]`, the part a run collects named in `PRINTOBSERVER_E2E_PART`.
   The partition is `END_TO_END_SECOND_PART`: a fixed set of the tier's test
   files, every other file in the first part, so each test is collected by
-  exactly one part. That tier measures no coverage, so its split moves no
-  coverage figure.
+  exactly one part. Split five ways, the first two shards are the same and the
+  end-to-end tier runs in three parts instead, `test-e2e[1/3]` to
+  `test-e2e[3/3]`: `END_TO_END_THIRD_PART` takes its files from both halves,
+  and each half keeps the rest of its own. That tier measures no coverage, so
+  its split moves no coverage figure.
 * `commands TIER SHARD` prints the recipe invocations shard `SHARD` (`k/n`) of
   the gate at `TIER` runs, one a line, and runs none of them.
 * `run TIER SHARD` runs shard `SHARD` (`k/n`) of the gate at `TIER`: each of its
@@ -100,8 +103,28 @@ END_TO_END_SECOND_PART = frozenset(
         "test_workflow_validation.py",
     }
 )
-#: How many parts the end-to-end tier's test files split into where they split.
+#: The end-to-end tier's test files its third part collects when it is split in
+#: three, taken from both halves; the first and second parts keep the rest of
+#: their own. Chosen from a saturated Windows ARM run, 40295485407, whose halves
+#: took 1,174 s and 1,227 s: the first half's serial `release-plz-drafting`
+#: group is split across two parts, its `test_release_tag_journey.py` here, and
+#: the heaviest files without a group join it — each part's runner pays a
+#: group's own setup once, so a group split across parts costs only that.
+END_TO_END_THIRD_PART = frozenset(
+    {
+        # release-plz-drafting, whose other file is the first part's
+        "test_release_tag_journey.py",
+        # no group
+        "test_gate_tier_journey.py",
+        "test_release_gating_journey.py",
+        "test_sdk_project_targets.py",
+    }
+)
+
+#: How many parts the end-to-end tier's test files split into in a four-way
+#: plan, and in a five-way one.
 END_TO_END_PARTS = 2
+END_TO_END_THIRDS = 3
 #: The variables a step names its part in. Each step is handed only those it
 #: names, so a tier the plan runs whole is never narrowed by one a caller left set.
 PARTS = (END_TO_END_PART_VARIABLE, PROJECTS_VARIABLE)
@@ -229,6 +252,15 @@ def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
             ),
             *((Step(END_TO_END, Shard(part, END_TO_END_PARTS)),) for part in (1, 2)),
         ),
+        5: (
+            tuple(Step(tier, projects=rust) for tier in tiers if tier in MEASURED),
+            tuple(
+                Step(tier, projects=others if tier in MEASURED else None)
+                for tier in tiers
+                if tier != END_TO_END
+            ),
+            *((Step(END_TO_END, Shard(part, END_TO_END_THIRDS)),) for part in (1, 2, 3)),
+        ),
     }
     if count not in plans:
         msg = (
@@ -249,7 +281,11 @@ def end_to_end_part(file_name: str, parts: int) -> int:
         return 1
     if parts == END_TO_END_PARTS:
         return 2 if file_name in END_TO_END_SECOND_PART else 1
-    msg = f"the end-to-end tier's test files are split into one part or two, not {parts}"
+    if parts == END_TO_END_THIRDS:
+        if file_name in END_TO_END_THIRD_PART:
+            return 3
+        return 2 if file_name in END_TO_END_SECOND_PART else 1
+    msg = f"the end-to-end tier's test files are split into one, two or three parts, not {parts}"
     raise ShardError(msg)
 
 

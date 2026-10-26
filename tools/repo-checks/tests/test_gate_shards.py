@@ -27,8 +27,13 @@ from closures import closure
 from repo_checks.checks_graph import projects
 from repo_checks.checks_shards import sharded_jobs
 from repo_checks.commands import measured_for, measured_sources
-from repo_checks.expect import accepted, contains, equal, failing, passing, refused
-from repo_checks.gate_shards import END_TO_END_PART_VARIABLE, END_TO_END_SECOND_PART, plan
+from repo_checks.expect import accepted, contains, equal, failing, passing, refused, truth
+from repo_checks.gate_shards import (
+    END_TO_END_PART_VARIABLE,
+    END_TO_END_SECOND_PART,
+    END_TO_END_THIRD_PART,
+    plan,
+)
 from repo_checks.gate_shards import REFUSED as REFUSED_SHARD
 from repo_checks.gate_shards import main as gate_shards_main
 from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, command
@@ -44,7 +49,9 @@ CI = ".github/workflows/ci.yml"
 #: The committed sharded platform.
 SHARDED = "windows-aarch64"
 #: The committed split.
-SHARDS = 4
+SHARDS = 5
+#: Each split a plan makes, and how many parts its end-to-end tier runs in.
+SPLITS = ((4, 2), (5, 3))
 #: One `just <recipe> ['<tier>']` invocation, as `just --dry-run` prints one.
 INVOCATION = re.compile(r"just (?P<recipe>[a-z][a-z0-9-]*)(?: '(?P<tier>[a-z]+)')?")
 RUST = f"{PROJECTS_VARIABLE}=lang:rust"
@@ -74,17 +81,18 @@ def invoked(command: str) -> tuple[str, ...]:
     return tuple(words[words.index("just") + 1 :])
 
 
+@pytest.mark.parametrize(("count", "parts"), SPLITS)
 @pytest.mark.parametrize("tier", ["affected", "all"])
 def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
-    capsys: pytest.CaptureFixture[str], tier: str
+    capsys: pytest.CaptureFixture[str], tier: str, count: int, parts: int
 ) -> None:
     """Every invocation `just check` makes is made by the shards, each part of it once.
 
     The `test` tier and its `coverage` run on each side of `lang:rust`, side by
-    side in the first two shards, and the end-to-end tier's two parts are the
-    last two shards'.
+    side in the first two shards, and the end-to-end tier's parts are the
+    remaining shards', one each.
     """
-    shards = [shard_commands(capsys, tier, f"{index}/{SHARDS}") for index in range(1, SHARDS + 1)]
+    shards = [shard_commands(capsys, tier, f"{index}/{count}") for index in range(1, count + 1)]
     selected = [command for shard in shards for command in shard]
 
     equal(
@@ -103,13 +111,16 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
         [
             [f"{RUST} just test {tier}", f"{RUST} just coverage {tier}"],
             [f"{OTHERS} just test {tier}", f"{OTHERS} just coverage {tier}"],
-            *([f"{END_TO_END_PART_VARIABLE}={part}/2 just test-e2e {tier}"] for part in (1, 2)),
+            *(
+                [f"{END_TO_END_PART_VARIABLE}={part}/{parts} just test-e2e {tier}"]
+                for part in range(1, parts + 1)
+            ),
         ],
         describing="the parts of the tests and their coverage each shard runs",
     )
 
 
-@pytest.mark.parametrize("count", [1, SHARDS])
+@pytest.mark.parametrize("count", [1, *(count for count, _ in SPLITS)])
 def test_the_printed_split_is_the_plan_each_shard_runs(count: int) -> None:
     """`just gate-shards` prints one shard a line; together they are the tiers `check` runs."""
     shown = run(["just", "gate-shards", str(count)], cwd=REPO_ROOT, timeout=120)
@@ -295,8 +306,9 @@ def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(tree: Callable[[]
             "build all",
             "lint-workflows",
             "check-repo",
-            "test-e2e all 1/2",
-            "test-e2e all 2/2",
+            "test-e2e all 1/3",
+            "test-e2e all 2/3",
+            "test-e2e all 3/3",
         ],
     )
 
@@ -371,6 +383,42 @@ def test_the_end_to_end_parts_collect_the_whole_tier_and_no_test_twice(
             {test.split("::")[0].rsplit("/", 1)[-1] for test in parts[1][1]},
             set(END_TO_END_SECOND_PART),
             describing="the files the second part collects",
+        )
+
+
+@pytest.mark.parametrize("selection", [(), ("-m", "not alone"), ("-m", "alone")])
+def test_the_three_end_to_end_parts_collect_the_whole_tier_and_no_test_twice(
+    selection: tuple[str, ...],
+) -> None:
+    """Split in three, the parts are the tier's whole collection, disjoint, each part non-empty.
+
+    The third part collects exactly its own files, and each of the other two
+    keeps what it collected of the two-way split but for those.
+    """
+    whole = collected("", *selection)
+    parts = [collected(f"{index}/3", *selection) for index in (1, 2, 3)]
+
+    equal(whole[0], 0, describing="the unsharded collection's exit")
+    equal([exited for exited, _ in parts], [0, 0, 0], describing="each part's exit")
+    together = [test for _, tests in parts for test in tests]
+    equal(
+        [test for test, seen in Counter(together).items() if seen > 1],
+        [],
+        describing="tests two parts collect",
+    )
+    equal(sorted(together), sorted(whole[1]), describing="the parts' union against the tier")
+    if not selection:
+        files = [{test.split("::")[0].rsplit("/", 1)[-1] for test in tests} for _, tests in parts]
+        equal([bool(one) for one in files], [True, True, True], describing="each part's share")
+        equal(files[2], set(END_TO_END_THIRD_PART), describing="the files the third part collects")
+        equal(
+            files[1],
+            set(END_TO_END_SECOND_PART) - END_TO_END_THIRD_PART,
+            describing="the files the second part keeps",
+        )
+        truth(
+            not files[0] & (END_TO_END_SECOND_PART | END_TO_END_THIRD_PART),
+            describing="the first part collecting no file another part names",
         )
 
 
@@ -479,16 +527,16 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
     ("old", "new", "naming"),
     [
         (
-            "            shard: 4\n            shards: 4\n",
-            "            shard: 5\n            shards: 4\n",
+            "            shard: 5\n            shards: 5\n",
+            "            shard: 6\n            shards: 5\n",
             "runs every shard 1 to its count",
         ),
         (
-            "            shard: 4\n            shards: 4\n",
-            "            shard: 4\n            shards: 5\n",
+            "            shard: 5\n            shards: 5\n",
+            "            shard: 5\n            shards: 6\n",
             "runs every shard 1 to its count",
         ),
-        ("            shards: 4\n", "            shards: 1\n", "runs every shard 1 to its count"),
+        ("            shards: 5\n", "            shards: 1\n", "runs every shard 1 to its count"),
         (
             "            runner: windows-11-arm\n            shard: 2",
             "            runner: windows-2025\n            shard: 2",
@@ -512,13 +560,13 @@ def test_an_aggregator_that_is_no_verdict_over_its_shards_is_refused(
             "is a shard job with no `platform` matrix cells",
         ),
         (
-            "            shard: 1\n            shards: 4\n",
-            "            shard: true\n            shards: 4\n",
+            "            shard: 1\n            shards: 5\n",
+            "            shard: true\n            shards: 5\n",
             "runs every shard 1 to its count",
         ),
         (
-            "            shard: 1\n            shards: 4\n",
-            "            shard: 1\n            shards: [4]\n",
+            "            shard: 1\n            shards: 5\n",
+            "            shard: 1\n            shards: [5]\n",
             "whose value is not something a status context can be named after",
         ),
     ],
