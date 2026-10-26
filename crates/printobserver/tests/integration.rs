@@ -41,6 +41,8 @@ mod world;
 mod answers;
 #[path = "journeys/carrying.rs"]
 mod carrying;
+#[path = "journeys/closing.rs"]
+mod closing;
 #[path = "journeys/confirming.rs"]
 mod confirming;
 #[path = "journeys/documented.rs"]

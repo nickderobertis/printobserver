@@ -89,8 +89,8 @@ bed_target = {{ min = 0.0, max = 110.0 }}
 [safety.actions]
 operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-            "set_fan_percent", "acknowledge_failure", "register_spool", "load_spool",
-            "unload_spool", "adjust_spool", "retire_spool"]
+            "set_fan_percent", "acknowledge_failure", "close_print", "register_spool",
+            "load_spool", "unload_spool", "adjust_spool", "retire_spool"]
 agent = ["pause", "set_feedrate_factor", "set_fan_percent"]
 system = ["set_feedrate_factor", "set_flowrate_factor", "set_tool_target_c",
           "set_bed_target_c", "set_fan_percent"]

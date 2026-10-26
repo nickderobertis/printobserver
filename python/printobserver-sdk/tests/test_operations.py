@@ -28,6 +28,7 @@ from printobserver_sdk.contract import (
     EventId,
     FileName,
     JobManifest,
+    PrintOutcome,
     payload_of,
 )
 from repo_checks.expect import equal, truth
@@ -1776,6 +1777,131 @@ def test_acknowledge_failure_makes_no_request_when_the_reason_is_empty() -> None
                 "0198f0a1-2b3c-7d4e-8f90-123456789abc",
                 cast(AcknowledgementDisposition, json.loads('"continue"')),
                 cast(EventId, json.loads('"0198f0a1-2b3c-7d4e-8f90-123456789abc"')),
+                "   ",
+            )
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_close_print_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`close_print` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"intervention": {"action_id": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
+        ' "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "printer_refusal": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "record": {"decision": "a'
+        'ccepted", "executed_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome"'
+        ': "succeeded", "print_id": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "request": {"action": {"action": "pause", "actor": {"'
+        'agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc"}}, "reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "a'
+        'ctor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-1'
+        '23456789abc"}}, "requested_at": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc"}}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.close_print(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            cast(PrintOutcome, json.loads('"completed"')),
+            "a generated walk is asking",
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/close_print")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "outcome": "completed", "reason": "a gene'
+            'rated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_close_print_surfaces_the_policys_own_refusal() -> None:
+    """`close_print` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"intervention": {"action_id": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
+        ' "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "printer_refusal": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc", "record": {"decision": {"'
+        'rejected": {"out_of_bounds": {"adjustable": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc", "allowed": {"max": 1.25, "min": 0.5}'
+        ', "requested": 1.5}}}, "executed_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "outcome": "succeeded", "print_id": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "request": {"action": {"action": "pause"'
+        ', "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc"}}, "reason": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc"}, "actor": {"agent": {"session_name": "0198f0a1-2b3'
+        'c-7d4e-8f90-123456789abc"}}, "requested_at": "0198f0a1-2b3c-'
+        '7d4e-8f90-123456789abc"}}}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.close_print(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                cast(PrintOutcome, json.loads('"completed"')),
+                "a generated walk is asking",
+            )
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_close_print_makes_no_request_when_the_reason_is_empty() -> None:
+    """`close_print` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.close_print(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                cast(PrintOutcome, json.loads('"completed"')),
+                "",
+            )
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.close_print(
+                "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+                cast(PrintOutcome, json.loads('"completed"')),
                 "   ",
             )
         except NoReasonError:

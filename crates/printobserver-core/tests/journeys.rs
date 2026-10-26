@@ -106,3 +106,6 @@ mod preflight;
 
 #[path = "journeys/unobserved.rs"]
 mod unobserved;
+
+#[path = "journeys/closing.rs"]
+mod closing;

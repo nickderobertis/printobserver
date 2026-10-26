@@ -19,7 +19,7 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 27] = [
+pub const OPERATION_NAMES: [&str; 28] = [
     "prints",
     "status",
     "context",
@@ -42,6 +42,7 @@ pub const OPERATION_NAMES: [&str; 27] = [
     "set_bed_target_c",
     "set_fan_percent",
     "acknowledge_failure",
+    "close_print",
     "register_spool",
     "load_spool",
     "unload_spool",
@@ -129,6 +130,9 @@ pub enum ActionKind {
     /// Acknowledge a failure event.
     #[serde(rename = "acknowledge_failure")]
     AcknowledgeFailure,
+    /// Close a print record printobserver left open.
+    #[serde(rename = "close_print")]
+    ClosePrint,
     /// Register a spool.
     #[serde(rename = "register_spool")]
     RegisterSpool,
@@ -1298,6 +1302,18 @@ pub enum PrintAction {
         /// Why the actor is asking for this.
         reason: String,
     },
+    /// Close a print record printobserver left open, with the outcome the
+    /// operator judges it ended with. It asks nothing of the machine and
+    /// charges no spool: the record's consumption was never seen to end.
+    #[serde(rename = "close_print")]
+    ClosePrint {
+        /// Who is asking.
+        actor: Actor,
+        /// How the print ended, in the operator's judgement.
+        outcome: PrintOutcome,
+        /// Why the actor is asking for this.
+        reason: String,
+    },
 }
 
 /// Everything a supervision turn is given about one print.
@@ -1354,6 +1370,12 @@ pub enum PrintOutcome {
     /// It stopped on an error.
     #[serde(rename = "failed")]
     Failed,
+    /// It stopped with no cancel, no error the printer reported and no
+    /// finish. Charged as a failed print is: what the file's moves extruded
+    /// up
+    /// to the last file position seen.
+    #[serde(rename = "interrupted")]
+    Interrupted,
 }
 
 /// One print, and the record supervision keys from.
@@ -1622,6 +1644,23 @@ pub enum RejectionReason {
         file_name: String,
         /// How long the start waited for one, in whole seconds.
         waited_s: i64,
+    },
+    /// A close was refused because the print record has already ended.
+    #[serde(rename = "print_already_ended")]
+    PrintAlreadyEnded,
+    /// A close was refused because the printer shows a job of the record's
+    /// file printing, paused or cancelling.
+    #[serde(rename = "print_still_active")]
+    PrintStillActive {
+        /// The state the printer reported that job in.
+        state: PrinterState,
+    },
+    /// A close was refused because an intervention for the print has neither
+    /// expired nor been restored.
+    #[serde(rename = "intervention_still_active")]
+    InterventionStillActive {
+        /// The intervention still standing.
+        intervention_id: InterventionId,
     },
     /// A spool command could not be carried out.
     #[serde(rename = "spool_refused")]
@@ -2812,6 +2851,33 @@ impl Client {
         sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
         sending.insert("disposition".to_owned(), crate::as_value(&disposition)?);
         sending.insert("event_id".to_owned(), crate::as_value(&event_id)?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `close_print` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn close_print(
+        &self,
+        print_id: &str,
+        outcome: &PrintOutcome,
+        reason: &str,
+    ) -> Result<ActionAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = format!("/v1/prints/{print_id}/actions/close_print");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("outcome".to_owned(), crate::as_value(&outcome)?);
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));
         self.call("POST", &target, &asked, sending.as_ref())

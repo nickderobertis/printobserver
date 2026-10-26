@@ -53,6 +53,11 @@
       "type": "string"
     },
     {
+      "const": "close_print",
+      "description": "Close a print record printobserver left open.",
+      "type": "string"
+    },
+    {
       "const": "register_spool",
       "description": "Register a spool.",
       "type": "string"

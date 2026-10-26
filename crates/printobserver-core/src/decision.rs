@@ -65,15 +65,19 @@ pub fn adjustment(action: &PrintAction) -> Option<(Adjustable, f64)> {
         | PrintAction::Resume { .. }
         | PrintAction::Cancel { .. }
         | PrintAction::StartPrint { .. }
-        | PrintAction::AcknowledgeFailure { .. } => None,
+        | PrintAction::AcknowledgeFailure { .. }
+        | PrintAction::ClosePrint { .. } => None,
     }
 }
 
 /// Whether one action is valid from the state the printer is in.
 ///
-/// Acknowledging a failure and every spool command are valid from every
-/// state, because none of them changes anything at the machine; everything
-/// else names the states it makes sense from.
+/// Acknowledging a failure, closing a print record and every spool command
+/// are valid from every state, because none of them changes anything at the
+/// machine; everything else names the states it makes sense from. Whether a
+/// close may go ahead turns on the job of the record's own file rather than on
+/// the printer's state, so it is read where the close is checked
+/// ([`crate::closing`]).
 #[must_use]
 pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
     match kind {
@@ -89,6 +93,7 @@ pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
             matches!(state, PrinterState::Printing | PrinterState::Paused)
         }
         ActionKind::AcknowledgeFailure
+        | ActionKind::ClosePrint
         | ActionKind::RegisterSpool
         | ActionKind::LoadSpool
         | ActionKind::UnloadSpool
@@ -101,7 +106,8 @@ pub fn valid_from(kind: ActionKind, state: &PrinterState) -> bool {
 ///
 /// Acknowledging a failure does not: it writes a decision into the print's
 /// record and asks nothing of the printer, whatever its disposition. Nor does
-/// any spool command, which writes the spool ledger and nothing else. The agent's minimum interval spaces out changes to the
+/// any spool command, which writes the spool ledger and nothing else, nor
+/// closing a print record, which writes that record and nothing else. The agent's minimum interval spaces out changes to the
 /// machine, so that each one's effect can show before the next is asked for;
 /// an acknowledgement neither waits on it nor restarts it. An adjustment asked
 /// for while the print is paused does not wait on it either: nothing it does
@@ -111,6 +117,7 @@ pub const fn changes_the_machine(kind: ActionKind) -> bool {
     !matches!(
         kind,
         ActionKind::AcknowledgeFailure
+            | ActionKind::ClosePrint
             | ActionKind::RegisterSpool
             | ActionKind::LoadSpool
             | ActionKind::UnloadSpool
@@ -134,6 +141,12 @@ pub fn decide(input: &DecisionInput<'_>) -> PolicyDecision {
     let kind = input.action.kind();
     let actor_class = input.actor.class();
 
+    // A close is asked of a record rather than of a running print, so a
+    // record that has ended is refused as one, and one never recorded is
+    // refused as every other action against no print is.
+    if kind == ActionKind::ClosePrint && input.print.is_some() && !is_active(input.print) {
+        return PolicyDecision::Rejected(RejectionReason::PrintAlreadyEnded);
+    }
     if !is_active(input.print) {
         return PolicyDecision::Rejected(RejectionReason::NoActivePrint);
     }

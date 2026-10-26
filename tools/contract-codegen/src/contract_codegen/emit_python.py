@@ -774,6 +774,7 @@ LIVE_TOKENS = {
     "manifest": "manifest(world)",
     "reason": "REASON",
     "disposition:continue": '"continue"',
+    "outcome:interrupted": '"interrupted"',
     "bool:false": "False",
     "bool:true": "True",
     "world.spool_id": "world.spool_id",
@@ -833,6 +834,35 @@ def _live_body(step: LiveStep) -> list[str]:
             f"    )"
         )
     return lines
+
+
+def _live_refused_step(step: LiveStep, call: str, spelled: str) -> list[str]:
+    """One step of the real walk the policy answers with its stated rejection."""
+    return [
+        f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
+        f'    """`{step.name}`, answered by a real supervisor\'s policy as `{step.refused}`."""',
+        f'    ready(client, world.print_id, "{step.state}")',
+        "",
+        "    try:",
+        f"        {ASYNC_DIRECTIVE}",
+        f"        client.{spelled}({call})",
+        "    except RejectedError as refused:",
+        "        truth(",
+        "            isinstance(refused.reason, dict)",
+        f'            and "{step.refused}" in refused.reason,',
+        f'            describing="`{step.name}` to be refused as `{step.refused}`",',
+        "        )",
+        "        seen = proxy.last()",
+        f'        equal(seen.method, "{step.method}", describing="`{step.name}`")',
+        f'        equal(seen.target, {_live_target(step)}, describing="`{step.name}`")',
+        f'        equal(seen.status, 409, describing="`{step.name}`")',
+        *(f"    {line}" for line in _live_body(step)),
+        f'        same("{step.name}", refused.answer, seen.answer)',
+        "    else:",
+        f'        truth(False, describing="`{step.name}` to be refused")',
+        "",
+        "",
+    ]
 
 
 def emit_live(contract: Contract) -> str:
@@ -938,6 +968,9 @@ def emit_live(contract: Contract) -> str:
     for step in steps:
         call = ", ".join(_live_argument(token) for _, token in step.arguments)
         spelled = method_name(step.name, "python")
+        if step.refused:
+            lines += _live_refused_step(step, call, spelled)
+            continue
         lines += [
             f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> "
             f"{'Supervisor' if step.follows else 'None'}:",

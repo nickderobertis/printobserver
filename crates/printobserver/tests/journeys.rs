@@ -57,6 +57,8 @@ mod announcing;
 mod answers;
 #[path = "journeys/carrying.rs"]
 mod carrying;
+#[path = "journeys/closing.rs"]
+mod closing;
 #[path = "journeys/confirming.rs"]
 mod confirming;
 #[path = "journeys/documented.rs"]
@@ -143,6 +145,22 @@ fn the_listing_and_a_refused_start_say_what_each_spool_holds() {
     );
 
     spooling::the_listing_and_the_start_say_what_each_spool_holds(&world);
+}
+
+/// `printobserver server` refuses a configuration granting the agent
+/// `close_print`, naming the action, and serves nothing: closing a print record
+/// is the operator's judgement that the print is over.
+#[test]
+fn a_configuration_granting_the_agent_close_print_is_refused_at_start() {
+    let said = world::refused_start(|document| {
+        let agent = &mut document["safety"]["actions"]["agent"];
+        *agent = printobserver_types::serde_json::json!(["pause", "close_print"]);
+    });
+
+    assert!(
+        said.contains("close_print") && said.contains("agent") && said.contains("safety"),
+        "the refusal does not name the action, the agent and where it is granted: {said}"
+    );
 }
 
 /// `printobserver server` says when it started without accounting the prints

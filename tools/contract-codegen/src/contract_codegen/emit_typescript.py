@@ -616,6 +616,7 @@ LIVE_TOKENS = {
     "manifest": "manifest(world)",
     "reason": "REASON",
     "disposition:continue": '"continue"',
+    "outcome:interrupted": '"interrupted"',
     "bool:false": "false",
     "bool:true": "true",
     "world.spool_id": "world.spool_id",
@@ -670,6 +671,28 @@ def _live_body(step: LiveStep) -> list[str]:
             f"  expect(sent{typescript_member(parameter.name)}).toEqual({_live_argument(token)});"
         )
     return lines
+
+
+def _live_refused_step(step: LiveStep, call: str, spelled: str) -> list[str]:
+    """One step of the real walk the policy answers with its stated rejection."""
+    return [
+        f"/** `{step.name}`, answered by a real supervisor's policy as `{step.refused}`. */",
+        f"async function step{pascal(step.name)}(client: Client, proxy: Recording) {{",
+        f'  await ready(client, world.print_id, "{step.state}");',
+        "",
+        f"  const refused = await client.{spelled}({call}).catch((raised: unknown) => raised);",
+        "",
+        "  expect(refused).toBeInstanceOf(Rejected);",
+        f'  expect((refused as Rejected).reason).toHaveProperty("{step.refused}");',
+        "  const seen = proxy.last();",
+        f'  expect(seen.method).toBe("{step.method}");',
+        f"  expect(seen.target).toBe({_live_target(step)});",
+        "  expect(seen.status).toBe(409);",
+        *_live_body(step),
+        f'  same("{step.name}", (refused as Rejected).answer, seen.answer);',
+        "}",
+        "",
+    ]
 
 
 def emit_live(contract: Contract) -> str:
@@ -758,6 +781,9 @@ def emit_live(contract: Contract) -> str:
     for step in steps:
         call = ", ".join(_live_argument(token) for _, token in step.arguments)
         spelled = method_name(step.name, "typescript")
+        if step.refused:
+            lines += _live_refused_step(step, call, spelled)
+            continue
         lines += [
             f"/** `{step.name}`, answered by a real supervisor. */",
             f"async function step{pascal(step.name)}(client: Client, proxy: Recording) {{",

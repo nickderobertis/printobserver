@@ -20,7 +20,7 @@ use crate::machine::Reports;
 use crate::world::World;
 
 use super::{
-    carrying, confirming, durations, failures, formats, materializing, redaction, tainting,
+    carrying, closing, confirming, durations, failures, formats, materializing, redaction, tainting,
 };
 
 /// Everything.
@@ -57,4 +57,6 @@ pub fn run(world: &World, depth: &str) {
     tainting::every_assertion_here_refuses_the_defect_it_is_about(world);
     durations::every_adjustment_is_a_bounded_intervention(world);
     redaction::no_run_of_the_walk_prints_the_credential(world);
+    // Last, because it ends the print every journey above acts on.
+    closing::an_operator_closes_a_record_left_open(world);
 }

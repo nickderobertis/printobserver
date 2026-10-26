@@ -690,6 +690,7 @@ LIVE_TOKENS = {
     "manifest": "manifest",
     "reason": "REASON",
     "disposition:continue": "&printobserver_sdk::AcknowledgementDisposition::Continue",
+    "outcome:interrupted": "&printobserver_sdk::PrintOutcome::Interrupted",
     "bool:false": "false",
     "bool:true": "true",
     "world.spool_id": "&world.spool_id",
@@ -700,6 +701,7 @@ LIVE_TOKENS = {
 #: than a reference to it.
 LIVE_SENT = {
     "disposition:continue": "printobserver_sdk::AcknowledgementDisposition::Continue",
+    "outcome:interrupted": "printobserver_sdk::PrintOutcome::Interrupted",
 }
 
 
@@ -833,6 +835,9 @@ def emit_live(contract: Contract) -> str:
         call = ", ".join(_live_argument(parameter, token) for parameter, token in step.arguments)
         spelled = method_name(step.name, "rust")
         carried = _carries_manifest(step)
+        if step.refused:
+            lines += _live_refused_step(step, call, spelled, carried)
+            continue
         lines += [
             f"/// `{step.name}`, answered by a real supervisor.",
             f"fn step_{step.name}(",
@@ -965,6 +970,44 @@ def emit_live(contract: Contract) -> str:
         "}",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _live_refused_step(step: LiveStep, call: str, spelled: str, carried: bool) -> list[str]:
+    """One step of the real walk the policy answers with its stated rejection."""
+    variant = "".join(word.capitalize() for word in step.refused.split("_"))
+    lines = [
+        f"/// `{step.name}`, answered by a real supervisor's policy as `{step.refused}`.",
+        f"fn step_{step.name}(",
+        "    client: &Client,",
+        "    world: &supervisor::Supervisor,",
+        "    proxy: &live::Proxy,",
+        *(["    manifest: &printobserver_sdk::JobManifest,"] if carried else []),
+        ") {",
+        f'    ready(client, &world.print_id, "{step.state}");',
+        "",
+        f"    let refused = client.{spelled}({call})",
+        f'        .expect_err("`{step.name}` is refused from where the machine is");',
+        "",
+        "    let ClientError::Rejected(rejection) = refused else {",
+        f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
+        "    };",
+        "    assert!(",
+        f"        matches!(rejection.reason, RejectionReason::{variant} {{ .. }}),",
+        f'        "`{step.name}` was refused for something other than `{step.refused}`: {{:?}}",',
+        "        rejection.reason",
+        "    );",
+        "    let seen = proxy.last();",
+        f'    assert_eq!(seen.method, "{step.method}", "`{step.name}`");',
+        f'    assert_eq!(seen.target, {_live_target(step)}, "`{step.name}`");',
+        f'    assert_eq!(seen.status, 409, "`{step.name}`");',
+    ]
+    lines.extend(_live_body_assertions(step))
+    lines += [
+        f'    live::same("{step.name}", &rejection.answer, &seen.answer);',
+        "}",
+        "",
+    ]
+    return lines
 
 
 def _carries_manifest(step: LiveStep) -> bool:

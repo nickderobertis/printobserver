@@ -54,6 +54,11 @@
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -104,6 +109,13 @@
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
       "type": "string"
     },
     "PrintId": {
@@ -457,6 +469,57 @@
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },

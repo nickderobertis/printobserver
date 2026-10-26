@@ -532,6 +532,29 @@ record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```
 
+### close_print
+
+Close a print record printobserver left open — a print that stopped while
+nothing was watching — with the outcome you judge it ended with. It is refused
+while the printer still shows that record's file running, as here, where the
+print this page started is printing:
+
+```console
+$ printobserver close-print --print-id PRINT_ID --actor operator --outcome interrupted --reason "the printer lost power and the print is over"
+record.decision.rejected.print_still_active.state: printing
+record.id: ID
+record.print_id: PRINT_ID
+record.request.action.action: close_print
+record.request.action.actor: operator
+record.request.action.outcome: interrupted
+record.request.action.reason: the printer lost power and the print is over
+record.request.actor: operator
+record.request.requested_at: TIMESTAMP
+the supervisor's policy refused this action: print_still_active. Ask again inside what the answer says is allowed
+$ echo $?
+5
+```
+
 ### look
 
 See the print as it is now rather than as it was when its event arrived. A look

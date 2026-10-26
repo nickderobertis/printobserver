@@ -350,6 +350,27 @@ async function stepResume(client: Client, proxy: Recording) {
   same("resume", answered, seen.answer);
 }
 
+/** `close_print`, answered by a real supervisor's policy as `print_still_active`. */
+async function stepClosePrint(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "printing");
+
+  const refused = await client
+    .closePrint(world.print_id, "interrupted", REASON)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("print_still_active");
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/prints/${world.print_id}/actions/close_print`);
+  expect(seen.status).toBe(409);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.outcome).toEqual("interrupted");
+  expect(sent.reason).toEqual(REASON);
+  same("close_print", (refused as Rejected).answer, seen.answer);
+}
+
 /** `spools`, answered by a real supervisor. */
 async function stepSpools(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "");
@@ -555,6 +576,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepAcknowledgeFailure(client, proxy);
   await stepPause(client, proxy);
   await stepResume(client, proxy);
+  await stepClosePrint(client, proxy);
   await stepSpools(client, proxy);
   await stepSpool(client, proxy);
   await stepPrinterHistory(client, proxy);
@@ -566,7 +588,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepRetireSpool(client, proxy);
   await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(27);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(28);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */
@@ -693,6 +715,19 @@ async function refusedResume(client: Client, proxy: Recording) {
   same("resume", (refused as Rejected).answer, seen.answer);
 }
 
+/** `close_print`, refused by a real supervisor's own policy. */
+async function refusedClosePrint(client: Client, proxy: Recording) {
+  const refused = await client
+    .closePrint(world.print_id, "interrupted", REASON)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  expect((refused as Rejected).reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("close_print", (refused as Rejected).answer, seen.answer);
+}
+
 /** `register_spool`, refused by a real supervisor's own policy. */
 async function refusedRegisterSpool(client: Client, proxy: Recording) {
   const refused = await client
@@ -808,6 +843,7 @@ test("every action is refused as a typed rejection by a real supervisor", async 
     await refusedAcknowledgeFailure(client, proxy);
     await refusedPause(client, proxy);
     await refusedResume(client, proxy);
+    await refusedClosePrint(client, proxy);
     await refusedRegisterSpool(client, proxy);
     await refusedLoadSpool(client, proxy);
     await refusedUnloadSpool(client, proxy);

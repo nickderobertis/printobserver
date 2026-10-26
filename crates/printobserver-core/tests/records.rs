@@ -225,6 +225,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("factor", "number", true),
             ("file_name", "FileName", true),
             ("manifest", "JobManifest", true),
+            ("outcome", "PrintOutcome", true),
             ("override_filament_check", "boolean", false),
             ("percent", "number", true),
             ("reason", "string", true),
@@ -254,9 +255,11 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("actor_may_not_request", "object", true),
             ("analysis_unavailable", "object", true),
             ("insufficient_filament", "object", true),
+            ("intervention_still_active", "object", true),
             ("invalid_from_state", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
+            ("print_still_active", "object", true),
             ("spool_refused", "object", true),
             ("unsupported_adjustable", "object", true),
             ("unverified_spool", "object", true),
@@ -405,7 +408,7 @@ fn every_action_reads_back_what_it_carries() {
     }
     kinds.sort();
     kinds.dedup();
-    assert_eq!(kinds.len(), 10, "the corpus does not carry every kind");
+    assert_eq!(kinds.len(), 11, "the corpus does not carry every kind");
     assert_eq!(
         PrintAction::sample_full().kind(),
         ActionKind::SetFeedrateFactor

@@ -419,8 +419,10 @@ impl Supervisor {
             // disposition. Stopping a print is cancelling it, which the policy
             // grants each actor on its own: an acknowledgement that cancelled
             // would let an actor granted acknowledgements and not cancellation
-            // stop a print all the same.
-            PrintAction::AcknowledgeFailure { .. } => Ok(()),
+            // stop a print all the same. Closing a record writes that record
+            // and asks nothing of the machine either: what it does is done once
+            // its execution is recorded ([`crate::closing`]).
+            PrintAction::AcknowledgeFailure { .. } | PrintAction::ClosePrint { .. } => Ok(()),
         };
         let outcome = match &executed {
             Ok(()) => ExecutionOutcome::Succeeded,

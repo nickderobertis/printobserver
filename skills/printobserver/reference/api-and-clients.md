@@ -342,6 +342,17 @@ Record what was made of a failure event and what should happen next.
 
 Takes `print_id` (path), `actor` (body), `disposition` (body), `event_id` (body), `reason` (body).
 
+### close_print
+
+Close a print record printobserver left open, with the outcome the operator
+judges it ended with. It asks nothing of the machine and charges no spool, and
+it is the operator's alone: a configuration granting it to the agent is refused
+at start.
+
+`POST /v1/prints/{print_id}/actions/close_print` — answers success, rejected.
+
+Takes `print_id` (path), `actor` (body), `outcome` (body), `reason` (body).
+
 ### register_spool
 
 Register one spool.
@@ -546,6 +557,11 @@ percentage and returns `ActionAnswer`.
 
 `client.acknowledge_failure(print_id, disposition, event_id, reason)` records the
 failure acknowledgement and returns `ActionAnswer`.
+
+#### close_print
+
+`client.close_print(print_id, outcome, reason)` closes a print record left open
+and returns `ActionAnswer`.
 
 #### register_spool
 

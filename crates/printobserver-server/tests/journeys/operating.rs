@@ -193,6 +193,16 @@ fn movement(kind: ActionKind) -> Asked {
             adjustable: None,
             withheld: Some(ActionKind::AcknowledgeFailure),
         },
+        // A close of a record the machine is not running: it ends the record
+        // and asks nothing of the machine.
+        ActionKind::ClosePrint => Asked {
+            accepted: body(&operator, &[("outcome", json!("interrupted"))]),
+            rejected: body(&operator, &[("outcome", json!("interrupted"))]),
+            from: PrinterState::Operational,
+            call: None,
+            adjustable: None,
+            withheld: Some(ActionKind::ClosePrint),
+        },
         _ => unreachable!("this is an adjustment rather than a movement"),
     }
 }

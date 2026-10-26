@@ -22,6 +22,10 @@ pub enum PrintOutcome {
     Cancelled,
     /// It stopped on an error.
     Failed,
+    /// It stopped with no cancel, no error the printer reported and no
+    /// finish. Charged as a failed print is: what the file's moves extruded up
+    /// to the last file position seen.
+    Interrupted,
 }
 
 /// How the length a charge debits was worked out.

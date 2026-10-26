@@ -214,6 +214,9 @@ class Ordered(NamedTuple):
     name: str
     #: The state the machine has to be in for it to be answered; empty is any.
     state: str
+    #: The rejection the policy answers it with from that state, or empty for
+    #: an operation that is carried out there.
+    refused: str = ""
 
 
 #: The order the walk against a **real** supervisor drives the operations in,
@@ -247,10 +250,15 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     Ordered("set_bed_target_c", "printing"),
     Ordered("acknowledge_failure", ""),
     Ordered("pause", "printing"),
-    # Last of the actions, so the walk leaves the machine printing — where the
-    # bring-up left it, and where the scripted environment's own suite expects
-    # it.
+    # Last of the actions that move the machine, so the walk leaves it
+    # printing — where the bring-up left it, and where the scripted
+    # environment's own suite expects it.
     Ordered("resume", "paused"),
+    # A close of the print the machine is running is refused, naming the state
+    # it is in: the print is not over. Closing one the machine has finished is
+    # proven against a stood-in machine, which can be left idle with a record
+    # still open; a real one is read, and the read closes it first.
+    Ordered("close_print", "printing", "print_still_active"),
     # The spool ledger is the printer's rather than a print's, so it is
     # answered from wherever the machine is. The world registered a spool for
     # the walk as it came up; the walk loads, unloads, corrects and finally
@@ -298,6 +306,7 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("*", "limit"): "20",
     ("look", "wait_s"): "0",
     ("*", "disposition"): "disposition:continue",
+    ("close_print", "outcome"): "outcome:interrupted",
     ("set_feedrate_factor", "factor"): "1.1",
     ("set_flowrate_factor", "factor"): "1.0",
     ("set_fan_percent", "percent"): "50.0",
@@ -349,6 +358,9 @@ class LiveStep:
     #: Every value the method is called with, in method order, as the token the
     #: emitters render into their own language.
     arguments: tuple[tuple[Parameter, str], ...]
+    #: The rejection the policy answers it with, or empty when it is carried
+    #: out.
+    refused: str = ""
 
     @property
     def name(self) -> str:
@@ -376,7 +388,7 @@ def plan_live(contract: Contract) -> tuple[LiveStep, ...]:
             that would otherwise arrive with nothing driving it.
     """
     served = {operation.name: operation for operation in contract.operations}
-    ordered = [name for name, _ in LIVE_ORDER]
+    ordered = [entry.name for entry in LIVE_ORDER]
     missing = sorted(set(served) - set(ordered))
     invented = sorted(set(ordered) - set(served))
     if missing or invented:
@@ -388,7 +400,7 @@ def plan_live(contract: Contract) -> tuple[LiveStep, ...]:
         raise ValueError(msg)
 
     steps: list[LiveStep] = []
-    for name, state in LIVE_ORDER:
+    for name, state, refused in LIVE_ORDER:
         operation = served[name]
         supplied: list[tuple[Parameter, str]] = []
         for parameter in operation.supplied():
@@ -403,7 +415,9 @@ def plan_live(contract: Contract) -> tuple[LiveStep, ...]:
                 )
                 raise ValueError(msg)
             supplied.append((parameter, given))
-        steps.append(LiveStep(operation=operation, state=state, arguments=tuple(supplied)))
+        steps.append(
+            LiveStep(operation=operation, state=state, arguments=tuple(supplied), refused=refused)
+        )
     return tuple(steps)
 
 

@@ -16,6 +16,7 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{EventId, FileName, PrintId, Timestamp};
 
+use super::charge::PrintOutcome;
 use super::ids::ActionId;
 use super::manifest::JobManifest;
 use super::policy::PolicyDecision;
@@ -123,6 +124,8 @@ pub enum ActionKind {
     SetFanPercent,
     /// Acknowledge a failure event.
     AcknowledgeFailure,
+    /// Close a print record printobserver left open.
+    ClosePrint,
     /// Register a spool.
     RegisterSpool,
     /// Load a spool onto a tool.
@@ -256,6 +259,17 @@ pub enum PrintAction {
         /// Who is asking.
         actor: Actor,
     },
+    /// Close a print record printobserver left open, with the outcome the
+    /// operator judges it ended with. It asks nothing of the machine and
+    /// charges no spool: the record's consumption was never seen to end.
+    ClosePrint {
+        /// How the print ended, in the operator's judgement.
+        outcome: PrintOutcome,
+        /// Why the actor is asking for this.
+        reason: String,
+        /// Who is asking.
+        actor: Actor,
+    },
 }
 
 impl PrintAction {
@@ -273,6 +287,7 @@ impl PrintAction {
             Self::SetBedTargetC { .. } => ActionKind::SetBedTargetC,
             Self::SetFanPercent { .. } => ActionKind::SetFanPercent,
             Self::AcknowledgeFailure { .. } => ActionKind::AcknowledgeFailure,
+            Self::ClosePrint { .. } => ActionKind::ClosePrint,
         }
     }
 
@@ -289,7 +304,8 @@ impl PrintAction {
             | Self::SetToolTargetC { reason, .. }
             | Self::SetBedTargetC { reason, .. }
             | Self::SetFanPercent { reason, .. }
-            | Self::AcknowledgeFailure { reason, .. } => reason,
+            | Self::AcknowledgeFailure { reason, .. }
+            | Self::ClosePrint { reason, .. } => reason,
         }
     }
 
@@ -306,7 +322,8 @@ impl PrintAction {
             | Self::SetToolTargetC { actor, .. }
             | Self::SetBedTargetC { actor, .. }
             | Self::SetFanPercent { actor, .. }
-            | Self::AcknowledgeFailure { actor, .. } => actor,
+            | Self::AcknowledgeFailure { actor, .. }
+            | Self::ClosePrint { actor, .. } => actor,
         }
     }
 }

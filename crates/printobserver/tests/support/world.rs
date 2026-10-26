@@ -87,6 +87,9 @@ const SETTLING_MANIFEST: &str = concat!(
     r#""slicer_profile":"the profile settling drove","allowed":{},"metadata":{}}"#
 );
 
+/// The file of the print record a close is about: one the machine never runs.
+pub const STALE_FILE: &str = "a-print-left-open.gcode";
+
 /// The reason every spool the world registers for itself is registered with.
 const REGISTERING_REASON: &str = "a roll on the shelf, registered before it is used";
 
@@ -169,6 +172,10 @@ pub struct World {
     /// A spool already retired, which every command about one is refused for
     /// by the ledger.
     retired: std::sync::OnceLock<String>,
+    /// The print record a close is about now: one printobserver left open for
+    /// a file the machine is not running, opened in the store the first time a
+    /// close is prepared for and again after one closes it.
+    stale: std::sync::Mutex<Option<String>>,
     /// An event of the printer's history written after the walk's spool was
     /// registered, which a history read pages from.
     cursor: std::sync::OnceLock<String>,
@@ -293,6 +300,7 @@ impl World {
             spool: std::sync::OnceLock::new(),
             retiring: std::sync::Mutex::new(None),
             retired: std::sync::OnceLock::new(),
+            stale: std::sync::Mutex::new(None),
             cursor: std::sync::OnceLock::new(),
             camera,
             skill: skill.to_path_buf(),
@@ -333,6 +341,64 @@ impl World {
             }
             Printer::Scripted { .. } => false,
         }
+    }
+
+    /// Tell a stood-in machine to drop every request unanswered, as one
+    /// switched off does, or to stop.
+    ///
+    /// Only a socket can be switched off on demand: answers whether this world
+    /// has one.
+    pub fn machine_is_unreachable(&self, unreachable: bool) -> bool {
+        match &self.printer {
+            Printer::StoodIn(machine) => {
+                machine.unreachable(unreachable);
+                true
+            }
+            Printer::Scripted { .. } => false,
+        }
+    }
+
+    /// Tell a stood-in machine to report itself part-way through cancelling
+    /// its job, or to stop: a state no command leaves a socket in, because it
+    /// honours a cancel at once.
+    pub fn machine_is_cancelling(&self, cancelling: bool) -> bool {
+        match &self.printer {
+            Printer::StoodIn(machine) => {
+                machine.cancelling(cancelling);
+                true
+            }
+            Printer::Scripted { .. } => false,
+        }
+    }
+
+    /// Open, directly in the store, a print record of one file that nothing
+    /// will close but a read finding its job over, watched by a supervision
+    /// session of its own; answer its identifier.
+    #[must_use]
+    pub fn open_record_with_a_session(&self, file: &str) -> String {
+        with_the_store(self.root.path().join("state"), |store, runtime| {
+            runtime.block_on(async {
+                use printobserver_core::store::SessionStore as _;
+                let print = store
+                    .open_print(None, Some(file.to_owned()))
+                    .await
+                    .expect("a record opens");
+                let now = printobserver_types::Timestamp::now();
+                let session = printobserver_types::serde_json::from_value(json!({
+                    "print_id": print.id,
+                    "session_name": format!("print-{}", print.id),
+                    "harness_identity": "claude-code",
+                    "created_at": now,
+                    "last_turn_at": now,
+                }))
+                .expect("a session reads from its own fields");
+                store
+                    .put_session(session)
+                    .await
+                    .expect("the record's session is stored");
+                print.id.to_string()
+            })
+        })
     }
 
     /// Tell a stood-in machine to answer success and change nothing, or to
@@ -438,6 +504,45 @@ impl World {
             .clone()
     }
 
+    /// The print record a close is about now, opening one the first time.
+    #[must_use]
+    pub fn stale_print_id(&self) -> String {
+        self.stale
+            .lock()
+            .expect("the record a close is about")
+            .get_or_insert_with(|| self.left_open())
+            .clone()
+    }
+
+    /// Open, directly in the store, a print record printobserver left open:
+    /// one of a file the machine is not running, so no read of the machine
+    /// finds it over while the machine runs its own job.
+    fn left_open(&self) -> String {
+        with_the_store(self.root.path().join("state"), |store, runtime| {
+            runtime.block_on(async {
+                store
+                    .open_print(None, Some(STALE_FILE.to_owned()))
+                    .await
+                    .expect("a record left open opens")
+                    .id
+                    .to_string()
+            })
+        })
+    }
+
+    /// Whether the record a close is about now is still open, read through
+    /// this same surface.
+    fn stale_is_open(&self, print_id: &str) -> bool {
+        let ran = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+            .args(["status", "--print-id", print_id, "--json", "--config"])
+            .arg(self.client_config())
+            .output()
+            .expect("a status read runs");
+        let read: Value =
+            printobserver_types::serde_json::from_slice(&ran.stdout).unwrap_or(Value::Null);
+        ran.status.success() && read.pointer("/print/ended_at").is_none()
+    }
+
     /// Whether one identifier is the ended print's, when one has been made.
     #[must_use]
     pub fn is_the_ended_print(&self, print_id: &str) -> bool {
@@ -504,8 +609,21 @@ impl World {
     /// the walk's spool on tool 0 for an unload of it, and off every tool for
     /// anything else — so a load of it can be taken and a start is judged on
     /// no spool the walk left loaded — at its full figure before a correction,
-    /// and a fresh spool for a retirement.
+    /// and a fresh spool for a retirement. A close is given an open record of
+    /// its own to close.
     pub fn prepare_ledger_for(&self, command: &str) {
+        // A close ends the record it is about, so the next one is about a
+        // record of its own.
+        if command == "close-print" {
+            let mut stale = self.stale.lock().expect("the record a close is about");
+            if !stale
+                .as_deref()
+                .is_some_and(|held| self.stale_is_open(held))
+            {
+                *stale = Some(self.left_open());
+            }
+            return;
+        }
         // A spool command names the print it was taken during, so one asked
         // while the supervisor still holds the last print open answers a
         // different record from the same command asked a moment later.
@@ -1170,6 +1288,61 @@ pub fn committed_skill() -> PathBuf {
         .join("SKILL.md")
 }
 
+/// Start `printobserver server` over the configuration this tier writes, as
+/// one journey edits it, and answer what it said refusing to start.
+///
+/// # Panics
+///
+/// Panics when it started serving instead — said by its announcing where it
+/// serves — or had not exited within the deadline, stopping it either way.
+#[must_use]
+pub fn refused_start(edit: impl FnOnce(&mut Value)) -> String {
+    let root = TempDir::new().expect("this start's own root");
+    let state = root.path().join("state");
+    std::fs::create_dir_all(&state).expect("a state directory");
+    let machine = Printer::StoodIn(Machine::start());
+    let mut document = server_value(&state, &machine, &committed_skill());
+    edit(&mut document);
+    let configuration = root.path().join("server.toml");
+    std::fs::write(&configuration, toml_of(&document)).expect("the configuration is writable");
+    let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .arg("server")
+        .arg("--config")
+        .arg(&configuration)
+        .env("PATH", root.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the server command starts");
+    let deadline = std::time::Instant::now() + REFUSAL_DEADLINE;
+    while server.try_wait().expect("the server's status").is_none() {
+        if std::time::Instant::now() > deadline {
+            let _ = server.kill();
+            let ran = server.wait_with_output().expect("what it said");
+            panic!(
+                "the server did not refuse its configuration, and was stopped: {}{}",
+                String::from_utf8_lossy(&ran.stdout),
+                String::from_utf8_lossy(&ran.stderr)
+            );
+        }
+        std::thread::sleep(SETTLING_PAUSE);
+    }
+    let ran = server.wait_with_output().expect("what it said");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    assert!(
+        !ran.status.success(),
+        "the server exited successfully over a configuration it should refuse: {said}"
+    );
+    said
+}
+
+/// How long a server refusing its configuration is given to exit.
+const REFUSAL_DEADLINE: core::time::Duration = core::time::Duration::from_secs(30);
+
 /// The configuration a second supervisor is started under.
 fn server_document(state: &Path, printer: &Printer, skill: &Path) -> String {
     toml_of(&server_value(state, printer, skill))
@@ -1215,7 +1388,7 @@ fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
                 "operator": [
                     "pause", "resume", "cancel", "start_print", "set_feedrate_factor",
                     "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-                    "set_fan_percent", "acknowledge_failure", "register_spool",
+                    "set_fan_percent", "acknowledge_failure", "close_print", "register_spool",
                     "load_spool", "unload_spool", "adjust_spool", "retire_spool",
                 ],
                 "agent": [],
