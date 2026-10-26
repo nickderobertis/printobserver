@@ -1,41 +1,75 @@
-//! Events printobserver 0.4.3 wrote, read into the shapes this build carries.
+//! Events printobserver 0.4.3 wrote, read by this build's store.
 //!
 //! Every payload below is a literal in the shape 0.4.3 wrote it — the text a
-//! store holds, not one serialized by this build — and each is read through
-//! [`upgraded`] and then as its own kind, so a shape this build cannot read is
-//! refused here rather than by a reader of an operator's history.
+//! store holds, not one serialized by this build — written as a row of the
+//! database 0.4.3 wrote and read back through the store's own history, then
+//! as its own kind; so a shape this build cannot read is refused here rather
+//! than by a reader of an operator's history, and one it cannot read whole is
+//! answered as it was stored.
 
 use printobserver_core::kinds::{
     ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
     PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
     SpoolRegisteredPayload,
 };
-use printobserver_core::upgrade::upgraded;
 use printobserver_core::{
     PolicyDecision, PreflightObjection, PreflightToolResult, RejectionReason, SpoolField,
     SpoolLifecycle, SpoolRefusalCause,
 };
-use printobserver_types::serde_json::{Value, json};
-use printobserver_types::{EventBody, EventKind, EventPayload};
+use printobserver_types::serde_json::{Map, Value, json};
+use printobserver_types::{EventBody, EventPayload};
+use tempfile::TempDir;
 
-/// One stored body, read through the upgrade.
+use crate::block_on::block_on;
+use crate::fixture::Store;
+use crate::upgrading::{PRINT, fixture};
+use printobserver_core::store::HistoryQuery;
+use printobserver_store_sqlite::{DATABASE_FILE_NAME, SqliteStore, connect};
+
+/// One body, written as a row of the database 0.4.3 wrote and read back
+/// through this build's store: the history of the fixture's print answers it.
 fn read(kind: &str, payload: Value) -> EventBody {
-    upgraded(EventBody {
-        kind: EventKind::new(kind).expect("a kind name"),
-        payload,
-    })
+    let dir = TempDir::new().expect("a temporary state directory");
+    let path = dir.path().join(DATABASE_FILE_NAME);
+    std::fs::copy(fixture(), &path).expect("the fixture copies");
+    let id = printobserver_types::EventId::new().to_string();
+    let mut body = Map::new();
+    body.insert("kind".to_owned(), json!(kind));
+    body.insert("payload".to_owned(), payload);
+    let stored = Value::Object(body).to_string();
+    connect(&path)
+        .expect("the database opens")
+        .execute(
+            "INSERT INTO events (id, print_id, source, received_at, kind, payload, raw) \
+             VALUES (?1, ?2, 'system', '2026-03-01T13:00:00.000000000Z', ?3, ?4, NULL)",
+            [id.as_str(), PRINT, kind, stored.as_str()],
+        )
+        .expect("the row is written");
+    let store = SqliteStore::open(dir.path()).expect("the 0.4.3 database opens");
+    let port: &dyn Store = &store;
+    let history = block_on(port.history(HistoryQuery {
+        print_id: PRINT.parse().expect("an id"),
+        kinds: Vec::new(),
+        since: None,
+        until: None,
+        limit: Some(1_000),
+    }))
+    .expect("the print's history reads");
+    history
+        .into_iter()
+        .find(|event| event.id.to_string() == id)
+        .expect("the history answers the row")
+        .body
 }
 
-/// One stored body, read through the upgrade and then as its own kind.
+/// One body, written and read back as above, and then read as its own kind.
 fn read_as<P: EventPayload>(payload: Value) -> P {
     let body = read(P::KIND, payload);
     printobserver_types::serde_json::from_value(body.payload.clone())
         .unwrap_or_else(|error| panic!("{} reads as {error}: {}", P::KIND, body.payload))
 }
 
-/// The print and spools every literal names.
-const PRINT: &str = "01a176c4-548a-7bb1-80e5-a5a058ca2ad2";
-/// A spool.
+/// A spool every literal names.
 const SPOOL: &str = "01a176c4-5488-7532-8297-73e157be17bc";
 /// An instant.
 const AT: &str = "2026-03-01T12:00:00Z";
@@ -487,4 +521,42 @@ fn a_kind_with_no_earlier_shape_is_answered_as_stored() {
         read("kind_from_a_newer_server", payload.clone()).payload,
         payload
     );
+}
+
+/// A row in an earlier shape whose fields its kind cannot hold — a freshness
+/// that is no flag, a loaded tool that is no number, a calculation that is no
+/// figure, a doubt with no mark — is answered as it was stored rather than
+/// rewritten into a payload its kind cannot be.
+#[test]
+fn an_old_row_whose_fields_its_kind_cannot_hold_is_answered_as_stored() {
+    let key = json!({ "key": "print", "print_id": PRINT, "tool": 1, "segment": 0 });
+    for (kind, payload) in [
+        (
+            "filament_change_signalled",
+            json!({ "position": { "bytes": 1, "observed_at": AT }, "position_read_at_signal": "yes",
+                    "source_kind": "obico_printer_notification" }),
+        ),
+        (
+            "spool_registered",
+            json!({ "spool": { "id": SPOOL, "loaded_on_tool": null }, "actor": "operator", "reason": "r" }),
+        ),
+        (
+            "filament_consumed",
+            json!({ "charge_key": key, "tool": 1, "spool_id": SPOOL, "method": "gcode_extrusion",
+                    "length_mm": 1.0, "grams": "twelve", "diameter_mm": 1.75, "density_g_cm3": 1.27,
+                    "remaining_before_g": 80.0, "remaining_after_g": 68.0 }),
+        ),
+        (
+            "filament_consumed",
+            json!({ "charge_key": key, "tool": 1, "method": "gcode_extrusion", "length_mm": 1.0,
+                    "grams": 12.0 }),
+        ),
+        (
+            "preflight_checked",
+            json!({ "preflight": { "file_name": "f", "checked_at": AT, "verdict": "unverified_spool",
+                    "tools": [tool("unverified_spool", &json!({ "spool_id": SPOOL, "spool_name": "P", "remaining_g": 1.0 }))] } }),
+        ),
+    ] {
+        assert_eq!(read(kind, payload.clone()).payload, payload, "{kind}");
+    }
 }

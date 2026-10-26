@@ -24,24 +24,56 @@
 //!   `cause` beside it, read from the sentence 0.4.3 wrote for each cause.
 
 use printobserver_types::EventBody;
-use printobserver_types::serde_json::{Map, Value, json};
+use printobserver_types::serde::de::DeserializeOwned;
+use printobserver_types::serde_json::{self, Map, Value, json};
 
 use crate::filament::DEFAULT_DIAMETER_MM;
+use crate::kinds::{
+    ChargePendedPayload, FilamentChangeSignalledPayload, FilamentConsumedPayload,
+    PreflightCheckedPayload, PrintStartedPayload, SpoolCommandRejectedPayload,
+    SpoolRegisteredPayload,
+};
 
 /// One stored event, read into the payload shape its kind carries now.
+///
+/// A rewrite is kept only when it reads, whole, as its kind's own payload
+/// type — every identifier, instant, figure and tag held to that type's own
+/// rules — so a stored row whose fields are malformed is answered as stored
+/// rather than rewritten into something its kind cannot be.
 #[must_use]
 pub fn upgraded(mut body: EventBody) -> EventBody {
-    let payload = core::mem::take(&mut body.payload);
-    body.payload = match body.kind.as_str() {
-        "filament_consumed" => filament_consumed(payload),
-        "filament_change_signalled" => filament_change_signalled(payload),
-        "spool_registered" => at_field(payload, "spool", spool),
-        "charge_pended" => at_field(payload, "pending", pending),
-        "preflight_checked" | "print_started" => at_field(payload, "preflight", preflight),
-        "spool_command_rejected" => spool_command_rejected(payload),
-        _ => payload,
+    let stored = core::mem::take(&mut body.payload);
+    let rewritten = match body.kind.as_str() {
+        "filament_consumed" => whole::<FilamentConsumedPayload>(filament_consumed(stored.clone())),
+        "filament_change_signalled" => {
+            whole::<FilamentChangeSignalledPayload>(filament_change_signalled(stored.clone()))
+        }
+        "spool_registered" => {
+            whole::<SpoolRegisteredPayload>(at_field(stored.clone(), "spool", spool))
+        }
+        "charge_pended" => {
+            whole::<ChargePendedPayload>(at_field(stored.clone(), "pending", pending))
+        }
+        "preflight_checked" => {
+            whole::<PreflightCheckedPayload>(at_field(stored.clone(), "preflight", preflight))
+        }
+        "print_started" => {
+            whole::<PrintStartedPayload>(at_field(stored.clone(), "preflight", preflight))
+        }
+        "spool_command_rejected" => {
+            whole::<SpoolCommandRejectedPayload>(spool_command_rejected(stored.clone()))
+        }
+        _ => None,
     };
+    body.payload = rewritten.unwrap_or(stored);
     body
+}
+
+/// A rewritten payload, when it reads whole as its kind's own type.
+fn whole<P: DeserializeOwned>(rewritten: Value) -> Option<Value> {
+    serde_json::from_value::<P>(rewritten.clone())
+        .ok()
+        .map(|_| rewritten)
 }
 
 /// A payload whose one field is read by `read`, or the payload as it was.
@@ -54,7 +86,8 @@ fn at_field(mut payload: Value, field: &str, read: fn(Value) -> Option<Value>) -
     payload
 }
 
-/// Remove each of `fields` from an object, answering what each held.
+/// The fields an earlier shape carried on their own, taken off the object so
+/// the payload holds each only where the shape it is read into puts it.
 fn taken(object: &mut Map<String, Value>, fields: &[&str]) -> Vec<Option<Value>> {
     fields.iter().map(|field| object.remove(*field)).collect()
 }
@@ -79,7 +112,7 @@ fn filament_consumed(payload: Value) -> Value {
         ],
     );
     match figures.as_slice() {
-        [None, ..] => {}
+        [None, rest @ ..] if rest.iter().all(Option::is_none) => {}
         [
             Some(spool_id),
             Some(grams),
@@ -237,6 +270,9 @@ fn preflight_tool(tool: Value) -> Option<Value> {
                 }
             }
             "unverified_spool" => {
+                if !marked {
+                    return None;
+                }
                 if let Some(need) = &need {
                     found.insert("need".to_owned(), need.clone());
                 }
