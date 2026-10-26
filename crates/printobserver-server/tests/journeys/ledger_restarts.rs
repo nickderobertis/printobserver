@@ -737,6 +737,27 @@ async fn a_close_whose_settlement_committed_and_died_is_finished_by_the_next_clo
 /// one `supervision_session_closed` and the session closed.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_close_whose_session_write_committed_and_died_is_finished_by_the_next_close() {
+    Box::pin(a_close_whose_write_committed_and_died_is_finished_by_the_next_close("put_session"))
+        .await;
+}
+
+/// (h) A close whose `supervision_session_closed` committed after the session
+/// was stored closed, and whose caller was told it did not, leaves the record
+/// open; the next close ends it and writes that closure no second time.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_close_whose_session_closure_committed_and_died_is_finished_by_the_next_close() {
+    Box::pin(
+        a_close_whose_write_committed_and_died_is_finished_by_the_next_close(
+            "append_session_closed",
+        ),
+    )
+    .await;
+}
+
+/// A close of a print with a session, whose one named write commits and is
+/// reported failed, and the close that finishes it: one `print_ended`, one
+/// `supervision_session_closed`, the session closed and the record ended.
+async fn a_close_whose_write_committed_and_died_is_finished_by_the_next_close(write: &'static str) {
     use printobserver_core::store::SessionStore as _;
 
     let (world, print_id, _) = an_adopted_print(World::open().await).await;
@@ -760,7 +781,7 @@ async fn a_close_whose_session_write_committed_and_died_is_finished_by_the_next_
         .restart_over(|_| {
             CommitThenFail::once(
                 SqliteStore::open(&state_dir).expect("the store opens"),
-                "put_session",
+                write,
             )
         })
         .await;
