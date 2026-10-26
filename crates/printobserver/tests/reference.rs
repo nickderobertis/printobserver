@@ -230,6 +230,53 @@ fn the_documents_restate_the_timeline_kinds_and_the_spool_window_as_the_server_h
     }
 }
 
+/// The bounds the reference documents restate for the events read and the
+/// watch are the ones the server and this program enforce.
+#[test]
+fn the_documents_restate_the_events_and_watch_bounds_as_the_code_has_them() {
+    use printobserver::watch::{DEFAULT_RECONNECT_S, MAX_WATCH_SECONDS};
+    use printobserver_server::{DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT, MAX_EVENTS_WAIT_S};
+    let read = |document: &str| {
+        std::fs::read_to_string(repo_root().join(document))
+            .unwrap_or_else(|error| panic!("{document} reads: {error}"))
+    };
+    let (surface, api) = (read(COMMAND_SURFACE), read(API_AND_CLIENTS));
+    for (document, text, said) in [
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("0 to {MAX_EVENTS_WAIT_S}"),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("1 to {MAX_EVENTS_LIMIT} (optional; {DEFAULT_EVENTS_LIMIT} by default)"),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("{DEFAULT_RECONNECT_S} by default; at most {MAX_WATCH_SECONDS}"),
+        ),
+        (
+            COMMAND_SURFACE,
+            &surface,
+            format!("prints none; at most {MAX_WATCH_SECONDS}"),
+        ),
+        (
+            API_AND_CLIENTS,
+            &api,
+            format!("`wait_s` is 0 to {MAX_EVENTS_WAIT_S}, default 0"),
+        ),
+        (
+            API_AND_CLIENTS,
+            &api,
+            format!("`limit` is 1 to {MAX_EVENTS_LIMIT}, default {DEFAULT_EVENTS_LIMIT}"),
+        ),
+    ] {
+        assert!(text.contains(&said), "{document} does not say `{said}`");
+    }
+}
+
 /// The installers that carry the spool check's defaults, commented out.
 const INSTALLERS: [&str; 2] = ["scripts/install-service.sh", "scripts/install-service.ps1"];
 

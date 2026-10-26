@@ -66,7 +66,7 @@ pub const DEFAULT_RECONNECT_S: u64 = 30;
 
 /// The longest heartbeat or retry a watch takes, in seconds: a day. Longer is
 /// no heartbeat and no retry anybody is waiting on.
-const MAX_SECONDS: i64 = 86_400;
+pub const MAX_WATCH_SECONDS: i64 = 86_400;
 
 /// How long one read waits on the server for an event to pass, in seconds.
 ///
@@ -104,10 +104,13 @@ pub struct Watch {
     /// that pass.
     pub samples: BTreeMap<EventKind, NonZeroU32>,
     /// How often to say the watch is still running with nothing to print, in
-    /// seconds; zero, never.
-    pub heartbeat_s: u64,
-    /// How long to retry a server that cannot be reached, in seconds.
-    pub reconnect_s: u64,
+    /// seconds; zero, never. At most [`MAX_WATCH_SECONDS`], which only
+    /// [`Watch::of`] can hold it to, so it is read through
+    /// [`Watch::heartbeat_s`].
+    heartbeat_s: u64,
+    /// How long to retry a server that cannot be reached, in seconds; at most
+    /// [`MAX_WATCH_SECONDS`].
+    reconnect_s: u64,
 }
 
 impl Watch {
@@ -138,9 +141,11 @@ impl Watch {
         let seconds = |name: &str, least: i64, otherwise: u64| -> Result<u64, String> {
             match values.get(name).and_then(Value::as_i64) {
                 None => Ok(otherwise),
-                Some(given) if (least..=MAX_SECONDS).contains(&given) => Ok(given.unsigned_abs()),
+                Some(given) if (least..=MAX_WATCH_SECONDS).contains(&given) => {
+                    Ok(given.unsigned_abs())
+                }
                 Some(given) => Err(format!(
-                    "`--{}` takes a whole number of seconds from {least} to {MAX_SECONDS}, and \
+                    "`--{}` takes a whole number of seconds from {least} to {MAX_WATCH_SECONDS}, and \
                      `{given}` is not one",
                     name.replace('_', "-")
                 )),
@@ -172,6 +177,19 @@ impl Watch {
             heartbeat_s: seconds(HEARTBEAT_FIELD, 0, 0)?,
             reconnect_s: seconds(RECONNECT_FIELD, 0, DEFAULT_RECONNECT_S)?,
         })
+    }
+
+    /// How often a quiet watch says it is still running, in seconds; zero,
+    /// never.
+    #[must_use]
+    pub const fn heartbeat_s(&self) -> u64 {
+        self.heartbeat_s
+    }
+
+    /// How long the watch retries a server that cannot be reached, in seconds.
+    #[must_use]
+    pub const fn reconnect_s(&self) -> u64 {
+        self.reconnect_s
     }
 
     /// Whether the caller's own filters pass one kind.
@@ -481,6 +499,12 @@ async fn stopped() -> &'static str {
             _ = terminate.recv() => "SIGTERM",
         }
     }
+    // The interruption journey drives the two Unix signals end to end. The
+    // console's three controls stand in for them here, and what follows a
+    // control is the one path that journey proves: the same `stopped` future,
+    // the same ending line, the same exit. No runner this repository uses can
+    // deliver a console control to a child it started, so the platform's own
+    // listeners are the one part of this that is not driven.
     #[cfg(windows)]
     {
         use tokio::signal::windows::{ctrl_break, ctrl_c, ctrl_close};
