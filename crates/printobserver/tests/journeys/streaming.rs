@@ -93,12 +93,17 @@ fn other_kind(print_id: Option<PrintId>) -> EventDraft {
 
 /// One print's end.
 fn ended(print_id: PrintId) -> EventDraft {
+    ended_as(print_id, PrintOutcome::Completed)
+}
+
+/// One print's end, with the outcome given.
+fn ended_as(print_id: PrintId, outcome: PrintOutcome) -> EventDraft {
     EventDraft {
         print_id: Some(print_id),
         source: system_source(),
         received_at: Timestamp::now(),
         body: EventBody::of(&PrintEndedPayload {
-            outcome: PrintOutcome::Completed,
+            outcome,
             state: PrinterState::Operational,
             reason: "it ran to its end".to_owned(),
             last_position: None,
@@ -1042,6 +1047,30 @@ fn a_watch_started_after_a_prints_end_ends_with_it_at_once() {
         "{ended}"
     );
     assert_eq!(status.code(), Some(0), "{lines:#?}");
+}
+
+/// A watch over a print that stopped with no cancel, no error and no finish
+/// ends saying the print was interrupted, as a person reads it.
+#[test]
+fn a_watch_over_an_interrupted_print_says_it_was_interrupted() {
+    let world = World::open(STOOD_IN);
+    let own = Standalone::beside(&world, "streaming");
+    let watched = own.print_id.clone();
+    let recorded = own.record(vec![
+        notable(Some(print(&watched))),
+        ended_as(print(&watched), PrintOutcome::Interrupted),
+    ]);
+    let end = recorded[1].id.to_string();
+
+    let (lines, status, err) =
+        watch(&own, &["--print-id", &watched, "--after", &end]).finished_saying();
+
+    let said = format!("{}\n{err}", lines.join("\n"));
+    assert!(
+        said.contains(&format!("print {watched} ended interrupted at ")) && said.contains(&end),
+        "the watch did not say the print was interrupted: {said}"
+    );
+    assert_eq!(status.code(), Some(0), "{said}");
 }
 
 /// Without `--print-id`, a stream carries every event stored after it began —
