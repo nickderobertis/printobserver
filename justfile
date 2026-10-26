@@ -100,6 +100,7 @@ tool-version TOOL:
 # the committed tree alone and answer the same on every host — the Windows-target
 # lint, the workflow lint and the repository checks — for a gate cell whose run
 # has another cell running them: `ci.yml`'s macOS gate, beside the Linux cells.
+# Any other value is refused by the Windows-target lint, early in `just lint`.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -110,7 +111,7 @@ check tier="affected":
     just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} && \
-    if [ "${PRINTOBSERVER_HOST_INDEPENDENT:-here}" = here ]; then \
+    if [ "${PRINTOBSERVER_HOST_INDEPENDENT:-}" != elsewhere ]; then \
     just lint-workflows && \
     just check-repo \
     ; fi || status=$?; \

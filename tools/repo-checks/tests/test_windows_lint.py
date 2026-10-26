@@ -333,12 +333,18 @@ def test_a_cell_leaving_the_pass_to_the_others_runs_nothing(
     contains(capsys.readouterr().out, "left to the gate cells of this run that lint it")
 
 
-def test_any_other_value_still_runs_the_pass(
-    stand_ins: Path, committed: Repo, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("value", ["here", "elsewhere ", "Elsewhere"])
+def test_any_other_value_is_refused_naming_the_one_it_takes(
+    stand_ins: Path,
+    committed: Repo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
 ) -> None:
-    """Only the one value leaves the pass elsewhere; anything else lints."""
-    monkeypatch.setenv(windows_lint.HOST_INDEPENDENT, "here")
+    """A misspelt opt-out neither skips the pass nor silently runs it: the gate fails here."""
+    monkeypatch.setenv(windows_lint.HOST_INDEPENDENT, value)
 
-    equal(windows_lint.lint_windows_target(committed, host="Linux"), 0)
+    equal(windows_lint.lint_windows_target(committed, host="Linux"), 1)
 
-    equal(len(recorded(stand_ins / "cargo")), len(committed.crate_names))
+    equal(recorded(stand_ins / "cargo"), [], describing="no clippy run on an unknown value")
+    contains(capsys.readouterr().err, "is neither unset nor `elsewhere`")

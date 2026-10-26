@@ -175,9 +175,18 @@ def lint_windows_target(repo: Repo, *, host: str | None = None) -> int:
         print("no `toolchain.windows_lint` target declared; nothing linted for Windows")
         return 0
     target = declared.target
-    if os.environ.get(HOST_INDEPENDENT) == ELSEWHERE:
+    leaving = os.environ.get(HOST_INDEPENDENT, "")
+    if leaving == ELSEWHERE:
         print(f"{target}: left to the gate cells of this run that lint it ({HOST_INDEPENDENT})")
         return 0
+    if leaving:
+        print(
+            f"{HOST_INDEPENDENT}={leaving!r} is neither unset nor `{ELSEWHERE}`, so whether this "
+            f"cell runs the steps that read only the committed tree is not known. Unset it, or "
+            f"set it to `{ELSEWHERE}` where another cell of the run runs them.",
+            file=sys.stderr,
+        )
+        return 1
     if (host or host_platform.system()) == "Windows":
         print(f"{target}: this host's own; the native lint tier is the Windows-target pass")
         return 0

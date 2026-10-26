@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from onebudgetspec_sdk import list_budgets
+from onebudgetspec_sdk import check, list_budgets
 from repo_checks import gate_time_budget
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_time_budget import OVER, REFUSED, WITHIN, check_budget, measure
@@ -403,18 +403,25 @@ def _step_environment(monkeypatch: pytest.MonkeyPatch, settings: dict[str, str])
     return settings
 
 
-def test_the_check_passes_a_context_within_budget_and_prints_its_breakdown(
+def test_the_check_passes_a_context_within_budget_its_breakdown_in_the_result(
     checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The real onebudgetspec check of `gate-time`: 1,559 s is within 1,800 s."""
+    """The real onebudgetspec check of `gate-time`: 1,559 s is within 1,800 s.
+
+    The step says so in one line, and the per-job breakdown is the check
+    result's own detail, where onebudgetspec carries it.
+    """
     environ = _step_environment(monkeypatch, environment(checking, "gate", "linux-x86_64"))
 
     equal(check_budget(Repo(REPO_ROOT), environ), WITHIN)
 
-    said = capsys.readouterr().out
-    contains(said, "gate-time: within: 1559 s against 1800 s")
-    contains(said, '"name": "gate (linux-x86_64)"')
-    contains(said, '"initial_queue_seconds": 3.0')
+    equal(capsys.readouterr().out, "gate-time: within: 1559 s against 1800 s\n")
+    (checked,) = check(paths=["budgets.yaml"], ids=["gate-time"], cwd=REPO_ROOT).results
+    equal((checked.verdict, checked.actual, checked.threshold), ("within", 1559.0, 1800.0))
+    detail = json.loads(checked.detail or "{}")
+    equal([job["name"] for job in detail["jobs"]], ["gate (linux-x86_64)"])
+    equal(detail["initial_queue_seconds"], 3.0)
+    truth(bool(detail["jobs"][0]["steps"]), describing="each step's recorded duration")
 
 
 def test_the_check_fails_a_context_over_budget_on_a_pull_request(
@@ -427,6 +434,7 @@ def test_the_check_fails_a_context_over_budget_on_a_pull_request(
 
     said = capsys.readouterr()
     contains(said.err, "gate-time: over: 2581 s against 1800 s")
+    contains(said.err, "sharding it behind its own required name (`just gate-shards`)")
     contains(said.out, '"name": "macos-aarch64 (gate, integration)"')
 
 

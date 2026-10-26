@@ -445,8 +445,6 @@ def check_budget(repo: Repo, environ: Mapping[str, str] | None = None) -> int:
     except (OnebudgetspecError, gate_tier.TierError) as error:
         print(f"gate-time: refused: {error}", file=sys.stderr)
         return REFUSED
-    if result.detail:
-        print(json.dumps(json.loads(result.detail), indent=2, sort_keys=True))
     if result.verdict == "error" or result.actual is None:
         print(f"gate-time: error: {result.error}", file=sys.stderr)
         return REFUSED
@@ -454,8 +452,16 @@ def check_budget(repo: Repo, environ: Mapping[str, str] | None = None) -> int:
     if result.verdict == "within":
         print(f"gate-time: within: {figure}")
         return WITHIN
+    # Over budget, the breakdown is what says where the time went.
+    if result.detail:
+        print(json.dumps(json.loads(result.detail), indent=2, sort_keys=True))
     if sweep:
         print(f"gate-time: over, reported and not enforced on the release sweep: {figure}")
         return WITHIN
-    print(f"gate-time: over: {figure}", file=sys.stderr)
+    print(
+        f"gate-time: over: {figure}. Read the breakdown above for the job and step that "
+        f"grew, and bring the context under by making that work faster or by sharding it "
+        f"behind its own required name (`just gate-shards`); the budget is not loosened.",
+        file=sys.stderr,
+    )
     return OVER

@@ -392,11 +392,10 @@ carrying it, and `.github/budgets.yaml` holds both bounds against the graph
 `github-workflows:test` evaluates.
 
 The two lanes are two jobs rather than one because one 3-core runner cannot run
-both under `gate-time`'s 1,800 s: in turn they spanned 2,147 to 2,575 s, and side
-by side on one runner 2,863 s, because both are bound by the same processors. The
-macOS gate leaves the steps that read only the committed tree — the
-Windows-target lint, the workflow lint and the repository checks — to the Linux
-gate cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
+both under `gate-time`'s 1,800 s, in turn or side by side: both are bound by the
+same processors. The macOS gate leaves the steps that read only the committed
+tree — the Windows-target lint, the workflow lint and the repository checks — to
+the Linux gate cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
 
 ## The scripted OctoPrint environment
 
