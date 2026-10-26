@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex};
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
     FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
-    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery,
-    TimelineStore,
+    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal,
+    Stores, TimelineQuery, TimelineStore,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -202,6 +202,24 @@ impl EventStore for CommitThenFail {
             "audit_page",
             EventStore::audit_page(&*self.inner, print_id, after, page_size),
         )
+    }
+
+    fn stored_after(
+        &self,
+        query: StoredQuery,
+    ) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
+        self.after(
+            "stored_after",
+            EventStore::stored_after(&*self.inner, query),
+        )
+    }
+
+    fn newest_stored(&self) -> BoxFuture<'_, Result<Option<EventId>, StoreError>> {
+        self.after("newest_stored", EventStore::newest_stored(&*self.inner))
+    }
+
+    fn on_stored(&self, signal: StoredSignal) {
+        EventStore::on_stored(&*self.inner, signal);
     }
 }
 

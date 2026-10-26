@@ -81,6 +81,7 @@ mod memory;
 mod rows;
 mod schema;
 mod sqlite;
+mod stored;
 mod values;
 
 pub use hold::{HoldPoint, HoldPoints, settle_label};
