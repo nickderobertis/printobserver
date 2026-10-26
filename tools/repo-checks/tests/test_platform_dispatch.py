@@ -670,6 +670,7 @@ def _run(
         cwd=tree.root,
         environment=recording.environment(**extra),
         say=lambda line: print(line, file=said),
+        refuse=lambda line: print(line, file=said),
     )
     return code, said.getvalue()
 
@@ -1047,6 +1048,31 @@ def test_an_export_in_a_form_no_source_job_writes_is_refused_by_name(
         ],
         describing="what ran: the setup, and then only the teardown",
     )
+
+
+def test_the_script_prints_an_export_refusal_on_standard_error(
+    tree: Callable[[], Tree],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`run` says a refused export where it says every other refusal, and exits 2."""
+    file, exports, named = REFUSED_EXPORTS["multi-line"]
+    copy = tree()
+    recording = Recording(tmp_path)
+    _exporting(recording, exports, file)
+    for name, value in recording.environment().items():
+        monkeypatch.setenv(name, value)
+
+    code = dispatching.main(
+        ["run", "--job", "gate", "--platform", "linux-x86_64", "--root", str(copy.root)]
+    )
+
+    said = capsys.readouterr()
+    equal(code, REFUSED, describing="the exit of a run whose setup wrote a refused form")
+    contains(said.err, "platform-dispatch: refused: `just runner-temp`", describing=said.err)
+    contains(said.err, named, describing=said.err)
+    absent(said.out, "refused", describing="what the run printed on standard output")
 
 
 def test_the_script_refuses_an_unknown_pair_before_anything_runs(

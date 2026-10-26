@@ -516,21 +516,29 @@ def _value(text: str, outcomes: dict[str, Outcome], runner_os: str) -> str:
     return text
 
 
+def _on_standard_error(line: str) -> None:
+    """Print one line to standard error, where a refusal belongs."""
+    print(line, file=sys.stderr)
+
+
 def execute(
     resolved: Resolved,
     *,
     cwd: Path,
     environment: dict[str, str] | None = None,
     say: Callable[[str], object] = print,
+    refuse: Callable[[str], object] = _on_standard_error,
 ) -> int:
     """Run the source job's steps on this host, and answer the job's exit.
 
     Every step's command runs under bash — or under `pwsh`, where the step
     names it — with the job's carried environment, what the steps before it
-    exported, and its own, and what it
-    prints reaches the caller's streams as it happens. A step that fails and is
-    not waived fails the job and stops every step after it but those on
-    `always()`; the exit is that first failure's.
+    exported, and its own, and what it prints reaches the caller's streams as
+    it happens. A step that fails and is not waived fails the job and stops
+    every step after it but those on `always()`; the exit is that first
+    failure's. What the executor says of each step goes to `say`, and a
+    refusal of what a step exported to `refuse` — standard error by default,
+    where `main` prints every other refusal.
 
     Raises:
         DispatchError: If the source job carries a shape this cannot run.
@@ -573,7 +581,7 @@ def execute(
                 except DispatchError as error:
                     # Refused as a failure rather than raised, so the job's
                     # `always()` steps still run after it, as its teardown.
-                    say(f"platform-dispatch: refused: {named}: {error}")
+                    refuse(f"platform-dispatch: refused: {named}: {error}")
                     code = REFUSED
             if code == 0:
                 outcomes[step.id] = Outcome.SUCCESS
