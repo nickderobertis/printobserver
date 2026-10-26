@@ -930,3 +930,60 @@ async fn a_change_the_store_refused_is_recorded_by_the_next_read() {
         json!([{ "tool": 0, "target_c": 200.0 }])
     );
 }
+
+/// A reset the printer pushes just after a read already found it idle still
+/// ends the print `interrupted`: the return to idle waits for it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reset_pushed_just_after_the_idle_read_still_ends_interrupted() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let print_id = watch.printing(400).await;
+
+    watch.octoprint.reports("Operational", landed_idle());
+    tokio::time::sleep(POLL + Duration::from_millis(150)).await;
+    watch.octoprint.pushes_event("PrinterReset", &json!({}));
+    watch.until("print_ended", 1).await;
+
+    assert_eq!(ended(&watch.history().await, &print_id), "interrupted");
+    let reset = watch.until("printer_reset", 1).await;
+    assert_eq!(reset[0]["payload"]["during_print"], print_id.as_str());
+}
+
+/// A reset the store refused to write is written by the next read once it
+/// answers: the push is not sent again, so what it said is kept.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reset_the_store_refused_is_written_by_the_next_read() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    watch.held.refusing_kind("printer_reset", true);
+
+    watch.octoprint.pushes_event("PrinterReset", &json!({}));
+    tokio::time::sleep(POLL * 4).await;
+    assert!(watch.of_kind("printer_reset").await.is_empty());
+    watch.held.refusing_kind("printer_reset", false);
+
+    let reset = watch.until("printer_reset", 1).await;
+    assert_eq!(reset[0]["payload"]["during_print"], Value::Null);
+}
+
+/// An unfinished ending whose follow-up the store would not answer for is
+/// followed up by the next read once it does: the agent is given its turn,
+/// and the unattended window opens.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ending_the_store_would_not_follow_up_is_followed_up_by_the_next_read() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    watch.held.refusing_reads_of("print_ended", true);
+    let print_id = interrupted(&watch).await;
+    tokio::time::sleep(POLL * 4).await;
+    assert!(
+        watch.agent.turns().is_empty(),
+        "a turn ran with nothing followed up"
+    );
+
+    watch.held.refusing_reads_of("print_ended", false);
+    assert_turn_names_the_ending(&watch.turns(1).await, &print_id, "interrupted");
+    watch.octoprint.targets(200.0, 0.0);
+    let activity = watch.until("unattended_printer_activity", 1).await;
+    assert_eq!(activity[0]["payload"]["last_print_id"], print_id.as_str());
+}

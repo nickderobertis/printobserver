@@ -499,7 +499,8 @@ impl Ending<'_> {
         self.pushes.gap
             && self
                 .job
-                .is_some_and(|job| job.error_source == Some(ErrorSource::Printer))
+                .and_then(|job| job.error_report.as_ref())
+                .is_some_and(|report| report.source == ErrorSource::Printer)
     }
 }
 
@@ -937,17 +938,23 @@ impl Supervisor {
         } else {
             Canceller::NotHere
         };
-        let outcome = Ending {
-            state,
-            job,
-            file_name: file_name.as_ref(),
-            position: position.as_ref(),
-            size_bytes: analysis.size_bytes(),
-            tally,
-            cancelled_by,
-            pushes: self.push_facts(),
+        let ending = |pushes| {
+            Ending {
+                state,
+                job,
+                file_name: file_name.as_ref(),
+                position: position.as_ref(),
+                size_bytes: analysis.size_bytes(),
+                tally,
+                cancelled_by,
+                pushes,
+            }
+            .outcome()
+        };
+        let mut outcome = ending(self.push_facts());
+        if outcome == PrintOutcome::Cancelled && cancelled_by == Canceller::NotHere {
+            outcome = ending(self.pushes_after_a_reset_could_arrive().await);
         }
-        .outcome();
         let rule = charge_rule(outcome);
         let totals = match (rule, &file_name, &position) {
             (ChargeRule::SlicerEstimate, _, _) => {
@@ -1057,17 +1064,23 @@ impl Supervisor {
             .file_name
             .as_deref()
             .and_then(|name| FileName::new(name).ok());
-        let outcome = Ending {
-            state,
-            job: closing_job,
-            file_name: named.as_ref(),
-            position: None,
-            size_bytes: None,
-            tally: Tally::NoCompletion,
-            cancelled_by: Canceller::NotHere,
-            pushes: self.push_facts(),
+        let ending = |pushes| {
+            Ending {
+                state,
+                job: closing_job,
+                file_name: named.as_ref(),
+                position: None,
+                size_bytes: None,
+                tally: Tally::NoCompletion,
+                cancelled_by: Canceller::NotHere,
+                pushes,
+            }
+            .outcome()
+        };
+        let mut outcome = ending(self.push_facts());
+        if outcome == PrintOutcome::Cancelled {
+            outcome = ending(self.pushes_after_a_reset_could_arrive().await);
         }
-        .outcome();
         // The `print_untracked` goes first, once: a close-out replayed after
         // it — the settlement refused, or committed with its answer lost —
         // finds it written and writes no second, and one replayed after the

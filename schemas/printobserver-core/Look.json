@@ -164,6 +164,25 @@
       ],
       "type": "object"
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -186,16 +205,16 @@
             "null"
           ]
         },
-        "error_source": {
+        "error_report": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ErrorSource"
+              "$ref": "#/$defs/JobError"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",

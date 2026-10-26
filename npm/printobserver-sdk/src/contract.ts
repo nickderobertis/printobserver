@@ -708,6 +708,14 @@ export type InterventionOutcome =
   | { restore_failed: { reason: string } }
   | { superseded: { by: InterventionId } };
 
+/** A job's error, and whose it is. */
+export interface JobError {
+  /** Whose it is. */
+  source: ErrorSource;
+  /** The error, as the source reported it. */
+  text: string;
+}
+
 /**
  * What a sliced job declares about itself and about what may be adjusted.
  *
@@ -747,10 +755,10 @@ export interface JobSnapshot {
   /** The error the source reports, when it reports one. */
   error?: string | null;
   /**
-   * Whose error it is, when the source reported one and its adapter could
-   * tell: the printer's own message, or the host's.
+   * The error the source reports with whose it is, when its adapter could
+   * tell: its text is always `error`'s.
    */
-  error_source?: ErrorSource | null;
+  error_report?: JobError | null;
   /** The whole print's estimated duration, in whole seconds. */
   estimated_print_time_s?: number | null;
   /**

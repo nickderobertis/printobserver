@@ -856,6 +856,15 @@ pub enum InterventionOutcome {
     },
 }
 
+/// A job's error, and whose it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JobError {
+    /// Whose it is.
+    pub source: ErrorSource,
+    /// The error, as the source reported it.
+    pub text: String,
+}
+
 /// What a sliced job declares about itself and about what may be adjusted.
 ///
 /// An adjustable the manifest does not name takes the envelope's own range; a
@@ -893,10 +902,10 @@ pub struct JobSnapshot {
     /// The error the source reports, when it reports one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Whose error it is, when the source reported one and its adapter could
-    /// tell: the printer's own message, or the host's.
+    /// The error the source reports with whose it is, when its adapter could
+    /// tell: its text is always `error`'s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_source: Option<ErrorSource>,
+    pub error_report: Option<JobError>,
     /// The whole print's estimated duration, in whole seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimated_print_time_s: Option<i64>,

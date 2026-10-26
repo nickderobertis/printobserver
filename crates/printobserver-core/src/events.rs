@@ -678,7 +678,7 @@ impl Supervisor {
             )
             .await?;
         self.close_session_of(print_id, reason).await?;
-        self.after_close_out(print_id).await?;
+        self.follow_up_end(print_id).await;
         Ok(true)
     }
 

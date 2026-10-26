@@ -73,6 +73,15 @@ pub const DEFAULT_PRINTER_POLL: Duration = Duration::from_secs(15);
 /// its own is recorded, when nothing configures it.
 pub const DEFAULT_UNATTENDED_WINDOW: Duration = Duration::from_secs(3600);
 
+/// How long a return to idle that would read as a cancel waits for the reset
+/// the printer may still be pushing for it.
+///
+/// `OctoPrint` pushes a reset within about a third of a second of the
+/// printer's own, and moves its state to idle within about two thirds; a read
+/// can land between the two, and without the reset a firmware reset reads as
+/// a cancel made at the printer.
+pub const RESET_GRACE: Duration = Duration::from_secs(1);
+
 /// What a detail says while the push channel is down.
 pub const PUSH_CHANNEL_DOWN: &str =
     "the printer's push channel was down, so this was read from its state alone";
@@ -371,6 +380,11 @@ pub(crate) struct WatchState {
     detector: DetectorHealth,
     /// Turns an ending claimed, for the next watch round to answer.
     pending_turns: Vec<PendingTurn>,
+    /// Resets the store refused to write down, for the next round to write.
+    pending_resets: Vec<PrinterResetPayload>,
+    /// Prints closed out whose ending was not yet followed up, because the
+    /// store would not answer, for the next round to follow up.
+    pending_ends: Vec<PrintId>,
 }
 
 impl WatchState {
@@ -475,6 +489,27 @@ impl Supervisor {
         facts
     }
 
+    /// What the printer pushed, once a reset it may still be pushing for a
+    /// return to idle has had [`RESET_GRACE`] to arrive — at once when the
+    /// push channel is down, since nothing would arrive.
+    pub(crate) async fn pushes_after_a_reset_could_arrive(&self) -> PushFacts {
+        // A wait for something a real socket delivers, so it is measured on
+        // the host's own clock rather than the one supervision is driven by.
+        let started = std::time::Instant::now();
+        loop {
+            let facts = self.push_facts();
+            if facts.reset
+                || self.watch_state().channel_is_down()
+                || started.elapsed() >= RESET_GRACE
+                || crate::delay::Delay::new(Duration::from_millis(50))
+                    .await
+                    .is_err()
+            {
+                return facts;
+            }
+        }
+    }
+
     /// Close any unattended window: a job is running.
     pub(crate) fn note_job_running(&self) {
         self.watch_state().unattended = None;
@@ -531,15 +566,16 @@ impl Supervisor {
                     Some(print_id) => format!("the printer pushed a reset during print {print_id}"),
                     None => "the printer pushed a reset while no print was running".to_owned(),
                 };
-                let draft = self.draft_of(
-                    None,
-                    system_source(),
-                    &PrinterResetPayload {
-                        during_print,
-                        detail,
-                    },
-                )?;
-                self.stores().events.append_event(draft).await?;
+                let payload = PrinterResetPayload {
+                    during_print,
+                    detail,
+                };
+                if let Err(error) = self.write_reset(&payload).await {
+                    // The push is not sent again, so what it said is kept for
+                    // the next round to write down.
+                    self.watch_state().pending_resets.push(payload);
+                    return Err(error);
+                }
                 Ok(())
             }
             PrinterPush::Error {
@@ -552,6 +588,39 @@ impl Supervisor {
                 reason: PrinterErrorReason::Other(_),
             }
             | PrinterPush::Log { .. } => Ok(()),
+        }
+    }
+
+    /// Write one reset down.
+    async fn write_reset(&self, payload: &PrinterResetPayload) -> Result<(), CoreError> {
+        let draft = self.draft_of(None, system_source(), payload)?;
+        self.stores().events.append_event(draft).await?;
+        Ok(())
+    }
+
+    /// Write down what an earlier round could not: the resets the store
+    /// refused, and the follow-up of endings it would not answer for. Each
+    /// still refused is kept for the round after.
+    async fn catch_up(&self) {
+        let resets = std::mem::take(&mut self.watch_state().pending_resets);
+        for payload in resets {
+            if self.write_reset(&payload).await.is_err() {
+                self.watch_state().pending_resets.push(payload);
+            }
+        }
+        let ends = std::mem::take(&mut self.watch_state().pending_ends);
+        for print_id in ends {
+            if self.after_close_out(print_id).await.is_err() {
+                self.watch_state().pending_ends.push(print_id);
+            }
+        }
+    }
+
+    /// Follow up one print's close-out, or keep it for the next round when the
+    /// store will not answer.
+    pub(crate) async fn follow_up_end(&self, print_id: PrintId) {
+        if self.after_close_out(print_id).await.is_err() {
+            self.watch_state().pending_ends.push(print_id);
         }
     }
 
@@ -576,6 +645,7 @@ impl Supervisor {
     ///
     /// Returns the store's own error when what changed could not be recorded.
     pub async fn watch_printer(&self, probe: &dyn PositionProbe) -> Result<Watched, CoreError> {
+        self.catch_up().await;
         let resolving = self.resolving().await;
         let observed = self.observe_job().await;
         if let Some(observed) = &observed {
@@ -636,7 +706,7 @@ impl Supervisor {
     /// What follows a print's close-out: an `interrupted` or `failed` ending
     /// opens the unattended window and claims its agent a turn on the
     /// `print_ended`; any other ending closes the window.
-    pub(crate) async fn after_close_out(&self, print_id: PrintId) -> Result<(), CoreError> {
+    async fn after_close_out(&self, print_id: PrintId) -> Result<(), CoreError> {
         self.forget_pushes();
         let Some(ended) = self
             .stores()

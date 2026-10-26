@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-158 types. The set is every type any crate declares under
+159 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -7124,6 +7124,25 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobManifest": {
       "additionalProperties": false,
       "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
@@ -7195,16 +7214,16 @@ Declared by `printobserver-server`.
             "null"
           ]
         },
-        "error_source": {
+        "error_report": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ErrorSource"
+              "$ref": "#/$defs/JobError"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -10585,6 +10604,51 @@ Declared by `printobserver-core`.
 }
 ```
 
+### JobError
+
+Declared by `printobserver-printer-api`.
+
+```json
+{
+  "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A job's error, and whose it is.",
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/ErrorSource",
+      "description": "Whose it is."
+    },
+    "text": {
+      "description": "The error, as the source reported it.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "source"
+  ],
+  "title": "JobError",
+  "type": "object"
+}
+```
+
 ### JobManifest
 
 Declared by `printobserver-core`.
@@ -10687,6 +10751,25 @@ Declared by `printobserver-printer-api`.
           "type": "string"
         }
       ]
+    },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
     },
     "PrinterState": {
       "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
@@ -10806,16 +10889,16 @@ Declared by `printobserver-printer-api`.
         "null"
       ]
     },
-    "error_source": {
+    "error_report": {
       "anyOf": [
         {
-          "$ref": "#/$defs/ErrorSource"
+          "$ref": "#/$defs/JobError"
         },
         {
           "type": "null"
         }
       ],
-      "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+      "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
     },
     "estimated_print_time_s": {
       "description": "The whole print's estimated duration, in whole seconds.",
@@ -11100,6 +11183,25 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -11122,16 +11224,16 @@ Declared by `printobserver-core`.
             "null"
           ]
         },
-        "error_source": {
+        "error_report": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ErrorSource"
+              "$ref": "#/$defs/JobError"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -13149,6 +13251,25 @@ Declared by `printobserver-core`.
       },
       "type": "object"
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -13171,16 +13292,16 @@ Declared by `printobserver-core`.
             "null"
           ]
         },
-        "error_source": {
+        "error_report": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ErrorSource"
+              "$ref": "#/$defs/JobError"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -18873,6 +18994,25 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobManifest": {
       "additionalProperties": false,
       "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
@@ -18944,16 +19084,16 @@ Declared by `printobserver-core`.
             "null"
           ]
         },
-        "error_source": {
+        "error_report": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ErrorSource"
+              "$ref": "#/$defs/JobError"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -29817,6 +29957,25 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -29839,16 +29998,16 @@ Declared by `printobserver-server`.
             "null"
           ]
         },
-        "error_source": {
+        "error_report": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ErrorSource"
+              "$ref": "#/$defs/JobError"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+          "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",

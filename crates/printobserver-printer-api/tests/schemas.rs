@@ -66,6 +66,10 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
     ("Adjustable", &[]),
     ("ErrorSource", &[]),
     (
+        "JobError",
+        &[("source", "ErrorSource", true), ("text", "string", true)],
+    ),
+    (
         "FileFacts",
         &[
             ("failures", "integer", true),
@@ -94,7 +98,7 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
         &[
             ("completion", "Reported", false),
             ("error", "string", false),
-            ("error_source", "ErrorSource", false),
+            ("error_report", "JobError", false),
             ("estimated_print_time_s", "integer", false),
             ("filament", "array:ToolFilament", false),
             ("file_name", "string", false),

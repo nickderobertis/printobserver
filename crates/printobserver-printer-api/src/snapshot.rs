@@ -119,6 +119,33 @@ impl Sample for ErrorSource {
     }
 }
 
+/// A job's error, and whose it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct JobError {
+    /// The error, as the source reported it.
+    pub text: String,
+    /// Whose it is.
+    pub source: ErrorSource,
+}
+
+impl Sample for JobError {
+    fn sample_full() -> Self {
+        Self {
+            text: "Thermal Runaway, system stopped!".to_owned(),
+            source: ErrorSource::Printer,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            text: "SerialTimeoutException: ".to_owned(),
+            source: ErrorSource::Host,
+        }]
+    }
+}
+
 /// The job a printer reports it is running.
 ///
 /// Every field but `state` is optional: an absent one means the source did not
@@ -159,10 +186,10 @@ pub struct JobSnapshot {
     /// The error the source reports, when it reports one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Whose error it is, when the source reported one and its adapter could
-    /// tell: the printer's own message, or the host's.
+    /// The error the source reports with whose it is, when its adapter could
+    /// tell: its text is always `error`'s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_source: Option<ErrorSource>,
+    pub error_report: Option<JobError>,
     /// How far into the file the printer has read, in bytes, when the source
     /// reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -280,7 +307,7 @@ impl Sample for JobSnapshot {
             print_time_left_s: Some(4176),
             state: PrinterState::Printing,
             error: Some("Thermal Runaway, system stopped!".to_owned()),
-            error_source: Some(ErrorSource::Printer),
+            error_report: Some(JobError::sample_full()),
             file_position_bytes: Some(1_761_607),
             filament: vec![ToolFilament::sample_full()],
         }
@@ -297,7 +324,7 @@ impl Sample for JobSnapshot {
             print_time_left_s: None,
             state: PrinterState::Printing,
             error: None,
-            error_source: None,
+            error_report: None,
             file_position_bytes: None,
             filament: Vec::new(),
         }

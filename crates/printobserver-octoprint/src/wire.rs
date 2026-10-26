@@ -13,7 +13,9 @@ use printobserver_printer_api::{
     COMPLETION_RANGE, HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE,
     HeaterSnapshot, JobSnapshot, PrinterSnapshot,
 };
-use printobserver_printer_api::{ErrorSource, FileFacts, FilePrint, PrinterState, ToolFilament};
+use printobserver_printer_api::{
+    ErrorSource, FileFacts, FilePrint, JobError, PrinterState, ToolFilament,
+};
 use printobserver_types::{FileName, Reported, Timestamp};
 use serde::Deserialize;
 
@@ -476,7 +478,12 @@ impl JobPayload {
             print_time_s: progress.print_time,
             print_time_left_s: progress.print_time_left,
             state: job_state_of(self.state.as_deref()),
-            error_source: self.error.as_deref().and_then(error_source_of),
+            error_report: self.error.as_deref().and_then(|text| {
+                error_source_of(text).map(|source| JobError {
+                    text: text.to_owned(),
+                    source,
+                })
+            }),
             error: self.error,
             // A position before the file's first byte is no position at all.
             file_position_bytes: progress.filepos.filter(|position| *position >= 0),

@@ -939,6 +939,18 @@ InterventionOutcome: TypeAlias = (
 )
 
 
+class JobError(TypedDict):
+    """`JobError`, as the contracts declare it.
+
+    A job's error, and whose it is.
+    """
+
+    # Whose it is.
+    source: ErrorSource
+    # The error, as the source reported it.
+    text: str
+
+
 class JobManifest(TypedDict):
     """`JobManifest`, as the contracts declare it.
 
@@ -983,9 +995,9 @@ class JobSnapshot(TypedDict):
     completion: NotRequired[Reported | None]
     # The error the source reports, when it reports one.
     error: NotRequired[str | None]
-    # Whose error it is, when the source reported one and its adapter could
-    # tell: the printer's own message, or the host's.
-    error_source: NotRequired[ErrorSource | None]
+    # The error the source reports with whose it is, when its adapter could
+    # tell: its text is always `error`'s.
+    error_report: NotRequired[JobError | None]
     # The whole print's estimated duration, in whole seconds.
     estimated_print_time_s: NotRequired[int | None]
     # The filament the source's analysis of the file says each tool uses;

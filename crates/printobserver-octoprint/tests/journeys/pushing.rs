@@ -176,10 +176,46 @@ fn a_printer_that_is_not_operational_reads_as_offline() {
     let job = block_on(printer.job()).expect("the job reads");
     assert_eq!(job.state, PrinterState::Offline);
     assert_eq!(job.error.as_deref(), Some("SerialTimeoutException: "));
+    let report = job.error_report.clone().expect("the error is classified");
+    assert_eq!(report.source, printobserver_printer_api::ErrorSource::Host);
     assert_eq!(
-        job.error_source,
-        Some(printobserver_printer_api::ErrorSource::Host)
+        Some(report.text),
+        job.error,
+        "the report's text is not the error's"
     );
+}
+
+/// Whatever error a job reports, a classified report of it carries exactly
+/// its text, and a job reporting none carries no report.
+#[test]
+fn a_jobs_error_report_carries_exactly_its_error() {
+    for error in [
+        Some("SerialTimeoutException: "),
+        Some("Thermal Runaway, system stopped!"),
+        Some("   "),
+        None,
+    ] {
+        let standin = ScriptedOctoPrint::start();
+        let printer = adapter(&standin);
+        standin.reports(
+            "Closed",
+            JobScript {
+                state: "Offline after error".to_owned(),
+                error: error.map(str::to_owned),
+                ..JobScript::idle()
+            },
+        );
+        let job = block_on(printer.job()).expect("the job reads");
+        match job.error_report {
+            Some(report) => assert_eq!(Some(report.text), job.error, "{error:?}"),
+            None => assert!(
+                job.error
+                    .as_deref()
+                    .is_none_or(|text| text.trim().is_empty()),
+                "{error:?} carries no report"
+            ),
+        }
+    }
 }
 
 /// A job's error is the host's when it is an exception's name and colon, and
@@ -434,6 +470,36 @@ fn eight_byte_lengths_aggregate_limits_and_interleaved_messages_end_the_stream()
             next_event(&mut stream),
             None,
             "{what} did not end the stream"
+        );
+    }
+}
+
+/// A printer read refused as a conflict stays the conflict it was when the
+/// connection read fails, answers nothing readable, or says the printer is
+/// operational: only a connection saying it is offline or in error is a
+/// snapshot of that state.
+#[test]
+fn a_conflict_the_connection_does_not_explain_stays_a_conflict() {
+    use crate::stub::{Reply, Stub};
+    for connection in [
+        Reply::Empty(500),
+        Reply::Body(200, "not json".to_owned()),
+        Reply::Body(200, r#"{"current": {"state": "Operational"}}"#.to_owned()),
+    ] {
+        let stub = Stub::start(move |request| {
+            if request.path.starts_with("/api/printer") {
+                Reply::Body(409, r#"{"error":"Printer is not operational"}"#.to_owned())
+            } else {
+                connection.clone()
+            }
+        });
+        let printer = OctoPrintPrinter::new(
+            OctoPrintConfig::new(&stub.base_url(), "a-key").expect("a valid configuration"),
+        );
+        let read = block_on(printer.snapshot());
+        assert!(
+            matches!(read, Err(PrinterError::StateConflict { .. })),
+            "{read:?}"
         );
     }
 }

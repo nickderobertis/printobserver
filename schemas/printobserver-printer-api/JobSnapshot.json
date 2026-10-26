@@ -15,6 +15,25 @@
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "PrinterState": {
       "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
       "oneOf": [
@@ -133,16 +152,16 @@
         "null"
       ]
     },
-    "error_source": {
+    "error_report": {
       "anyOf": [
         {
-          "$ref": "#/$defs/ErrorSource"
+          "$ref": "#/$defs/JobError"
         },
         {
           "type": "null"
         }
       ],
-      "description": "Whose error it is, when the source reported one and its adapter could\ntell: the printer's own message, or the host's."
+      "description": "The error the source reports with whose it is, when its adapter could\ntell: its text is always `error`'s."
     },
     "estimated_print_time_s": {
       "description": "The whole print's estimated duration, in whole seconds.",
