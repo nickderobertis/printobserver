@@ -2645,6 +2645,24 @@ site = "standing = IssuesForge(REPOSITORY, CREDENTIAL)"
 reason = "The same stand-in forge as this file's other entry, for the same reason: the real issues API would open a real issue on github.com. What this journey adds is that the stand-in is ready to serve the real tracking command while every name lookup on the thread that started it is refused."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_tier.py"
+site = "status, _, _ = http(control_url, data=webhook_url.encode(\"utf-8\"), method=\"POST\")"
+reason = "One request, once, in a tier whose path is strictly ordered: the stand-in is told where to post, and only then does the tier wait for that body on its capture. There is nothing for an async client to overlap, and what answers is a stand-in this suite wrote rather than a service with a typed client. It goes through the tier's one `http` helper, which every request the tier makes shares, so the tier carries one HTTP client rather than two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/tests/substitute.py"
+site = "request = urllib.request.Request(  # noqa: S310"
+reason = "This stand-in plays Obico's webhook plugin, which posts one body with a blocking `requests.post` and does not retry; posting the same way, once, from the thread the control request arrived on is what keeps the stand-in faithful to the producer it replaces. There is nothing to overlap and no service on the other side but the tier's own capture."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_octoprint_tier.py"
+site = "def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started("
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this journey there — its section on the integration tier names `test_octoprint_tier.py` as the gate's own proof that the bring-down leaves nothing running — and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put it behind. Proving that a failed walk keeps the instance's logs adds no second bring-up: the walk fails on purpose over the one instance it already starts."
+
+[[suppression]]
 rule = "e2e_not_mocked"
 file = "tools/octoprint-env/tests/test_retaining.py"
 site = "runner = failing_runner / \"bunx\""

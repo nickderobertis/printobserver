@@ -158,6 +158,7 @@ def wrote_every_log(state: Path) -> None:
 
 
 @pytest.mark.alone
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started(
     gate_copy: Callable[[], GateCopy], tmp_path: Path
 ) -> None:

@@ -23,3 +23,13 @@ print every ten seconds would be unusable. So the trigger finishes an already-al
 happens between two real failures anyway. A stack that has run this tier several
 times therefore carries several finished prints, and a tier that skipped this
 would capture nothing on its second run and blame the network.
+
+## The capture binds its own port
+
+The bring-up configures the stack's webhook plugin with an address whose port
+may be zero, as `auto` writes it. The capture then binds a port of its own
+choosing and keeps it bound, and the tier points the plugin at that port before
+it raises the alert, refusing to go on unless Obico echoes the new address
+back. Picking a free port, releasing it and handing the number on would race
+every other listener on the host, so the port the plugin posts to is always the
+one the capture holds.

@@ -173,17 +173,23 @@ def test_a_held_unreachable_address_is_refused_while_listeners_come_and_go() -> 
 def _builds_a_standard_server(source: str) -> list[int]:
     lines: list[int] = []
     for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Call):
-            called = node.func
-            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
-            if name in STANDARD:
-                lines.append(node.lineno)
-        if isinstance(node, ast.ClassDef):
-            for base in node.bases:
-                name = base.attr if isinstance(base, ast.Attribute) else getattr(base, "id", "")
-                if name in STANDARD:
-                    lines.append(node.lineno)
+        match node:
+            case ast.Call(func=called):
+                named = [called]
+            case ast.ClassDef(bases=bases):
+                named = bases
+            case _:
+                continue
+        lines.extend(node.lineno for expression in named if _name_of(expression) in STANDARD)
     return lines
+
+
+def _name_of(expression: ast.expr) -> str:
+    match expression:
+        case ast.Attribute(attr=name) | ast.Name(id=name):
+            return name
+        case _:
+            return ""
 
 
 def _python_files() -> Iterator[Path]:

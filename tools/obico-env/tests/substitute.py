@@ -126,6 +126,7 @@ class Substitute:
         to = named or self.webhook_url
         self.posted_to.append(to)
         self.free_when_told.append(_free(to))
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         request = urllib.request.Request(  # noqa: S310
             to,
             data=self.body,

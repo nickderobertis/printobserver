@@ -606,8 +606,7 @@ revision; `tools/obico-env/obico_tier.py` then walks one path and reports one
 verdict:
 
 1. it listens on the address the stack's webhook notification plugin was
-   configured to post to — on a port it binds for itself where that address
-   names port zero, as `auto` does, pointing the plugin at the port it holds,
+   configured to post to,
 2. it causes a real failure alert on that stack — the snapshot goes in through
    Obico's own printer API and the alert is raised through Obico's own
    `alert_if_needed`, the function its detection pipeline calls the moment a

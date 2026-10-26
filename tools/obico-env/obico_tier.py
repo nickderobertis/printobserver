@@ -350,18 +350,49 @@ print('OBICO_TIER_REPOINTED ' + json.loads(setting.config_json)['custom_webhook_
 REPOINTED = "OBICO_TIER_REPOINTED "
 
 
-def stack_under(state_dir: Path) -> tuple[Stack, dict[str, Any]]:
-    """The stack `obico_env.py up` left under `state_dir`, and the record it wrote.
+@dataclass(frozen=True)
+class Instance:
+    """What this tier reads of the record `obico_env.py up` wrote, each field checked."""
+
+    stack: Stack
+    url: str
+    printer_token: str
+
+
+INSTANCE_FIELDS = ("state_dir", "project", "url", "printer_token")
+
+
+def stack_under(state_dir: Path) -> Instance:
+    """The stack `obico_env.py up` left under `state_dir`, read from the record it wrote.
 
     Raises:
-        TierError: If the stack is not there.
+        TierError: If the stack is not there, or its record is not one the bring-up writes.
     """
     record_path = state_dir / "instance.json"
     if not record_path.is_file():
         message = f"{record_path} is not there: run `just obico-up` before this tier"
         raise TierError(message)
-    record = json.loads(record_path.read_text(encoding="utf-8"))
-    return Stack(Path(record["state_dir"]), str(record["project"])), record
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except ValueError as error:
+        message = f"{record_path} is not JSON: {error}; run `just obico-up` again"
+        raise TierError(message) from error
+    if not isinstance(record, dict):
+        message = f"{record_path} holds no object; run `just obico-up` again"
+        raise TierError(message)
+    unusable = [
+        name
+        for name in INSTANCE_FIELDS
+        if not isinstance(record.get(name), str) or not record[name]
+    ]
+    if unusable:
+        message = f"{record_path} has no usable {', '.join(unusable)}; run `just obico-up` again"
+        raise TierError(message)
+    return Instance(
+        stack=Stack(Path(record["state_dir"]), record["project"]),
+        url=record["url"],
+        printer_token=record["printer_token"],
+    )
 
 
 def point_stack_at(state_dir: Path, webhook_url: str) -> None:
@@ -370,7 +401,7 @@ def point_stack_at(state_dir: Path, webhook_url: str) -> None:
     Raises:
         TierError: If Obico does not say it now posts there.
     """
-    stack, _ = stack_under(state_dir)
+    stack = stack_under(state_dir).stack
     request = json.dumps(
         {"email": ACCOUNT_EMAIL, "plugin": WEBHOOK_PLUGIN, "webhook_url": webhook_url}
     )
@@ -399,10 +430,11 @@ def cause_alert_on_stack(state_dir: Path) -> str:
     Raises:
         TierError: If the stack is not there, or will not raise the alert.
     """
-    stack, record = stack_under(state_dir)
+    instance = stack_under(state_dir)
+    stack = instance.stack
 
-    posted = post_snapshot(str(record["url"]), str(record["printer_token"]))
-    note(f"the printer posted a snapshot to {record['url']} ({posted})")
+    posted = post_snapshot(instance.url, instance.printer_token)
+    note(f"the printer posted a snapshot to {instance.url} ({posted})")
 
     answered = run_program(
         stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
@@ -460,6 +492,7 @@ def ask_to_post(control_url: str, webhook_url: str) -> str:
         TierError: If it will not.
     """
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         status, _, _ = http(control_url, data=webhook_url.encode("utf-8"), method="POST")
     except (OSError, ValueError) as error:
         message = f"the stand-in at {control_url} would not post: {error}"
