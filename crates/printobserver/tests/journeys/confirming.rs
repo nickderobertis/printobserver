@@ -628,10 +628,13 @@ fn the_manifest_it_answers_is_the_one_that_was_written(world: &World, written: &
 /// never reaches is a command that did not produce it.
 fn the_action_was_carried_out(world: &World, one: &Driven, said: &BTreeMap<String, String>) {
     let action_id = at(said, "record.id");
-    let read = running::read(
-        world,
-        &["history", "--print-id", &world.print_id(), "--limit", "40"],
-    );
+    // A close is about a record of its own rather than the world's print.
+    let print = if one.command.name == "close-print" {
+        one.text("print_id")
+    } else {
+        world.print_id()
+    };
+    let read = running::read(world, &["history", "--print-id", &print, "--limit", "40"]);
     the_request_in_the_history_carries_the_callers_values(one, &read, &action_id);
     assert!(
         the_history_carries(&read, "action_executed", &action_id),
@@ -651,6 +654,49 @@ fn the_action_was_carried_out(world: &World, one: &Driven, said: &BTreeMap<Strin
         the_intervention_this_invocation_opened_is_the_one_in_force(world, one, said);
         the_machine_holds_what_this_invocation_asked_for(world, one);
     }
+    if one.command.name == "close-print" {
+        the_record_it_closed_is_ended(world, one, &read);
+    }
+}
+
+/// A close ended the record it was about with its caller's outcome and
+/// reason: the record read back carries an end, and its history one
+/// `print_ended` saying how and why.
+fn the_record_it_closed_is_ended(world: &World, one: &Driven, history: &Value) {
+    let print = one.text("print_id");
+    let closed = format!("closed by the operator: {}", walk::reason_of("close-print"));
+    let read = running::read(world, &["status", "--print-id", &print]);
+    assert!(
+        read.pointer("/print/ended_at").is_some(),
+        "`close-print` left the record open: {read}"
+    );
+    assert_eq!(
+        read.pointer("/print/end_reason").and_then(Value::as_str),
+        Some(closed.as_str()),
+        "`close-print` ended the record for a reason its caller did not give: {read}"
+    );
+    let ended: Vec<&Value> = history
+        .get("events")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|event| event.get("kind").and_then(Value::as_str) == Some("print_ended"))
+        .collect();
+    assert_eq!(
+        ended.len(),
+        1,
+        "`close-print` did not end the record once: {history}"
+    );
+    assert_eq!(
+        ended[0].pointer("/payload/outcome"),
+        Some(&Value::String(one.text("outcome"))),
+        "`close-print` ended the record with an outcome its caller did not give: {history}"
+    );
+    assert_eq!(
+        ended[0].pointer("/payload/reason").and_then(Value::as_str),
+        Some(closed.as_str()),
+        "`close-print` ended the record for a reason its caller did not give: {history}"
+    );
 }
 
 /// The bounded intervention **this invocation** opened is the one in force,

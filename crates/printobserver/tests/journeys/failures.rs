@@ -254,7 +254,9 @@ fn the_policy_refuses_it(world: &World, one: &Driven) {
     );
     let said = ran.said();
     assert!(
-        said.contains("out_of_bounds") || said.contains("no_active_print"),
+        said.contains("out_of_bounds")
+            || said.contains("no_active_print")
+            || said.contains("print_already_ended"),
         "`{}` was refused without the policy's own reason: {said}",
         one.command.name
     );

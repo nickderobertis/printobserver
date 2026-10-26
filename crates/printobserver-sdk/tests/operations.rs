@@ -18,7 +18,7 @@ mod host;
 use host::Host;
 use printobserver_sdk::{
     AcknowledgementDisposition, ActionExecutedPayload, Actor, Client, ClientError, EVENT_KINDS,
-    EventId, FileName, JobManifest, RejectionReason,
+    EventId, FileName, JobManifest, PrintOutcome, RejectionReason,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -1268,6 +1268,97 @@ fn acknowledge_failure_makes_no_request_when_the_reason_is_empty() {
             "0198f0a1-2b3c-7d4e-8f90-123456789abc",
             &parsed::<AcknowledgementDisposition>(r#""continue""#),
             &parsed::<EventId>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#),
+            "   ",
+        )
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `close_print` sends what it declares and answers what the server sent.
+#[test]
+fn close_print_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"intervention": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "printer_refusal": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "record": {"decision": "accepted", "executed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "succeeded", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "request": {"action": {"action": "pause", "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "requested_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .close_print(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            &parsed::<PrintOutcome>(r#""completed""#),
+            "a generated walk is asking",
+        )
+        .expect("`close_print` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(
+        received.target,
+        "/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/close_print"
+    );
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "outcome": "completed", "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `close_print` surfaces the policy's own refusal, typed.
+#[test]
+fn close_print_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"intervention": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "printer_refusal": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "record": {"decision": {"rejected": {"out_of_bounds": {"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "allowed": {"max": 1.25, "min": 0.5}, "requested": 1.5}}}, "executed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "succeeded", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "request": {"action": {"action": "pause", "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "requested_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .close_print(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            &parsed::<PrintOutcome>(r#""completed""#),
+            "a generated walk is asking",
+        )
+        .expect_err("`close_print` is refused");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("the policy's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.reason,
+        RejectionReason::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `close_print` makes no request at all when the reason is empty.
+#[test]
+fn close_print_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .close_print(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            &parsed::<PrintOutcome>(r#""completed""#),
             "   ",
         )
         .expect_err("a call with no reason is refused");

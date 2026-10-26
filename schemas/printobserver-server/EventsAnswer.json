@@ -156,6 +156,11 @@
           "const": "failed",
           "description": "It stopped on an error.",
           "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
         }
       ]
     },

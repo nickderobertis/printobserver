@@ -500,6 +500,9 @@ impl Supervisor {
     /// no action method at all: the record of the rejection is the only thing
     /// that happens.
     ///
+    /// `against` is the print the request was asked of, when it was asked of
+    /// one.
+    ///
     /// # Errors
     ///
     /// Returns the store's own error when the decision or the execution could
@@ -511,12 +514,24 @@ impl Supervisor {
         &self,
         request: ActionRequest,
         decision: PolicyDecision,
+        against: Option<PrintId>,
     ) -> Result<Issued, StoreError> {
-        let record = self
-            .stores
-            .actions
-            .record_action(request.clone(), decision.clone())
-            .await?;
+        // A close is asked of the record it names, which may have ended or may
+        // not be the newest open one, so it is recorded against that record;
+        // every other request binds where the store binds it.
+        let actions = &self.stores.actions;
+        let record = match (&request.action, against) {
+            (PrintAction::ClosePrint { .. }, Some(print_id)) => {
+                actions
+                    .record_action_against(print_id, request.clone(), decision.clone())
+                    .await?
+            }
+            _ => {
+                actions
+                    .record_action(request.clone(), decision.clone())
+                    .await?
+            }
+        };
         if decision != PolicyDecision::Accepted {
             return Ok(Issued {
                 record,
@@ -550,8 +565,10 @@ impl Supervisor {
             // disposition. Stopping a print is cancelling it, which the policy
             // grants each actor on its own: an acknowledgement that cancelled
             // would let an actor granted acknowledgements and not cancellation
-            // stop a print all the same.
-            PrintAction::AcknowledgeFailure { .. } => Ok(()),
+            // stop a print all the same. Closing a record writes that record
+            // and asks nothing of the machine either: what it does is done once
+            // its execution is recorded ([`crate::closing`]).
+            PrintAction::AcknowledgeFailure { .. } | PrintAction::ClosePrint { .. } => Ok(()),
         };
         let outcome = match &executed {
             Ok(()) => ExecutionOutcome::Succeeded,

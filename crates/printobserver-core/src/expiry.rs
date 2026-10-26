@@ -201,6 +201,13 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
             waited_s,
         } => format!("{file_name} had no analysis after waiting {waited_s}s for one"),
         RejectionReason::SpoolRefused { message, .. } => message.clone(),
+        RejectionReason::PrintAlreadyEnded => "this print's record has already ended".to_owned(),
+        RejectionReason::PrintStillActive { state } => {
+            format!("the printer shows this print's file still {state:?}")
+        }
+        RejectionReason::InterventionStillActive { intervention_id } => {
+            format!("intervention {intervention_id} has neither expired nor been restored")
+        }
     }
 }
 
@@ -362,7 +369,7 @@ impl Supervisor {
             actor,
             requested_at,
         };
-        let issued = self.issue_decided_action(request, decision).await?;
+        let issued = self.issue_decided_action(request, decision, None).await?;
         if let PolicyDecision::Rejected(reason) = &issued.record.decision {
             return Ok(InterventionOutcome::RestoreFailed {
                 reason: rejection_detail(reason),

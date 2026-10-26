@@ -1226,6 +1226,70 @@
     {
       "accepts": "application/json",
       "answers": "application/json",
+      "effect": "mutating:close_print",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "close_print",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "outcome",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/PrintOutcome",
+            "description": "How the print ended, in the operator's judgement."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/close_print",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
       "effect": "mutating:register_spool",
       "image_path_field": null,
       "method": "POST",

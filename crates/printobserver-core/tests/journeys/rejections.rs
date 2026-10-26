@@ -17,8 +17,8 @@
 use std::collections::BTreeMap;
 
 use printobserver_core::{
-    AcknowledgementDisposition, ActionKind, Actor, ActorClass, PolicyDecision, PrintAction,
-    RejectionReason, changes_the_machine,
+    AcknowledgementDisposition, ActionKind, Actor, ActorClass, InterventionId, PolicyDecision,
+    PrintAction, PrintOutcome, PrintRecord, RejectionReason, block_on, changes_the_machine,
 };
 use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
 use printobserver_printer_api::{Adjustable, PrinterState};
@@ -113,6 +113,9 @@ fn refuse(reason: &RejectionReason) -> Refused {
             reason: "this printer has no second tool".to_owned(),
             actor: Actor::Operator,
         },
+        RejectionReason::PrintAlreadyEnded
+        | RejectionReason::PrintStillActive { .. }
+        | RejectionReason::InterventionStillActive { .. } => refused_close(&world, &print, reason),
         RejectionReason::InsufficientFilament { .. }
         | RejectionReason::UnverifiedSpool { .. }
         | RejectionReason::AnalysisUnavailable { .. }
@@ -136,6 +139,72 @@ fn refuse(reason: &RejectionReason) -> Refused {
         actions: world.journal.printer_actions(),
         vision: world.journal.at(Port::Vision),
         supervisor: world.journal.at(Port::Supervisor),
+    }
+}
+
+/// The close one of the three rejections of a close is reached by, with the
+/// world put where that rejection is: the record ended, the printer still
+/// running its file, or an adjustment of it still standing.
+fn refused_close(world: &World, print: &PrintRecord, reason: &RejectionReason) -> PrintAction {
+    match reason {
+        RejectionReason::PrintAlreadyEnded => {
+            block_on(printobserver_core::store::PrintStore::end_print(
+                world.store.as_ref(),
+                print.id,
+                PrinterState::Operational,
+                print.opened_at,
+                "a read found it over".to_owned(),
+            ))
+            .expect("the store ends the print");
+            closing("against a record that already ended")
+        }
+        RejectionReason::InterventionStillActive { .. } => {
+            let adjusted = world
+                .request(
+                    print.id,
+                    PrintAction::SetFanPercent {
+                        percent: 40.0,
+                        duration_s: Some(600),
+                        reason: "an adjustment still standing".to_owned(),
+                        actor: Actor::Operator,
+                    },
+                )
+                .expect("the adjustment is recorded");
+            assert!(
+                adjusted.intervention.is_some(),
+                "the adjustment opened none"
+            );
+            world
+                .printer
+                .reports_job(Some("benchy.gcode"), PrinterState::Operational);
+            closing("while an adjustment of it still stands")
+        }
+        _ => closing("while the printer still runs the record's file"),
+    }
+}
+
+/// An operator's close of the walk's print, for one reason.
+fn closing(reason: &str) -> PrintAction {
+    PrintAction::ClosePrint {
+        outcome: PrintOutcome::Interrupted,
+        reason: reason.to_owned(),
+        actor: Actor::Operator,
+    }
+}
+
+/// One stated rejection as it was reached: a close refused for a standing
+/// intervention names the one the walk opened, whose identifier the store
+/// minted, so the stated one takes it from the decision when the variant is
+/// the one stated.
+fn as_reached(stated: RejectionReason, decision: &PolicyDecision) -> RejectionReason {
+    match (stated, decision) {
+        (
+            RejectionReason::InterventionStillActive { .. },
+            PolicyDecision::Rejected(RejectionReason::InterventionStillActive { intervention_id }),
+        ) => RejectionReason::InterventionStillActive {
+            intervention_id: *intervention_id,
+        },
+        (stated, _) => stated,
     }
 }
 
@@ -174,6 +243,13 @@ fn stated_rejections() -> Vec<RejectionReason> {
         },
         RejectionReason::UnsupportedAdjustable {
             adjustable: Adjustable::ToolTarget { tool: 1 },
+        },
+        RejectionReason::PrintAlreadyEnded,
+        RejectionReason::PrintStillActive {
+            state: PrinterState::Printing,
+        },
+        RejectionReason::InterventionStillActive {
+            intervention_id: InterventionId::new(),
         },
     ]
 }
@@ -221,8 +297,9 @@ fn the_walk_produces_every_rejected_variant_the_contracts_declare() {
 #[test]
 fn every_rejection_is_reached_and_changes_nothing_at_the_printer() {
     let mut decisions = Vec::new();
-    for expected in stated_rejections() {
-        let refused = refuse(&expected);
+    for stated in stated_rejections() {
+        let refused = refuse(&stated);
+        let expected = as_reached(stated, &refused.decision);
         assert_eq!(
             refused.decision,
             PolicyDecision::Rejected(expected.clone()),

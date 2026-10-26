@@ -446,13 +446,15 @@ bed_target = { min = 0.0, max = 110.0 }
 "tool_target:0" = { min = 0.0, max = 260.0 }
 
 # Who may ask for what. The spool commands (registering, loading,
-# unloading, correcting and retiring a spool) are the operator's, and the
-# agent is granted none of them.
+# unloading, correcting and retiring a spool) and closing a print record left
+# open are the operator's, and the agent is granted none of them: a
+# configuration granting the agent close_print is refused at start.
 [safety.actions]
 operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
             "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
-            "set_fan_percent", "acknowledge_failure", "register_spool",
-            "load_spool", "unload_spool", "adjust_spool", "retire_spool"]
+            "set_fan_percent", "acknowledge_failure", "close_print",
+            "register_spool", "load_spool", "unload_spool", "adjust_spool",
+            "retire_spool"]
 agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
          "set_fan_percent", "acknowledge_failure"]
 system = ["resume", "set_feedrate_factor", "set_flowrate_factor",

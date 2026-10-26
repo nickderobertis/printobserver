@@ -212,6 +212,15 @@ impl ActionStore for FailingStore {
         failed()
     }
 
+    fn record_action_against(
+        &self,
+        _print_id: PrintId,
+        _request: ActionRequest,
+        _decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        failed()
+    }
+
     fn record_execution(
         &self,
         _action_id: ActionId,

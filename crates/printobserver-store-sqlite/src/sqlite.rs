@@ -523,6 +523,7 @@ impl SqliteStore {
     /// against no print is one nobody can review afterwards.
     fn insert_action(
         &self,
+        bound: Option<PrintId>,
         request: ActionRequest,
         decision: PolicyDecision,
     ) -> Result<ActionRecord, StoreError> {
@@ -537,17 +538,25 @@ impl SqliteStore {
             let transaction = connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(|error| database_error(&error))?;
-            let print_id: Option<PrintId> = transaction
-                .query_row(
+            let print_id: Option<PrintId> = match bound {
+                Some(named) => transaction.query_row(
+                    "SELECT id FROM prints WHERE id = ?1",
+                    params![named.to_string()],
+                    |row| crate::values::parsed(row, 0),
+                ),
+                None => transaction.query_row(
                     "SELECT id FROM prints WHERE ended_at IS NULL \
                      ORDER BY opened_at DESC, id DESC LIMIT 1",
                     [],
                     |row| crate::values::parsed(row, 0),
-                )
-                .optional()
-                .map_err(|error| database_error(&error))?;
-            let print_id =
-                print_id.ok_or_else(|| not_found("open print to record this action against"))?;
+                ),
+            }
+            .optional()
+            .map_err(|error| database_error(&error))?;
+            let print_id = print_id.ok_or_else(|| match bound {
+                Some(named) => not_found(&format!("print {named}")),
+                None => not_found("open print to record this action against"),
+            })?;
             transaction
                 .execute(
                     "INSERT INTO actions (id, print_id, action, actor, requested_at, decision) \
@@ -1136,7 +1145,16 @@ impl ActionStore for SqliteStore {
         request: ActionRequest,
         decision: PolicyDecision,
     ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
-        Box::pin(async move { self.insert_action(request, decision) })
+        Box::pin(async move { self.insert_action(None, request, decision) })
+    }
+
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        Box::pin(async move { self.insert_action(Some(print_id), request, decision) })
     }
 
     fn record_execution(

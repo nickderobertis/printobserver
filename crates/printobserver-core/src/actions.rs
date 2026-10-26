@@ -74,7 +74,8 @@ fn duration_of(action: &PrintAction) -> Option<i64> {
         | PrintAction::Resume { .. }
         | PrintAction::Cancel { .. }
         | PrintAction::StartPrint { .. }
-        | PrintAction::AcknowledgeFailure { .. } => None,
+        | PrintAction::AcknowledgeFailure { .. }
+        | PrintAction::ClosePrint { .. } => None,
     }
 }
 
@@ -129,6 +130,8 @@ impl Supervisor {
         // A start holds every resolution of a print from the read that chooses
         // its print until the printer has been asked to start: a read between
         // the two would find the machine idle and close the print just opened.
+        // A close holds it too, from the read that finds the record over until
+        // the record is ended, so no other read closes it in between.
         let (_starting, print_id) = match &action {
             PrintAction::StartPrint { file_name, .. } => {
                 let resolving = self.resolving().await;
@@ -137,6 +140,7 @@ impl Supervisor {
                     self.print_to_start(print_id, file_name).await?,
                 )
             }
+            PrintAction::ClosePrint { .. } => (Some(self.resolving().await), print_id),
             _ => (None, print_id),
         };
         let requested_at = self.clock().now();
@@ -162,12 +166,17 @@ impl Supervisor {
         let preflight = self
             .check_accepted(&action, print.as_ref(), &mut decision)
             .await?;
+        let closing_state = self
+            .check_accepted_close(&action, print.as_ref(), &mut decision)
+            .await?;
         let request = ActionRequest {
             action: action.clone(),
             actor: actor.clone(),
             requested_at,
         };
-        let issued = self.issue_decided_action(request, decision).await?;
+        let issued = self
+            .issue_decided_action(request, decision, Some(print_id))
+            .await?;
         let source = source_of(&actor);
         self.write_decision_down(print_id, &source, &action, &issued, preflight.as_ref())
             .await?;
@@ -205,6 +214,8 @@ impl Supervisor {
             })?,
         )
         .await?;
+        self.follow_the_close(print_id, &action, closing_state.as_ref())
+            .await?;
         Ok(ActionOutcome {
             record: issued.record,
             executed: issued.executed,

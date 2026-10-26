@@ -539,6 +539,43 @@ def step_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("resume", answered, seen.answer)
 
 
+def step_close_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`close_print`, answered by a real supervisor's policy as `print_still_active`."""
+    ready(client, world.print_id, "printing")
+
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.close_print(world.print_id, "interrupted", REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "print_still_active" in refused.reason,
+            describing="`close_print` to be refused as `print_still_active`",
+        )
+        seen = proxy.last()
+        equal(seen.method, "POST", describing="`close_print`")
+        equal(
+            seen.target,
+            f"/v1/prints/{world.print_id}/actions/close_print",
+            describing="`close_print`",
+        )
+        equal(seen.status, 409, describing="`close_print`")
+        sent = json.loads(seen.body)
+        equal(sent["actor"], "operator", describing="who `close_print` acted as")
+        equal(
+            sent["outcome"],
+            "interrupted",
+            describing="the `outcome` `close_print` sent",
+        )
+        equal(
+            sent["reason"],
+            REASON,
+            describing="the `reason` `close_print` sent",
+        )
+        same("close_print", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`close_print` to be refused")
+
+
 def step_spools(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`spools`, answered by a real supervisor."""
     ready(client, world.print_id, "")
@@ -828,6 +865,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_acknowledge_failure(client, world, proxy)
         step_pause(client, world, proxy)
         step_resume(client, world, proxy)
+        step_close_print(client, world, proxy)
         step_spools(client, world, proxy)
         step_spool(client, world, proxy)
         step_printer_history(client, world, proxy)
@@ -840,7 +878,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 28,
+            proxy.calls() >= 29,
             describing="every call to have gone through the proxy",
         )
 
@@ -1027,6 +1065,23 @@ def refused_resume(client: Client, world: Supervisor, proxy: Proxy) -> None:
         truth(False, describing="`resume` to be refused")
 
 
+def refused_close_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`close_print`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.close_print(world.print_id, "interrupted", REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`close_print` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`close_print`")
+        same("close_print", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`close_print` to be refused")
+
+
 def refused_register_spool(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`register_spool`, refused by a real supervisor's own policy."""
     try:
@@ -1151,6 +1206,7 @@ def test_every_action_is_refused_as_a_typed_rejection(
         refused_acknowledge_failure(client, world, proxy)
         refused_pause(client, world, proxy)
         refused_resume(client, world, proxy)
+        refused_close_print(client, world, proxy)
         refused_register_spool(client, world, proxy)
         refused_load_spool(client, world, proxy)
         refused_unload_spool(client, world, proxy)

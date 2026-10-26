@@ -397,6 +397,31 @@ struct Ending<'a> {
     cancelled_by: Canceller,
 }
 
+/// How a print's closing charge is worked out, by the outcome it ended with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChargeRule {
+    /// The length the file's analysis gives: the print ran to its end.
+    SlicerEstimate,
+    /// What the file's moves extruded up to the last file position seen.
+    ExtrudedToLastPosition,
+}
+
+/// The rule one outcome's closing charge is worked out by.
+///
+/// Only a completed print is charged its whole analysed length. Every other
+/// outcome stopped somewhere short of the end, so it is charged what the file
+/// extruded up to where it was last seen — an interrupted print exactly as a
+/// failed one.
+#[must_use]
+pub const fn charge_rule(outcome: PrintOutcome) -> ChargeRule {
+    match outcome {
+        PrintOutcome::Completed => ChargeRule::SlicerEstimate,
+        PrintOutcome::Cancelled | PrintOutcome::Failed | PrintOutcome::Interrupted => {
+            ChargeRule::ExtrudedToLastPosition
+        }
+    }
+}
+
 /// Whether a print was watched to its end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Watch {
@@ -894,18 +919,23 @@ impl Supervisor {
             cancelled_by,
         }
         .outcome();
-        let totals = match (outcome, &file_name, &position) {
-            (PrintOutcome::Completed, _, _) => analysis.lengths.clone().map(|lengths| Extrusion {
-                lengths,
-                method: ChargeMethod::SlicerEstimate,
-                note: None,
-            }),
-            (_, Some(file), Some(position)) => self.extrusion_to(file, position, &analysis).await,
-            _ => None,
+        let rule = charge_rule(outcome);
+        let totals = match (rule, &file_name, &position) {
+            (ChargeRule::SlicerEstimate, _, _) => {
+                analysis.lengths.clone().map(|lengths| Extrusion {
+                    lengths,
+                    method: ChargeMethod::SlicerEstimate,
+                    note: None,
+                })
+            }
+            (ChargeRule::ExtrudedToLastPosition, Some(file), Some(position)) => {
+                self.extrusion_to(file, position, &analysis).await
+            }
+            (ChargeRule::ExtrudedToLastPosition, _, _) => None,
         };
         Ok(Closing {
             outcome,
-            watch: if self.was_seen_running(print.id) || outcome == PrintOutcome::Completed {
+            watch: if self.was_seen_running(print.id) || rule == ChargeRule::SlicerEstimate {
                 Watch::Watched
             } else {
                 Watch::Unwatched

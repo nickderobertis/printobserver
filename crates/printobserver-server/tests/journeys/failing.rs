@@ -163,6 +163,9 @@ fn body(kind: Option<printobserver_core::ActionKind>) -> Value {
             );
             object.insert("disposition".to_owned(), json!("continue"));
         }
+        printobserver_core::ActionKind::ClosePrint => {
+            object.insert("outcome".to_owned(), json!("interrupted"));
+        }
         _ => {}
     }
     body

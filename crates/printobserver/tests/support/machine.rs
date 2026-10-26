@@ -93,6 +93,20 @@ struct Reporting {
     tool_target_c: f64,
     /// The bed temperature it is holding.
     bed_target_c: f64,
+    /// Whether it is part-way through cancelling the job, whatever it
+    /// otherwise reports.
+    cancelling: bool,
+}
+
+impl Reporting {
+    /// The machine's own word for what it is doing, and the flags it sets.
+    const fn said(self) -> (&'static str, &'static [&'static str]) {
+        if self.cancelling {
+            ("Cancelling", &["operational", "printing", "cancelling"])
+        } else {
+            self.state.said()
+        }
+    }
 }
 
 impl Default for Reporting {
@@ -101,6 +115,7 @@ impl Default for Reporting {
             state: Reports::Printing,
             tool_target_c: TOOL_TARGET_C,
             bed_target_c: BED_TARGET_C,
+            cancelling: false,
         }
     }
 }
@@ -112,6 +127,8 @@ struct Answering {
     refusing: bool,
     /// Whether it answers success and changes nothing.
     deaf: bool,
+    /// Whether it drops every request unanswered, as a machine that is off.
+    unreachable: bool,
 }
 
 /// The host, for as long as this process runs.
@@ -168,6 +185,18 @@ impl Machine {
         self.answering.lock().expect("how it answers").deaf = deaf;
     }
 
+    /// Tell it to drop every request unanswered, as a machine switched off
+    /// does, or to stop.
+    pub fn unreachable(&self, unreachable: bool) {
+        self.answering.lock().expect("how it answers").unreachable = unreachable;
+    }
+
+    /// Tell it to report itself part-way through cancelling its job, or to
+    /// stop and report what it otherwise does.
+    pub fn cancelling(&self, cancelling: bool) {
+        self.reported.lock().expect("what it reports").cancelling = cancelling;
+    }
+
     /// Tell it what to report it is doing.
     pub fn reports(&self, state: Reports) {
         self.reported.lock().expect("what it reports").state = state;
@@ -188,7 +217,7 @@ impl Machine {
 
 /// The document the connection read is answered with.
 fn connection_document(reported: Reporting) -> Value {
-    let (text, flags) = reported.state.said();
+    let (text, flags) = reported.said();
     json!({
         "state": {
             "text": text,
@@ -206,7 +235,7 @@ fn connection_document(reported: Reporting) -> Value {
 
 /// The document the job read is answered with.
 fn job_document(reported: Reporting) -> Value {
-    let (text, _) = reported.state.said();
+    let (text, _) = reported.said();
     json!({
         "state": text,
         "job": {
@@ -228,6 +257,9 @@ fn answer(mut stream: TcpStream, reported: &Mutex<Reporting>, answering: &Mutex<
     let target = first.next().unwrap_or_default().to_owned();
 
     let how = *answering.lock().expect("how it answers");
+    if how.unreachable {
+        return;
+    }
     if how.refusing {
         let _ = stream.write_all(
             b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\

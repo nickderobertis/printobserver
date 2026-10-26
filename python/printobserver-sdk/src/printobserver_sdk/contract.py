@@ -86,6 +86,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "set_bed_target_c",
     "set_fan_percent",
     "acknowledge_failure",
+    "close_print",
     "register_spool",
     "load_spool",
     "unload_spool",
@@ -146,6 +147,7 @@ ActionKind: TypeAlias = Literal[
     "set_bed_target_c",
     "set_fan_percent",
     "acknowledge_failure",
+    "close_print",
     "register_spool",
     "load_spool",
     "unload_spool",
@@ -1610,6 +1612,23 @@ class PrintActionAcknowledgeFailure(TypedDict):
     reason: str
 
 
+class PrintActionClosePrint(TypedDict):
+    """The `close_print` arm of `PrintAction`.
+
+    Close a print record printobserver left open, with the outcome the
+    operator judges it ended with. It asks nothing of the machine and
+    charges no spool: the record's consumption was never seen to end.
+    """
+
+    action: Literal["close_print"]
+    # Who is asking.
+    actor: Actor
+    # How the print ended, in the operator's judgement.
+    outcome: PrintOutcome
+    # Why the actor is asking for this.
+    reason: str
+
+
 # The whole vocabulary an actor may ask for, and there is no other.
 PrintAction: TypeAlias = (
     PrintActionPause
@@ -1622,6 +1641,7 @@ PrintAction: TypeAlias = (
     | PrintActionSetBedTargetC
     | PrintActionSetFanPercent
     | PrintActionAcknowledgeFailure
+    | PrintActionClosePrint
 )
 
 
@@ -1684,7 +1704,7 @@ PrintId: TypeAlias = str
 
 
 # How a print ended.
-PrintOutcome: TypeAlias = Literal["completed", "cancelled", "failed"]
+PrintOutcome: TypeAlias = Literal["completed", "cancelled", "failed", "interrupted"]
 
 
 class PrintRecord(TypedDict):
@@ -2054,6 +2074,48 @@ class RejectionReasonAnalysisUnavailable(TypedDict):
     analysis_unavailable: RejectionReasonAnalysisUnavailablePayload
 
 
+class RejectionReasonPrintStillActivePayload(TypedDict):
+    """What the `print_still_active` arm of `RejectionReason` carries.
+
+    A close was refused because the printer shows a job of the record's
+    file printing, paused or cancelling.
+    """
+
+    # The state the printer reported that job in.
+    state: PrinterState
+
+
+class RejectionReasonPrintStillActive(TypedDict):
+    """The `print_still_active` arm of `RejectionReason`.
+
+    A close was refused because the printer shows a job of the record's
+    file printing, paused or cancelling.
+    """
+
+    print_still_active: RejectionReasonPrintStillActivePayload
+
+
+class RejectionReasonInterventionStillActivePayload(TypedDict):
+    """What the `intervention_still_active` arm of `RejectionReason` carries.
+
+    A close was refused because an intervention for the print has neither
+    expired nor been restored.
+    """
+
+    # The intervention still standing.
+    intervention_id: InterventionId
+
+
+class RejectionReasonInterventionStillActive(TypedDict):
+    """The `intervention_still_active` arm of `RejectionReason`.
+
+    A close was refused because an intervention for the print has neither
+    expired nor been restored.
+    """
+
+    intervention_still_active: RejectionReasonInterventionStillActivePayload
+
+
 class RejectionReasonSpoolRefusedPayload(TypedDict):
     """What the `spool_refused` arm of `RejectionReason` carries.
 
@@ -2088,8 +2150,10 @@ RejectionReason: TypeAlias = (
     | RejectionReasonInsufficientFilament
     | RejectionReasonUnverifiedSpool
     | RejectionReasonAnalysisUnavailable
+    | RejectionReasonPrintStillActive
+    | RejectionReasonInterventionStillActive
     | RejectionReasonSpoolRefused
-    | Literal["no_active_print"]
+    | Literal["no_active_print", "print_already_ended"]
 )
 
 
@@ -3792,6 +3856,34 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["disposition"] = disposition
         sending["event_id"] = event_id
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(ActionAnswer, answered)
+
+    def close_print(self, print_id: PrintId, outcome: PrintOutcome, reason: str) -> ActionAnswer:
+        """Call `close_print` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = f"/v1/prints/{print_id}/actions/close_print"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["outcome"] = outcome
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = self.call("POST", target, asked, sending)

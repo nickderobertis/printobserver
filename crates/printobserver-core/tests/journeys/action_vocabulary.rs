@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use printobserver_core::{
     AcknowledgementDisposition, ActionKind, Actor, ActorClass, ExecutionOutcome, PolicyDecision,
-    PrintAction, RejectionReason, SafetyEnvelope,
+    PrintAction, PrintOutcome, RejectionReason, SafetyEnvelope,
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_types::{EventId, FileName};
@@ -74,6 +74,11 @@ pub(crate) fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
             reason,
             actor,
         },
+        ActionKind::ClosePrint => PrintAction::ClosePrint {
+            outcome: PrintOutcome::Interrupted,
+            reason,
+            actor,
+        },
         ActionKind::RegisterSpool
         | ActionKind::LoadSpool
         | ActionKind::UnloadSpool
@@ -90,15 +95,29 @@ pub(crate) fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
 pub(crate) const fn state_for(kind: ActionKind) -> PrinterState {
     match kind {
         ActionKind::Resume => PrinterState::Paused,
-        ActionKind::StartPrint => PrinterState::Operational,
+        ActionKind::StartPrint | ActionKind::ClosePrint => PrinterState::Operational,
         _ => PrinterState::Printing,
+    }
+}
+
+/// Put the fake printer where one kind is valid from.
+///
+/// A close turns on the job the printer reports rather than on its state, so
+/// its job is reported over as well.
+pub(crate) fn ready_for(world: &World, kind: ActionKind) {
+    world.printer.reports_state(state_for(kind));
+    if kind == ActionKind::ClosePrint {
+        world
+            .printer
+            .reports_job(Some("benchy.gcode"), PrinterState::Operational);
     }
 }
 
 /// The call each kind is expected to make at the printer port, if any.
 ///
-/// Acknowledging a failure is the one print action that makes none, whatever
-/// its disposition: it is a decision written into the print's record. No spool
+/// Acknowledging a failure makes none, whatever its disposition: it is a
+/// decision written into the print's record. Nor does closing a record, which
+/// writes that record and nothing else. No spool
 /// command makes one either, since none asks anything of the machine. Stopping a
 /// print is cancelling it, which the policy grants each actor on its own, so an
 /// acknowledgement asking for `stop` cancels nothing.
@@ -108,6 +127,7 @@ pub(crate) fn expected_call(kind: ActionKind) -> Option<Call> {
         ActionKind::Resume => Call::Resume,
         ActionKind::Cancel => Call::Cancel,
         ActionKind::AcknowledgeFailure
+        | ActionKind::ClosePrint
         | ActionKind::RegisterSpool
         | ActionKind::LoadSpool
         | ActionKind::UnloadSpool
@@ -150,7 +170,7 @@ struct Driven {
 fn drive(kind: ActionKind, actor: Actor, envelope: SafetyEnvelope) -> Driven {
     let world = World::with_envelope(envelope);
     let print = world.open_print(7);
-    world.printer.reports_state(state_for(kind));
+    ready_for(&world, kind);
     world.journal.clear();
     let outcome = world
         .request(print.id, action_for(kind, actor))
@@ -193,7 +213,7 @@ fn every_variant_reaches_the_printer_only_behind_a_recorded_decision() {
     for kind in ACTION_KINDS {
         let world = World::new();
         let print = world.open_print(7);
-        world.printer.reports_state(state_for(kind));
+        ready_for(&world, kind);
         world.journal.clear();
         let outcome = world
             .request(print.id, action_for(kind, Actor::Operator))

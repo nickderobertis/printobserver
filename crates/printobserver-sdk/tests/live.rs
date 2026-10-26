@@ -696,6 +696,58 @@ fn step_resume(client: &Client, world: &supervisor::Supervisor, proxy: &live::Pr
     live::same("resume", &answered, &seen.answer);
 }
 
+/// `close_print`, answered by a real supervisor's policy as `print_still_active`.
+fn step_close_print(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "printing");
+
+    let refused = client
+        .close_print(
+            &world.print_id,
+            &printobserver_sdk::PrintOutcome::Interrupted,
+            REASON,
+        )
+        .expect_err("`close_print` is refused from where the machine is");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`close_print`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::PrintStillActive { .. }),
+        "`close_print` was refused for something other than `print_still_active`: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`close_print`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/prints/{print_id}/actions/close_print",
+            print_id = world.print_id
+        ),
+        "`close_print`"
+    );
+    assert_eq!(seen.status, 409, "`close_print`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`close_print`"
+    );
+    assert_eq!(
+        sent["outcome"],
+        serde_json::to_value(printobserver_sdk::PrintOutcome::Interrupted)
+            .expect("a value renders"),
+        "`close_print` sent another `outcome`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`close_print` sent another `reason`"
+    );
+    live::same("close_print", &rejection.answer, &seen.answer);
+}
+
 /// `spools`, answered by a real supervisor.
 fn step_spools(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "");
@@ -1241,6 +1293,29 @@ fn refused_resume(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     live::same("resume", &rejection.answer, &seen.answer);
 }
 
+/// `close_print`, refused by a real supervisor's own policy.
+fn refused_close_print(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .close_print(
+            &world.print_id,
+            &printobserver_sdk::PrintOutcome::Interrupted,
+            REASON,
+        )
+        .expect_err("`close_print` is refused for an actor granted nothing");
+
+    let ClientError::Rejected(rejection) = refused else {
+        panic!("`close_print`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),
+        "`close_print` was refused for something other than the grant: {:?}",
+        rejection.reason
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`close_print`");
+    live::same("close_print", &rejection.answer, &seen.answer);
+}
+
 /// `register_spool`, refused by a real supervisor's own policy.
 fn refused_register_spool(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
     let refused = client
@@ -1389,6 +1464,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_acknowledge_failure(&client, &world, &proxy);
     step_pause(&client, &world, &proxy);
     step_resume(&client, &world, &proxy);
+    step_close_print(&client, &world, &proxy);
     step_spools(&client, &world, &proxy);
     step_spool(&client, &world, &proxy);
     step_printer_history(&client, &world, &proxy);
@@ -1400,7 +1476,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 28, "every call went through the proxy");
+    assert!(proxy.calls() >= 29, "every call went through the proxy");
     standing.stop();
 }
 
@@ -1431,6 +1507,7 @@ fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
     refused_acknowledge_failure(&client, &world, &proxy);
     refused_pause(&client, &world, &proxy);
     refused_resume(&client, &world, &proxy);
+    refused_close_print(&client, &world, &proxy);
     refused_register_spool(&client, &world, &proxy);
     refused_load_spool(&client, &world, &proxy);
     refused_unload_spool(&client, &world, &proxy);

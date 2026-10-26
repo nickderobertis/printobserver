@@ -932,6 +932,55 @@
         "success",
         "rejected"
       ],
+      "command": "close-print",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "close_print",
+      "options": [
+        {
+          "field": "print_id",
+          "located": "path",
+          "option": "--print-id",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "outcome",
+          "located": "body",
+          "option": "--outcome",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/close_print"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
       "command": "register-spool",
       "image_path_field": null,
       "method": "POST",

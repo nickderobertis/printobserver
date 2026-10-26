@@ -142,6 +142,11 @@ Declared by `printobserver-server`.
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -913,6 +918,35 @@ Declared by `printobserver-server`.
             "actor"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Close a print record printobserver left open, with the outcome the\noperator judges it ended with. It asks nothing of the machine and\ncharges no spool: the record's consumption was never seen to end.",
+          "properties": {
+            "action": {
+              "const": "close_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "outcome": {
+              "$ref": "#/$defs/PrintOutcome",
+              "description": "How the print ended, in the operator's judgement."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "outcome",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -922,6 +956,31 @@ Declared by `printobserver-server`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "PrintId",
       "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
+        }
+      ]
     },
     "PrinterState": {
       "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
@@ -1267,6 +1326,57 @@ Declared by `printobserver-server`.
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },
@@ -1860,6 +1970,11 @@ Declared by `printobserver-core`.
       "type": "string"
     },
     {
+      "const": "close_print",
+      "description": "Close a print record printobserver left open.",
+      "type": "string"
+    },
+    {
       "const": "register_spool",
       "description": "Register a spool.",
       "type": "string"
@@ -1974,6 +2089,11 @@ Declared by `printobserver-core`.
         {
           "const": "acknowledge_failure",
           "description": "Acknowledge a failure event.",
+          "type": "string"
+        },
+        {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
           "type": "string"
         },
         {
@@ -2139,6 +2259,13 @@ Declared by `printobserver-core`.
       },
       "pattern": "^[^/\\\\\u0000]+$",
       "title": "FileName",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
       "type": "string"
     },
     "JobManifest": {
@@ -2555,6 +2682,35 @@ Declared by `printobserver-core`.
             "actor"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Close a print record printobserver left open, with the outcome the\noperator judges it ended with. It asks nothing of the machine and\ncharges no spool: the record's consumption was never seen to end.",
+          "properties": {
+            "action": {
+              "const": "close_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "outcome": {
+              "$ref": "#/$defs/PrintOutcome",
+              "description": "How the print ended, in the operator's judgement."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "outcome",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -2564,6 +2720,31 @@ Declared by `printobserver-core`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "PrintId",
       "type": "string"
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
+        }
+      ]
     },
     "PrinterState": {
       "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
@@ -2909,6 +3090,57 @@ Declared by `printobserver-core`.
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },
@@ -3464,6 +3696,11 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -3514,6 +3751,13 @@ Declared by `printobserver-core`.
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
       "type": "string"
     },
     "PolicyDecision": {
@@ -3890,6 +4134,57 @@ Declared by `printobserver-core`.
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },
@@ -4819,6 +5114,60 @@ Declared by `printobserver-core`.
             "actor"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Close a print record printobserver left open, with the outcome the\noperator judges it ended with. It asks nothing of the machine and\ncharges no spool: the record's consumption was never seen to end.",
+          "properties": {
+            "action": {
+              "const": "close_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "outcome": {
+              "$ref": "#/$defs/PrintOutcome",
+              "description": "How the print ended, in the operator's judgement."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "outcome",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
         }
       ]
     },
@@ -5357,6 +5706,60 @@ Declared by `printobserver-core`.
             "actor"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Close a print record printobserver left open, with the outcome the\noperator judges it ended with. It asks nothing of the machine and\ncharges no spool: the record's consumption was never seen to end.",
+          "properties": {
+            "action": {
+              "const": "close_print",
+              "type": "string"
+            },
+            "actor": {
+              "$ref": "#/$defs/Actor",
+              "description": "Who is asking."
+            },
+            "outcome": {
+              "$ref": "#/$defs/PrintOutcome",
+              "description": "How the print ended, in the operator's judgement."
+            },
+            "reason": {
+              "description": "Why the actor is asking for this.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "outcome",
+            "reason",
+            "actor"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
         }
       ]
     },
@@ -7977,6 +8380,11 @@ Declared by `printobserver-server`.
         {
           "const": "failed",
           "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
           "type": "string"
         }
       ]
@@ -12681,6 +13089,11 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -12731,6 +13144,13 @@ Declared by `printobserver-core`.
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
       "type": "string"
     },
     "PrintId": {
@@ -13084,6 +13504,57 @@ Declared by `printobserver-core`.
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },
@@ -17120,6 +17591,31 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PrintOutcome": {
+      "description": "How a print ended.",
+      "oneOf": [
+        {
+          "const": "completed",
+          "description": "It ran to its end.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Somebody cancelled it.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
+        }
+      ]
+    },
     "Range": {
       "additionalProperties": false,
       "description": "An inclusive pair of 64-bit floats.",
@@ -17480,6 +17976,35 @@ Declared by `printobserver-core`.
         "action",
         "event_id",
         "disposition",
+        "reason",
+        "actor"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Close a print record printobserver left open, with the outcome the\noperator judges it ended with. It asks nothing of the machine and\ncharges no spool: the record's consumption was never seen to end.",
+      "properties": {
+        "action": {
+          "const": "close_print",
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who is asking."
+        },
+        "outcome": {
+          "$ref": "#/$defs/PrintOutcome",
+          "description": "How the print ended, in the operator's judgement."
+        },
+        "reason": {
+          "description": "Why the actor is asking for this.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "outcome",
         "reason",
         "actor"
       ],
@@ -18402,6 +18927,11 @@ Declared by `printobserver-server`.
           "const": "failed",
           "description": "It stopped on an error.",
           "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
+          "type": "string"
         }
       ]
     },
@@ -18489,6 +19019,11 @@ Declared by `printobserver-core`.
         {
           "const": "failed",
           "description": "It stopped on an error.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
           "type": "string"
         }
       ]
@@ -18624,6 +19159,11 @@ Declared by `printobserver-core`.
     {
       "const": "failed",
       "description": "It stopped on an error.",
+      "type": "string"
+    },
+    {
+      "const": "interrupted",
+      "description": "It stopped with no cancel, no error the printer reported and no\nfinish. Charged as a failed print is: what the file's moves extruded up\nto the last file position seen.",
       "type": "string"
     }
   ],
@@ -20273,6 +20813,11 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -20323,6 +20868,13 @@ Declared by `printobserver-core`.
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
       "type": "string"
     },
     "PrintId": {
@@ -21080,6 +21632,57 @@ Declared by `printobserver-core`.
       "type": "object"
     },
     {
+      "const": "print_already_ended",
+      "description": "A close was refused because the print record has already ended.",
+      "type": "string"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+      "properties": {
+        "print_still_active": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/PrinterState",
+              "description": "The state the printer reported that job in."
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "print_still_active"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+      "properties": {
+        "intervention_still_active": {
+          "additionalProperties": false,
+          "properties": {
+            "intervention_id": {
+              "$ref": "#/$defs/InterventionId",
+              "description": "The intervention still standing."
+            }
+          },
+          "required": [
+            "intervention_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "intervention_still_active"
+      ],
+      "type": "object"
+    },
+    {
       "additionalProperties": false,
       "description": "A spool command could not be carried out.",
       "properties": {
@@ -21196,6 +21799,11 @@ Declared by `printobserver-core`.
         {
           "const": "acknowledge_failure",
           "description": "Acknowledge a failure event.",
+          "type": "string"
+        },
+        {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
           "type": "string"
         },
         {
@@ -22796,6 +23404,11 @@ Declared by `printobserver-server`.
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -22956,6 +23569,13 @@ Declared by `printobserver-server`.
         "sha256"
       ],
       "type": "object"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
     },
     "PolicyDecision": {
       "description": "The decision policy took on one request.",
@@ -23337,6 +23957,57 @@ Declared by `printobserver-server`.
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },
@@ -24068,6 +24739,11 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
+          "const": "close_print",
+          "description": "Close a print record printobserver left open.",
+          "type": "string"
+        },
+        {
           "const": "register_spool",
           "description": "Register a spool.",
           "type": "string"
@@ -24156,6 +24832,13 @@ Declared by `printobserver-core`.
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
       "type": "string"
     },
     "PolicyDecision": {
@@ -24532,6 +25215,57 @@ Declared by `printobserver-core`.
           },
           "required": [
             "analysis_unavailable"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "print_already_ended",
+          "description": "A close was refused because the print record has already ended.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because the printer shows a job of the record's\nfile printing, paused or cancelling.",
+          "properties": {
+            "print_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported that job in."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A close was refused because an intervention for the print has neither\nexpired nor been restored.",
+          "properties": {
+            "intervention_still_active": {
+              "additionalProperties": false,
+              "properties": {
+                "intervention_id": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention still standing."
+                }
+              },
+              "required": [
+                "intervention_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "intervention_still_active"
           ],
           "type": "object"
         },
@@ -31497,6 +32231,70 @@ Declared by `printobserver-server`.
         }
       ],
       "path": "/v1/prints/{print_id}/actions/acknowledge_failure",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "ActionAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "ActionAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:close_print",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "close_print",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "outcome",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/PrintOutcome",
+            "description": "How the print ended, in the operator's judgement."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/prints/{print_id}/actions/close_print",
       "responses": [
         {
           "answer": "success",

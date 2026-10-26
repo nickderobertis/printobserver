@@ -1256,18 +1256,25 @@ impl ImageStore for FakeStore {
     }
 }
 
-impl ActionStore for FakeStore {
-    fn record_action(
+impl FakeStore {
+    /// Record one request and its decision, against the print named or, with
+    /// none named, the print most recently opened.
+    fn record_bound(
         &self,
+        bound: Option<PrintId>,
         request: ActionRequest,
         decision: PolicyDecision,
     ) -> printobserver_core::store::BoxFuture<'_, Result<ActionRecord, StoreError>> {
         self.journal.record(Call::RecordAction(decision.clone()));
         let mut held = self.held.lock().expect("the store holds");
-        // This port carries no print on a request, so the record is attributed
-        // to the print most recently opened — which is the one active print in
-        // every journey that drives an action.
-        let Some(print_id) = held.opened.last().copied() else {
+        // With no print named, the record is attributed to the print most
+        // recently opened — which is the one active print in every journey
+        // that drives an action other than a close.
+        let found = match bound {
+            Some(named) => held.opened.contains(&named).then_some(named),
+            None => held.opened.last().copied(),
+        };
+        let Some(print_id) = found else {
             drop(held);
             return ready(Err(StoreError::NotFound {
                 what: "an open print to record the action against".to_owned(),
@@ -1277,16 +1284,35 @@ impl ActionStore for FakeStore {
             id: ActionId::new(),
             print_id,
             request,
-            decision: decision.clone(),
+            decision,
             executed_at: None,
             outcome: None,
         };
         held.actions.insert(record.id, record.clone());
         drop(held);
-        if decision == PolicyDecision::Accepted {
+        if record.decision == PolicyDecision::Accepted {
             self.journal.licence(record.id);
         }
         ready(Ok(record))
+    }
+}
+
+impl ActionStore for FakeStore {
+    fn record_action(
+        &self,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        self.record_bound(None, request, decision)
+    }
+
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        self.record_bound(Some(print_id), request, decision)
     }
 
     fn record_execution(

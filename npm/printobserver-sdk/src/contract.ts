@@ -91,6 +91,7 @@ export const OPERATION_NAMES = [
   "set_bed_target_c",
   "set_fan_percent",
   "acknowledge_failure",
+  "close_print",
   "register_spool",
   "load_spool",
   "unload_spool",
@@ -144,6 +145,7 @@ export type ActionKind =
   | "set_bed_target_c"
   | "set_fan_percent"
   | "acknowledge_failure"
+  | "close_print"
   | "register_spool"
   | "load_spool"
   | "unload_spool"
@@ -1143,7 +1145,8 @@ export type PrintAction =
       disposition: AcknowledgementDisposition;
       event_id: EventId;
       reason: string;
-    };
+    }
+  | { action: "close_print"; actor: Actor; outcome: PrintOutcome; reason: string };
 
 /** Everything a supervision turn is given about one print. */
 export interface PrintContext {
@@ -1191,7 +1194,7 @@ export interface PrintEndedPayload {
 export type PrintId = string;
 
 /** How a print ended. */
-export type PrintOutcome = "completed" | "cancelled" | "failed";
+export type PrintOutcome = "completed" | "cancelled" | "failed" | "interrupted";
 
 /**
  * One print, and the record supervision keys from.
@@ -1386,6 +1389,9 @@ export type RejectionReason =
       };
     }
   | { analysis_unavailable: { file_name: string; waited_s: number } }
+  | "print_already_ended"
+  | { print_still_active: { state: PrinterState } }
+  | { intervention_still_active: { intervention_id: InterventionId } }
   | { spool_refused: { cause: SpoolRefusalCause; message: string } };
 
 /**
@@ -2435,6 +2441,27 @@ export class GeneratedClient extends GeneratedSurface {
     sending.actor = this.actor;
     sending.disposition = disposition;
     sending.event_id = eventId;
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<ActionAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `close_print` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async closePrint(printId: string, outcome: PrintOutcome, reason: string): Promise<ActionAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/prints/${printId}/actions/close_print`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.outcome = outcome;
     sending.reason = reason;
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<ActionAnswer>("POST", target, asked, sending);

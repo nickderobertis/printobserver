@@ -500,6 +500,24 @@ Reached at `POST /v1/prints/{print_id}/actions/acknowledge_failure`.
 
 **Failures.** `rejected` when the policy refuses: the answer is still the record, and it carries the rejection's reason, the value asked for and the range allowed, which is what a second request is composed from. `refused` when the policy accepted it and the machine did not. `unreachable` when nothing answers at the configured address.
 
+### close-print
+
+Close a print record printobserver left open, with the outcome you judge it ended with. It asks nothing of the machine and charges no spool. It is refused while the printer shows the record's file printing, paused or cancelling, and while an adjustment of the print still stands; a printer that cannot be read refuses nothing. The operator's alone: a configuration granting it to the agent is refused at start.
+
+Reached at `POST /v1/prints/{print_id}/actions/close_print`.
+
+**Arguments.**
+
+- `--print-id` — the print this command is about (required).
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--outcome` — how the print ended: `completed`, `cancelled`, `failed` or `interrupted` (required).
+- `--reason` — why this change is being made, in the actor's own words (required).
+
+**Output.** The action record, carrying the request, who asked, the reason and the policy's decision. The record's end, its `print_ended` and its closed session are read back with `status` and `history`.
+
+**Failures.** `rejected` when the policy refuses: the answer is still the record, and it carries the rejection's reason — `print_already_ended`, `print_still_active` with the state, or `intervention_still_active` with the intervention. `unreachable` when nothing answers at the configured address.
+
 ### register-spool
 
 Register one spool on the shelf.

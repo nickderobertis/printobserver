@@ -70,6 +70,18 @@ second, acceptable request would be composed from.
 - `unsupported_adjustable` — the adjustable is not one this printer has. It
   carries `adjustable`.
 
+Three more refuse an operator's close of a print record left open, each
+because the record might still be live:
+
+- `print_already_ended` — the record has already ended. It carries nothing,
+  and the record keeps the end it has.
+- `print_still_active` — the printer shows a job of the record's file
+  printing, paused or cancelling. It carries `state`. A printer that cannot be
+  read refuses nothing, because a record left open is most often left by a
+  printer that is off.
+- `intervention_still_active` — an adjustment of the print has neither expired
+  nor been restored. It carries `intervention_id`.
+
 Four more belong to the filament ledger. The first three refuse a start the
 filament check objected to, and the fourth a spool command the ledger could not
 carry out:

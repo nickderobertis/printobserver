@@ -100,7 +100,10 @@ pub fn walk(world: &World) -> Vec<Driven> {
         let mut carried: BTreeMap<String, String> = values.into_iter().collect();
         for field in &command.fields {
             if field.parameter.located == Located::Path && field.parameter.name == "print_id" {
-                carried.insert(field.parameter.name.clone(), print.clone());
+                carried.insert(
+                    field.parameter.name.clone(),
+                    print_about(world, &name, &print),
+                );
             }
             if field.parameter.located == Located::Path && field.parameter.name == "spool_id" {
                 carried.insert(field.parameter.name.clone(), spool_about(world, &name));
@@ -113,6 +116,16 @@ pub fn walk(world: &World) -> Vec<Driven> {
         });
     }
     driven
+}
+
+/// The print one command of the walk is about now: a close's own record left
+/// open, and the world's print for every other.
+fn print_about(world: &World, command: &str, print: &str) -> String {
+    if command == "close-print" {
+        world.stale_print_id()
+    } else {
+        print.to_owned()
+    }
 }
 
 /// The spool one command of the walk is about now: a retirement's own, and
@@ -138,8 +151,10 @@ pub fn about_now(driven: &Driven, world: &World) -> Driven {
     let mut now = driven.clone();
     for field in &now.command.fields {
         if field.parameter.located == Located::Path && field.parameter.name == "print_id" {
-            now.values
-                .insert(field.parameter.name.clone(), world.print_id());
+            now.values.insert(
+                field.parameter.name.clone(),
+                print_about(world, &now.command.name, &world.print_id()),
+            );
         }
         if field.parameter.located == Located::Path && field.parameter.name == "spool_id" {
             now.values.insert(
@@ -152,7 +167,8 @@ pub fn about_now(driven: &Driven, world: &World) -> Driven {
 }
 
 /// These arguments, naming the print the world is about now wherever they
-/// name a print, and the spool a retirement is about now; the same reason as
+/// name a print — a close's own record for a close — and the spool a
+/// retirement is about now; the same reason as
 /// [`about_now`]. A request asked against the print that ended before the
 /// walk, or the spool already retired, keeps naming that one.
 ///
@@ -164,7 +180,7 @@ pub fn naming_the_print_and_spool_now(arguments: &[String], world: &World) -> Ve
     let command = now.first().cloned().unwrap_or_default();
     for index in 1..now.len() {
         if now[index - 1] == "--print-id" && !world.is_the_ended_print(&now[index]) {
-            now[index] = world.print_id();
+            now[index] = print_about(world, &command, &world.print_id());
         }
         if now[index - 1] == "--spool-id"
             && command == "retire-spool"
@@ -340,7 +356,12 @@ fn named(command: &str, reports: Reports, values: Vec<(String, String)>) -> Entr
     (command.to_owned(), reports, values)
 }
 
-/// The ten actions of the vocabulary, each with values no other command drives.
+/// The eleven actions of the vocabulary, each with values no other command
+/// drives.
+///
+/// A close is asked with the machine printing a file of its own, about a
+/// record printobserver left open for another: no read of the machine finds
+/// that record over, so it is still open when the close is asked.
 fn actions(world: &World) -> Vec<Entry> {
     // Long enough that no intervention the walk opens expires while the walk is
     // still reading it back: a command's two renderings are two runs, and on
@@ -392,6 +413,11 @@ fn actions(world: &World) -> Vec<Entry> {
                 ("event_id".to_owned(), world.event_id.clone()),
                 ("disposition".to_owned(), "watch".to_owned()),
             ],
+        ),
+        acting(
+            "close-print",
+            Reports::Printing,
+            vec![("outcome".to_owned(), "interrupted".to_owned())],
         ),
         acting(
             "start-print",

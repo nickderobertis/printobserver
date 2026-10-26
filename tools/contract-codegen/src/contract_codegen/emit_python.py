@@ -595,6 +595,15 @@ def emit_walk(contract: Contract) -> str:
             "value on the way out fails that equality rather than needing a probe that "
             "guesses how it transformed it."
         ),
+        "",
+        *wrapped(
+            "Every value of a named contract shape is the contract's own example "
+            "document, parsed and cast to that shape: a parse answers an untyped value, "
+            "and the cast names the shape the example was drawn from rather than "
+            "converting anything. What the host received is then compared with the "
+            "example field for field, so an example that is not that shape fails there "
+            "rather than being hidden by the cast."
+        ),
         '"""',
         "",
         "from __future__ import annotations",
@@ -774,6 +783,7 @@ LIVE_TOKENS = {
     "manifest": "manifest(world)",
     "reason": "REASON",
     "disposition:continue": '"continue"',
+    "outcome:interrupted": '"interrupted"',
     "bool:false": "False",
     "bool:true": "True",
     "world.spool_id": "world.spool_id",
@@ -833,6 +843,35 @@ def _live_body(step: LiveStep) -> list[str]:
             f"    )"
         )
     return lines
+
+
+def _live_refused_step(step: LiveStep, call: str, spelled: str) -> list[str]:
+    """One step of the real walk the policy answers with its stated rejection."""
+    return [
+        f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
+        f'    """`{step.name}`, answered by a real supervisor\'s policy as `{step.refused}`."""',
+        f'    ready(client, world.print_id, "{step.state}")',
+        "",
+        "    try:",
+        f"        {ASYNC_DIRECTIVE}",
+        f"        client.{spelled}({call})",
+        "    except RejectedError as refused:",
+        "        truth(",
+        "            isinstance(refused.reason, dict)",
+        f'            and "{step.refused}" in refused.reason,',
+        f'            describing="`{step.name}` to be refused as `{step.refused}`",',
+        "        )",
+        "        seen = proxy.last()",
+        f'        equal(seen.method, "{step.method}", describing="`{step.name}`")',
+        f'        equal(seen.target, {_live_target(step)}, describing="`{step.name}`")',
+        f'        equal(seen.status, 409, describing="`{step.name}`")',
+        *(f"    {line}" for line in _live_body(step)),
+        f'        same("{step.name}", refused.answer, seen.answer)',
+        "    else:",
+        f'        truth(False, describing="`{step.name}` to be refused")',
+        "",
+        "",
+    ]
 
 
 def emit_live(contract: Contract) -> str:
@@ -938,6 +977,9 @@ def emit_live(contract: Contract) -> str:
     for step in steps:
         call = ", ".join(_live_argument(token) for _, token in step.arguments)
         spelled = method_name(step.name, "python")
+        if step.refused:
+            lines += _live_refused_step(step, call, spelled)
+            continue
         lines += [
             f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> "
             f"{'Supervisor' if step.follows else 'None'}:",

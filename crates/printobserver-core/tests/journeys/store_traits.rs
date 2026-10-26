@@ -199,6 +199,16 @@ impl ActionStore for TrivialStore {
         Box::pin(async { Ok(ActionRecord::sample_minimal()) })
     }
 
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        let _ = (print_id, request, decision);
+        Box::pin(async { Ok(ActionRecord::sample_minimal()) })
+    }
+
     fn record_execution(
         &self,
         action_id: ActionId,

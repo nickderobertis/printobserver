@@ -262,6 +262,11 @@ impl Sample for PrintAction {
                 reason: reason(),
                 actor: Actor::Operator,
             },
+            Self::ClosePrint {
+                outcome: PrintOutcome::Interrupted,
+                reason: "the printer was switched off mid-print".to_owned(),
+                actor: Actor::Operator,
+            },
         ]
     }
 }
@@ -389,6 +394,13 @@ impl Sample for RejectionReason {
             Self::SpoolRefused {
                 cause: SpoolRefusalCause::sample_full(),
                 message: "spool Galaxy black is retired, so it takes no command".to_owned(),
+            },
+            Self::PrintAlreadyEnded,
+            Self::PrintStillActive {
+                state: PrinterState::Paused,
+            },
+            Self::InterventionStillActive {
+                intervention_id: InterventionId::sample_full(),
             },
         ]
     }
@@ -627,6 +639,10 @@ impl Sample for LoadedSpool {
 impl Sample for PrintOutcome {
     fn sample_full() -> Self {
         Self::Completed
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Cancelled, Self::Failed, Self::Interrupted]
     }
 }
 

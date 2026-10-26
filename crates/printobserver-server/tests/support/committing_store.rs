@@ -25,9 +25,9 @@ use printobserver_core::{
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_store_sqlite::SqliteStore;
-use printobserver_supervisor_api::SupervisionSession;
+use printobserver_supervisor_api::{SupervisionSession, SupervisionSessionClosedPayload};
 use printobserver_types::{
-    EventId, EventRecord, EventSource, ImageId, PrintId, RawBytes, Timestamp,
+    EventId, EventPayload as _, EventRecord, EventSource, ImageId, PrintId, RawBytes, Timestamp,
 };
 
 /// What the store says of the write it carried out.
@@ -182,10 +182,14 @@ impl PrintStore for CommitThenFail {
 
 impl EventStore for CommitThenFail {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
-        self.after(
-            "append_event",
-            EventStore::append_event(&*self.inner, draft),
-        )
+        // A session's closure is named on its own: a close appends other
+        // events before it, which would otherwise be the ones to fail.
+        let name = if draft.body.kind == SupervisionSessionClosedPayload::kind() {
+            "append_session_closed"
+        } else {
+            "append_event"
+        };
+        self.after(name, EventStore::append_event(&*self.inner, draft))
     }
 
     fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
@@ -259,6 +263,20 @@ impl ActionStore for CommitThenFail {
         self.after(
             "record_action",
             ActionStore::record_action(&*self.inner, request, decision),
+        )
+    }
+
+    // The same write as `record_action`, bound to the print named, so a test
+    // failing that write fails a close's too.
+    fn record_action_against(
+        &self,
+        print_id: PrintId,
+        request: ActionRequest,
+        decision: PolicyDecision,
+    ) -> BoxFuture<'_, Result<ActionRecord, StoreError>> {
+        self.after(
+            "record_action",
+            ActionStore::record_action_against(&*self.inner, print_id, request, decision),
         )
     }
 

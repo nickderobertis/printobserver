@@ -819,6 +819,67 @@ fn an_action_binds_to_the_open_print_and_is_refused_without_one() {
     }
 }
 
+/// An action recorded against a named print binds to that print, ended or not
+/// the newest open one, and is refused when no such print was ever recorded.
+#[test]
+fn an_action_recorded_against_a_print_binds_to_that_print() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let rejected = PolicyDecision::Rejected(RejectionReason::PrintAlreadyEnded);
+
+        let absent = PrintId::new();
+        assert_eq!(
+            block_on(port.record_action_against(
+                absent,
+                request(instant("2026-03-01T12:00:00Z")),
+                rejected.clone()
+            )),
+            Err(StoreError::NotFound {
+                what: format!("print {absent}")
+            }),
+            "{name}: an action against a print never recorded was not refused"
+        );
+
+        let ended = block_on(port.open_print(None, None)).expect("a print opens");
+        block_on(port.end_print(
+            ended.id,
+            PrinterState::Operational,
+            instant("2026-03-01T12:00:00Z"),
+            "over".to_owned(),
+        ))
+        .expect("the print ends");
+        let against_ended = block_on(port.record_action_against(
+            ended.id,
+            request(instant("2026-03-01T12:01:00Z")),
+            rejected.clone(),
+        ))
+        .expect("an action against an ended print is recorded");
+        assert_eq!(against_ended.print_id, ended.id, "{name}");
+        assert_eq!(against_ended.decision, rejected, "{name}");
+
+        let older = block_on(port.open_print(None, None)).expect("a print opens");
+        let newer = block_on(port.open_print(None, None)).expect("a print opens");
+        let against_older = block_on(port.record_action_against(
+            older.id,
+            request(instant("2026-03-01T12:02:00Z")),
+            PolicyDecision::Accepted,
+        ))
+        .expect("an action against an older open print is recorded");
+        assert_eq!(against_older.print_id, older.id, "{name}");
+        assert_eq!(
+            block_on(port.record_action(
+                request(instant("2026-03-01T12:03:00Z")),
+                PolicyDecision::Accepted
+            ))
+            .expect("an action is recorded")
+            .print_id,
+            newer.id,
+            "{name}: an action naming no print no longer binds to the newest open one"
+        );
+    }
+}
+
 /// Every active intervention is due by the latest instant a timestamp writes,
 /// however far off its own deadline is, and a settled one is not.
 #[test]
