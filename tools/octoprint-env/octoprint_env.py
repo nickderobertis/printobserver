@@ -1156,7 +1156,10 @@ def at_the_terminal(instance: Instance, line: str | None) -> Typed:
     With no line it reconnects. What a journey needs to cause what the virtual
     printer only does when told to — a serial drop, a fatal error, a reset — and
     to bring a printer that went offline back. One request, answered by the
-    instance.
+    instance. The `printobserver` crate's integration journey
+    `every_recovery_command_is_proven_after_an_interrupted_print` drives both
+    against the real virtual printer: it drops the serial connection with a
+    line, and reconnects with `connect` until the printer reads operational.
 
     Raises:
         StartupError: If no instance is running, or it refused the request.
