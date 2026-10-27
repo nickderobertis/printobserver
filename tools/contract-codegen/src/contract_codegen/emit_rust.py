@@ -99,6 +99,37 @@ TWO_VALUED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See s
 
 
 PRESENT = "present"
+
+SENT = "Sent"
+"""How a paired struct reads the sibling it is held to: left out, null, or a value."""
+
+
+def _sent() -> list[str]:
+    """The three ways a field can arrive, which a paired struct's form as sent reads."""
+    return [
+        *doc_lines("One field of an answer as it was sent: left out, sent as null, or a value."),
+        "#[derive(Default)]",
+        f"enum {SENT}<T> {{",
+        "    /// Left out.",
+        "    #[default]",
+        "    Absent,",
+        "    /// Sent as null.",
+        "    Null,",
+        "    /// Sent as a value.",
+        "    Value(T),",
+        "}",
+        "",
+        f"impl<'de, T: Deserialize<'de>> Deserialize<'de> for {SENT}<T> {{",
+        "    fn deserialize<D: serde::Deserializer<'de>>(",
+        "        deserializer: D,",
+        "    ) -> Result<Self, D::Error> {",
+        "        Ok(Option::<T>::deserialize(deserializer)?.map_or(Self::Null, Self::Value))",
+        "    }",
+        "}",
+        "",
+    ]
+
+
 """The deserializer of a field whose null is sent: whatever was sent, as sent."""
 
 
@@ -294,8 +325,18 @@ def _paired_struct(name: str, fields: tuple[Field, ...]) -> list[str]:
         "#[derive(Deserialize)]",
         f"struct {sent} {{",
     ]
+    partners = {partner for _, partner in pairs}
     for entry in fields:
-        lines.extend(_field(entry, "    ", public=False))
+        if entry.name not in partners:
+            lines.extend(_field(entry, "    ", public=False))
+            continue
+        # Read as sent, so a null sent for it is told apart from its absence,
+        # and refused.
+        lines += [
+            *doc_lines(entry.doc, "    "),
+            "    #[serde(default)]",
+            f"    {rust_identifier(entry.name)}: {SENT}<{type_name(entry.type)}>,",
+        ]
     lines += [
         "}",
         "",
@@ -307,7 +348,17 @@ def _paired_struct(name: str, fields: tuple[Field, ...]) -> list[str]:
     for flag, partner in pairs:
         flag_name, partner_name = rust_identifier(flag), rust_identifier(partner)
         lines += [
-            f"        if sent.{flag_name} == sent.{partner_name}.is_some() {{",
+            f"        let {partner_name} = match sent.{partner_name} {{",
+            f"            {SENT}::Absent => None,",
+            f"            {SENT}::Value(value) => Some(value),",
+            f"            {SENT}::Null => {{",
+            "                return Err(",
+            f'                    "`{partner}` is sent as one or not at all, never as null"',
+            "                        .to_owned(),",
+            "                );",
+            "            }",
+            "        };",
+            f"        if sent.{flag_name} == {partner_name}.is_some() {{",
             "            return Err(",
             f'                "`{flag}` is false exactly when `{partner}` is sent, '
             'and they disagree"',
@@ -318,7 +369,9 @@ def _paired_struct(name: str, fields: tuple[Field, ...]) -> list[str]:
     lines += [
         "        Ok(Self {",
         *(
-            f"            {rust_identifier(entry.name)}: sent.{rust_identifier(entry.name)},"
+            f"            {rust_identifier(entry.name)},"
+            if entry.name in partners
+            else f"            {rust_identifier(entry.name)}: sent.{rust_identifier(entry.name)},"
             for entry in fields
         ),
         "        })",
@@ -560,6 +613,12 @@ def emit(contract: Contract) -> str:
     ]
     if _sends_null(contract):
         lines.extend(_present())
+    if any(
+        entry.paired_with
+        for declaration in contract.declarations
+        for entry in _declared_fields(declaration)
+    ):
+        lines.extend(_sent())
     for declaration in contract.declarations:
         lines.extend(_declaration(declaration))
         lines.append("")

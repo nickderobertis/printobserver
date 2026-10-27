@@ -184,6 +184,7 @@ impl Extrusion {
             };
             // A relative move summing past any travel is no place a head can
             // be, and is read as though it were absent.
+            // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
             if moved.abs() <= AXIS_LIMIT {
                 self.at[index] = moved;
             }
@@ -214,6 +215,7 @@ impl Extrusion {
 
     /// A feeding arc from `start`: the footprint grows by the bounds of every
     /// place its curve could have reached.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     fn curve(&mut self, words: &[(char, String)], start: [f64; 3]) {
         let Some(extent) = self.extent.as_mut() else {
             return;
@@ -252,6 +254,7 @@ impl Extrusion {
     }
 
     /// `G92`: each axis it names is where it says, without moving.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     fn declare(&mut self, words: &[(char, String)]) {
         for (index, axis) in AXES.iter().enumerate() {
             if let Some(value) = axis_of(words, *axis) {
@@ -308,6 +311,7 @@ fn axis_of(words: &[(char, String)], letter: char) -> Option<f64> {
         .iter()
         .find(|(found, _)| *found == letter)
         .and_then(|(_, value)| value.parse::<f64>().ok())
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         .filter(|value| value.abs() <= AXIS_LIMIT)
 }
 

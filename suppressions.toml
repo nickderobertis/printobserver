@@ -2877,3 +2877,27 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-server/src/config.rs"
 site = "pub asserting: Option<Vec<String>>,"
 reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed actor class, refusing an unknown one, and refuses `agent` here naming `policy.recovery.asserting` — a refusal about a valid value that no type could make and that must name the key. A serde enum here would refuse an unknown name with a parser message naming neither."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = "if moved.abs() <= AXIS_LIMIT {"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is a guard against relative coordinates summing past any travel, which no slicer writes and no OctoPrint instance produces on demand; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = "fn curve(&mut self, words: &[(char, String)], start: [f64; 3]) {"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds — the arc's circle, exercised end to end by the fixture's `G3` — also bounds the `R` form and refuses an arc wider than any machine, which are forms a test file need not carry to reach the same code; both are proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of their behaviour."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = "fn declare(&mut self, words: &[(char, String)]) {"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is `G92` declaring an axis where it is: slicers write it for the extruder alone, which the fixture's `G92 E0` drives end to end, and a declaration of X, Y or Z moves the file's own coordinates in a way the recovery read's footprint would follow rather than the machine; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = ".filter(|value| value.abs() <= AXIS_LIMIT)"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is a guard that reads a non-finite or impossibly large axis word as absent, which no slicer writes and no OctoPrint instance produces on demand; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."

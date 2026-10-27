@@ -262,6 +262,13 @@ def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> No
                 "allowed": {"min": 0.0, "max": 100.0},
             }
         },
+        {
+            "out_of_bounds": {
+                "field": "percent",
+                "requested": 10**400,
+                "allowed": {"min": 0.0, "max": 100.0},
+            }
+        },
     ):
         with Host(409, _recovery({"rejected": refused})) as host:
             client = Client(host.address, ACTOR)

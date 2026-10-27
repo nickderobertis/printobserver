@@ -48,6 +48,7 @@ fn a_recovery_read_whose_allowance_contradicts_itself_is_unreadable() {
     for contradiction in [
         json!({ "action": "recover_lift", "allowed": true, "refusal": "z_untrusted" }),
         json!({ "action": "recover_heat", "allowed": false }),
+        json!({ "action": "recover_lift", "allowed": true, "refusal": null }),
     ] {
         let host = Host::answering(200, &status_with(&contradiction));
         let read = Client::new(host.address(), Actor::Operator).recover_status();
@@ -55,7 +56,7 @@ fn a_recovery_read_whose_allowance_contradicts_itself_is_unreadable() {
             matches!(
                 &read,
                 Err(ClientError::Unreadable { status: 200, detail })
-                    if detail.contains("they disagree")
+                    if detail.contains("they disagree") || detail.contains("never as null")
             ),
             "{contradiction}: {read:?}"
         );

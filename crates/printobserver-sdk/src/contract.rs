@@ -68,6 +68,24 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
+/// One field of an answer as it was sent: left out, sent as null, or a value.
+#[derive(Default)]
+enum Sent<T> {
+    /// Left out.
+    #[default]
+    Absent,
+    /// Sent as null.
+    Null,
+    /// Sent as a value.
+    Value(T),
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Sent<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Option::<T>::deserialize(deserializer)?.map_or(Self::Null, Self::Value))
+    }
+}
+
 /// What an operator's acknowledgement of a failure event asks for next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AcknowledgementDisposition {
@@ -108,15 +126,22 @@ struct ActionAllowanceAsSent {
     // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     allowed: bool,
     /// One shape of the contracts, which say nothing more about it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    refusal: Option<RecoveryRejection>,
+    #[serde(default)]
+    refusal: Sent<RecoveryRejection>,
 }
 
 impl TryFrom<ActionAllowanceAsSent> for ActionAllowance {
     type Error = String;
 
     fn try_from(sent: ActionAllowanceAsSent) -> Result<Self, Self::Error> {
-        if sent.allowed == sent.refusal.is_some() {
+        let refusal = match sent.refusal {
+            Sent::Absent => None,
+            Sent::Value(value) => Some(value),
+            Sent::Null => {
+                return Err("`refusal` is sent as one or not at all, never as null".to_owned());
+            }
+        };
+        if sent.allowed == refusal.is_some() {
             return Err(
                 "`allowed` is false exactly when `refusal` is sent, and they disagree".to_owned(),
             );
@@ -124,7 +149,7 @@ impl TryFrom<ActionAllowanceAsSent> for ActionAllowance {
         Ok(Self {
             action: sent.action,
             allowed: sent.allowed,
-            refusal: sent.refusal,
+            refusal,
         })
     }
 }

@@ -429,3 +429,21 @@ fn a_text_that_extruded_nothing_laid_nothing_down() {
     assert_eq!(extent_to("G28\nG1 X10 Y10 Z5\n", i64::MAX), None);
     assert_eq!(extent_to("G90\nM83\nG1 X1 Y1\nG1 X5 E1\n", 9), None);
 }
+
+/// What no head can do is read as though it were absent: a relative move
+/// summing past any travel, an axis word that is no finite figure or is past
+/// any machine, and an arc wider than any machine — each leaves the head
+/// where it was and grows nothing.
+#[test]
+fn coordinates_no_machine_reaches_are_read_as_absent() {
+    let summed = "G91\nM83\nG1 X9000 E1\nG1 X9000 E1\n";
+    laid_down(summed, i64::MAX, 0.0, [0.0, 0.0, 9000.0, 0.0]);
+
+    for word in ["Xinf", "XNaN", "X1000000000"] {
+        let text = format!("G90\nM83\nG1 X10 Y10\nG1 {word} Y20 E1\n");
+        laid_down(&text, i64::MAX, 0.0, [10.0, 10.0, 10.0, 20.0]);
+    }
+
+    let wide = "G90\nM83\nG1 X10 Y10 Z0.2\nG2 X20 Y10 I100000 J0 E1\n";
+    laid_down(wide, i64::MAX, 0.2, [10.0, 10.0, 20.0, 10.0]);
+}

@@ -646,6 +646,14 @@ fn a_recovery_allowance_whose_two_halves_disagree_is_refused() {
             serde_json::json!({ "action": "recover_heat", "allowed": false }),
             "a refused action carries its refusal",
         ),
+        (
+            serde_json::json!({ "action": "recover_lift", "allowed": true, "refusal": null }),
+            "never as null",
+        ),
+        (
+            serde_json::json!({ "action": "recover_heat", "allowed": false, "refusal": null }),
+            "never as null",
+        ),
     ] {
         assert!(
             !schema.is_valid(&contradiction),

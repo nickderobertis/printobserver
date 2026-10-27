@@ -285,12 +285,18 @@ def _is_refusal(refused: object, known: dict[str, dict[str, RefusalField] | None
 
 
 def _is_number(value: object) -> bool:
-    """Whether one parsed JSON value is a finite number.
+    """Whether one parsed JSON value is a finite number a float can hold.
 
-    `bool` is an `int` to Python and not to JSON, and `json.loads` reads
-    `NaN` and `Infinity`, which no JSON number is.
+    `bool` is an `int` to Python and not to JSON; `json.loads` reads `NaN` and
+    `Infinity`, which no JSON number is; and an integer past what a float holds
+    is no value a bound can be read as.
     """
-    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _machine_refusal(status: int, said: str) -> Exception:

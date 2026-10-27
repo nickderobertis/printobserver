@@ -510,9 +510,29 @@ struct AllowanceWire {
     /// Whether it is allowed now.
     // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     allowed: bool,
-    /// Its refusal, present exactly when it is not allowed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Its refusal, present exactly when it is not allowed, and never sent
+    /// as null: a null is refused as it is read rather than taken for absence.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "never_null"
+    )]
     refusal: Option<RecoveryRejection>,
+}
+
+/// A field that was sent, which a null is not.
+fn never_null<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: printobserver_types::serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)?
+        .map(Some)
+        .ok_or_else(|| {
+            printobserver_types::serde::de::Error::custom(
+                "a refusal is sent as one or not at all, never as null",
+            )
+        })
 }
 
 impl Serialize for ActionAllowance {
