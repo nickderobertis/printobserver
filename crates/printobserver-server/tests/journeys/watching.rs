@@ -395,6 +395,56 @@ async fn a_serial_timeout_with_no_pushed_error_ends_interrupted() {
     assert_turn_names_the_ending(&watch.turns(1).await, &print_id, "interrupted");
 }
 
+/// The printer's own error pushed during the stop is the printer's error:
+/// `failed`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pushed_firmware_error_ends_failed() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let print_id = watch.printing(400).await;
+
+    watch.octoprint.pushes_event(
+        "Error",
+        &json!({ "error": "Thermal Runaway", "reason": "firmware" }),
+    );
+    tokio::time::sleep(POLL).await;
+    watch.octoprint.reports(
+        "Closed",
+        landed_offline(
+            "Offline after error",
+            Some("Thermal Runaway, system stopped!"),
+        ),
+    );
+    watch.until("print_ended", 1).await;
+
+    assert_eq!(ended(&watch.history().await, &print_id), "failed");
+    assert_turn_names_the_ending(&watch.turns(1).await, &print_id, "failed");
+}
+
+/// With the push socket connected across the stop and no error of the
+/// printer's own pushed, a printer's message as the job's error does not make
+/// the stop the printer's error: the socket would have said so. `interrupted`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_printers_message_with_the_push_socket_up_and_nothing_pushed_ends_interrupted() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let print_id = watch.printing(400).await;
+
+    watch.octoprint.reports(
+        "Closed",
+        landed_offline(
+            "Offline after error",
+            Some(
+                "Thermal Runaway, system stopped! Heater_ID: bed - Printer halted. kill() called!",
+            ),
+        ),
+    );
+    watch.until("print_ended", 1).await;
+
+    assert_eq!(ended(&watch.history().await, &print_id), "interrupted");
+    assert_turn_names_the_ending(&watch.turns(1).await, &print_id, "interrupted");
+}
+
 /// With the push socket down, a printer's own message as the job's error is
 /// the printer's error: `failed`, the events saying the channel was down; and
 /// the socket admitted again is reopened on its own.
