@@ -706,27 +706,41 @@ async fn a_lift_and_a_margin_left_out_take_their_defaults() {
 }
 
 /// Homing Z without the operator's word that the bed is clear is refused
-/// naming the assertion, and saying what homing Z does on this machine.
+/// naming the assertion, and saying what homing Z does on this machine: a
+/// gantry brought down over the whole bed where it sweeps the bed, and the
+/// nozzle brought down onto it where it does not.
 #[tokio::test(flavor = "multi_thread")]
 async fn homing_z_without_the_bed_asserted_clear_is_refused() {
-    let world = Recovering::start(with_recovery(|_| {})).await;
-    let before = world.asked_of_the_machine();
+    for (sweeps_bed, said) in [
+        (true, "gantry down over the whole bed"),
+        (false, "brings the nozzle down onto the bed"),
+    ] {
+        let world = Recovering::start(with_recovery(move |document| {
+            set(
+                document,
+                "recovery.z_home_sweeps_bed",
+                toml::Value::Boolean(sweeps_bed),
+            );
+        }))
+        .await;
+        let before = world.asked_of_the_machine();
 
-    let (status, answer) = world.ask("recover_home_z", json!({})).await;
+        let (status, answer) = world.ask("recover_home_z", json!({})).await;
 
-    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
-    assert_eq!(
-        answer["decision"]["rejected"],
-        json!({ "assertion_required": { "field": "bed_clear_asserted" } })
-    );
-    assert!(
-        answer["detail"]
-            .as_str()
-            .is_some_and(|said| said.contains("gantry down over the whole bed")),
-        "{answer:#}"
-    );
-    assert_eq!(world.asked_of_the_machine(), before);
-    assert!(world.status().await["z_trust"].get("untrusted").is_some());
+        assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+        assert_eq!(
+            answer["decision"]["rejected"],
+            json!({ "assertion_required": { "field": "bed_clear_asserted" } })
+        );
+        assert!(
+            answer["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains(said)),
+            "sweeps_bed = {sweeps_bed}: {answer:#}"
+        );
+        assert_eq!(world.asked_of_the_machine(), before);
+        assert!(world.status().await["z_trust"].get("untrusted").is_some());
+    }
 }
 
 /// With no `[recovery]` section every action is refused as not configured,

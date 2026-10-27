@@ -286,7 +286,7 @@ Reached at `GET /v1/history`.
 
 **Arguments.**
 
-- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked`, `file_tally_rebaselined`, `printer_connection_changed`, `printer_reset`, `unattended_printer_activity` and `detector_health_changed`, `recovery_requested`, `recovery_executed`, `recovery_rejected`; any other is refused.
+- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked`, `file_tally_rebaselined`, `printer_connection_changed`, `printer_reset`, `unattended_printer_activity`, `detector_health_changed`, `recovery_requested`, `recovery_executed` and `recovery_rejected`; any other is refused.
 - `--since` — the earliest instant to read from, inclusive, in RFC 3339 (optional).
 - `--until` — the latest instant to read to, inclusive (optional).
 - `--spool-id` — only the events naming this spool (optional).

@@ -173,11 +173,13 @@ def _answer_type(document: object) -> str:
     An action's answer carries its record; a recovery's names its action beside
     its decision; a spool command's carries its decision at the top.
     """
-    if isinstance(document, dict) and "record" in document:
-        return "ActionAnswer"
-    if isinstance(document, dict) and "action" in document:
-        return "RecoveryAnswer"
-    return "SpoolCommandAnswer"
+    match document:
+        case {"record": _}:
+            return "ActionAnswer"
+        case {"action": _}:
+            return "RecoveryAnswer"
+        case _:
+            return "SpoolCommandAnswer"
 
 
 def _rejection(status: int, said: str) -> Exception:

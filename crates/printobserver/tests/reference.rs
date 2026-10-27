@@ -236,6 +236,87 @@ fn the_documents_restate_the_timeline_kinds_and_the_spool_window_as_the_server_h
     }
 }
 
+/// The architecture document, which restates how many event kinds are
+/// declared and which of them the printer timeline takes.
+const ARCHITECTURE: &str = "skills/printobserver/reference/architecture.md";
+
+/// A count from one to ninety-nine as the documents write it in prose.
+fn in_words(count: usize) -> String {
+    const ONES: [&str; 20] = [
+        "zero",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+    ];
+    const TENS: [&str; 10] = [
+        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+    ];
+    assert!(
+        (1..100).contains(&count),
+        "the documents write no count of {count} in words"
+    );
+    if count < 20 {
+        return ONES[count].to_owned();
+    }
+    match count % 10 {
+        0 => TENS[count / 10].to_owned(),
+        unit => format!("{}-{}", TENS[count / 10], ONES[unit]),
+    }
+}
+
+/// The architecture document's count of the declared event kinds, and its
+/// count and list of the printer timeline's, are the ones the code declares:
+/// every kind a client's generated table carries, and the kinds the timeline
+/// takes.
+#[test]
+fn the_architecture_restates_the_event_kinds_as_the_code_declares_them() {
+    let text = std::fs::read_to_string(repo_root().join(ARCHITECTURE))
+        .unwrap_or_else(|error| panic!("{ARCHITECTURE} reads: {error}"))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut declared = in_words(printobserver_sdk::EVENT_KINDS.len());
+    declared[..1].make_ascii_uppercase();
+    assert!(
+        text.contains(&format!("{declared} kinds are declared today")),
+        "{ARCHITECTURE} does not say {declared} event kinds are declared"
+    );
+
+    let timeline = in_words(printobserver_core::TIMELINE_KINDS.len());
+    let (_, after) = text
+        .split_once(&format!("the {timeline} of the printer timeline — "))
+        .unwrap_or_else(|| {
+            panic!("{ARCHITECTURE} does not count the printer timeline's kinds as {timeline}")
+        });
+    let (listed, _) = after
+        .split_once(", which carry no print")
+        .unwrap_or_else(|| panic!("{ARCHITECTURE} lists the timeline's kinds without an end"));
+    let mut documented: Vec<&str> = listed.split('`').skip(1).step_by(2).collect();
+    documented.sort_unstable();
+    let mut served: Vec<&str> = printobserver_core::TIMELINE_KINDS.to_vec();
+    served.sort_unstable();
+    assert_eq!(
+        documented, served,
+        "{ARCHITECTURE} lists other printer timeline kinds than the timeline takes"
+    );
+}
+
 /// The bounds the reference documents restate for the events read and the
 /// watch are the ones the server and this program enforce.
 #[test]
