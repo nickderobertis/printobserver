@@ -187,6 +187,7 @@ test("a machine refusal of a recovery that did not fail is unreadable", async ()
     { executed: "succeeded" },
     null,
     { executed: { failed: { reason: "the fan is stuck" } }, rejected: "z_untrusted" },
+    { executed: { failed: { reason: "the fan is stuck" }, succeeded: true } },
   ]) {
     await using host = Host.answering(502, recovery(decision));
     const client = new Client({ server: host.address, actor: ACTOR });

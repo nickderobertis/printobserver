@@ -327,7 +327,7 @@ function machineRefusal(status: number, said: string): Error {
   if (!isObject(answered.record)) {
     const { action, decision, detail } = answered;
     const executed = isOneArm(decision) ? decision.executed : undefined;
-    const failed = isObject(executed) ? executed.failed : undefined;
+    const failed = isOneArm(executed) ? executed.failed : undefined;
     if (
       !isObject(action) ||
       typeof action.action !== "string" ||

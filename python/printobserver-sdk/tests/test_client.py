@@ -321,6 +321,7 @@ def test_a_machine_refusal_of_a_recovery_that_did_not_fail_is_unreadable() -> No
         {"executed": "succeeded"},
         None,
         {"executed": {"failed": {"reason": "the fan is stuck"}}, "rejected": "z_untrusted"},
+        {"executed": {"failed": {"reason": "the fan is stuck"}, "succeeded": True}},
     ):
         with Host(502, _recovery(decision)) as host:
             client = Client(host.address, ACTOR)

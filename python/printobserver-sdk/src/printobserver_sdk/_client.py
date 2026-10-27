@@ -316,9 +316,9 @@ def _machine_refusal(status: int, said: str) -> Exception:
         # and failed at the printer, which is what a machine refusal is.
         case {
             "action": {"action": str()},
-            "decision": {"executed": {"failed": {"reason": str()}}} as decision,
+            "decision": {"executed": {"failed": {"reason": str()}} as outcome} as decision,
             "detail": str() as detail,
-        } if len(decision) == 1:
+        } if len(decision) == 1 and len(outcome) == 1:
             return RefusedError(status, detail)
         case {"record": dict()}:
             # The type `operations.json` declares for an answer carrying an
