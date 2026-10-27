@@ -462,6 +462,14 @@ impl PrinterPayload {
 }
 
 impl JobPayload {
+    /// Whether the instance has started the job and not yet begun to send it.
+    ///
+    /// `OctoPrint` is `Starting` while it drains the commands queued ahead of
+    /// the job, and its move to `Printing` overwrites a pause asked meanwhile.
+    pub(crate) fn is_starting(&self) -> bool {
+        self.state.as_deref() == Some(STARTING)
+    }
+
     /// The normalized snapshot this payload denotes.
     pub(crate) fn snapshot(self) -> JobSnapshot {
         let job = self.job.unwrap_or_default();
@@ -598,6 +606,9 @@ impl ConnectionPayload {
     }
 }
 
+/// `OctoPrint`'s word for a job it has started and not yet begun to send.
+const STARTING: &str = "Starting";
+
 /// The state `OctoPrint`'s own word for a job denotes.
 ///
 /// The words are `OctoPrint`'s, and the ones this vocabulary has no arm for
@@ -608,7 +619,7 @@ fn job_state_of(text: Option<&str>) -> PrinterState {
     };
     match text {
         "Operational" | "Ready" | "Finishing" => PrinterState::Operational,
-        "Printing" | "Starting" | "Resuming" | "Printing from SD" | "Sending file to SD" => {
+        "Printing" | STARTING | "Resuming" | "Printing from SD" | "Sending file to SD" => {
             PrinterState::Printing
         }
         "Paused" => PrinterState::Paused,

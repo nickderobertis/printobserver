@@ -108,6 +108,8 @@ pub fn walk(instance: &Scripted) {
         "the print to be cancelled",
     );
 
+    pause_a_job_still_starting(instance, &printer);
+
     // start — confirmed by the job snapshot naming the file that is running.
     block_on(printer.start(FileName::new(HOLD_FILE).expect("a file name")))
         .expect("the print starts");
@@ -159,6 +161,46 @@ pub fn walk(instance: &Scripted) {
     );
 
     pin_the_moves(&proxy, &printer, instance);
+}
+
+/// How long the dwell queued ahead of a start holds the job `Starting`.
+const STARTING_HOLD: &str = "G4 S3";
+
+/// A pause asked of a job the instance is still starting pauses it.
+///
+/// `OctoPrint` stays `Starting` while it drains the commands queued ahead of
+/// a job, and its move to `Printing` overwrites a pause asked meanwhile. A
+/// dwell the machine is still carrying out when the job starts holds it
+/// there, so the pause is asked of a job the instance itself says is
+/// starting, and is confirmed by the printer snapshot. The job is cancelled
+/// afterwards, leaving the instance idle.
+fn pause_a_job_still_starting(instance: &Scripted, printer: &impl PrinterPort) {
+    raw::post_json(
+        instance,
+        "/api/printer/command",
+        &serde_json::json!({ "commands": [STARTING_HOLD] }),
+    );
+    block_on(printer.start(FileName::new(HOLD_FILE).expect("a file name")))
+        .expect("the print starts");
+    let said = raw::get(instance, "/api/job")["state"].clone();
+    assert_eq!(
+        said, "Starting",
+        "the job was not still starting when the pause was asked, so nothing is proven"
+    );
+
+    block_on(printer.pause()).expect("the pause is taken");
+
+    wait_for_printer(
+        printer,
+        &PrinterState::Paused,
+        "the job paused while starting to be paused",
+    );
+    block_on(printer.cancel()).expect("the paused print is cancelled");
+    wait_for_job(
+        instance,
+        &PrinterState::Operational,
+        "the paused print to be cancelled",
+    );
 }
 
 /// Every move and home of the closed vocabulary, through the print head's own

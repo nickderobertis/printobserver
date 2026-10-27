@@ -27,21 +27,83 @@ fn accepting() -> (Stub, OctoPrintPrinter) {
     (stub, OctoPrintPrinter::new(config))
 }
 
-/// Pausing asks the job endpoint to pause.
+/// Pausing reads the job's state, then asks the job endpoint to pause.
+///
+/// The read says nothing this port can use — an empty answer — so it is no
+/// reason to withhold the pause.
 #[test]
 fn pausing_asks_the_job_endpoint_for_the_pause_action() {
     let (stub, printer) = accepting();
 
     block_on(printer.pause()).expect("the pause is accepted");
 
-    let request = stub.only_request();
+    let requests = stub.requests();
+    let asked: Vec<(&str, &str)> = requests
+        .iter()
+        .map(|request| (request.method.as_str(), request.path.as_str()))
+        .collect();
+    assert_eq!(asked, [("GET", "/api/job"), ("POST", "/api/job")]);
     assert_eq!(
-        (request.method.as_str(), request.path.as_str()),
-        ("POST", "/api/job")
-    );
-    assert_eq!(
-        request.json(),
+        requests[1].json(),
         json!({"command": "pause", "action": "pause"})
+    );
+}
+
+/// An instance answering its job state as `starting` until `begins` reads,
+/// then `Printing`, and taking every pause.
+fn starting_for(begins: usize) -> Stub {
+    let reads = std::sync::atomic::AtomicUsize::new(0);
+    Stub::start(move |request| {
+        if request.method != "GET" {
+            return Reply::Empty(204);
+        }
+        let read = reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let state = if read < begins {
+            "Starting"
+        } else {
+            "Printing"
+        };
+        Reply::Body(200, json!({ "state": state }).to_string())
+    })
+}
+
+/// A pause asked of a job the instance is still starting waits for it to
+/// begin, since `OctoPrint` drops a pause asked while it is starting.
+#[test]
+fn a_pause_waits_for_a_job_still_starting_to_begin() {
+    let stub = starting_for(3);
+    let config = OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration");
+    let printer = OctoPrintPrinter::new(config);
+
+    block_on(printer.pause()).expect("the pause is accepted");
+
+    let asked: Vec<String> = stub
+        .requests()
+        .iter()
+        .map(|request| request.method.clone())
+        .collect();
+    assert_eq!(asked, ["GET", "GET", "GET", "GET", "POST"]);
+}
+
+/// A job that never begins is refused a pause rather than sent one the
+/// instance would drop.
+#[test]
+fn a_job_that_never_begins_is_not_sent_a_pause() {
+    let stub = starting_for(usize::MAX);
+    let config = OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration");
+    let printer = OctoPrintPrinter::new(config);
+
+    let error = block_on(printer.pause()).expect_err("a refusal");
+
+    assert!(
+        matches!(&error, PrinterError::StateConflict { detail } if detail.contains("still starting")),
+        "{error:?}"
+    );
+    assert!(
+        stub.requests()
+            .iter()
+            .all(|request| request.method == "GET"),
+        "a pause was sent to a job still starting"
     );
 }
 

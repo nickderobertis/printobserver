@@ -261,6 +261,7 @@ fn a_well_formed_reply_is_read_on_every_request() {
         block_on(printer.pause()).expect("a pause");
 
         assert_eq!(job.state, PrinterState::Operational, "{raw:?}");
-        assert_eq!(stub.requests().len(), 2, "{raw:?}");
+        // The job read, the pause's read of the job state, and the pause.
+        assert_eq!(stub.requests().len(), 3, "{raw:?}");
     }
 }

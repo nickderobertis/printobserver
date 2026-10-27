@@ -219,12 +219,17 @@ fn the_api_key_reaches_the_instance_in_its_own_header() {
 
     block_on(printer.pause()).expect("the pause is accepted");
 
-    let request = stub.only_request();
-    assert_eq!(request.header("x-api-key"), Some(DISTINCTIVE_KEY));
-    assert!(
-        !request.path.contains(DISTINCTIVE_KEY),
-        "the key is in the path, where a proxy log would keep it: {}",
-        request.path
-    );
-    assert!(!request.body.contains(DISTINCTIVE_KEY), "{}", request.body);
+    // The pause reads the job's state and then asks for the pause; each
+    // request carries the key in its header and nowhere else.
+    let requests = stub.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    for request in requests {
+        assert_eq!(request.header("x-api-key"), Some(DISTINCTIVE_KEY));
+        assert!(
+            !request.path.contains(DISTINCTIVE_KEY),
+            "the key is in the path, where a proxy log would keep it: {}",
+            request.path
+        );
+        assert!(!request.body.contains(DISTINCTIVE_KEY), "{}", request.body);
+    }
 }

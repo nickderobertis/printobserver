@@ -352,6 +352,41 @@ impl OctoPrintPrinter {
     }
 
     /// Ask the job endpoint for one of the four things it does.
+    /// Pause the job, once the instance has begun to send it.
+    ///
+    /// A pause asked of a job `OctoPrint` is still starting is accepted and
+    /// then lost: its move to `Printing` overwrites `Pausing`, and the print
+    /// runs on. So while the instance's own job state is `Starting` this waits,
+    /// for as long as [`STARTING_WAIT`], and refuses rather than send a pause
+    /// that would be dropped. The read is only that guard: a job state that
+    /// cannot be read is no reason to withhold the pause, whose own answer
+    /// says whether the instance took it.
+    fn pause_job(&self) -> Result<(), PrinterError> {
+        let asked = std::time::Instant::now();
+        while self.job_is_starting() {
+            if asked.elapsed() >= STARTING_WAIT {
+                let error = PrinterError::StateConflict {
+                    detail: format!(
+                        "the job was still starting after {STARTING_WAIT:?}, and a pause asked \
+                         of a job still starting is one OctoPrint drops"
+                    ),
+                };
+                log::warn!("octoprint will not pause: {error}");
+                return Err(error);
+            }
+            std::thread::sleep(STARTING_ASK_EVERY);
+        }
+        self.job_command(json!({ "command": "pause", "action": "pause" }))
+    }
+
+    /// Whether the instance says the job is still starting; not, when it says
+    /// nothing this port can read.
+    fn job_is_starting(&self) -> bool {
+        self.request(Method::Get, JOB_PATH, None)
+            .and_then(|body| decode::<JobPayload>(&body, JOB_PATH))
+            .is_ok_and(|payload| payload.is_starting())
+    }
+
     fn job_command(&self, body: serde_json::Value) -> Result<(), PrinterError> {
         self.request(Method::Post, JOB_COMMAND_PATH, Some(body))
             .map(|_| ())
@@ -388,6 +423,12 @@ const POSITION_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How often a position read asks again while nothing has answered.
 const POSITION_ASK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// How long a pause waits for a job the instance is still starting to begin.
+const STARTING_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// How often a pause asks again whether the job has begun.
+const STARTING_ASK_EVERY: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// The G-code reader, as the sink a download is streamed into.
 struct Reader(ExtrudedTo);
@@ -480,7 +521,7 @@ impl PrinterPort for OctoPrintPrinter {
     }
 
     fn pause(&self) -> BoxFuture<'_, Result<(), PrinterError>> {
-        Box::pin(async move { self.job_command(json!({ "command": "pause", "action": "pause" })) })
+        Box::pin(async move { self.pause_job() })
     }
 
     fn resume(&self) -> BoxFuture<'_, Result<(), PrinterError>> {
