@@ -19,7 +19,7 @@ use std::time::Duration;
 use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
-use printobserver_octoprint::standin::{JobScript, STANDIN_API_KEY, ScriptedOctoPrint};
+use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
 use printobserver_server::{Ports, Running, Server, ServerConfig};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_supervisor_api::TurnRequest;
@@ -93,7 +93,7 @@ impl Watch {
         set(
             &mut configured,
             "octoprint.api_key",
-            toml::Value::String(STANDIN_API_KEY.to_owned()),
+            toml::Value::String(octoprint.api_key()),
         );
         edit(&mut configured);
         let path = write(root.path(), &configured);

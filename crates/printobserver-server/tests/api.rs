@@ -15,6 +15,8 @@ mod failing_store;
 mod held_events;
 #[path = "support/http_host.rs"]
 mod http_host;
+#[path = "support/minted.rs"]
+mod minted;
 #[path = "support/printer.rs"]
 mod printer;
 #[path = "support/probes.rs"]

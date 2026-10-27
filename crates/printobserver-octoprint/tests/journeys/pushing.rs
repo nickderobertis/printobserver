@@ -12,7 +12,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
 use printobserver_octoprint::push::pushes_of;
-use printobserver_octoprint::standin::{JobScript, STANDIN_API_KEY, ScriptedOctoPrint};
+use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint, minted};
 use printobserver_octoprint::{OctoPrintConfig, OctoPrintPrinter};
 use printobserver_printer_api::{
     BoxStream, PrinterCommand, PrinterError, PrinterErrorReason, PrinterPort as _, PrinterPush,
@@ -28,7 +28,8 @@ const PATIENCE: Duration = Duration::from_secs(5);
 /// The adapter, configured for one stand-in.
 fn adapter(standin: &ScriptedOctoPrint) -> OctoPrintPrinter {
     OctoPrintPrinter::new(
-        OctoPrintConfig::new(&standin.base_url(), STANDIN_API_KEY).expect("a valid configuration"),
+        OctoPrintConfig::new(&standin.base_url(), standin.api_key())
+            .expect("a valid configuration"),
     )
 }
 
@@ -596,7 +597,8 @@ fn a_conflict_the_connection_does_not_explain_stays_a_conflict() {
             }
         });
         let printer = OctoPrintPrinter::new(
-            OctoPrintConfig::new(&stub.base_url(), "a-key").expect("a valid configuration"),
+            OctoPrintConfig::new(&stub.base_url(), minted("octoprint-key"))
+                .expect("a valid configuration"),
         );
         let read = block_on(printer.snapshot());
         assert!(

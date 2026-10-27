@@ -20,6 +20,7 @@ use tokio::net::{TcpListener, TcpSocket};
 
 use crate::agent::StandInAgent;
 use crate::http_host::Host;
+use crate::minted::minted;
 use crate::printer::RecordingPrinter;
 use crate::world::{World, set};
 
@@ -171,7 +172,7 @@ async fn watching(
             obico.insert("url".to_owned(), toml::Value::String(web_url));
             obico.insert(
                 "access_token".to_owned(),
-                toml::Value::String("a-journeys-own-obico-token".to_owned()),
+                toml::Value::String(minted("obico-token")),
             );
             if let Some(url) = ml_api_url {
                 obico.insert("ml_api_url".to_owned(), toml::Value::String(url));
@@ -377,7 +378,7 @@ async fn with_no_print_open_the_detector_is_not_asked() {
         obico.insert("url".to_owned(), toml::Value::String(web_url));
         obico.insert(
             "access_token".to_owned(),
-            toml::Value::String("a-journeys-own-obico-token".to_owned()),
+            toml::Value::String(minted("obico-token")),
         );
         obico.insert("ml_api_url".to_owned(), toml::Value::String(url));
         set(document, "obico", toml::Value::Table(obico));
@@ -461,7 +462,7 @@ async fn an_outage_the_store_refused_is_recorded_by_the_next_check() {
             obico.insert("url".to_owned(), toml::Value::String(web_url));
             obico.insert(
                 "access_token".to_owned(),
-                toml::Value::String("a-journeys-own-obico-token".to_owned()),
+                toml::Value::String(minted("obico-token")),
             );
             obico.insert("ml_api_url".to_owned(), toml::Value::String(url));
             set(document, "obico", toml::Value::Table(obico));

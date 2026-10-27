@@ -22,8 +22,23 @@ use serde_json::{Value, json};
 
 use crate::push::{SOCKET_ACCEPT, SOCKET_KEY};
 
-/// The key this stand-in admits.
-pub const STANDIN_API_KEY: &str = "a-scripted-octoprint-key";
+/// A value no other run shares: `label`, then 32 hexadecimal digits drawn
+/// from the standard library's per-process random hasher seed, so that no
+/// key or session this stand-in admits is written into the tree.
+#[must_use]
+pub fn minted(label: &str) -> String {
+    use core::hash::BuildHasher as _;
+    use std::hash::RandomState;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let seeds = (std::process::id(), nanos, label);
+    let high = RandomState::new().hash_one(seeds);
+    let low = RandomState::new().hash_one(seeds);
+    format!("{label}-{high:016x}{low:016x}")
+}
 
 /// What `GET /api/printer` answers a printer that is not operational with.
 const NOT_OPERATIONAL: &str = r#"{"error":"Printer is not operational"}"#;
@@ -116,6 +131,10 @@ struct Script {
     job_commands: Vec<String>,
     /// Every request received, as its method and path.
     requests: Vec<String>,
+    /// The key it admits.
+    api_key: String,
+    /// The session a successful passive login hands out.
+    session: String,
     /// The status the passive login is answered with.
     login_status: u16,
     /// The body a successful passive login is answered with, in place of a
@@ -176,6 +195,8 @@ impl ScriptedOctoPrint {
             commands: Vec::new(),
             job_commands: Vec::new(),
             requests: Vec::new(),
+            api_key: minted("octoprint-key"),
+            session: minted("octoprint-session"),
             login_status: 200,
             login_body: None,
 
@@ -216,6 +237,12 @@ impl ScriptedOctoPrint {
     #[must_use]
     pub fn base_url(&self) -> String {
         format!("http://{}", self.address)
+    }
+
+    /// The key it admits, drawn when it started.
+    #[must_use]
+    pub fn api_key(&self) -> String {
+        self.held().api_key.clone()
     }
 
     /// What it holds, held.
@@ -525,7 +552,8 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
         upgrade(connection, &request, script, sockets);
         return;
     }
-    let (status, body) = if request.header("x-api-key") == Some(STANDIN_API_KEY) {
+    let admitted = request.header("x-api-key") == Some(lock(script).api_key.as_str());
+    let (status, body) = if admitted {
         answer(&request, script, sockets)
     } else {
         (403, r#"{"error":"Forbidden"}"#.to_owned())
@@ -557,7 +585,7 @@ fn answer(
             200 => (
                 200,
                 held.login_body.clone().unwrap_or_else(|| {
-                    json!({ "name": "standin", "session": "a-scripted-session" }).to_string()
+                    json!({ "name": "standin", "session": held.session }).to_string()
                 }),
             ),
             status => (status, r#"{"error":"refused"}"#.to_owned()),

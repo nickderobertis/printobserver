@@ -31,6 +31,7 @@ use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
+use crate::minted::minted;
 use crate::scripted::Scripted;
 
 /// A harness that runs no turn: what this walk proves is what the server
@@ -91,13 +92,13 @@ struct Watching {
     client: reqwest::Client,
 }
 
-/// The operator credential this walk's server admits.
-const CREDENTIAL: &str = "a-stop-walks-own-operator-credential-Q8w3";
-
 impl Watching {
     /// A server over a fresh root watching the instance.
     async fn open(instance: &Scripted) -> Self {
         let root = TempDir::new().expect("a root");
+        // The operator credential this walk's server admits, and the secret
+        // its ingress checks, each drawn for this run alone.
+        let credential = minted("operator-credential");
         let skill =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../skills/printobserver/SKILL.md");
         let text = format!(
@@ -111,7 +112,7 @@ api_key = "{key}"
 harness = "claude-code"
 skill_path = {skill}
 [ingress]
-shared_secret = "a-stop-walks-own-secret"
+shared_secret = "{secret}"
 [api]
 credential_verifier = "{verifier}"
 [safety]
@@ -127,7 +128,8 @@ system = []
             url = instance.url,
             key = instance.api_key,
             skill = toml::Value::String(skill.display().to_string()),
-            verifier = printobserver_server::CredentialVerifier::of(CREDENTIAL),
+            secret = minted("ingress-secret"),
+            verifier = printobserver_server::CredentialVerifier::of(&credential),
         );
         let path = root.path().join("config.toml");
         std::fs::write(&path, text).expect("the configuration is writable");
@@ -150,7 +152,7 @@ system = []
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::AUTHORIZATION,
-            reqwest::header::HeaderValue::from_str(&format!("Bearer {CREDENTIAL}"))
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
                 .expect("a header value"),
         );
         Self {

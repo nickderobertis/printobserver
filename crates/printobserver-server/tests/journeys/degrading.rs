@@ -322,7 +322,7 @@ async fn an_observation_with_only_bad_frames_turns_on_the_cameras_failure() {
 /// generated grey frame is a picture, and the look keeps it.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_configured_blank_frame_bound_is_the_one_frames_are_judged_by() {
-    use printobserver_octoprint::standin::{JobScript, STANDIN_API_KEY, ScriptedOctoPrint};
+    use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
     let camera = Camera::serving(vec![grey()]).await;
     let octoprint = ScriptedOctoPrint::start();
     octoprint.reports("Printing", JobScript::printing("tower.gcode", 816, 400, 60));
@@ -331,7 +331,7 @@ async fn the_configured_blank_frame_bound_is_the_one_frames_are_judged_by() {
     set(
         &mut document,
         "octoprint.api_key",
-        toml::Value::String(STANDIN_API_KEY.to_owned()),
+        toml::Value::String(octoprint.api_key()),
     );
     let mut table = toml::Table::new();
     table.insert(

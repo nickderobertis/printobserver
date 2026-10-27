@@ -39,6 +39,8 @@
 
 #[path = "support/http_host.rs"]
 mod http_host;
+#[path = "support/minted.rs"]
+mod minted;
 
 #[path = "instance/composition.rs"]
 mod composition;
