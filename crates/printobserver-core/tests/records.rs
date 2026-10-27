@@ -36,8 +36,8 @@ use std::collections::BTreeMap;
 use std::str::FromStr as _;
 
 use printobserver_core::{
-    AcknowledgementDisposition, ActionId, ActionKind, Actor, ActorClass, EffectiveBounds,
-    InterventionId, PrintAction, SafetyEnvelope,
+    AcknowledgementDisposition, ActionAllowance, ActionId, ActionKind, Actor, ActorClass,
+    EffectiveBounds, InterventionId, PrintAction, SafetyEnvelope,
 };
 use printobserver_printer_api::Adjustable;
 use printobserver_types::contract::{Sample, TypeContract};
@@ -609,6 +609,46 @@ fn every_action_reads_back_what_it_carries() {
         PrintAction::sample_full().kind(),
         ActionKind::SetFeedrateFactor
     );
+}
+
+/// A recovery allowance is read back only when `allowed` and `refusal` agree:
+/// allowed with no refusal, or refused with one. Either contradiction is
+/// refused at the boundary, naming what it got wrong, rather than read as
+/// whichever half a reader looked at first.
+#[test]
+fn a_recovery_allowance_whose_two_halves_disagree_is_refused() {
+    let allowed = serde_json::json!({ "action": "recover_lift", "allowed": true });
+    let refused = serde_json::json!({
+        "action": "recover_heat", "allowed": false, "refusal": "z_untrusted",
+    });
+    for agreeing in [&allowed, &refused] {
+        let read: ActionAllowance =
+            serde_json::from_value(agreeing.clone()).expect("an agreeing allowance reads");
+        assert_eq!(
+            &serde_json::to_value(&read).expect("an allowance emits"),
+            agreeing
+        );
+    }
+
+    for (contradiction, named) in [
+        (
+            serde_json::json!({
+                "action": "recover_lift", "allowed": true, "refusal": "z_untrusted",
+            }),
+            "an allowed action carries no refusal",
+        ),
+        (
+            serde_json::json!({ "action": "recover_heat", "allowed": false }),
+            "a refused action carries its refusal",
+        ),
+    ] {
+        let error = serde_json::from_value::<ActionAllowance>(contradiction.clone())
+            .expect_err("a contradictory allowance is refused");
+        assert!(
+            error.to_string().contains(named),
+            "{contradiction}: {error}"
+        );
+    }
 }
 
 /// Every actor reports the class a safety envelope grants actions to.

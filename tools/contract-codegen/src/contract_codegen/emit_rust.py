@@ -93,6 +93,10 @@ NON_EMPTY_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See su
 #: another, which two independent generated fields cannot be.
 PAIRED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
 
+#: The directive written above a boolean the schema marks as a two-valued fact,
+#: carrying over the declaring field's own directive.
+TWO_VALUED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
 
 PRESENT = "present"
 """The deserializer of a field whose null is sent: whatever was sent, as sent."""
@@ -154,6 +158,10 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
         # independent fields here; the client deserializes what the server
         # sent, and the server's reading is what refuses a mismatched pair.
         lines.append(f"{indent}{PAIRED_DIRECTIVE}")
+    if entry.two_valued_fact:
+        # A yes-or-no fact both of whose answers are real; the declaring
+        # field's own suppression says why, and this one carries it over.
+        lines.append(f"{indent}{TWO_VALUED_DIRECTIVE}")
     if not entry.required and entry.null_is_sent:
         # Absent, null and a value are three answers here, so the outer option
         # is whether it was sent and the inner whether it was null.

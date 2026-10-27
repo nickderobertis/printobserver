@@ -78,6 +78,9 @@ class Field:
     # The field this one is held in step with by the declaring type's own
     # reading, which a generated struct of two independent fields cannot be.
     paired_with: str = ""
+    # A boolean both of whose values are real states of what it describes,
+    # which the declaring type's own field says why it is not an enum.
+    two_valued_fact: bool = False
 
 
 @dataclass(frozen=True, slots=True)

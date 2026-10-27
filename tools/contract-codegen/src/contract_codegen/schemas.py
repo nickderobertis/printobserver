@@ -54,6 +54,10 @@ SERVER_DIR = "schemas/printobserver-server"
 #: with by the declaring type's own reading.
 PAIRED_WITH_MARKER = "x-paired-with"
 
+#: The member a boolean property's schema carries when both of its values are
+#: real states of what it describes, rather than a tag over other fields.
+TWO_VALUED_FACT_MARKER = "x-two-valued-fact"
+
 #: The member a payload's schema carries naming the event kind it is under.
 EVENT_KIND_MARKER = "x-event-kind"
 NULL_IS_SENT_MARKER = "x-null-is-sent"
@@ -232,6 +236,8 @@ def _fields(schema: dict[str, Any], known: set[str], skip: str = "") -> tuple[Fi
             paired_with=str(property_schema.get(PAIRED_WITH_MARKER) or "")
             if isinstance(property_schema, dict)
             else "",
+            two_valued_fact=isinstance(property_schema, dict)
+            and property_schema.get(TWO_VALUED_FACT_MARKER) is True,
         )
         for name, property_schema in sorted(properties.items())
         if name != skip and (isinstance(property_schema, dict) or property_schema is True)

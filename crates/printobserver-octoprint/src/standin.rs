@@ -112,8 +112,8 @@ struct Script {
     connection: String,
     /// The job.
     job: JobScript,
-    /// Tool 0's target.
-    tool_target: f64,
+    /// Each tool's target, tool 0 first: as many tools as the printer reports.
+    tool_targets: Vec<f64>,
     /// The bed's target.
     bed_target: f64,
     /// Where the head is.
@@ -122,6 +122,8 @@ struct Script {
     answers_position: bool,
     /// Whether the command endpoint refuses every line.
     refuses_commands: bool,
+    /// Whether the bed endpoint refuses every target.
+    refuses_bed_targets: bool,
     /// How the push socket's upgrade is answered.
     upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
@@ -188,11 +190,12 @@ impl ScriptedOctoPrint {
         let script = Arc::new(Mutex::new(Script {
             connection: "Operational".to_owned(),
             job: JobScript::idle(),
-            tool_target: 0.0,
+            tool_targets: vec![0.0],
             bed_target: 0.0,
             position: [0.0; 3],
             answers_position: true,
             refuses_commands: false,
+            refuses_bed_targets: false,
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
@@ -288,11 +291,23 @@ impl ScriptedOctoPrint {
             .count()
     }
 
-    /// Report these heater targets from now on.
+    /// Report these heater targets from now on: `tool_c` for every tool.
     pub fn targets(&self, tool_c: f64, bed_c: f64) {
         let mut held = self.held();
-        held.tool_target = tool_c;
+        held.tool_targets.fill(tool_c);
         held.bed_target = bed_c;
+    }
+
+    /// Report this many tools from now on, each targeting `tool_c`: none is a
+    /// printer whose read names no tool at all.
+    pub fn has_tools(&self, count: usize, tool_c: f64) {
+        self.held().tool_targets = vec![tool_c; count];
+    }
+
+    /// Refuse every bed target from now on, as a printer whose bed heater is
+    /// faulted does, or take them again.
+    pub fn refuses_bed_targets(&self, refuses: bool) {
+        self.held().refuses_bed_targets = refuses;
     }
 
     /// Put the head here.
@@ -432,11 +447,33 @@ impl ScriptedOctoPrint {
         self.held().position
     }
 
-    /// The tool's and the bed's targets now.
+    /// Tool 0's and the bed's targets now: tool 0's is zero when it reports
+    /// no tool.
     #[must_use]
     pub fn reported_targets(&self) -> (f64, f64) {
         let held = self.held();
-        (held.tool_target, held.bed_target)
+        (
+            held.tool_targets.first().copied().unwrap_or_default(),
+            held.bed_target,
+        )
+    }
+
+    /// How many tool-target requests it has received, whichever tools each
+    /// named: a request for a tool it does not report changes nothing a read
+    /// shows, and is still a request.
+    #[must_use]
+    pub fn tool_target_requests(&self) -> usize {
+        self.held()
+            .requests
+            .iter()
+            .filter(|request| request.as_str() == "POST /api/printer/tool")
+            .count()
+    }
+
+    /// Every tool's target now, tool 0 first.
+    #[must_use]
+    pub fn tool_targets(&self) -> Vec<f64> {
+        self.held().tool_targets.clone()
     }
 
     /// Every request received, as `METHOD path`.
@@ -645,10 +682,18 @@ fn answer(
         ),
         ("POST", "/api/printer/printhead") => moved(&mut held, body),
         ("POST", "/api/printer/tool") => {
-            if let Some(target) = body["targets"]["tool0"].as_f64() {
-                held.tool_target = target;
+            // A tool the printer does not report is taken and changes
+            // nothing, as `OctoPrint` takes it.
+            let targets = held.tool_targets.len();
+            for (tool, slot) in (0..targets).zip(held.tool_targets.iter_mut()) {
+                if let Some(target) = body["targets"][format!("tool{tool}")].as_f64() {
+                    *slot = target;
+                }
             }
             (204, String::new())
+        }
+        ("POST", "/api/printer/bed") if held.refuses_bed_targets => {
+            (409, r#"{"error":"Bed heater is faulted"}"#.to_owned())
         }
         ("POST", "/api/printer/bed") => {
             if let Some(target) = body["target"].as_f64() {
@@ -769,13 +814,26 @@ fn printer_body(held: &Script) -> (u16, String) {
                     "closedOrError": false,
                 },
             },
-            "temperature": {
-                "tool0": { "actual": 25.0, "target": held.tool_target, "offset": 0 },
-                "bed": { "actual": 25.0, "target": held.bed_target, "offset": 0 },
-            },
+            "temperature": temperature_body(held),
         })
         .to_string(),
     )
+}
+
+/// What `GET /api/printer` answers for the heaters: each tool, then the bed.
+fn temperature_body(held: &Script) -> Value {
+    let mut heaters = serde_json::Map::new();
+    for (tool, target) in held.tool_targets.iter().enumerate() {
+        heaters.insert(
+            format!("tool{tool}"),
+            json!({ "actual": 25.0, "target": target, "offset": 0 }),
+        );
+    }
+    heaters.insert(
+        "bed".to_owned(),
+        json!({ "actual": 25.0, "target": held.bed_target, "offset": 0 }),
+    );
+    Value::Object(heaters)
 }
 
 /// What `GET /api/job` answers for one job.

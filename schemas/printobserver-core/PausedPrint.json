@@ -18,7 +18,8 @@
     },
     "resumable": {
       "description": "Whether it may be resumed.",
-      "type": "boolean"
+      "type": "boolean",
+      "x-two-valued-fact": true
     }
   },
   "required": [

@@ -13510,7 +13510,8 @@ Declared by `printobserver-core`.
     },
     "resumable": {
       "description": "Whether it may be resumed.",
-      "type": "boolean"
+      "type": "boolean",
+      "x-two-valued-fact": true
     }
   },
   "required": [
@@ -25164,7 +25165,8 @@ Declared by `printobserver-core`.
         },
         "resumable": {
           "description": "Whether it may be resumed.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         }
       },
       "required": [
@@ -25612,7 +25614,8 @@ Declared by `printobserver-core`.
       "properties": {
         "sweeps_bed": {
           "description": "Whether homing Z brings a gantry down over the whole bed.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         },
         "x": {
           "description": "Where in X Z is homed, in millimetres.",
@@ -36449,7 +36452,8 @@ Declared by `printobserver-core`.
   "properties": {
     "sweeps_bed": {
       "description": "Whether homing Z brings a gantry down over the whole bed.",
-      "type": "boolean"
+      "type": "boolean",
+      "x-two-valued-fact": true
     },
     "x": {
       "description": "Where in X Z is homed, in millimetres.",

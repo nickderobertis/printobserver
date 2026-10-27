@@ -535,6 +535,14 @@ async fn a_value_outside_its_bound_is_refused_and_reaches_nothing() {
             "target_c",
             (0.0, 260.0),
         ),
+        // A tool the envelope bounds no target for is no tool a heat may
+        // name; the range answered is the tools it does bound.
+        (
+            "recover_heat",
+            json!({ "tool": 3, "target_c": 200.0, "clearance_asserted": true }),
+            "tool",
+            (0.0, 0.0),
+        ),
     ] {
         let before = world.asked_of_the_machine();
         let (status, answer) = world.ask(action, fields.clone()).await;
@@ -914,6 +922,65 @@ async fn the_recovery_read_answers_each_allowance_and_a_cool_turns_every_heater_
             .iter()
             .all(|event| event["print_id"].is_null()),
         "a recovery event named a print"
+    );
+}
+
+/// A cool turns off every tool the printer reports and the bed; a printer that
+/// reports no tool still has tool 0's heater turned off, because a read that
+/// names none is no evidence there is none.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cool_turns_off_every_tool_the_printer_reports_and_tool_zero_when_it_reports_none() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.octoprint.has_tools(2, 215.0);
+    world.octoprint.targets(215.0, 60.0);
+    world.reads("operational").await;
+
+    let (status, answer) = world.ask("recover_cool", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{answer:#}");
+    assert_eq!(world.octoprint.tool_targets(), vec![0.0, 0.0]);
+    assert_eq!(world.octoprint.reported_targets(), (0.0, 0.0));
+
+    world.octoprint.has_tools(0, 0.0);
+    world.octoprint.targets(0.0, 60.0);
+    let before = world.octoprint.tool_target_requests();
+    let (status, answer) = world.ask("recover_cool", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{answer:#}");
+    assert_eq!(
+        world.octoprint.tool_target_requests(),
+        before + 1,
+        "tool 0 was not cooled"
+    );
+    assert_eq!(world.octoprint.reported_targets(), (0.0, 0.0));
+}
+
+/// A cool the printer refuses partway — every tool taken, the bed refused —
+/// is answered as the printer's refusal and recorded as executed and failed,
+/// not as a refusal of the policy's: the tools it did turn off stay off.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cool_the_printer_refuses_partway_is_recorded_as_failed_at_the_printer() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.octoprint.has_tools(2, 215.0);
+    world.octoprint.targets(215.0, 60.0);
+    world.octoprint.refuses_bed_targets(true);
+    world.reads("operational").await;
+
+    let (status, answer) = world.ask("recover_cool", json!({})).await;
+
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{answer:#}");
+    assert!(
+        answer["decision"]["executed"]["failed"]["reason"]
+            .as_str()
+            .is_some_and(|said| said.contains("Bed heater is faulted")),
+        "{answer:#}"
+    );
+    assert_eq!(world.octoprint.tool_targets(), vec![0.0, 0.0]);
+    assert_eq!(world.octoprint.reported_targets(), (0.0, 60.0));
+    assert_eq!(
+        world.recorded().await,
+        vec![
+            ("recovery_requested".to_owned(), "recover_cool".to_owned()),
+            ("recovery_executed".to_owned(), "recover_cool".to_owned()),
+        ]
     );
 }
 

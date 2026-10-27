@@ -298,6 +298,7 @@ pub struct RecoveryConfig {
     /// Where in X and Y the machine homes Z.
     pub z_home_xy: [f64; 2],
     /// Whether homing Z brings a gantry down over the whole bed.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub z_home_sweeps_bed: bool,
 }
 
@@ -465,6 +466,9 @@ pub struct PausedPrint {
     /// The print.
     pub print_id: PrintId,
     /// Whether it may be resumed.
+    // Marked as a two-valued fact, so a client generated from it carries this
+    // directive and its reason too.
+    #[schemars(extend("x-two-valued-fact" = true))]
     // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub resumable: bool,
 }
@@ -479,6 +483,9 @@ pub struct ZHome {
     /// Where in Y Z is homed, in millimetres.
     pub y: f64,
     /// Whether homing Z brings a gantry down over the whole bed.
+    // Marked as a two-valued fact, so a client generated from it carries this
+    // directive and its reason too.
+    #[schemars(extend("x-two-valued-fact" = true))]
     // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub sweeps_bed: bool,
 }
@@ -501,6 +508,7 @@ struct AllowanceWire {
     /// The action.
     action: RecoveryActionKind,
     /// Whether it is allowed now.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     allowed: bool,
     /// Its refusal, present exactly when it is not allowed.
     #[serde(default, skip_serializing_if = "Option::is_none")]

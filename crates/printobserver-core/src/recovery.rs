@@ -709,9 +709,7 @@ impl Supervisor {
                 PrinterState::Operational | PrinterState::Paused
             )
         });
-        let z = if !trusted {
-            ZFacts::Untrusted
-        } else {
+        let z = if trusted {
             ZFacts::Trusted {
                 position: if position && reachable {
                     Some(
@@ -732,6 +730,8 @@ impl Supervisor {
                     None
                 },
             }
+        } else {
+            ZFacts::Untrusted
         };
         Facts { snapshot, z }
     }

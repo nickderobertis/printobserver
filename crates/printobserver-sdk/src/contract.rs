@@ -1165,6 +1165,7 @@ pub struct PausedPrint {
     /// The print.
     pub print_id: PrintId,
     /// Whether it may be resumed.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     pub resumable: bool,
 }
 
@@ -3063,6 +3064,7 @@ pub enum UnverifiedReason {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ZHome {
     /// Whether homing Z brings a gantry down over the whole bed.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     pub sweeps_bed: bool,
     /// Where in X Z is homed, in millimetres.
     pub x: f64,

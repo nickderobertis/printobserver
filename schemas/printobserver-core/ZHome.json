@@ -5,7 +5,8 @@
   "properties": {
     "sweeps_bed": {
       "description": "Whether homing Z brings a gantry down over the whole bed.",
-      "type": "boolean"
+      "type": "boolean",
+      "x-two-valued-fact": true
     },
     "x": {
       "description": "Where in X Z is homed, in millimetres.",

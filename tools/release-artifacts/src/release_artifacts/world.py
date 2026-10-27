@@ -365,7 +365,9 @@ def _configuration(
             },
         },
     }
-    # The virtual printer's own facts, so every recovery can be asked of it.
+    # The virtual printer's own facts, so every recovery can be asked of it:
+    # each client's method walk asks every one of them of this world.
+    # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
     document["recovery"] = {
         "away_from_bed": "z_plus",
         "max_z_mm": 200.0,
@@ -376,7 +378,9 @@ def _configuration(
         "z_home_sweeps_bed": False,
     }
     if refusing:
-        # A refusing world grants the operator no recovery either.
+        # A refusing world grants the operator no recovery either: each
+        # client's rejection walk asks every recovery of it and is refused.
+        # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
         document["policy"] = {"recovery": {"operator": []}}
     document["api"] = {"credential_verifier": verifier_of(credential)}
     return json.dumps(document, indent=2)

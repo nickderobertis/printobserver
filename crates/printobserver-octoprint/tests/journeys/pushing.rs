@@ -607,3 +607,39 @@ fn a_conflict_the_connection_does_not_explain_stays_a_conflict() {
         );
     }
 }
+
+/// A position read whose push socket ends before any position arrived is the
+/// printer unreachable, said as that, rather than a wait out to its timeout:
+/// the socket that would carry the answer is gone.
+#[test]
+fn a_position_read_whose_socket_ends_is_unreachable_at_once() {
+    let standin = ScriptedOctoPrint::start();
+    let printer = adapter(&standin);
+    standin.answers_position(false);
+
+    let reading = std::thread::spawn(move || block_on(printer.read_position()));
+    let deadline = Instant::now() + PATIENCE;
+    while standin.open_sockets() == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the position read opened no socket"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let dropped = Instant::now();
+    standin.drops_sockets();
+    let read = reading.join().expect("the read ran to its end");
+
+    assert!(
+        matches!(&read, Err(PrinterError::Unreachable { detail })
+            if detail.contains("ended before the position was reported")),
+        "{read:?}"
+    );
+    // Well inside the five seconds a read waits for a position that never
+    // comes, which is the other way it could have ended.
+    assert!(
+        dropped.elapsed() < Duration::from_secs(4),
+        "the read waited {:?} after its socket ended",
+        dropped.elapsed()
+    );
+}
