@@ -2905,3 +2905,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "python/printobserver-sdk/tests/test_client.py"
 site = "client.recover_status()"
 reason = "These tests hold the published synchronous Python client's reading of a recovery read to a host answering agreeing and contradictory allowances, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = "client.status(PRINT)"
+reason = "This test holds the published synchronous Python client to refusing, as unreadable, a document no status answer is, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."

@@ -71,6 +71,7 @@ def test_an_answer_this_client_cannot_read_is_said_to_be_one() -> None:
         with Host(200, answered) as host:
             client = Client(host.address, ACTOR)
             try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
                 client.status(PRINT)
             except UnreadableError as unreadable:
                 equal(unreadable.status, 200, describing=f"{answered!r}")
