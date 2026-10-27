@@ -284,9 +284,6 @@ def _argument(parameter: Parameter, identifiers: frozenset[str] = frozenset()) -
 #: generator writes rather than site by site as operations are added.
 ASYNC_DIRECTIVE = "# llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml."
 
-#: The directive every generated method's `cast` carries.
-#:
-
 
 def _string(text: str) -> str:
     """One string literal, formatted only when it interpolates something.
