@@ -183,7 +183,8 @@ export class GeneratedSurface {
   }
 
   /**
-   * Make one call and answer the document that came back.
+   * Make one call and answer the document that came back, held to the
+   * declared type `answer` names.
    *
    * @throws {Error} Always. `Client` is what makes a request; a surface that
    * answered one would be a second transport.
@@ -193,10 +194,11 @@ export class GeneratedSurface {
     target: string,
     asked: Array<[string, string]>,
     sending: Record<string, unknown> | undefined,
+    answer: string,
   ): Promise<T> {
     throw new Error(
       `a surface makes no request: ${method} ${target} with ${asked.length} asked ` +
-        `for and ${sending === undefined ? "no" : "a"} body`,
+        `for and ${sending === undefined ? "no" : "a"} body, answering ${answer}`,
     );
   }
 }

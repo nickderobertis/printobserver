@@ -286,11 +286,6 @@ ASYNC_DIRECTIVE = "# llmlint: ignore[async_typed_clients_at_boundaries] See supp
 
 #: The directive every generated method's `cast` carries.
 #:
-#: `call` checks no shape against the type an answer is handed on as — for
-#: every operation alike — so the judged rule asking for runtime validation at
-#: that boundary is answered once, in `suppressions.toml`, for every method the
-#: generator writes.
-BOUNDARY_DIRECTIVE = "# llmlint: ignore[boundary_inputs_validated] See suppressions.toml."
 
 
 def _string(text: str) -> str:
@@ -379,10 +374,12 @@ def _method(operation: Operation, identifiers: frozenset[str] = frozenset()) -> 
     else:
         lines.append("        sending = None")
     lines.append(f"        {ASYNC_DIRECTIVE}")
-    lines.append(f'        answered = self.call("{operation.method}", target, asked, sending)')
-    lines.append("        # `call` checks no shape; the server serializes this answer from the")
-    lines.append("        # type `operations.json` declares for it, so this cast names that type.")
-    lines.append(f"        {BOUNDARY_DIRECTIVE}")
+    lines.append(
+        f'        answered = self.call("{operation.method}", target, asked, sending, '
+        f'"{operation.answer}")'
+    )
+    lines.append("        # `call` has held the answer to the type `operations.json` declares")
+    lines.append("        # for it, so this cast names that type.")
     lines.append(f"        return cast({operation.answer}, answered)")
     return lines
 

@@ -150,8 +150,9 @@ class GeneratedSurface:
         target: str,
         asked: list[tuple[str, str]],
         sending: dict[str, object] | None,
+        answer: str,
     ) -> object:
-        """Make one call and answer the document that came back.
+        """Make one call and answer the document that came back, held to `answer`.
 
         Raises:
             NotImplementedError: Always. `Client` is what makes a request; a

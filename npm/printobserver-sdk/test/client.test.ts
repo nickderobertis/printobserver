@@ -276,3 +276,43 @@ test("a recovery refusal missing its parts is unreadable", async () => {
     await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
   }
 });
+
+/** A recovery read whose one allowance is `allowance`. */
+function statusWith(allowance: Record<string, unknown>): Record<string, unknown> {
+  return {
+    actions: [allowance],
+    last_print: null,
+    paused_print: null,
+    position: null,
+    state: "operational",
+    temperatures: {
+      bed: { actual_c: 25, target_c: 0 },
+      tools: [{ actual_c: 25, target_c: 0, tool: 0 }],
+    },
+    z_home: null,
+    z_trust: { untrusted: "this server started and has homed nothing" },
+  };
+}
+
+test("a recovery read whose allowance contradicts itself is unreadable", async () => {
+  for (const agreeing of [
+    { action: "recover_lift", allowed: true },
+    { action: "recover_heat", allowed: false, refusal: "z_untrusted" },
+  ]) {
+    await using host = Host.answering(200, statusWith(agreeing));
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    const read: unknown = await client.recoverStatus();
+    expect(read).toEqual(statusWith(agreeing));
+  }
+  for (const contradiction of [
+    { action: "recover_lift", allowed: true, refusal: "z_untrusted" },
+    { action: "recover_heat", allowed: false },
+    { action: "recover_lift", allowed: true, refusal: null },
+  ]) {
+    await using host = Host.answering(200, statusWith(contradiction));
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.recoverStatus()).rejects.toBeInstanceOf(Unreadable);
+  }
+});

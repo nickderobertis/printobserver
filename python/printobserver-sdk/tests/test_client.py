@@ -62,18 +62,20 @@ def test_nothing_answering_at_the_configured_address_is_its_own_failure() -> Non
 
 
 def test_an_answer_this_client_cannot_read_is_said_to_be_one() -> None:
-    """A body that is not a document is refused rather than handed on."""
-    with Host(200, None) as host:
-        client = Client(host.address, ACTOR)
-        # A host answering the four bytes `null` sends a document that is not
-        # an object, which this client reads and the type it was asked for is
-        # not. What is asserted is the read: the parse is what fails when the
-        # body is not JSON at all.
-        equal(client.status(PRINT), None)
+    """A document that is not of the type the operation declares is refused rather than handed on.
 
-    with Host(200, "{") as host:
-        client = Client(host.address, ACTOR)
-        equal(client.status(PRINT), "{")
+    `null`, and a bare string, are documents a parse reads and no status answer
+    is; each is refused under the status it arrived with.
+    """
+    for answered in (None, "{"):
+        with Host(200, answered) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                client.status(PRINT)
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 200, describing=f"{answered!r}")
+            else:
+                truth(False, describing=f"{answered!r} to be refused as unreadable")
 
 
 def test_a_request_the_supervisor_will_not_act_on_carries_its_own_words() -> None:
@@ -209,7 +211,7 @@ def test_a_surface_on_its_own_makes_no_request() -> None:
     surface = GeneratedSurface()
 
     try:
-        surface.call("GET", "/v1/anything", [], None)
+        surface.call("GET", "/v1/anything", [], None, "PrintsAnswer")
     except NotImplementedError:
         return
     truth(False, describing="a surface to make no request")
@@ -428,3 +430,46 @@ def test_a_recovery_refusal_missing_its_parts_is_unreadable() -> None:
                 equal(unreadable.status, 409, describing=f"{answer!r}")
             else:
                 truth(False, describing=f"{answer!r} to be unreadable")
+
+
+def _status_with(allowance: object) -> dict[str, object]:
+    """A recovery read whose one allowance is `allowance`."""
+    return {
+        "actions": [allowance],
+        "last_print": None,
+        "paused_print": None,
+        "position": None,
+        "state": "operational",
+        "temperatures": {
+            "bed": {"actual_c": 25.0, "target_c": 0.0},
+            "tools": [{"actual_c": 25.0, "target_c": 0.0, "tool": 0}],
+        },
+        "z_home": None,
+        "z_trust": {"untrusted": "this server started and has homed nothing"},
+    }
+
+
+def test_a_recovery_read_whose_allowance_contradicts_itself_is_unreadable() -> None:
+    """An allowance is handed on only when `refusal` is sent exactly when `allowed` is false."""
+    for agreeing in (
+        {"action": "recover_lift", "allowed": True},
+        {"action": "recover_heat", "allowed": False, "refusal": "z_untrusted"},
+    ):
+        with Host(200, _status_with(agreeing)) as host:
+            client = Client(host.address, ACTOR)
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            equal(client.recover_status(), _status_with(agreeing), describing=f"{agreeing!r}")
+    for contradiction in (
+        {"action": "recover_lift", "allowed": True, "refusal": "z_untrusted"},
+        {"action": "recover_heat", "allowed": False},
+        {"action": "recover_lift", "allowed": True, "refusal": None},
+    ):
+        with Host(200, _status_with(contradiction)) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_status()
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 200, describing=f"{contradiction!r}")
+            else:
+                truth(False, describing=f"{contradiction!r} to be unreadable")

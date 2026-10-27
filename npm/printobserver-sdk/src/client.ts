@@ -81,6 +81,7 @@ export class Client extends GeneratedClient {
     target: string,
     asked: Array<[string, string]>,
     sending: Record<string, unknown> | undefined,
+    answer: string,
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: MEDIA_TYPE };
     if (sending !== undefined) {
@@ -103,7 +104,12 @@ export class Client extends GeneratedClient {
     const said = await answered.text();
 
     if (answered.status === SUCCESS_STATUS) {
-      return document<T>(answered.status, said);
+      const parsed: unknown = document<unknown>(answered.status, said);
+      if (!conforms(parsed, answer)) {
+        throw new Unreadable(answered.status, `the supervisor answered no ${answer}`);
+      }
+      // Held above to the type the contracts declare for this answer.
+      return parsed as T;
     }
     if (answered.status === REJECTED_STATUS) {
       throw rejection(answered.status, said);

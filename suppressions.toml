@@ -1274,30 +1274,6 @@ site = "NAME_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the three emitters write above the method of each operation `NAMED_FOR_WHAT_IS_ASKED` names, so that the directives standing in `contract.rs`, `contract.ts` and `contract.py` are regenerated rather than lost on the next `just generate-clients`. The reasons are those files' entries for this rule."
 
 [[suppression]]
-rule = "boundary_inputs_validated"
-file = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
-site = "return cast("
-reason = "Every generated method of the published Python client hands on the document `Client.call` parsed as its answer's declared `TypedDict`, which is the pass-through property the client is generated for: what a method answers is the document the server sent. `_document` refuses a body that is not JSON as `UnreadableError`, and checks no shape beyond that, for all seventeen operations alike. The server serializes the answer from the very type `operations.json` declares, and the generated operation tests prove each method answers exactly what was sent. Validating shapes at runtime is a transport-wide change to a published client — a validator for every generated type — rather than something one operation can take on, and one method validating while sixteen do not would be a calling convention of its own."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "npm/printobserver-sdk/src/contract.ts"
-site = "return await this.call<"
-reason = "The Node client's counterpart of `python/printobserver-sdk/src/printobserver_sdk/contract.py`'s entry for this rule: every generated method hands on what `call` parsed as its answer's declared interface, `document` refuses a body that is not JSON as `Unreadable` and checks no shape beyond that, for every operation alike. The ground is that entry's, unchanged."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "BOUNDARY_DIRECTIVE = "
-reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's `cast`, so that the directives standing in `python/printobserver-sdk/src/printobserver_sdk/contract.py` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
-site = "BOUNDARY_DIRECTIVE = "
-reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
-
-[[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e/tests/test_install_script_journey.py"
 site = "_artifact("
@@ -2911,3 +2887,9 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
 site = '"from repo_checks.expect import equal, truth",'
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python live walk's assertion import, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = "client.recover_status()"
+reason = "These tests hold the published synchronous Python client's reading of a recovery read to a host answering agreeing and contradictory allowances, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."

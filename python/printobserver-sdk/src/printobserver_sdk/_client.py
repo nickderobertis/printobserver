@@ -87,15 +87,18 @@ class Client(GeneratedClient):
         target: str,
         asked: list[tuple[str, str]],
         sending: dict[str, object] | None,
+        answer: str,
     ) -> object:
         """Make one call and answer the document that came back.
 
         Returns:
-            The document the supervisor answered, parsed.
+            The document the supervisor answered, parsed, and held to `answer`:
+            the type the contracts declare for it.
 
         Raises:
             UnreachableError: If nothing answered at the configured address.
-            UnreadableError: If the answer is not a document this client can read.
+            UnreadableError: If the answer is not a document this client can read,
+                or not one of the type the contracts declare for it.
             RefusedError: If the supervisor will not do what it was asked.
             PrinterRefusedError: If the policy accepted the action and the machine
                 refused it.
@@ -121,7 +124,10 @@ class Client(GeneratedClient):
             connection.close()
 
         if status == SUCCESS_STATUS:
-            return _document(status, said)
+            document = _document(status, said)
+            if not conforms(document, answer):
+                raise UnreadableError(status, f"the supervisor answered no {answer}: {document!r}")
+            return document
         if status == REJECTED_STATUS:
             raise _rejection(status, said)
         if status == MACHINE_REFUSED_STATUS:

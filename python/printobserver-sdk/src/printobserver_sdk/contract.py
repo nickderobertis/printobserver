@@ -10066,10 +10066,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "PrintsAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(PrintsAnswer, answered)
 
     def status(self, print_id: PrintId) -> StatusAnswer:
@@ -10086,10 +10085,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "StatusAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(StatusAnswer, answered)
 
     def context(self, print_id: PrintId) -> ContextAnswer:
@@ -10106,10 +10104,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "ContextAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ContextAnswer, answered)
 
     def image(self, image_id: ImageId) -> ImageAnswer:
@@ -10126,10 +10123,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "ImageAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ImageAnswer, answered)
 
     def history(self, print_id: PrintId, limit: int | None = None) -> HistoryAnswer:
@@ -10148,10 +10144,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("limit", str(limit)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "HistoryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(HistoryAnswer, answered)
 
     def events(
@@ -10190,10 +10185,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("limit", str(limit)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "EventsAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(EventsAnswer, answered)
 
     def manifest_get(self, print_id: PrintId) -> ManifestAnswer:
@@ -10210,10 +10204,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "ManifestAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ManifestAnswer, answered)
 
     def look(self, print_id: PrintId, wait_s: int | None = None) -> Look:
@@ -10232,10 +10225,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("wait_s", str(wait_s)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "Look")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(Look, answered)
 
     def manifest_set(self, print_id: PrintId, reason: str, manifest: JobManifest) -> ManifestAnswer:
@@ -10259,10 +10251,9 @@ class GeneratedClient(GeneratedSurface):
         sending["reason"] = reason
         sending["manifest"] = manifest
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("PUT", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("PUT", target, asked, sending, "ManifestAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ManifestAnswer, answered)
 
     def spools(self, include_retired: bool | None = None) -> SpoolsAnswer:
@@ -10281,10 +10272,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("include_retired", "true" if include_retired else "false"))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "SpoolsAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolsAnswer, answered)
 
     def spool(self, spool_id: SpoolId) -> SpoolAnswer:
@@ -10301,10 +10291,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "SpoolAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolAnswer, answered)
 
     def printer_history(
@@ -10342,10 +10331,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("limit", str(limit)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "TimelineAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(TimelineAnswer, answered)
 
     def preflight(self, file_name: str) -> PreflightAnswer:
@@ -10364,10 +10352,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("file_name", str(file_name)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "PreflightAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(PreflightAnswer, answered)
 
     def pause(self, print_id: PrintId, reason: str) -> ActionAnswer:
@@ -10391,10 +10378,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def resume(self, print_id: PrintId, reason: str) -> ActionAnswer:
@@ -10418,10 +10404,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def cancel(self, print_id: PrintId, reason: str) -> ActionAnswer:
@@ -10445,10 +10430,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def start_print(
@@ -10483,10 +10467,9 @@ class GeneratedClient(GeneratedSurface):
             sending["override_filament_check"] = override_filament_check
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_feedrate_factor(
@@ -10515,10 +10498,9 @@ class GeneratedClient(GeneratedSurface):
         sending["factor"] = factor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_flowrate_factor(
@@ -10547,10 +10529,9 @@ class GeneratedClient(GeneratedSurface):
         sending["factor"] = factor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_tool_target_c(
@@ -10585,10 +10566,9 @@ class GeneratedClient(GeneratedSurface):
         sending["target_c"] = target_c
         sending["tool"] = tool
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_bed_target_c(
@@ -10617,10 +10597,9 @@ class GeneratedClient(GeneratedSurface):
         sending["reason"] = reason
         sending["target_c"] = target_c
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_fan_percent(
@@ -10649,10 +10628,9 @@ class GeneratedClient(GeneratedSurface):
         sending["percent"] = percent
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def acknowledge_failure(
@@ -10684,10 +10662,9 @@ class GeneratedClient(GeneratedSurface):
         sending["event_id"] = event_id
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def close_print(self, print_id: PrintId, outcome: PrintOutcome, reason: str) -> ActionAnswer:
@@ -10712,10 +10689,9 @@ class GeneratedClient(GeneratedSurface):
         sending["outcome"] = outcome
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def register_spool(
@@ -10763,10 +10739,9 @@ class GeneratedClient(GeneratedSurface):
         if tare_g is not None:
             sending["tare_g"] = tare_g
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def load_spool(self, spool_id: SpoolId, reason: str, tool: int) -> SpoolCommandAnswer:
@@ -10791,10 +10766,9 @@ class GeneratedClient(GeneratedSurface):
         sending["reason"] = reason
         sending["tool"] = tool
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def unload_spool(self, spool_id: SpoolId, reason: str) -> SpoolCommandAnswer:
@@ -10818,10 +10792,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def adjust_spool(
@@ -10855,10 +10828,9 @@ class GeneratedClient(GeneratedSurface):
         if remaining_g is not None:
             sending["remaining_g"] = remaining_g
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def retire_spool(self, spool_id: SpoolId, reason: str) -> SpoolCommandAnswer:
@@ -10882,10 +10854,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def recover_status(self) -> RecoveryStatus:
@@ -10902,10 +10873,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "RecoveryStatus")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryStatus, answered)
 
     def recover_lift(self, mm: float, reason: str) -> RecoveryAnswer:
@@ -10930,10 +10900,9 @@ class GeneratedClient(GeneratedSurface):
         sending["mm"] = mm
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
 
     def recover_cool(self, reason: str) -> RecoveryAnswer:
@@ -10957,10 +10926,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
 
     def recover_fan(self, percent: float, reason: str) -> RecoveryAnswer:
@@ -10985,10 +10953,9 @@ class GeneratedClient(GeneratedSurface):
         sending["percent"] = percent
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
 
     def recover_heat(
@@ -11018,10 +10985,9 @@ class GeneratedClient(GeneratedSurface):
         sending["target_c"] = target_c
         sending["tool"] = tool
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
 
     def recover_park(self, reason: str, clearance_asserted: bool | None = None) -> RecoveryAnswer:
@@ -11047,10 +11013,9 @@ class GeneratedClient(GeneratedSurface):
             sending["clearance_asserted"] = clearance_asserted
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
 
     def recover_home_xy(
@@ -11078,10 +11043,9 @@ class GeneratedClient(GeneratedSurface):
             sending["clearance_asserted"] = clearance_asserted
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
 
     def recover_home_z(self, reason: str, bed_clear_asserted: bool | None = None) -> RecoveryAnswer:
@@ -11107,8 +11071,7 @@ class GeneratedClient(GeneratedSurface):
             sending["bed_clear_asserted"] = bed_clear_asserted
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
