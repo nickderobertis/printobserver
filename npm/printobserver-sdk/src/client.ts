@@ -295,10 +295,21 @@ function rejection(status: number, said: string): Error {
   // A decision is one arm: one carrying a refusal beside anything else is no
   // decision.
   const refused = isOneArm(decision) ? decision.rejected : undefined;
-  const known =
-    !isObject(answer.record) && isObject(answer.action) && typeof answer.detail === "string"
-      ? RECOVERY_REJECTION_FIELDS
-      : REJECTION_REASON_FIELDS;
+  // A recovery's answer is the one naming an action beside its decision, and
+  // carries the action's own name, the supervisor's words and its events.
+  const recovers = !isObject(answer.record) && "action" in answer;
+  if (
+    recovers &&
+    !(
+      isObject(answer.action) &&
+      typeof answer.action.action === "string" &&
+      typeof answer.detail === "string" &&
+      Array.isArray(answer.events)
+    )
+  ) {
+    return new Unreadable(status, "the supervisor answered a recovery's refusal missing its parts");
+  }
+  const known = recovers ? RECOVERY_REJECTION_FIELDS : REJECTION_REASON_FIELDS;
   if (!isRefusal(refused, known)) {
     return new Unreadable(
       status,

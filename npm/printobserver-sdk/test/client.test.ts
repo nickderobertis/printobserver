@@ -97,7 +97,7 @@ test("what is asked for after the question mark is escaped where it must be", as
 });
 
 /** A recovery's answer, carrying whatever decision a test gives it. */
-function recovery(decision: unknown): unknown {
+function recovery(decision: unknown): Record<string, unknown> {
   return {
     action: { action: "recover_fan", percent: 50 },
     decision,
@@ -215,6 +215,17 @@ test("a refusal whose bounds overflow every float is unreadable", async () => {
       409,
       `{"action": {"action": "recover_fan", "percent": 50}, "decision": {"rejected": {"out_of_bounds": ${bounds}}}, "detail": "refused", "events": []}`,
     );
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
+  }
+});
+
+test("a recovery refusal missing its parts is unreadable", async () => {
+  const whole = recovery({ rejected: "z_untrusted" });
+  const { events: _events, ...eventless } = whole;
+  for (const answer of [{ ...whole, action: {} }, eventless]) {
+    await using host = Host.answering(409, answer);
     const client = new Client({ server: host.address, actor: ACTOR });
 
     await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);

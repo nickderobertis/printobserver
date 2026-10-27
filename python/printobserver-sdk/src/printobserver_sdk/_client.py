@@ -186,13 +186,16 @@ def _rejection(status: int, said: str) -> Exception:
         case {"record": {"decision": {"rejected": refused} as decision}} if len(decision) == 1:
             answer = cast(ActionAnswer, document)
         case {
-            "action": dict(),
+            "action": {"action": str()},
             "detail": str(),
+            "events": list(),
             "decision": {"rejected": refused} as decision,
         } if len(decision) == 1:
             answer = cast(RecoveryAnswer, document)
             known = RECOVERY_REJECTION_FIELDS
-        case {"decision": {"rejected": refused} as decision} if len(decision) == 1:
+        case {"decision": {"rejected": refused} as decision} if (
+            len(decision) == 1 and "action" not in document
+        ):
             answer = cast(SpoolCommandAnswer, document)
         case _:
             return UnreadableError(

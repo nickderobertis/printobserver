@@ -345,3 +345,24 @@ def test_a_policy_refusal_whose_decision_has_two_arms_is_unreadable() -> None:
             equal(unreadable.status, 409)
         else:
             truth(False, describing="a two-armed decision to be unreadable")
+
+
+def test_a_recovery_refusal_missing_its_parts_is_unreadable() -> None:
+    """A recovery's refusal with no action name, or no events, is not handed on as one."""
+    for answer in (
+        {**_recovery({"rejected": "z_untrusted"}), "action": {}},
+        {
+            key: value
+            for key, value in _recovery({"rejected": "z_untrusted"}).items()
+            if key != "events"
+        },
+    ):
+        with Host(409, answer) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{answer!r}")
+            else:
+                truth(False, describing=f"{answer!r} to be unreadable")
