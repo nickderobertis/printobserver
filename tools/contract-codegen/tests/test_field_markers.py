@@ -26,8 +26,9 @@ from contract_codegen.schemas import (
 )
 from repo_checks.expect import contains, equal
 
-#: The core schema carrying every declaration these read under its `$defs`.
-STATUS = Path(SCHEMAS_DIR) / "printobserver-core" / "RecoveryStatus.json"
+#: Where core's schemas are checked in, one file per declaration: the file the
+#: reader resolves each declaration from.
+CORE = Path(SCHEMAS_DIR) / "printobserver-core"
 
 #: Each marked field: its declaration, its name, and the marker it carries.
 MARKED = (
@@ -78,17 +79,11 @@ def test_without_the_markers_no_field_is_written_under_the_directive(
 ) -> None:
     """Taking the markers away gives back plain fields, with nothing written above them."""
     copy = scratch()
-    # Each declaration is checked in on its own and again under the status's
-    # `$defs`, and the reader may take either.
-    status = copy / STATUS
-    schema = json.loads(status.read_text(encoding="utf-8"))
     for declaration, name, marker in MARKED:
-        del schema["$defs"][declaration]["properties"][name][marker]
-        own = status.with_name(f"{declaration}.json")
+        own = copy / CORE / f"{declaration}.json"
         alone = json.loads(own.read_text(encoding="utf-8"))
         del alone["properties"][name][marker]
         own.write_text(json.dumps(alone, indent=2) + "\n", encoding="utf-8")
-    status.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
 
     contract = load(copy)
     emitted = emit_rust.emit(contract)
@@ -101,18 +96,11 @@ def test_without_the_markers_no_field_is_written_under_the_directive(
 
 
 def _marked(copy: Path, declaration: str, name: str, marker: str, value: object) -> None:
-    """Set one property's marker to `value`, wherever the declaration is checked in."""
-    status = copy / STATUS
-    for path, at in (
-        (status, ("$defs", declaration)),
-        (status.with_name(f"{declaration}.json"), ()),
-    ):
-        schema = json.loads(path.read_text(encoding="utf-8"))
-        held = schema
-        for key in at:
-            held = held[key]
-        held["properties"][name][marker] = value
-        path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+    """Set one property's marker to `value`, in the file the declaration is read from."""
+    path = copy / CORE / f"{declaration}.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    schema["properties"][name][marker] = value
+    path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
 
 
 def test_a_marker_no_reading_could_hold_is_refused_naming_the_field(
