@@ -130,8 +130,8 @@ def test_an_install_over_an_unrepaired_release_repairs_it_without_touching_its_l
     said = capsys.readouterr()
     equal(code, 0, describing=f"installing over an unrepaired release: {said.err}")
     contains(said.err, "repaired the virtual printer", describing="what the install said")
-    for _, _, repair in octoprint_env.VIRTUAL_PRINTER_REPAIRS:
-        contains(module.read_bytes(), repair, describing="the module")
+    for repaired in octoprint_env.VIRTUAL_PRINTER_REPAIRS:
+        contains(module.read_bytes(), repaired.repair, describing=f"the {repaired.name} repair")
     equal(cached.read_bytes(), published, describing="the cache's copy of the module")
     equal(module.stat().st_nlink, 1, describing="the links to the repaired module")
 

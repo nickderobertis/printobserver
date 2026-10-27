@@ -313,9 +313,17 @@ def json_kind(shape: TypeExpr, contract: Contract) -> tuple[FieldKind, bool]:
     return "any", False
 
 
-def refusal_fields(
-    contract: Contract, name: str
-) -> tuple[tuple[str, tuple[RefusalField, ...] | None], ...]:
+@dataclass(frozen=True, slots=True)
+class RefusalArm:
+    """One arm of a refusal vocabulary, as a reading client checks it."""
+
+    #: The arm's name, which it travels under.
+    tag: str
+    #: Every field the arm may carry, or `None` for an arm carrying nothing.
+    fields: tuple[RefusalField, ...] | None
+
+
+def refusal_fields(contract: Contract, name: str) -> tuple[RefusalArm, ...]:
     """Each arm of one refusal vocabulary, and the fields it carries.
 
     `None` is an arm carrying nothing, which travels as its own name; a tuple
@@ -326,16 +334,16 @@ def refusal_fields(
     declared = contract.by_name.get(name)
     if not isinstance(declared, Union):
         return ()
-    arms: list[tuple[str, tuple[RefusalField, ...] | None]] = []
+    arms: list[RefusalArm] = []
     for variant in declared.variants:
         if variant.unit:
-            arms.append((variant.tag, None))
+            arms.append(RefusalArm(variant.tag, None))
             continue
         fields = []
         for entry in sorted(variant.fields, key=lambda entry: entry.name):
             kind, nullable = json_kind(entry.type, contract)
             fields.append(RefusalField(entry.name, kind, entry.required, nullable))
-        arms.append((variant.tag, tuple(fields)))
+        arms.append(RefusalArm(variant.tag, tuple(fields)))
     return tuple(arms)
 
 

@@ -540,7 +540,8 @@ def _refusal_tables(contract: Contract) -> list[str]:
             ),
             f"{refusal_table_name(name)}: dict[str, dict[str, RefusalField] | None] = {{",
         ]
-        for tag, fields in arms:
+        for arm in arms:
+            tag, fields = arm.tag, arm.fields
             if fields is None:
                 lines.append(f'    "{tag}": None,')
                 continue

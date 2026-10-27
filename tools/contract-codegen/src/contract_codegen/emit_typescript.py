@@ -395,7 +395,8 @@ def _refusal_tables(contract: Contract) -> list[str]:
             "  Record<string, Readonly<Record<string, RefusalField>> | null>",
             "> = {",
         ]
-        for tag, fields in arms:
+        for arm in arms:
+            tag, fields = arm.tag, arm.fields
             if fields is None:
                 lines.append(f"  {typescript_property(tag)}: null,")
                 continue

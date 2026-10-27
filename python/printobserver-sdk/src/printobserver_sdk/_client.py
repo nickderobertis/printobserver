@@ -185,6 +185,7 @@ def _rejection(status: int, said: str) -> Exception:
     match document:
         case {"record": {"decision": {"rejected": refused} as decision}} if len(decision) == 1:
             answer = cast(ActionAnswer, document)
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         case {
             "action": {"action": str()},
             "detail": str(),

@@ -298,6 +298,7 @@ function rejection(status: number, said: string): Error {
   // A recovery's answer is the one naming an action beside its decision, and
   // carries the action's own name, the supervisor's words and its events.
   const recovers = !isObject(answer.record) && "action" in answer;
+  // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
   if (
     recovers &&
     !(

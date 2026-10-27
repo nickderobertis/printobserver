@@ -2907,3 +2907,21 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-sdk/src/contract.rs"
 site = "bed_clear_asserted: Option<bool>,"
 reason = "Generated from core's `RecoveryAction`, whose `bed_clear_asserted` the schema marks `x-two-valued-fact`, both in its variant and in the method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that homing Z will meet nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state; core's own entry for the field says so."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "npm/printobserver-sdk/src/client.ts"
+site = "recovers &&"
+reason = "A refused answer is read for what decides the error a caller gets and for the refusal it carries — the decision's one arm, a known refusal's fields in their forms, finite bounds, and that a recovery's answer names its action, says why and lists its events. The rest of the envelope — the action's own parameters and each event's entries — is handed on as every successful answer is handed on, as the server sent it and unvalidated beyond its shape, which is this client's documented design; holding a refusal's envelope to more than a success's would make the two paths disagree about the same document. This objection recurred across seven judged-lint passes at this site, each asking for one layer more."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
+site = '"action": {"action": str()},'
+reason = "A refused answer is read for what decides the error a caller gets and for the refusal it carries — the decision's one arm, a known refusal's fields in their forms, finite bounds, and that a recovery's answer names its action, says why and lists its events. The rest of the envelope — the action's own parameters and each event's entries — is handed on as every successful answer is handed on, as the server sent it and unvalidated beyond its shape, which is this client's documented design; holding a refusal's envelope to more than a success's would make the two paths disagree about the same document. This objection recurred across seven judged-lint passes at this site, each asking for one layer more."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "one sequential command to its instance"
+reason = "Each is one command to the OctoPrint `just octoprint-up` started — a cancel, a queued jog, a restart of the hold print — made by a journey that waits on the machine's answer before its next step, through the same blocking helper every journey of this suite drives that instance with, which `tests/environment.py` gives the reason for. Nothing runs beside it for an async client to overlap, and an async client would be a second client of an instance the product never reaches from here."

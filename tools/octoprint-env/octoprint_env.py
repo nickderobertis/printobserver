@@ -49,7 +49,7 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any, TypedDict
+from typing import IO, Any, NamedTuple, TypedDict
 
 import yaml
 
@@ -108,10 +108,21 @@ MODE_REPAIR = (
     b"        self._relative = True\n"
 )
 
-# Each defect the install repairs in the virtual printer, named for a reader.
-VIRTUAL_PRINTER_REPAIRS: tuple[tuple[str, bytes, bytes], ...] = (
-    ("heater", HEATER_DEFECT, HEATER_REPAIR),
-    ("positioning-mode", MODE_DEFECT, MODE_REPAIR),
+
+class VirtualPrinterRepair(NamedTuple):
+    """One defect the install repairs in the virtual printer."""
+
+    #: What it is called in what the install says.
+    name: str
+    #: The source the pinned release ships.
+    defect: bytes
+    #: The source the install writes in its place.
+    repair: bytes
+
+
+VIRTUAL_PRINTER_REPAIRS = (
+    VirtualPrinterRepair("heater", HEATER_DEFECT, HEATER_REPAIR),
+    VirtualPrinterRepair("positioning-mode", MODE_DEFECT, MODE_REPAIR),
 )
 
 # The account the provisioned API key belongs to. OctoPrint's global API key is

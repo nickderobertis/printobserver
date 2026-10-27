@@ -306,9 +306,11 @@ def test_a_relative_jog_queued_behind_a_move_stays_relative(
     key = key_from_record(brought_up)
     serial = STATE_DIR / "instance" / "logs" / "serial.log"
 
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to its instance
     equal(post(url, "/api/job", key, {"command": "cancel"}), 204, describing="the cancel")
     settled(lambda: printer_state(url, key), "Operational", describing="the printer state")
     before = len(serial.read_text(encoding="utf-8", errors="replace"))
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to its instance
     equal(
         post(url, "/api/printer/command", key, {"commands": QUEUED_BEHIND}),
         204,
@@ -321,6 +323,7 @@ def test_a_relative_jog_queued_behind_a_move_stays_relative(
         reported = _reported_z(serial, before)
 
     restart = {"command": "select", "print": True}
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to its instance
     equal(post(url, "/api/files/local/hold.gcode", key, restart), 204, describing="the restart")
     settled(lambda: printer_state(url, key), "Printing", describing="the printer state")
     truth(reported is not None, describing="the machine reporting Z after the jog")
