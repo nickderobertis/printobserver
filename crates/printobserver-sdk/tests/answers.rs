@@ -1,7 +1,7 @@
 //! An answer the contracts forbid is refused as it is read, over a real socket.
 //!
 //! The generated walk drives every method against answers the contracts
-//! admit. This drives two the contracts forbid, through the published
+//! admit. This drives three the contracts forbid, through the published
 //! client's own methods against a stub host on a real socket, and asserts each
 //! is answered as unreadable rather than handed on: a recovery allowance whose
 //! `refusal` is not sent exactly when `allowed` is false, a machine refusal of
