@@ -1006,6 +1006,7 @@ def _answers(
 
 # What each recovery action's stub echoes as asked: its required fields, at a
 # value inside the bounds any configuration allows.
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
 RECOVERY_ASKED: dict[str, dict[str, Any]] = {
     "recover_lift": {"mm": 10.0},
     "recover_cool": {},
@@ -1017,6 +1018,7 @@ RECOVERY_ASKED: dict[str, dict[str, Any]] = {
 }
 
 # Where the case's printer homes Z, as its `[recovery]` section states it.
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
 Z_HOME = {"sweeps_bed": False, "x": 100.0, "y": 100.0}
 
 
@@ -1025,6 +1027,7 @@ def recovery_commands() -> dict[str, str]:
     return {action: action.replace("_", "-") for action in RECOVERY_ASKED}
 
 
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
 def _recovery_answers(composer: _Composer, first: Reading) -> dict[str, list[dict[str, Any]]]:
     """The recovery vocabulary's answers while the turn's print runs, as the page shows them.
 

@@ -284,6 +284,15 @@ def _argument(parameter: Parameter, identifiers: frozenset[str] = frozenset()) -
 #: generator writes rather than site by site as operations are added.
 ASYNC_DIRECTIVE = "# llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml."
 
+#: The region each generated live-walk test function sits in: the slow tier is
+#: its own directory under its own target rather than a marker inside the fast
+#: one, and a line-scoped directive on the signature covers none of the steps
+#: the walk calls, which grow with the contract.
+TIER_BLOCK = (
+    "# llmlint: ignore-block[test_tiers_split_by_project_not_by_marker] See suppressions.toml."
+)
+TIER_BLOCK_END = "# llmlint: ignore-end[test_tiers_split_by_project_not_by_marker]"
+
 
 def _string(text: str) -> str:
     """One string literal, formatted only when it interpolates something.
@@ -1056,11 +1065,11 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
+        TIER_BLOCK,
         "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         "def test_every_method_is_answered_by_a_real_supervisor(",
         "    world: Supervisor,",
-        ") -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-        " See suppressions.toml.",
+        ") -> None:",
         '    """Every method, answered by a real supervisor, in the one order it admits."""',
         "    with Proxy(world.server) as proxy:",
         "        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.",
@@ -1074,6 +1083,7 @@ def emit_live(contract: Contract) -> str:
         f"            proxy.calls() >= {len(steps)},",
         '            describing="every call to have gone through the proxy",',
         "        )",
+        TIER_BLOCK_END,
         "",
         "",
     ]
@@ -1118,11 +1128,11 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
+        TIER_BLOCK,
         "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         "def test_every_action_is_refused_as_a_typed_rejection(",
         "    tmp_path_factory: pytest.TempPathFactory,",
-        ") -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-        " See suppressions.toml.",
+        ") -> None:",
         '    """Every action, refused by a real supervisor\'s own policy, typed.',
         "",
         "    One client acting as the operator, the one identity its credential is,",
@@ -1139,5 +1149,6 @@ def emit_live(contract: Contract) -> str:
         '        client = Client(proxy.url, "operator", world.credential)',
         "        world = about_the_running_print(client, world)",
         *(f"        refused_{step.name}(client, world, proxy)" for step in rejected_live(contract)),
+        TIER_BLOCK_END,
     ]
     return "\n".join(lines).rstrip("\n") + "\n"

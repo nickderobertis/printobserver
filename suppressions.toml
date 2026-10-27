@@ -1080,7 +1080,7 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_live.py"
-site = "Every method, answered by a real supervisor, in the one order it admits."
+site = "def test_every_method_is_answered_by_a_real_supervisor("
 reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
 
 [[suppression]]
@@ -1116,7 +1116,7 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_live.py"
-site = "Every action, refused by a real supervisor's own policy, typed."
+site = "def test_every_action_is_refused_as_a_typed_rejection("
 reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
 
 [[suppression]]
@@ -1140,8 +1140,8 @@ reason = "Not a directive over this file's own code: it is the text the emitter 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "Every action, refused by a real supervisor"
-reason = "Not a directive over this file's own code: it is the text the emitter writes on the generated Python action walk's signature, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+site = "TIER_BLOCK_END = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes around each generated Python live-walk test function, so that the block standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entries for this rule."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1177,12 +1177,6 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
 site = "def test_every_method_is_answered_by_a_real_supervisor"
-reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
-
-[[suppression]]
-rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "Every method, answered by a real supervisor, in the one order it admits."
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
 [[suppression]]
@@ -2257,6 +2251,24 @@ rule = "modern_domain_modeling"
 file = "tests/skilltest/scenario.py"
 site = "record: dict[str, Any] = {"
 reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "def _recovery_answers("
+reason = "This function composes the recovery vocabulary's answers a stub hands the agent as the JSON documents the server would serve, and holds every answer, event payload and the recovery read to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_spool_answers`, `_synthetic_alert`, `look`, `record`, `context`) is built the same way, and skilltest-wiring checks each answer against its operation's answer schema and the generated example's field names. A Python model would restate those schemas a second time beside the generated ones."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "RECOVERY_ASKED: dict[str, dict[str, Any]] = {"
+reason = "The fields each recovery action's stub echoes as asked: the `action` member of the documents `_recovery_answers` composes, held there to the `RecoveryAction` schema through every payload and answer `conforming()` checks. That function's entry gives the reason a Python model is not written beside the generated schema."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "Z_HOME = {"
+reason = "Where the case's printer homes Z, the `z_home` member of the recovery read `_recovery_answers` composes, held there to the `RecoveryStatus` schema by `conforming()`. That function's entry gives the reason a Python model is not written beside the generated schema."
 
 [[suppression]]
 rule = "modern_domain_modeling"

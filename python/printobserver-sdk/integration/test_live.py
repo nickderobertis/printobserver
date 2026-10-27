@@ -1043,10 +1043,11 @@ def step_prints(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("prints", answered, seen.answer)
 
 
+# llmlint: ignore-block[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 def test_every_method_is_answered_by_a_real_supervisor(
     world: Supervisor,
-) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
+) -> None:
     """Every method, answered by a real supervisor, in the one order it admits."""
     with Proxy(world.server) as proxy:
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
@@ -1093,6 +1094,9 @@ def test_every_method_is_answered_by_a_real_supervisor(
             proxy.calls() >= 37,
             describing="every call to have gone through the proxy",
         )
+
+
+# llmlint: ignore-end[test_tiers_split_by_project_not_by_marker]
 
 
 def about_the_running_print(client: Client, world: Supervisor) -> Supervisor:
@@ -1508,10 +1512,11 @@ def refused_retire_spool(client: Client, world: Supervisor, proxy: Proxy) -> Non
         truth(False, describing="`retire_spool` to be refused")
 
 
+# llmlint: ignore-block[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 def test_every_action_is_refused_as_a_typed_rejection(
     tmp_path_factory: pytest.TempPathFactory,
-) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
+) -> None:
     """Every action, refused by a real supervisor's own policy, typed.
 
     One client acting as the operator, the one identity its credential is,
@@ -1550,3 +1555,6 @@ def test_every_action_is_refused_as_a_typed_rejection(
         refused_unload_spool(client, world, proxy)
         refused_adjust_spool(client, world, proxy)
         refused_retire_spool(client, world, proxy)
+
+
+# llmlint: ignore-end[test_tiers_split_by_project_not_by_marker]
