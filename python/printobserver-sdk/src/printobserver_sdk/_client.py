@@ -178,16 +178,21 @@ def _rejection(status: int, said: str) -> Exception:
     # at the top. Each `cast` below names the type `operations.json` declares for
     # the refusal the match has just told apart: `_document` hands back the
     # server's JSON untyped, and the match is the check this client makes of its
-    # shape before naming it.
+    # shape before naming it. A decision is one arm: one carrying a refusal
+    # beside anything else is no decision.
     answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer
     known = REJECTION_REASON_FIELDS
     match document:
-        case {"record": {"decision": {"rejected": refused}}}:
+        case {"record": {"decision": {"rejected": refused} as decision}} if len(decision) == 1:
             answer = cast(ActionAnswer, document)
-        case {"action": dict(), "detail": str(), "decision": {"rejected": refused}}:
+        case {
+            "action": dict(),
+            "detail": str(),
+            "decision": {"rejected": refused} as decision,
+        } if len(decision) == 1:
             answer = cast(RecoveryAnswer, document)
             known = RECOVERY_REJECTION_FIELDS
-        case {"decision": {"rejected": refused}}:
+        case {"decision": {"rejected": refused} as decision} if len(decision) == 1:
             answer = cast(SpoolCommandAnswer, document)
         case _:
             return UnreadableError(
@@ -311,9 +316,9 @@ def _machine_refusal(status: int, said: str) -> Exception:
         # and failed at the printer, which is what a machine refusal is.
         case {
             "action": {"action": str()},
-            "decision": {"executed": {"failed": {"reason": str()}}},
+            "decision": {"executed": {"failed": {"reason": str()}}} as decision,
             "detail": str() as detail,
-        }:
+        } if len(decision) == 1:
             return RefusedError(status, detail)
         case {"record": dict()}:
             # The type `operations.json` declares for an answer carrying an

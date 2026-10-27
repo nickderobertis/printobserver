@@ -461,6 +461,7 @@ def _parameter(operation: str, value: dict[str, Any]) -> Parameter:
         required=bool(value["required"]),
         located=str(value["located"]),
         repeated=repeated,
+        two_valued_fact=_two_valued_fact(name, value["shape"]),
     )
     query_list = parameter.located == "query" and isinstance(parameter.carried, ListOf)
     if repeated != query_list:

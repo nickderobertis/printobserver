@@ -106,7 +106,8 @@
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "target_c": {
               "description": "The target, in degrees Celsius.",
@@ -137,7 +138,8 @@
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -156,7 +158,8 @@
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -175,7 +178,8 @@
             "bed_clear_asserted": {
               "default": false,
               "description": "The operator's word that homing Z will meet nothing on the bed.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [

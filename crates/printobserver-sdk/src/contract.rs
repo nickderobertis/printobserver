@@ -2037,6 +2037,7 @@ pub enum RecoveryAction {
     #[serde(rename = "recover_heat")]
     RecoverHeat {
         /// The operator's word that the nozzle is clear of the part.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clearance_asserted: Option<bool>,
         /// The target, in degrees Celsius.
@@ -2048,6 +2049,7 @@ pub enum RecoveryAction {
     #[serde(rename = "recover_park")]
     RecoverPark {
         /// The operator's word that the nozzle is clear of the part.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clearance_asserted: Option<bool>,
     },
@@ -2055,6 +2057,7 @@ pub enum RecoveryAction {
     #[serde(rename = "recover_home_xy")]
     RecoverHomeXy {
         /// The operator's word that the nozzle is clear of the part.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clearance_asserted: Option<bool>,
     },
@@ -2062,6 +2065,7 @@ pub enum RecoveryAction {
     #[serde(rename = "recover_home_z")]
     RecoverHomeZ {
         /// The operator's word that homing Z will meet nothing on the bed.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         bed_clear_asserted: Option<bool>,
     },
@@ -4178,6 +4182,7 @@ impl Client {
         reason: &str,
         target_c: f64,
         tool: i64,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         clearance_asserted: Option<bool>,
     ) -> Result<RecoveryAnswer, ClientError> {
         crate::reason_given(reason)?;
@@ -4208,6 +4213,7 @@ impl Client {
     pub fn recover_park(
         &self,
         reason: &str,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         clearance_asserted: Option<bool>,
     ) -> Result<RecoveryAnswer, ClientError> {
         crate::reason_given(reason)?;
@@ -4236,6 +4242,7 @@ impl Client {
     pub fn recover_home_xy(
         &self,
         reason: &str,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         clearance_asserted: Option<bool>,
     ) -> Result<RecoveryAnswer, ClientError> {
         crate::reason_given(reason)?;
@@ -4264,6 +4271,7 @@ impl Client {
     pub fn recover_home_z(
         &self,
         reason: &str,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         bed_clear_asserted: Option<bool>,
     ) -> Result<RecoveryAnswer, ClientError> {
         crate::reason_given(reason)?;

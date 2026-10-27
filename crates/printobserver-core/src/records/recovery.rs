@@ -130,6 +130,7 @@ pub enum RecoveryAction {
         /// The operator's word that the nozzle is clear of the part.
         // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
+        #[schemars(extend("x-two-valued-fact" = true))]
         clearance_asserted: bool,
     },
     /// Move the head to `recovery.park_xy`.
@@ -137,6 +138,7 @@ pub enum RecoveryAction {
         /// The operator's word that the nozzle is clear of the part.
         // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
+        #[schemars(extend("x-two-valued-fact" = true))]
         clearance_asserted: bool,
     },
     /// Home X and Y.
@@ -144,6 +146,7 @@ pub enum RecoveryAction {
         /// The operator's word that the nozzle is clear of the part.
         // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
+        #[schemars(extend("x-two-valued-fact" = true))]
         clearance_asserted: bool,
     },
     /// Home Z.
@@ -151,6 +154,7 @@ pub enum RecoveryAction {
         /// The operator's word that homing Z will meet nothing on the bed.
         // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
+        #[schemars(extend("x-two-valued-fact" = true))]
         bed_clear_asserted: bool,
     },
 }

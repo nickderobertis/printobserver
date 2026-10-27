@@ -163,6 +163,11 @@ function refusalText(said: string): string {
   return "it said nothing this client can read";
 }
 
+/** Whether one parsed value is an object of exactly one member: a decision's one arm. */
+function isOneArm(value: unknown): value is Record<string, unknown> {
+  return isObject(value) && Object.keys(value).length === 1;
+}
+
 /** Whether one parsed value is a JSON object, whose members can then be read. */
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -281,7 +286,9 @@ function rejection(status: number, said: string): Error {
   // spool command's carry it at the top. A recovery's names its action beside
   // its decision, and is refused in a recovery's own vocabulary.
   const decision = isObject(answer.record) ? answer.record.decision : answer.decision;
-  const refused = isObject(decision) ? decision.rejected : undefined;
+  // A decision is one arm: one carrying a refusal beside anything else is no
+  // decision.
+  const refused = isOneArm(decision) ? decision.rejected : undefined;
   const known =
     !isObject(answer.record) && isObject(answer.action) && typeof answer.detail === "string"
       ? RECOVERY_REJECTION_FIELDS
@@ -319,7 +326,7 @@ function machineRefusal(status: number, said: string): Error {
   // carried out and failed at the printer, which is what a machine refusal is.
   if (!isObject(answered.record)) {
     const { action, decision, detail } = answered;
-    const executed = isObject(decision) ? decision.executed : undefined;
+    const executed = isOneArm(decision) ? decision.executed : undefined;
     const failed = isObject(executed) ? executed.failed : undefined;
     if (
       !isObject(action) ||

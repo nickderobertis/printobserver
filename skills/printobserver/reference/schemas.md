@@ -22351,7 +22351,8 @@ Declared by `printobserver-core`.
         "clearance_asserted": {
           "default": false,
           "description": "The operator's word that the nozzle is clear of the part.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         },
         "target_c": {
           "description": "The target, in degrees Celsius.",
@@ -22382,7 +22383,8 @@ Declared by `printobserver-core`.
         "clearance_asserted": {
           "default": false,
           "description": "The operator's word that the nozzle is clear of the part.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         }
       },
       "required": [
@@ -22401,7 +22403,8 @@ Declared by `printobserver-core`.
         "clearance_asserted": {
           "default": false,
           "description": "The operator's word that the nozzle is clear of the part.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         }
       },
       "required": [
@@ -22420,7 +22423,8 @@ Declared by `printobserver-core`.
         "bed_clear_asserted": {
           "default": false,
           "description": "The operator's word that homing Z will meet nothing on the bed.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         }
       },
       "required": [
@@ -22781,7 +22785,8 @@ Declared by `printobserver-server`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "target_c": {
               "description": "The target, in degrees Celsius.",
@@ -22812,7 +22817,8 @@ Declared by `printobserver-server`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -22831,7 +22837,8 @@ Declared by `printobserver-server`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -22850,7 +22857,8 @@ Declared by `printobserver-server`.
             "bed_clear_asserted": {
               "default": false,
               "description": "The operator's word that homing Z will meet nothing on the bed.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -23746,7 +23754,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "target_c": {
               "description": "The target, in degrees Celsius.",
@@ -23777,7 +23786,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -23796,7 +23806,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -23815,7 +23826,8 @@ Declared by `printobserver-core`.
             "bed_clear_asserted": {
               "default": false,
               "description": "The operator's word that homing Z will meet nothing on the bed.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -24121,7 +24133,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "target_c": {
               "description": "The target, in degrees Celsius.",
@@ -24152,7 +24165,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -24171,7 +24185,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -24190,7 +24205,8 @@ Declared by `printobserver-core`.
             "bed_clear_asserted": {
               "default": false,
               "description": "The operator's word that homing Z will meet nothing on the bed.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -24951,7 +24967,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "target_c": {
               "description": "The target, in degrees Celsius.",
@@ -24982,7 +24999,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -25001,7 +25019,8 @@ Declared by `printobserver-core`.
             "clearance_asserted": {
               "default": false,
               "description": "The operator's word that the nozzle is clear of the part.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -25020,7 +25039,8 @@ Declared by `printobserver-core`.
             "bed_clear_asserted": {
               "default": false,
               "description": "The operator's word that homing Z will meet nothing on the bed.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             }
           },
           "required": [
@@ -38458,7 +38478,8 @@ Declared by `printobserver-server`.
           "shape": {
             "default": false,
             "description": "The operator's word that the nozzle is clear of the part.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -38537,7 +38558,8 @@ Declared by `printobserver-server`.
           "shape": {
             "default": false,
             "description": "The operator's word that the nozzle is clear of the part.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -38592,7 +38614,8 @@ Declared by `printobserver-server`.
           "shape": {
             "default": false,
             "description": "The operator's word that the nozzle is clear of the part.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -38647,7 +38670,8 @@ Declared by `printobserver-server`.
           "shape": {
             "default": false,
             "description": "The operator's word that homing Z will meet nothing on the bed.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {

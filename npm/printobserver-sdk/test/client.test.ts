@@ -182,10 +182,25 @@ test("a machine refusal whose record is not an object and says nothing is unread
 });
 
 test("a machine refusal of a recovery that did not fail is unreadable", async () => {
-  for (const decision of [{ rejected: "z_untrusted" }, { executed: "succeeded" }, null]) {
+  for (const decision of [
+    { rejected: "z_untrusted" },
+    { executed: "succeeded" },
+    null,
+    { executed: { failed: { reason: "the fan is stuck" } }, rejected: "z_untrusted" },
+  ]) {
     await using host = Host.answering(502, recovery(decision));
     const client = new Client({ server: host.address, actor: ACTOR });
 
     await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
   }
+});
+
+test("a policy refusal whose decision has two arms is unreadable", async () => {
+  await using host = Host.answering(
+    409,
+    recovery({ rejected: "z_untrusted", executed: "succeeded" }),
+  );
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
 });

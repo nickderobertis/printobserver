@@ -316,7 +316,12 @@ def test_a_refusal_this_client_does_not_know_still_arrives_as_a_refusal() -> Non
 
 def test_a_machine_refusal_of_a_recovery_that_did_not_fail_is_unreadable() -> None:
     """A 502 carrying a recovery whose decision is no failure at the printer is not one."""
-    for decision in ({"rejected": "z_untrusted"}, {"executed": "succeeded"}, None):
+    for decision in (
+        {"rejected": "z_untrusted"},
+        {"executed": "succeeded"},
+        None,
+        {"executed": {"failed": {"reason": "the fan is stuck"}}, "rejected": "z_untrusted"},
+    ):
         with Host(502, _recovery(decision)) as host:
             client = Client(host.address, ACTOR)
             try:
@@ -326,3 +331,16 @@ def test_a_machine_refusal_of_a_recovery_that_did_not_fail_is_unreadable() -> No
                 equal(unreadable.status, 502, describing=f"{decision!r}")
             else:
                 truth(False, describing=f"{decision!r} at 502 to be unreadable")
+
+
+def test_a_policy_refusal_whose_decision_has_two_arms_is_unreadable() -> None:
+    """A decision carrying a refusal beside another arm is no decision at all."""
+    with Host(409, _recovery({"rejected": "z_untrusted", "executed": "succeeded"})) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_fan(50.0, "because")
+        except UnreadableError as unreadable:
+            equal(unreadable.status, 409)
+        else:
+            truth(False, describing="a two-armed decision to be unreadable")

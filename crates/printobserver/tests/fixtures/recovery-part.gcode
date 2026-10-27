@@ -10,9 +10,10 @@
 ; The second perimeter is written in every form the reader follows, so that
 ; reading 2.0 mm over exactly that square needs each of them read right: an
 ; extruder reset (G92), moves relative to the last (G91), a home of one axis
-; (G28 X), an arc whose circle stays inside the square (G3), and a segment
-; descending while it extrudes — the only line reaching 2.0, the rest of the
-; perimeter being at 1.8.
+; (G28 X), an arc whose circle stays inside the square (G3), a prime that
+; feeds while it rises to 2.4 with no travel in X or Y and so lays nothing
+; along a path, and a segment descending while it extrudes — the only line
+; laying material at 2.0, the rest of the perimeter being at 1.8.
 G21
 G90
 M83
@@ -33,6 +34,7 @@ G3 X100 Y110 I-10 J0 E1
 G28 X
 G1 X100 Y110 F3000
 G1 X90 Y110 E1 F1200
+G1 Z2.4 E0.5 F600
 G1 Z2.0 F600
 G1 X90 Y90 Z1.8 E1 F1200
 G4 S120

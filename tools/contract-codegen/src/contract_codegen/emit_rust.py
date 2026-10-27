@@ -429,7 +429,19 @@ def _target(operation: Operation) -> str:
 def _method(operation: Operation) -> list[str]:
     """One operation, as the Rust client's own method."""
     supplied = operation.supplied()
-    arguments = ", ".join(["&self", *(_argument(parameter) for parameter in supplied)])
+    # A two-valued argument carries its field's directive on the line above
+    # it, which rustfmt keeps where it is written.
+    arguments = ", ".join(
+        [
+            "&self",
+            *(
+                f"\n        {TWO_VALUED_DIRECTIVE}\n        {_argument(parameter)}"
+                if parameter.two_valued_fact
+                else _argument(parameter)
+                for parameter in supplied
+            ),
+        ]
+    )
     lines = doc_lines(
         f"Call `{operation.name}` on the configured supervisor.\n\n"
         f"# Errors\n\n"

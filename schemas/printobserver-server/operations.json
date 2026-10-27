@@ -1889,7 +1889,8 @@
           "shape": {
             "default": false,
             "description": "The operator's word that the nozzle is clear of the part.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -1968,7 +1969,8 @@
           "shape": {
             "default": false,
             "description": "The operator's word that the nozzle is clear of the part.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -2023,7 +2025,8 @@
           "shape": {
             "default": false,
             "description": "The operator's word that the nozzle is clear of the part.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -2078,7 +2081,8 @@
           "shape": {
             "default": false,
             "description": "The operator's word that homing Z will meet nothing on the bed.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {

@@ -184,6 +184,9 @@ class Parameter:
     #: Whether a request may carry it more than once, each item a value of its
     #: own: a query list, sent as one `name=value` per item.
     repeated: bool = False
+    #: Whether it is a boolean both of whose values are real, as the field it
+    #: is described from is marked.
+    two_valued_fact: bool = False
 
     @property
     def optional(self) -> bool:

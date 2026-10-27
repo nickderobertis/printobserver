@@ -2901,3 +2901,15 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-octoprint/src/gcode.rs"
 site = ".filter(|value| value.abs() <= AXIS_LIMIT)"
 reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is a guard that reads a non-finite or impossibly large axis word as absent, which no slicer writes and no OctoPrint instance produces on demand; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "clearance_asserted: Option<bool>,"
+reason = "Generated from core's `RecoveryAction`, whose `clearance_asserted` the schema marks `x-two-valued-fact`, both in each variant and in each method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that the nozzle is clear of the part. Every value of it is a request the policy rules on, and an agent's assertion is refused as clearance by the grants rather than by the type; core's own entry for the field says so. Absent and false are the same request, which is why a caller may leave it out."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "bed_clear_asserted: Option<bool>,"
+reason = "Generated from core's `RecoveryAction`, whose `bed_clear_asserted` the schema marks `x-two-valued-fact`, both in its variant and in the method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that homing Z will meet nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state; core's own entry for the field says so."
