@@ -99,6 +99,7 @@ TWO_VALUED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See s
 
 
 PRESENT = "present"
+"""The deserializer of a field whose null is sent: whatever was sent, as sent."""
 
 SENT = "Sent"
 """How a paired struct reads the sibling it is held to: left out, null, or a value."""
@@ -128,9 +129,6 @@ def _sent() -> list[str]:
         "}",
         "",
     ]
-
-
-"""The deserializer of a field whose null is sent: whatever was sent, as sent."""
 
 
 def _present() -> list[str]:
