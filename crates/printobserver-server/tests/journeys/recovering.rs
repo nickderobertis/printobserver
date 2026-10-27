@@ -640,6 +640,54 @@ async fn a_lift_on_a_z_minus_machine_is_bounded_by_the_height_left_to_zero() {
     );
 }
 
+/// A `[recovery]` table leaving out the two facts with defaults takes them:
+/// a lift of at most 50 mm, or the machine's own height when it is shorter,
+/// and a clearance margin of 5 mm.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lift_and_a_margin_left_out_take_their_defaults() {
+    let defaulted = |max_z_mm: f64| {
+        with_recovery(move |document| {
+            let facts = document
+                .get_mut("recovery")
+                .and_then(toml::Value::as_table_mut)
+                .expect("the recovery facts are a table");
+            facts.remove("max_lift_mm");
+            facts.remove("clearance_margin_mm");
+            facts.insert("max_z_mm".to_owned(), toml::Value::Float(max_z_mm));
+        })
+    };
+    for (max_z_mm, lift) in [(200.0, 50.0), (30.0, 30.0)] {
+        let world = Recovering::start(defaulted(max_z_mm)).await;
+        world.reads("operational").await;
+        let (status, answer) = world.ask("recover_lift", json!({ "mm": lift + 1.0 })).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+        assert_eq!(
+            answer["decision"]["rejected"]["out_of_bounds"]["allowed"],
+            json!({ "min": 0.0, "max": lift }),
+            "a machine {max_z_mm} mm tall: {answer:#}"
+        );
+    }
+
+    // The margin: with nothing printed, a heat with the nozzle 4 mm above the
+    // bed is refused naming 5.
+    let world = Recovering::start(defaulted(200.0)).await;
+    world.connected().await;
+    world.home_z().await;
+    world.octoprint.moves_head_to([0.0, 0.0, 4.0]);
+    let (status, answer) = world
+        .ask(
+            "recover_heat",
+            json!({ "tool": 0, "target_c": 200.0, "clearance_asserted": false }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+    assert_eq!(
+        answer["decision"]["rejected"]["insufficient_clearance"]["margin_mm"],
+        json!(5.0),
+        "{answer:#}"
+    );
+}
+
 /// Homing Z without the operator's word that the bed is clear is refused
 /// naming the assertion, and saying what homing Z does on this machine.
 #[tokio::test(flavor = "multi_thread")]

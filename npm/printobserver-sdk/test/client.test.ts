@@ -143,6 +143,9 @@ test("a recovery refused with bounds no reader can read is unreadable", async ()
     { print_running: {} },
     "print_running",
     { z_untrusted: {} },
+    { printer_cannot: { action: 7, detail: null } },
+    { insufficient_clearance: { margin_mm: "5", nozzle_z_mm: 1, tallest_mm: 2 } },
+    { print_running: { state: 7 } },
   ]) {
     await using host = Host.answering(409, recovery({ rejected: refused }));
     const client = new Client({ server: host.address, actor: ACTOR });
@@ -151,8 +154,12 @@ test("a recovery refused with bounds no reader can read is unreadable", async ()
   }
 });
 
-test("a refusal this client does not know still arrives as a refusal", async () => {
-  for (const refused of ["a_newer_reason", { a_newer_reason: { anything: 1 } }]) {
+test("a refusal this client does not know, or a known one well formed, arrives as a refusal", async () => {
+  for (const refused of [
+    "a_newer_reason",
+    { a_newer_reason: { anything: 1 } },
+    { print_running: { state: { unknown: "Connecting" } } },
+  ]) {
     await using host = Host.answering(409, recovery({ rejected: refused }));
     const client = new Client({ server: host.address, actor: ACTOR });
 

@@ -221,15 +221,46 @@ def _rejection(status: int, said: str) -> Exception:
     return RejectedError(reason, requested, allowed, answer)
 
 
-def _is_refusal(refused: object, known: dict[str, tuple[str, ...] | None]) -> bool:
+#: What each JSON form a refusal's field declares admits, of a parsed value.
+_FORMS = {
+    "string": lambda value: isinstance(value, str),
+    "number": lambda value: _is_number(value),
+    "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+    "boolean": lambda value: isinstance(value, bool),
+    "object": lambda value: isinstance(value, dict),
+    "array": lambda value: isinstance(value, list),
+    "string_or_object": lambda value: isinstance(value, str | dict),
+}
+
+
+def _carries(fields: dict[str, object], declared: dict[str, tuple[str, bool, bool]]) -> bool:
+    """Whether one variant's fields carry every field its table declares, each in its form."""
+    for name, (kind, required, nullable) in declared.items():
+        if name not in fields:
+            if required:
+                return False
+            continue
+        value = fields[name]
+        if value is None:
+            if not nullable:
+                return False
+            continue
+        if not _FORMS.get(kind, lambda _: True)(value):
+            return False
+    return True
+
+
+def _is_refusal(
+    refused: object, known: dict[str, dict[str, tuple[str, bool, bool]] | None]
+) -> bool:
     """Whether one value is a refusal of one vocabulary.
 
     A refusal is a variant's name, or one variant carrying its fields. A
     variant the vocabulary's generated table names is held to it — named alone
-    when it carries nothing, and carrying every field it requires when it
-    carries any. A variant the table does not name is a newer supervisor's,
-    whose reason this client does not know; it still reaches the caller as a
-    refusal rather than as an unreadable answer.
+    when it carries nothing, and carrying each field it declares in that
+    field's own form when it carries any. A variant the table does not name is
+    a newer supervisor's, whose reason this client does not know; it still
+    reaches the caller as a refusal rather than as an unreadable answer.
     """
     match refused:
         case str() as name if name:
@@ -242,8 +273,8 @@ def _is_refusal(refused: object, known: dict[str, tuple[str, ...] | None]) -> bo
             # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
             if name not in known:
                 return True
-            required = known[name]
-            return required is not None and all(field in fields for field in required)
+            declared = known[name]
+            return declared is not None and _carries(fields, declared)
         case _:
             return False
 

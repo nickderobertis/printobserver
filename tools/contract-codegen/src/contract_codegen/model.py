@@ -262,26 +262,78 @@ RECOVERY_ANSWER = "RecoveryAnswer"
 REFUSALS = ("RejectionReason", "RecoveryRejection")
 
 
-def refusal_fields(contract: Contract, name: str) -> tuple[tuple[str, tuple[str, ...] | None], ...]:
-    """Each arm of one refusal vocabulary, and the fields it requires.
+#: The JSON form one field of a refusal must take, as a reading client
+#: checks it: `string`, `number`, `integer`, `boolean`, `object`, `array`,
+#: `string_or_object` for a union some of whose arms are names alone, and
+#: `any` for a value the contracts constrain not at all.
+FieldKind = str
+
+
+@dataclass(frozen=True, slots=True)
+class RefusalField:
+    """One field a refusal's arm carries, as a reading client checks it."""
+
+    name: str
+    kind: FieldKind
+    #: Whether the arm must carry it.
+    required: bool
+    #: Whether it may be null.
+    nullable: bool
+
+
+def json_kind(shape: TypeExpr, contract: Contract) -> tuple[FieldKind, bool]:
+    """The JSON form one shape takes, and whether it may be null."""
+    match shape:
+        case Nullable(inner):
+            return json_kind(inner, contract)[0], True
+        case Scalar(kind):
+            return kind, False
+        case ListOf():
+            return "array", False
+        case MapOf():
+            return "object", False
+        case AnyValue():
+            return "any", False
+        case Ref(name):
+            match contract.by_name.get(name):
+                case Alias(_, target, _):
+                    return json_kind(target, contract)
+                case Enumeration():
+                    return "string", False
+                case Union(_, _, variants, tag_field) if not tag_field:
+                    units = {variant.unit for variant in variants}
+                    if units == {True}:
+                        return "string", False
+                    return ("object" if units == {False} else "string_or_object"), False
+                case _:
+                    return "object", False
+    return "any", False
+
+
+def refusal_fields(
+    contract: Contract, name: str
+) -> tuple[tuple[str, tuple[RefusalField, ...] | None], ...]:
+    """Each arm of one refusal vocabulary, and the fields it carries.
 
     `None` is an arm carrying nothing, which travels as its own name; a tuple
-    is an arm that travels as an object under its name, and the fields that
-    object must carry. A client reading a refusal holds a known arm to this,
-    and reads no other table to do it.
+    is an arm that travels as an object under its name, and every field that
+    object may carry, each with the form it takes. A client reading a refusal
+    holds a known arm to this, and reads no other table to do it.
     """
     declared = contract.by_name.get(name)
     if not isinstance(declared, Union):
         return ()
-    return tuple(
-        (
-            variant.tag,
-            None
-            if variant.unit
-            else tuple(sorted(entry.name for entry in variant.fields if entry.required)),
-        )
-        for variant in declared.variants
-    )
+    arms: list[tuple[str, tuple[RefusalField, ...] | None]] = []
+    for variant in declared.variants:
+        if variant.unit:
+            arms.append((variant.tag, None))
+            continue
+        fields = []
+        for entry in sorted(variant.fields, key=lambda entry: entry.name):
+            kind, nullable = json_kind(entry.type, contract)
+            fields.append(RefusalField(entry.name, kind, entry.required, nullable))
+        arms.append((variant.tag, tuple(fields)))
+    return tuple(arms)
 
 
 def refusal_table_name(name: str) -> str:

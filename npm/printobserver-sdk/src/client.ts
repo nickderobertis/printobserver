@@ -26,6 +26,7 @@ import {
   GeneratedClient,
   RECOVERY_REJECTION_FIELDS,
   REJECTION_REASON_FIELDS,
+  type RefusalField,
 } from "./contract.ts";
 import { PrinterRefused, Refused, Rejected, Unreachable, Unreadable } from "./surface.ts";
 
@@ -167,19 +168,58 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Whether one parsed value takes one JSON form a refusal's field declares. */
+function takes(value: unknown, kind: string): boolean {
+  switch (kind) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "object":
+      return isObject(value);
+    case "array":
+      return Array.isArray(value);
+    case "string_or_object":
+      return typeof value === "string" || isObject(value);
+    default:
+      return true;
+  }
+}
+
+/** Whether one variant's fields carry every field its table declares, each in its own form. */
+function carries(
+  fields: Record<string, unknown>,
+  declared: Readonly<Record<string, RefusalField>>,
+): boolean {
+  return Object.entries(declared).every(([name, [kind, required, nullable]]) => {
+    const value = fields[name];
+    if (value === undefined) {
+      return !required;
+    }
+    if (value === null) {
+      return nullable;
+    }
+    return takes(value, kind);
+  });
+}
+
 /**
  * Whether one value is a refusal of one vocabulary: a variant's name, or one
  * variant carrying its fields.
  *
  * A variant the vocabulary's generated table names is held to it — named
- * alone when it carries nothing, and carrying every field it requires when it
- * carries any. A variant the table does not name is a newer supervisor's,
- * whose reason this client does not know; it still reaches the caller as a
- * refusal rather than as an unreadable answer.
+ * alone when it carries nothing, and carrying each field it declares in that
+ * field's own form when it carries any. A variant the table does not name is
+ * a newer supervisor's, whose reason this client does not know; it still
+ * reaches the caller as a refusal rather than as an unreadable answer.
  */
 function isRefusal(
   refused: unknown,
-  known: Readonly<Record<string, ReadonlyArray<string> | null>>,
+  known: Readonly<Record<string, Readonly<Record<string, RefusalField>> | null>>,
 ): boolean {
   if (typeof refused === "string") {
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
@@ -198,8 +238,8 @@ function isRefusal(
   if (!Object.hasOwn(known, name)) {
     return true;
   }
-  const required = known[name];
-  return Array.isArray(required) && required.every((field) => field in fields);
+  const declared = known[name];
+  return declared !== null && declared !== undefined && carries(fields, declared);
 }
 
 /** A refusal's value asked for and range allowed, when it ruled on a value; `null` when its bounds are malformed. */

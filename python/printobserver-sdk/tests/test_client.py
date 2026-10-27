@@ -252,6 +252,9 @@ def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> No
         {"print_running": {}},
         "print_running",
         {"z_untrusted": {}},
+        {"printer_cannot": {"action": 7, "detail": None}},
+        {"insufficient_clearance": {"margin_mm": "5", "nozzle_z_mm": 1.0, "tallest_mm": 2.0}},
+        {"print_running": {"state": 7}},
     ):
         with Host(409, _recovery({"rejected": refused})) as host:
             client = Client(host.address, ACTOR)
@@ -280,8 +283,12 @@ def test_a_refusal_whose_answer_is_not_an_object_is_unreadable() -> None:
 
 
 def test_a_refusal_this_client_does_not_know_still_arrives_as_a_refusal() -> None:
-    """A newer supervisor's reason is handed on as it came, named or carrying fields."""
-    for refused in ("a_newer_reason", {"a_newer_reason": {"anything": 1}}):
+    """A newer supervisor's reason, and a known one well formed, are handed on as they came."""
+    for refused in (
+        "a_newer_reason",
+        {"a_newer_reason": {"anything": 1}},
+        {"print_running": {"state": {"unknown": "Connecting"}}},
+    ):
         with Host(409, _recovery({"rejected": refused})) as host:
             client = Client(host.address, ACTOR)
             try:

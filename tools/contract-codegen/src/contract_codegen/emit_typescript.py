@@ -367,34 +367,46 @@ def _contract_version() -> list[str]:
 
 
 def _refusal_tables(contract: Contract) -> list[str]:
-    """Each refusal vocabulary's arms, and the fields each requires.
+    """Each refusal vocabulary's arms, and the fields each carries.
 
     The client holds a refusal of a known arm to its table before handing it
     on as the contract's type; an arm the table does not name is a newer
     server's, and is handed on as it came.
     """
-    lines: list[str] = []
-    for name in REFUSALS:
-        arms = refusal_fields(contract, name)
-        if not arms:
-            continue
+    tables = [(name, refusal_fields(contract, name)) for name in REFUSALS]
+    tables = [(name, arms) for name, arms in tables if arms]
+    if not tables:
+        return []
+    lines = [
+        *doc_lines(
+            "One field a refusal's arm carries: the JSON form it takes, whether the "
+            "arm must carry it, and whether it may be null."
+        ),
+        "export type RefusalField = readonly [kind: string, required: boolean, nullable: boolean];",
+        "",
+    ]
+    for name, arms in tables:
         lines += [
             *doc_lines(
-                f"Every arm of `{name}`, and the fields it requires: `null` for an arm "
+                f"Every arm of `{name}`, and the fields it carries: `null` for an arm "
                 "carrying nothing, which travels as its own name."
             ),
             f"export const {refusal_table_name(name)}: Readonly<",
-            "  Record<string, ReadonlyArray<string> | null>",
+            "  Record<string, Readonly<Record<string, RefusalField>> | null>",
             "> = {",
-            *(
-                f"  {typescript_property(tag)}: "
-                + ("null" if fields is None else "[" + ", ".join(f'"{f}"' for f in fields) + "]")
-                + ","
-                for tag, fields in arms
-            ),
-            "};",
-            "",
         ]
+        for tag, fields in arms:
+            if fields is None:
+                lines.append(f"  {typescript_property(tag)}: null,")
+                continue
+            lines.append(f"  {typescript_property(tag)}: {{")
+            lines += [
+                f'    {typescript_property(entry.name)}: ["{entry.kind}", '
+                f"{str(entry.required).lower()}, {str(entry.nullable).lower()}],"
+                for entry in fields
+            ]
+            lines.append("  },")
+        lines += ["};", ""]
     return lines
 
 

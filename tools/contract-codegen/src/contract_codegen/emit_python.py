@@ -502,7 +502,7 @@ def _contract_version() -> list[str]:
 
 
 def _refusal_tables(contract: Contract) -> list[str]:
-    """Each refusal vocabulary's arms, and the fields each requires.
+    """Each refusal vocabulary's arms, and the fields each carries.
 
     The client holds a refusal of a known arm to its table before handing it
     on as the contract's type; an arm the table does not name is a newer
@@ -515,25 +515,25 @@ def _refusal_tables(contract: Contract) -> list[str]:
             continue
         lines += [
             *comment(
-                f"Every arm of `{name}`, and the fields it requires: `None` for an arm "
-                "carrying nothing, which travels as its own name.",
+                f"Every arm of `{name}`, and the fields it carries: `None` for an arm "
+                "carrying nothing, which travels as its own name, and otherwise each "
+                "field's JSON form, whether the arm must carry it, and whether it may "
+                "be null.",
                 "",
             ),
-            f"{refusal_table_name(name)}: dict[str, tuple[str, ...] | None] = {{",
-            *(
-                f'    "{tag}": '
-                + (
-                    "None"
-                    if fields is None
-                    else "(" + "".join(f'"{f}", ' for f in fields).rstrip() + ")"
-                )
-                + ","
-                for tag, fields in arms
-            ),
-            "}",
-            "",
-            "",
+            f"{refusal_table_name(name)}: dict[str, dict[str, tuple[str, bool, bool]] | None] = {{",
         ]
+        for tag, fields in arms:
+            if fields is None:
+                lines.append(f'    "{tag}": None,')
+                continue
+            lines.append(f'    "{tag}": {{')
+            lines += [
+                f'        "{entry.name}": ("{entry.kind}", {entry.required}, {entry.nullable}),'
+                for entry in fields
+            ]
+            lines.append("    },")
+        lines += ["}", "", ""]
     return lines
 
 

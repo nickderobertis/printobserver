@@ -262,6 +262,33 @@ fn a_recovery_fact_out_of_range_is_refused_at_start_by_name() {
     }
 }
 
+/// `printobserver server` refuses a `[recovery]` table leaving out any fact
+/// the machine has no default for, naming the key, and serves nothing: a
+/// direction, a height, a park and a Z home are the machine's to state.
+#[test]
+fn a_recovery_fact_left_out_is_refused_at_start_by_name() {
+    for key in [
+        "away_from_bed",
+        "max_z_mm",
+        "park_xy",
+        "z_home_xy",
+        "z_home_sweeps_bed",
+    ] {
+        let said = starting::refused_start(|document| {
+            let mut facts = recovery_facts();
+            facts
+                .as_object_mut()
+                .expect("the recovery facts are a table")
+                .remove(key);
+            document["recovery"] = facts;
+        });
+        assert!(
+            said.contains(&format!("recovery.{key}")),
+            "the refusal of a `[recovery]` without `{key}` does not name it: {said}"
+        );
+    }
+}
+
 /// `printobserver server` refuses each of the printer watch's own settings
 /// out of the range it admits, naming the field, and serves nothing: a poll
 /// under five seconds or over five minutes, an unattended window under a

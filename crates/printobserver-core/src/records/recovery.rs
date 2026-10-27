@@ -529,6 +529,7 @@ impl Serialize for ActionAllowance {
     }
 }
 
+// llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
 impl<'de> Deserialize<'de> for ActionAllowance {
     fn deserialize<D: printobserver_types::serde::Deserializer<'de>>(
         deserializer: D,

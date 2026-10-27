@@ -4016,77 +4016,98 @@ def payload_of(event: EventRecord, kind: str) -> object | None:
     return event["payload"]
 
 
-# Every arm of `RejectionReason`, and the fields it requires: `None` for an
-# arm carrying nothing, which travels as its own name.
-REJECTION_REASON_FIELDS: dict[str, tuple[str, ...] | None] = {
-    "out_of_bounds": (
-        "adjustable",
-        "allowed",
-        "requested",
-    ),
-    "actor_may_not_request": (
-        "action",
-        "actor_class",
-    ),
+# Every arm of `RejectionReason`, and the fields it carries: `None` for an
+# arm carrying nothing, which travels as its own name, and otherwise each
+# field's JSON form, whether the arm must carry it, and whether it may be
+# null.
+REJECTION_REASON_FIELDS: dict[str, dict[str, tuple[str, bool, bool]] | None] = {
+    "out_of_bounds": {
+        "adjustable": ("string", True, False),
+        "allowed": ("object", True, False),
+        "requested": ("number", True, False),
+    },
+    "actor_may_not_request": {
+        "action": ("string", True, False),
+        "actor_class": ("string", True, False),
+    },
     "no_active_print": None,
-    "invalid_from_state": ("state",),
-    "min_interval_not_elapsed": (
-        "interval_s",
-        "since_last_s",
-    ),
-    "unsupported_adjustable": ("adjustable",),
-    "insufficient_filament": (
-        "buffer_g",
-        "remaining_g",
-        "required_g",
-        "spool_id",
-        "spool_name",
-        "tool",
-    ),
-    "unverified_spool": (
-        "reason",
-        "spool_id",
-        "spool_name",
-        "tool",
-    ),
-    "analysis_unavailable": (
-        "file_name",
-        "waited_s",
-    ),
+    "invalid_from_state": {
+        "state": ("string_or_object", True, False),
+    },
+    "min_interval_not_elapsed": {
+        "interval_s": ("integer", True, False),
+        "since_last_s": ("integer", True, False),
+    },
+    "unsupported_adjustable": {
+        "adjustable": ("string", True, False),
+    },
+    "insufficient_filament": {
+        "buffer_g": ("number", True, False),
+        "remaining_g": ("number", True, False),
+        "required_g": ("number", True, False),
+        "spool_id": ("string", True, False),
+        "spool_name": ("string", True, False),
+        "tool": ("integer", True, False),
+        "unverified": ("object", False, True),
+    },
+    "unverified_spool": {
+        "reason": ("object", True, False),
+        "spool_id": ("string", True, False),
+        "spool_name": ("string", True, False),
+        "tool": ("integer", True, False),
+    },
+    "analysis_unavailable": {
+        "file_name": ("string", True, False),
+        "waited_s": ("integer", True, False),
+    },
     "print_already_ended": None,
-    "print_still_active": ("state",),
-    "intervention_still_active": ("intervention_id",),
-    "print_not_resumable": ("recovery_event_id",),
-    "spool_refused": (
-        "cause",
-        "message",
-    ),
+    "print_still_active": {
+        "state": ("string_or_object", True, False),
+    },
+    "intervention_still_active": {
+        "intervention_id": ("string", True, False),
+    },
+    "print_not_resumable": {
+        "recovery_event_id": ("string", True, False),
+    },
+    "spool_refused": {
+        "cause": ("object", True, False),
+        "message": ("string", True, False),
+    },
 }
 
 
-# Every arm of `RecoveryRejection`, and the fields it requires: `None` for
-# an arm carrying nothing, which travels as its own name.
-RECOVERY_REJECTION_FIELDS: dict[str, tuple[str, ...] | None] = {
-    "actor_may_not_request": ("action",),
-    "print_running": ("state",),
+# Every arm of `RecoveryRejection`, and the fields it carries: `None` for an
+# arm carrying nothing, which travels as its own name, and otherwise each
+# field's JSON form, whether the arm must carry it, and whether it may be
+# null.
+RECOVERY_REJECTION_FIELDS: dict[str, dict[str, tuple[str, bool, bool]] | None] = {
+    "actor_may_not_request": {
+        "action": ("string", True, False),
+    },
+    "print_running": {
+        "state": ("string_or_object", True, False),
+    },
     "printer_unreachable": None,
     "z_untrusted": None,
-    "insufficient_clearance": (
-        "margin_mm",
-        "nozzle_z_mm",
-        "tallest_mm",
-    ),
-    "out_of_bounds": (
-        "allowed",
-        "field",
-        "requested",
-    ),
-    "assertion_required": ("field",),
+    "insufficient_clearance": {
+        "margin_mm": ("number", True, False),
+        "nozzle_z_mm": ("number", True, False),
+        "tallest_mm": ("number", True, False),
+    },
+    "out_of_bounds": {
+        "allowed": ("object", True, False),
+        "field": ("string", True, False),
+        "requested": ("number", True, False),
+    },
+    "assertion_required": {
+        "field": ("string", True, False),
+    },
     "recovery_not_configured": None,
-    "printer_cannot": (
-        "action",
-        "detail",
-    ),
+    "printer_cannot": {
+        "action": ("string", True, False),
+        "detail": ("string", True, False),
+    },
 }
 
 

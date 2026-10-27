@@ -36,8 +36,11 @@
 //! feeds filament while it travels in X or Y laid material along its segment,
 //! so the higher of its two ends counts towards the height and both ends
 //! towards the footprint; a feed with no XY travel — an unretraction, a prime —
-//! laid nothing along a path. An arc is bounded by its two ends, not by the
-//! curve between them.
+//! laid nothing along a path. An arc's curve can reach past both of its
+//! ends, so a feeding `G2`/`G3` grows the footprint by its whole circle's
+//! bounds — the circle about the centre its `I` and `J` name, or, for the
+//! `R` form whose centre is one of two, every place within twice the radius
+//! of its start: never smaller than what it laid, and at most a circle larger.
 //!
 //! # What is deliberately not read
 //!
@@ -126,9 +129,13 @@ impl Extrusion {
         };
         let number = code.parse::<u32>().ok();
         match (*letter, number) {
-            ('G', Some(0..=3)) => {
+            ('G', Some(code @ 0..=3)) => {
+                let start = self.at;
                 let fed = self.feed(&words[1..]);
                 self.travel(&words[1..], fed);
+                if code >= 2 && fed > 0.0 {
+                    self.curve(&words[1..], start);
+                }
             }
             ('G', Some(28)) => self.home(&words[1..]),
             ('G', Some(90)) => self.axes = Positioning::Absolute,
@@ -203,6 +210,31 @@ impl Extrusion {
                 .map_or(high, |extent| extent.tallest_mm.max(high)),
             footprint: grown(footprint, self.at[0], self.at[1]),
         });
+    }
+
+    /// A feeding arc from `start`: the footprint grows by the bounds of every
+    /// place its curve could have reached.
+    fn curve(&mut self, words: &[(char, String)], start: [f64; 3]) {
+        let Some(extent) = self.extent.as_mut() else {
+            return;
+        };
+        let offset = |letter| number_of(words, letter).filter(|value| value.is_finite());
+        let (centre, reach) = match (offset('I'), offset('J'), offset('R')) {
+            (None, None, Some(radius)) => ([start[0], start[1]], 2.0 * radius.abs()),
+            (i, j, _) if i.is_some() || j.is_some() => {
+                let (i, j) = (i.unwrap_or(0.0), j.unwrap_or(0.0));
+                ([start[0] + i, start[1] + j], i.hypot(j))
+            }
+            _ => return,
+        };
+        if reach > AXIS_LIMIT {
+            return;
+        }
+        extent.footprint = grown(
+            grown(extent.footprint, centre[0] - reach, centre[1] - reach),
+            centre[0] + reach,
+            centre[1] + reach,
+        );
     }
 
     /// `G28`: the axes it names go to zero, every axis when it names none.

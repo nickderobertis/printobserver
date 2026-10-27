@@ -379,12 +379,26 @@ fn a_home_with_and_without_named_axes_puts_those_axes_at_zero() {
     laid_down(only_z, i64::MAX, 0.0, [50.0, 40.0, 60.0, 40.0]);
 }
 
-/// An arc is bounded by its two ends, and climbs like any other move.
+/// A feeding arc is bounded by its whole circle, which its curve can reach
+/// past both of its ends — here 10 mm below the line both ends are on — and
+/// climbs like any other move.
 #[test]
-fn an_arc_is_bounded_by_its_two_ends() {
+fn a_feeding_arc_is_bounded_by_its_circle() {
     let text = "G90\nM83\nG1 X10 Y10 Z0.4\nG2 X30 Y10 I10 J0 E2\nG1 Z0.8\nG3 X10 Y20 I-10 J0 E2\n";
 
-    laid_down(text, i64::MAX, 0.8, [10.0, 10.0, 30.0, 20.0]);
+    laid_down(text, i64::MAX, 0.8, [10.0, 0.0, 30.0, 20.0]);
+}
+
+/// An arc given by its radius has one of two centres, so it is bounded by
+/// every place within twice that radius of its start; an arc that fed
+/// nothing laid nothing, wherever its circle is.
+#[test]
+fn a_radius_arc_is_bounded_by_both_of_its_circles_and_a_travel_arc_by_none() {
+    let radius = "G90\nM83\nG1 X20 Y20 Z0.2\nG2 X30 Y20 R5 E1\n";
+    laid_down(radius, i64::MAX, 0.2, [10.0, 10.0, 30.0, 30.0]);
+
+    let travel = "G90\nM83\nG1 X20 Y20 Z0.2\nG1 X30 E1\nG2 X20 Y20 I-5 J0\n";
+    laid_down(travel, i64::MAX, 0.2, [20.0, 20.0, 30.0, 20.0]);
 }
 
 /// A segment that descends while it extrudes laid material at its start too,

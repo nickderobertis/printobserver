@@ -2835,3 +2835,9 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-sdk/src/contract.rs"
 site = "    allowed: bool,"
 reason = "Generated: `ActionAllowanceAsSent` is the private form an allowance is read through, which exists to hold the contract's `{action, allowed, refusal}` document to its pairing — `ActionAllowance`'s `TryFrom` refuses both contradictory pairs before any value of the public type is made. The schema marks `allowed` `x-paired-with`, and the Rust emitter writes this directive above every field so marked."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "impl<'de> Deserialize<'de> for ActionAllowance {"
+reason = "No program reads an allowance back through core: the server only writes one, in its recovery read. This reading exists so the record corpus round-trips the type, and it is held by `tests/records.rs` to both contradictions and to the published schema's own verdict on each. The readers that meet an allowance over a boundary are the clients, and the Rust one is driven with both contradictions through a real HTTP answer in `crates/printobserver-sdk/tests/answers.rs`."

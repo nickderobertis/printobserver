@@ -2313,47 +2313,106 @@ export function payloadOf<K extends keyof EventPayloads>(
 }
 
 /**
- * Every arm of `RejectionReason`, and the fields it requires: `null` for an
+ * One field a refusal's arm carries: the JSON form it takes, whether the arm
+ * must carry it, and whether it may be null.
+ */
+export type RefusalField = readonly [kind: string, required: boolean, nullable: boolean];
+
+/**
+ * Every arm of `RejectionReason`, and the fields it carries: `null` for an
  * arm carrying nothing, which travels as its own name.
  */
-export const REJECTION_REASON_FIELDS: Readonly<Record<string, ReadonlyArray<string> | null>> = {
-  out_of_bounds: ["adjustable", "allowed", "requested"],
-  actor_may_not_request: ["action", "actor_class"],
+export const REJECTION_REASON_FIELDS: Readonly<
+  Record<string, Readonly<Record<string, RefusalField>> | null>
+> = {
+  out_of_bounds: {
+    adjustable: ["string", true, false],
+    allowed: ["object", true, false],
+    requested: ["number", true, false],
+  },
+  actor_may_not_request: {
+    action: ["string", true, false],
+    actor_class: ["string", true, false],
+  },
   no_active_print: null,
-  invalid_from_state: ["state"],
-  min_interval_not_elapsed: ["interval_s", "since_last_s"],
-  unsupported_adjustable: ["adjustable"],
-  insufficient_filament: [
-    "buffer_g",
-    "remaining_g",
-    "required_g",
-    "spool_id",
-    "spool_name",
-    "tool",
-  ],
-  unverified_spool: ["reason", "spool_id", "spool_name", "tool"],
-  analysis_unavailable: ["file_name", "waited_s"],
+  invalid_from_state: {
+    state: ["string_or_object", true, false],
+  },
+  min_interval_not_elapsed: {
+    interval_s: ["integer", true, false],
+    since_last_s: ["integer", true, false],
+  },
+  unsupported_adjustable: {
+    adjustable: ["string", true, false],
+  },
+  insufficient_filament: {
+    buffer_g: ["number", true, false],
+    remaining_g: ["number", true, false],
+    required_g: ["number", true, false],
+    spool_id: ["string", true, false],
+    spool_name: ["string", true, false],
+    tool: ["integer", true, false],
+    unverified: ["object", false, true],
+  },
+  unverified_spool: {
+    reason: ["object", true, false],
+    spool_id: ["string", true, false],
+    spool_name: ["string", true, false],
+    tool: ["integer", true, false],
+  },
+  analysis_unavailable: {
+    file_name: ["string", true, false],
+    waited_s: ["integer", true, false],
+  },
   print_already_ended: null,
-  print_still_active: ["state"],
-  intervention_still_active: ["intervention_id"],
-  print_not_resumable: ["recovery_event_id"],
-  spool_refused: ["cause", "message"],
+  print_still_active: {
+    state: ["string_or_object", true, false],
+  },
+  intervention_still_active: {
+    intervention_id: ["string", true, false],
+  },
+  print_not_resumable: {
+    recovery_event_id: ["string", true, false],
+  },
+  spool_refused: {
+    cause: ["object", true, false],
+    message: ["string", true, false],
+  },
 };
 
 /**
- * Every arm of `RecoveryRejection`, and the fields it requires: `null` for
- * an arm carrying nothing, which travels as its own name.
+ * Every arm of `RecoveryRejection`, and the fields it carries: `null` for an
+ * arm carrying nothing, which travels as its own name.
  */
-export const RECOVERY_REJECTION_FIELDS: Readonly<Record<string, ReadonlyArray<string> | null>> = {
-  actor_may_not_request: ["action"],
-  print_running: ["state"],
+export const RECOVERY_REJECTION_FIELDS: Readonly<
+  Record<string, Readonly<Record<string, RefusalField>> | null>
+> = {
+  actor_may_not_request: {
+    action: ["string", true, false],
+  },
+  print_running: {
+    state: ["string_or_object", true, false],
+  },
   printer_unreachable: null,
   z_untrusted: null,
-  insufficient_clearance: ["margin_mm", "nozzle_z_mm", "tallest_mm"],
-  out_of_bounds: ["allowed", "field", "requested"],
-  assertion_required: ["field"],
+  insufficient_clearance: {
+    margin_mm: ["number", true, false],
+    nozzle_z_mm: ["number", true, false],
+    tallest_mm: ["number", true, false],
+  },
+  out_of_bounds: {
+    allowed: ["object", true, false],
+    field: ["string", true, false],
+    requested: ["number", true, false],
+  },
+  assertion_required: {
+    field: ["string", true, false],
+  },
   recovery_not_configured: null,
-  printer_cannot: ["action", "detail"],
+  printer_cannot: {
+    action: ["string", true, false],
+    detail: ["string", true, false],
+  },
 };
 
 /**
