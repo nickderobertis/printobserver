@@ -2925,3 +2925,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/test_running_environment.py"
 site = "one sequential command to its instance"
 reason = "Each is one command to the OctoPrint `just octoprint-up` started — a cancel, a queued jog, a restart of the hold print — made by a journey that waits on the machine's answer before its next step, through the same blocking helper every journey of this suite drives that instance with, which `tests/environment.py` gives the reason for. Nothing runs beside it for an async client to overlap, and an async client would be a second client of an instance the product never reaches from here."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "A running instance refusing a line or a reconnect is reported with its status and words."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target names its fast suites file by file, and `test-integration` runs the rest, where this file's journeys of `terminal` and `connect` failing already live. This journey drives the same two commands against a stand-in host this test starts and stops itself — no shared instance — beside the journey of the same commands refused for an absent instance; moving it into a project of its own would split one script's failure suite across two."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "A `G91` jog closed by `G90` moves Z by what it asked, however long the queue."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs its fast suites file by file, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey proves the install's repair of that instance's virtual printer on the running instance, beside the other journeys that drive it; moving it into a project of its own would split one script's integration tier across two."

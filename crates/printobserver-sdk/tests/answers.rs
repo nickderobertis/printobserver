@@ -4,8 +4,9 @@
 //! admit. This drives two the contracts forbid, through the published
 //! client's own methods against a stub host on a real socket, and asserts each
 //! is answered as unreadable rather than handed on: a recovery allowance whose
-//! `refusal` is not sent exactly when `allowed` is false, and a machine
-//! refusal of a recovery that did not fail at the printer.
+//! `refusal` is not sent exactly when `allowed` is false, a machine refusal of
+//! a recovery that did not fail at the printer, and a policy refusal of one
+//! that carries no refusal the contracts declare.
 
 #[path = "support/host.rs"]
 mod host;
@@ -103,6 +104,34 @@ fn a_machine_refused_recovery_is_read_only_when_it_failed_at_the_printer() {
         let read = Client::new(host.address(), Actor::Operator).recover_fan(50.0, "because");
         assert!(
             matches!(&read, Err(ClientError::Unreadable { status: 502, .. })),
+            "{decision}: {read:?}"
+        );
+    }
+}
+
+/// A recovery the policy refused arrives through `recover_fan` as a typed
+/// refusal; the same status carrying a recovery that was carried out, or a
+/// refusal that is no refusal the contracts declare, is answered as
+/// unreadable rather than as a refusal.
+#[test]
+fn a_policy_refused_recovery_is_read_only_when_it_is_a_refusal() {
+    let host = Host::answering(409, &recovery_with(&json!({ "rejected": "z_untrusted" })));
+    let refused = Client::new(host.address(), Actor::Operator).recover_fan(50.0, "because");
+    assert!(
+        matches!(&refused, Err(ClientError::RecoveryRejected(_))),
+        "{refused:?}"
+    );
+    assert_eq!(host.received().target, "/v1/printer/recovery/recover_fan");
+
+    for decision in [
+        json!({ "executed": "succeeded" }),
+        json!({ "rejected": { "print_running": {} } }),
+        json!({ "rejected": 7 }),
+    ] {
+        let host = Host::answering(409, &recovery_with(&decision));
+        let read = Client::new(host.address(), Actor::Operator).recover_fan(50.0, "because");
+        assert!(
+            matches!(&read, Err(ClientError::Unreadable { status: 409, .. })),
             "{decision}: {read:?}"
         );
     }

@@ -291,7 +291,7 @@ def test_a_print_driven_past_a_hundred_lines_meets_no_injected_fault(
 
 def test_a_relative_jog_queued_behind_a_move_stays_relative(
     brought_up: dict[str, Any],
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """A `G91` jog closed by `G90` moves Z by what it asked, however long the queue.
 
     The virtual printer carries out moves on a thread of its own and takes a
@@ -307,15 +307,14 @@ def test_a_relative_jog_queued_behind_a_move_stays_relative(
     serial = STATE_DIR / "instance" / "logs" / "serial.log"
 
     # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to its instance
-    equal(post(url, "/api/job", key, {"command": "cancel"}), 204, describing="the cancel")
+    cancelled = post(url, "/api/job", key, {"command": "cancel"})
+    equal(cancelled, 204, describing="the cancel")
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of its instance
     settled(lambda: printer_state(url, key), "Operational", describing="the printer state")
     before = len(serial.read_text(encoding="utf-8", errors="replace"))
     # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to its instance
-    equal(
-        post(url, "/api/printer/command", key, {"commands": QUEUED_BEHIND}),
-        204,
-        describing="the queued jog",
-    )
+    queued = post(url, "/api/printer/command", key, {"commands": QUEUED_BEHIND})
+    equal(queued, 204, describing="the queued jog")
     deadline = time.monotonic() + SETTLE_S
     reported = _reported_z(serial, before)
     while reported is None and time.monotonic() < deadline:
@@ -324,7 +323,9 @@ def test_a_relative_jog_queued_behind_a_move_stays_relative(
 
     restart = {"command": "select", "print": True}
     # llmlint: ignore[async_typed_clients_at_boundaries] one sequential command to its instance
-    equal(post(url, "/api/files/local/hold.gcode", key, restart), 204, describing="the restart")
+    restarted = post(url, "/api/files/local/hold.gcode", key, restart)
+    equal(restarted, 204, describing="the restart")
+    # llmlint: ignore[async_typed_clients_at_boundaries] one sequential read of its instance
     settled(lambda: printer_state(url, key), "Printing", describing="the printer state")
     truth(reported is not None, describing="the machine reporting Z after the jog")
     equal(reported, JOGGED_Z, describing="where the jog left Z")

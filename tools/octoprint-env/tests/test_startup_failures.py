@@ -175,7 +175,7 @@ def _recorded_host(tmp_path: Path, status: int) -> tuple[subprocess.Popen[str], 
 
 def test_a_line_or_a_reconnect_a_running_instance_refuses_is_refused_with_its_words(
     tmp_path: Path,
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """A running instance refusing a line or a reconnect is reported with its status and words.
 
     The same stand-in answering `204` takes both, so what refuses them is the
