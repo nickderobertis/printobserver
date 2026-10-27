@@ -53,6 +53,8 @@ function isScalar(value: unknown, kind: string): boolean {
   switch (kind) {
     case "string":
       return typeof value === "string";
+    case "null":
+      return value === null;
     case "boolean":
       return typeof value === "boolean";
     case "integer":
@@ -91,11 +93,29 @@ function isDeclared(value: unknown, declaration: unknown): boolean {
   return false;
 }
 
-/** Whether an object carries each member its declaration requires, each of its type. */
+/** Whether a flag and the sibling it is held in step with agree. */
+function isPaired(flag: unknown, value: Record<string, unknown>, pair: string): boolean {
+  const sent = Object.hasOwn(value, pair);
+  if (sent && value[pair] === null) {
+    return false;
+  }
+  return typeof flag === "boolean" && flag !== sent;
+}
+
+/**
+ * Whether an object carries each member its declaration requires, each of its
+ * type. A member paired with an optional sibling is false exactly when that
+ * sibling is sent, and the sibling is never sent as null.
+ */
 function hasFields(value: Record<string, unknown>, fields: Record<string, unknown>): boolean {
   return Object.entries(fields).every(([name, field]) => {
     if (!isObject(field) || typeof field.required !== "boolean") {
       return false;
+    }
+    if (typeof field.paired_with === "string" && field.paired_with !== "") {
+      if (!isPaired(value[name], value, field.paired_with)) {
+        return false;
+      }
     }
     const member = value[name];
     if (member === undefined) {

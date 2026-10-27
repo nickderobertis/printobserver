@@ -50,6 +50,8 @@ def _scalar(value: object, kind: str) -> bool:
     match kind:
         case "string":
             return isinstance(value, str)
+        case "null":
+            return value is None
         case "boolean":
             return isinstance(value, bool)
         case "integer":
@@ -91,13 +93,19 @@ def _declared(value: object, declaration: object) -> bool:
 
 
 def _fields(value: dict[object, object], fields: dict[object, object]) -> bool:
-    """Whether an object carries each member its declaration requires, each of its type."""
+    """Whether an object carries each member its declaration requires, each of its type.
+
+    A member paired with an optional sibling is false exactly when that sibling
+    is sent, and the sibling is never sent as null.
+    """
     for name, field in fields.items():
         match field:
-            case {"shape": shape, "required": bool() as required}:
+            case {"shape": shape, "required": bool() as required, "paired_with": str() as pair}:
                 pass
             case _:
                 return False
+        if pair and not _paired(value.get(name), value, pair):
+            return False
         if name not in value:
             if required:
                 return False
@@ -108,6 +116,13 @@ def _fields(value: dict[object, object], fields: dict[object, object]) -> bool:
         if not _conforms(member, shape):
             return False
     return True
+
+
+def _paired(flag: object, value: dict[object, object], pair: str) -> bool:
+    """Whether a flag and the sibling it is held in step with agree."""
+    if pair in value and value[pair] is None:
+        return False
+    return isinstance(flag, bool) and flag != (pair in value)
 
 
 def _tagged(value: dict[object, object], tag_field: str, variants: dict[object, object]) -> bool:

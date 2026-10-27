@@ -4034,18 +4034,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryActionKind"
      }
     },
     "allowed": {
+     "paired_with": "refusal",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "refusal": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "ref": "RecoveryRejection"
@@ -4060,6 +4063,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "intervention": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4068,6 +4072,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "printer_refusal": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4076,6 +4081,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "record": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionRecord"
@@ -4090,12 +4096,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "intervention_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4137,12 +4145,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
      }
     },
     "executed_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4151,12 +4161,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4165,12 +4177,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "request": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionRequest"
@@ -4185,12 +4199,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
@@ -4205,18 +4221,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "requested_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -4231,18 +4250,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintAction"
      }
     },
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
@@ -4260,6 +4282,7 @@ SHAPES: dict[str, object] = json.loads(
     "agent": {
      "fields": {
       "session_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4298,36 +4321,42 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "confidence": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Confidence"
      }
     },
     "did": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "escalating": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "should_continue": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "summary": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "why": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -4342,12 +4371,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "assessment": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "AgentAssessment"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -4362,6 +4393,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actual_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -4370,6 +4402,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "target_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -4386,18 +4419,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "attempts": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "cause": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "FrameCause"
      }
     },
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -4412,6 +4448,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "delivered": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -4421,6 +4458,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "waited_s": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -4438,18 +4476,21 @@ SHAPES: dict[str, object] = json.loads(
     "print": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
        }
       },
       "segment": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -4462,30 +4503,35 @@ SHAPES: dict[str, object] = json.loads(
     "unobserved": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "generation": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "origin": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "print_number": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -4510,6 +4556,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "pending": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PendingCharge"
@@ -4524,36 +4571,42 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "density_g_cm3": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "diameter_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "grams": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "remaining_after_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "remaining_before_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -4568,12 +4621,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "UnverifiedReason"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -4595,12 +4650,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "context": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintContext"
      }
     },
     "image_path": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4620,6 +4677,7 @@ SHAPES: dict[str, object] = json.loads(
     "available": {
      "fields": {
       "since": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -4632,6 +4690,7 @@ SHAPES: dict[str, object] = json.loads(
     "unavailable": {
      "fields": {
       "since": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -4644,6 +4703,7 @@ SHAPES: dict[str, object] = json.loads(
     "unchecked": {
      "fields": {
       "since": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "null"
@@ -4660,12 +4720,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "status": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "DetectorStatus"
@@ -4686,6 +4748,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "allowed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "map": {
@@ -4702,6 +4765,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "error": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -4732,12 +4796,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "image": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4746,18 +4812,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "kind": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventKind"
      }
     },
     "payload": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "any": true
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4766,6 +4835,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "raw": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4774,12 +4844,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "received_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "source": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventSource"
@@ -4799,6 +4871,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "cursor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -4807,6 +4880,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -4816,6 +4890,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print_ended": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4835,6 +4910,7 @@ SHAPES: dict[str, object] = json.loads(
     "failed": {
      "fields": {
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4856,6 +4932,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4864,12 +4941,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "source_kind": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventKind"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4878,6 +4957,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "tool": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4894,6 +4974,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "analysed_length_mm": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4902,12 +4983,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "charge_key": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeKey"
      }
     },
     "charged": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4916,18 +4999,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "length_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "method": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeMethod"
      }
     },
     "note": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4936,6 +5022,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4944,6 +5031,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -4963,18 +5051,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "bytes": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "observed_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "size_bytes": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4991,54 +5082,63 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "disposition": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RebaselineDisposition"
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "new_failures": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "new_generation": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "new_successes": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "old_failures": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "old_generation": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "old_successes": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "origin": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5053,24 +5153,28 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "max_x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "max_y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "min_x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "min_y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -5091,12 +5195,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "target_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -5111,6 +5217,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actual_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5119,6 +5226,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "offset_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5127,6 +5235,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "target_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5143,6 +5252,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5160,6 +5270,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "path": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5168,6 +5279,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "record": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ImageRecord"
@@ -5187,54 +5299,63 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "byte_len": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "content_type": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "fetched_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ImageId"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "relative_path": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "sha256": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "source_url": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5251,12 +5372,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ImageId"
      }
     },
     "sha256": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5271,54 +5394,63 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "adjustable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Adjustable"
      }
     },
     "applied_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "applied_value": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "expires_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionOutcome"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "prior_value": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5327,6 +5459,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "restored_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5343,18 +5476,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "adjustable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Adjustable"
      }
     },
     "intervention_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionOutcome"
@@ -5377,6 +5513,7 @@ SHAPES: dict[str, object] = json.loads(
     "restore_failed": {
      "fields": {
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -5404,6 +5541,7 @@ SHAPES: dict[str, object] = json.loads(
     "superseded": {
      "fields": {
       "by": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionId"
@@ -5420,12 +5558,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "source": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ErrorSource"
      }
     },
     "text": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5440,6 +5580,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "allowed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "map": {
@@ -5448,18 +5589,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "material": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "metadata": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "map": {
@@ -5468,12 +5612,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "nozzle_diameter_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "slicer_profile": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5488,6 +5634,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "completion": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5496,6 +5643,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "error": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5504,6 +5652,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "estimated_print_time_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5512,6 +5661,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "filament": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -5521,6 +5671,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5529,6 +5680,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_origin": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5537,6 +5689,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_position_bytes": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5545,6 +5698,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print_time_left_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5553,6 +5707,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print_time_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5561,6 +5716,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "size_bytes": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5569,6 +5725,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -5583,18 +5740,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "footprint": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Footprint"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "tallest_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -5609,12 +5769,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -5629,6 +5791,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "arrived": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -5638,18 +5801,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "detector_paused": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "event": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventRecord"
      }
     },
     "frame": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5658,6 +5824,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "image_path": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5666,6 +5833,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5674,6 +5842,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5690,6 +5859,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5704,6 +5874,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "manifest": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5712,6 +5883,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "narrowings": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5729,18 +5901,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "adjustable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Adjustable"
      }
     },
     "applied": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Range"
      }
     },
     "requested": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Range"
@@ -5755,6 +5930,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "ended_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5763,6 +5939,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5771,12 +5948,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "is_warning": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "obico_print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5785,12 +5964,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print_paused": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "started_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5819,6 +6000,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "ended_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5827,6 +6009,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5835,12 +6018,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "notification_type": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ObicoNotificationType"
      }
     },
     "obico_print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5849,6 +6034,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "started_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5865,12 +6051,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "acknowledged_event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "disposition": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "AcknowledgementDisposition"
@@ -5885,12 +6073,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "resumable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
@@ -5905,6 +6095,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "analysed_length_mm": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5913,24 +6104,28 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "charge_key": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintSegmentKey"
      }
     },
     "length_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "method": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeMethod"
      }
     },
     "note": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5939,12 +6134,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "pended_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5961,12 +6158,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "charge_key": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeKey"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
@@ -5981,12 +6180,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "interval_s": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5995,6 +6196,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6030,18 +6232,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "site": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PortFailureSite"
@@ -6072,18 +6277,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "checked_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6093,6 +6301,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "verdict": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PreflightVerdict"
@@ -6107,6 +6316,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "preflight": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Preflight"
@@ -6121,6 +6331,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6129,6 +6340,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "preflight": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Preflight"
@@ -6143,12 +6355,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "buffer_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "required_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -6166,6 +6380,7 @@ SHAPES: dict[str, object] = json.loads(
     "insufficient": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "list": {
@@ -6175,18 +6390,21 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "need": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightNeed"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6199,12 +6417,14 @@ SHAPES: dict[str, object] = json.loads(
     "no_analysis": {
      "fields": {
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6217,6 +6437,7 @@ SHAPES: dict[str, object] = json.loads(
     "unverified_spool": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -6226,6 +6447,7 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "need": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6234,12 +6456,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6256,12 +6480,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -6276,12 +6502,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "result": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PreflightToolResult"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -6299,6 +6527,7 @@ SHAPES: dict[str, object] = json.loads(
     "insufficient": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "list": {
@@ -6308,18 +6537,21 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "need": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightNeed"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6332,12 +6564,14 @@ SHAPES: dict[str, object] = json.loads(
     "no_analysis": {
      "fields": {
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6350,6 +6584,7 @@ SHAPES: dict[str, object] = json.loads(
     "overridden": {
      "fields": {
       "objection": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightObjection"
@@ -6362,18 +6597,21 @@ SHAPES: dict[str, object] = json.loads(
     "passed": {
      "fields": {
       "need": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightNeed"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6391,6 +6629,7 @@ SHAPES: dict[str, object] = json.loads(
     "unverified_spool": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -6400,6 +6639,7 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "need": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6408,12 +6648,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -6426,6 +6668,7 @@ SHAPES: dict[str, object] = json.loads(
     "warned": {
      "fields": {
       "objection": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightObjection"
@@ -6456,24 +6699,28 @@ SHAPES: dict[str, object] = json.loads(
     "acknowledge_failure": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "disposition": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "AcknowledgementDisposition"
        }
       },
       "event_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "EventId"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6486,12 +6733,14 @@ SHAPES: dict[str, object] = json.loads(
     "cancel": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6504,18 +6753,21 @@ SHAPES: dict[str, object] = json.loads(
     "close_print": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "outcome": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintOutcome"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6528,12 +6780,14 @@ SHAPES: dict[str, object] = json.loads(
     "pause": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6546,12 +6800,14 @@ SHAPES: dict[str, object] = json.loads(
     "resume": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6564,12 +6820,14 @@ SHAPES: dict[str, object] = json.loads(
     "set_bed_target_c": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6578,12 +6836,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "target_c": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -6596,12 +6856,14 @@ SHAPES: dict[str, object] = json.loads(
     "set_fan_percent": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6610,12 +6872,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "percent": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6628,12 +6892,14 @@ SHAPES: dict[str, object] = json.loads(
     "set_feedrate_factor": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6642,12 +6908,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "factor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6660,12 +6928,14 @@ SHAPES: dict[str, object] = json.loads(
     "set_flowrate_factor": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6674,12 +6944,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "factor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6692,12 +6964,14 @@ SHAPES: dict[str, object] = json.loads(
     "set_tool_target_c": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6706,18 +6980,21 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "target_c": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -6730,30 +7007,35 @@ SHAPES: dict[str, object] = json.loads(
     "start_print": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "FileName"
        }
       },
       "manifest": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "JobManifest"
        }
       },
       "override_filament_check": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6770,18 +7052,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "bounds": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EffectiveBounds"
      }
     },
     "detector": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "ref": "DetectorHealth"
      }
     },
     "interventions": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6791,6 +7076,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6799,6 +7085,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "latest_image": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6807,6 +7094,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "manifest": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6815,12 +7103,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintRecord"
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6829,6 +7119,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "recent_events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6846,18 +7137,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintOutcome"
      }
     },
     "received_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -6872,6 +7166,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "last_position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6880,18 +7175,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintOutcome"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -6919,6 +7217,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "end_reason": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6927,6 +7226,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "ended_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6935,6 +7235,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6943,12 +7244,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "job_print_time_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6957,6 +7260,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "job_started_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6965,6 +7269,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "narrowings": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6974,12 +7279,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "opened_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "provider_print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6988,6 +7295,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -7002,18 +7310,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "segment": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -7028,6 +7339,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7036,6 +7348,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "loaded": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7045,6 +7358,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "preflight": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7053,6 +7367,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "started_by": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7069,6 +7384,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -7083,18 +7399,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "from": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
      }
     },
     "to": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -7109,12 +7428,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "during_print": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7131,6 +7452,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "bed": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7139,6 +7461,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "chamber": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7147,12 +7470,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "connection": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
      }
     },
     "fan_percent": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7161,6 +7486,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "feedrate_factor": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7169,6 +7495,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "flowrate_factor": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7177,12 +7504,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "observed_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7244,6 +7573,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "active": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7252,6 +7582,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "prints": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7269,12 +7600,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "max": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "min": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -7308,6 +7641,7 @@ SHAPES: dict[str, object] = json.loads(
     "recover_fan": {
      "fields": {
       "percent": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -7320,18 +7654,21 @@ SHAPES: dict[str, object] = json.loads(
     "recover_heat": {
      "fields": {
       "clearance_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
        }
       },
       "target_c": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -7344,6 +7681,7 @@ SHAPES: dict[str, object] = json.loads(
     "recover_home_xy": {
      "fields": {
       "clearance_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
@@ -7356,6 +7694,7 @@ SHAPES: dict[str, object] = json.loads(
     "recover_home_z": {
      "fields": {
       "bed_clear_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
@@ -7368,6 +7707,7 @@ SHAPES: dict[str, object] = json.loads(
     "recover_lift": {
      "fields": {
       "mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -7380,6 +7720,7 @@ SHAPES: dict[str, object] = json.loads(
     "recover_park": {
      "fields": {
       "clearance_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
@@ -7407,24 +7748,28 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryDecision"
      }
     },
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7463,24 +7808,28 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ExecutionOutcome"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -7505,18 +7854,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "z": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -7531,24 +7883,28 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "rejection": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryRejection"
@@ -7566,6 +7922,7 @@ SHAPES: dict[str, object] = json.loads(
     "actor_may_not_request": {
      "fields": {
       "action": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryActionKind"
@@ -7578,6 +7935,7 @@ SHAPES: dict[str, object] = json.loads(
     "assertion_required": {
      "fields": {
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryField"
@@ -7590,18 +7948,21 @@ SHAPES: dict[str, object] = json.loads(
     "insufficient_clearance": {
      "fields": {
       "margin_mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "nozzle_z_mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "tallest_mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -7614,18 +7975,21 @@ SHAPES: dict[str, object] = json.loads(
     "out_of_bounds": {
      "fields": {
       "allowed": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Range"
        }
       },
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryField"
        }
       },
       "requested": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -7638,6 +8002,7 @@ SHAPES: dict[str, object] = json.loads(
     "print_running": {
      "fields": {
       "state": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrinterState"
@@ -7650,12 +8015,14 @@ SHAPES: dict[str, object] = json.loads(
     "printer_cannot": {
      "fields": {
       "action": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryActionKind"
        }
       },
       "detail": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -7687,18 +8054,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -7713,6 +8083,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actions": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7722,6 +8093,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "last_print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7730,6 +8102,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "paused_print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7738,6 +8111,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "position": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7746,18 +8120,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
      }
     },
     "temperatures": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryTemperatures"
      }
     },
     "z_home": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7766,6 +8143,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "z_trust": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ZTrust"
@@ -7780,6 +8158,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "bed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7788,6 +8167,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7808,12 +8188,14 @@ SHAPES: dict[str, object] = json.loads(
     "actor_may_not_request": {
      "fields": {
       "action": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "ActionKind"
        }
       },
       "actor_class": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "ActorClass"
@@ -7826,12 +8208,14 @@ SHAPES: dict[str, object] = json.loads(
     "analysis_unavailable": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "waited_s": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -7844,42 +8228,49 @@ SHAPES: dict[str, object] = json.loads(
     "insufficient_filament": {
      "fields": {
       "buffer_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "required_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
        }
       },
       "spool_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "unverified": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -7894,6 +8285,7 @@ SHAPES: dict[str, object] = json.loads(
     "intervention_still_active": {
      "fields": {
       "intervention_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionId"
@@ -7906,6 +8298,7 @@ SHAPES: dict[str, object] = json.loads(
     "invalid_from_state": {
      "fields": {
       "state": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrinterState"
@@ -7918,12 +8311,14 @@ SHAPES: dict[str, object] = json.loads(
     "min_interval_not_elapsed": {
      "fields": {
       "interval_s": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "since_last_s": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -7941,18 +8336,21 @@ SHAPES: dict[str, object] = json.loads(
     "out_of_bounds": {
      "fields": {
       "adjustable": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Adjustable"
        }
       },
       "allowed": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Range"
        }
       },
       "requested": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -7970,6 +8368,7 @@ SHAPES: dict[str, object] = json.loads(
     "print_not_resumable": {
      "fields": {
       "recovery_event_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "EventId"
@@ -7982,6 +8381,7 @@ SHAPES: dict[str, object] = json.loads(
     "print_still_active": {
      "fields": {
       "state": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrinterState"
@@ -7994,12 +8394,14 @@ SHAPES: dict[str, object] = json.loads(
     "spool_refused": {
      "fields": {
       "cause": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolRefusalCause"
        }
       },
       "message": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -8012,6 +8414,7 @@ SHAPES: dict[str, object] = json.loads(
     "unsupported_adjustable": {
      "fields": {
       "adjustable": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Adjustable"
@@ -8024,24 +8427,28 @@ SHAPES: dict[str, object] = json.loads(
     "unverified_spool": {
      "fields": {
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "UnverifiedReason"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
        }
       },
       "spool_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -8058,12 +8465,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "out_of_range": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "value": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -8078,12 +8487,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "freshness": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PositionFreshness"
      }
     },
     "position": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "FilePosition"
@@ -8098,12 +8509,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "cleared_marks": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -8113,6 +8526,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "gross_g": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -8121,30 +8535,35 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "remaining_after_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "remaining_before_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "took_pending": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -8162,6 +8581,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "recent": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -8171,6 +8591,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "spool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolRecord"
@@ -8188,12 +8609,14 @@ SHAPES: dict[str, object] = json.loads(
     "adjust_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "gross_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8202,12 +8625,14 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8216,6 +8641,7 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8228,24 +8654,28 @@ SHAPES: dict[str, object] = json.loads(
     "load_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -8258,12 +8688,14 @@ SHAPES: dict[str, object] = json.loads(
     "register_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "color": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8272,6 +8704,7 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "density_g_cm3": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8280,6 +8713,7 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "diameter_mm": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8288,30 +8722,35 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "initial_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "material": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8320,6 +8759,7 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "tare_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8334,18 +8774,21 @@ SHAPES: dict[str, object] = json.loads(
     "retire_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8358,18 +8801,21 @@ SHAPES: dict[str, object] = json.loads(
     "unload_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8386,12 +8832,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
      }
     },
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -8401,6 +8849,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "spool": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -8417,12 +8866,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "command": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolCommand"
      }
     },
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
@@ -8457,6 +8908,7 @@ SHAPES: dict[str, object] = json.loads(
     "loaded": {
      "fields": {
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -8469,6 +8921,7 @@ SHAPES: dict[str, object] = json.loads(
     "retired": {
      "fields": {
       "at": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -8490,12 +8943,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "cleared_marks": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -8505,12 +8960,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "replaced": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -8519,12 +8976,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "took_pending": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -8534,6 +8993,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -8548,6 +9008,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "color": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -8556,60 +9017,70 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "density_g_cm3": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "diameter_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "initial_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "lifecycle": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolLifecycle"
      }
     },
     "material": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "registered_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "remaining_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "tare_g": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -8618,12 +9089,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "trust": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolTrust"
      }
     },
     "updated_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -8641,6 +9114,7 @@ SHAPES: dict[str, object] = json.loads(
     "conflicting_fields": {
      "fields": {
       "fields": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -8656,12 +9130,14 @@ SHAPES: dict[str, object] = json.loads(
     "density_required": {
      "fields": {
       "material": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -8676,12 +9152,14 @@ SHAPES: dict[str, object] = json.loads(
     "invalid_adjustment_figure": {
      "fields": {
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolField"
        }
       },
       "value": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -8699,6 +9177,7 @@ SHAPES: dict[str, object] = json.loads(
     "missing_field": {
      "fields": {
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolField"
@@ -8711,6 +9190,7 @@ SHAPES: dict[str, object] = json.loads(
     "not_loaded": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8723,6 +9203,7 @@ SHAPES: dict[str, object] = json.loads(
     "nothing_to_confirm": {
      "fields": {
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -8735,6 +9216,7 @@ SHAPES: dict[str, object] = json.loads(
     "retired_spool": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8747,6 +9229,7 @@ SHAPES: dict[str, object] = json.loads(
     "tare_required": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8759,6 +9242,7 @@ SHAPES: dict[str, object] = json.loads(
     "unknown_spool": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -8771,6 +9255,7 @@ SHAPES: dict[str, object] = json.loads(
     "unknown_tool": {
      "fields": {
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -8787,18 +9272,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "spool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolRecord"
@@ -8813,24 +9301,28 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "remaining_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -8848,6 +9340,7 @@ SHAPES: dict[str, object] = json.loads(
     "unverified": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -8872,24 +9365,28 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -8904,12 +9401,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "UnverifiedReason"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -8924,6 +9423,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "at_a_glance": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -8933,6 +9433,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "pending": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -8942,6 +9443,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "spools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -8962,18 +9464,21 @@ SHAPES: dict[str, object] = json.loads(
     "intervention_expired": {
      "fields": {
       "adjustable": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Adjustable"
        }
       },
       "intervention_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionId"
        }
       },
       "outcome": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionOutcome"
@@ -8991,6 +9496,7 @@ SHAPES: dict[str, object] = json.loads(
     "session_resumed": {
      "fields": {
       "session_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -9007,12 +9513,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "StartupOutcome"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
@@ -9027,12 +9535,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "detector": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "DetectorHealth"
      }
     },
     "interventions": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -9042,6 +9552,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9050,12 +9561,14 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintRecord"
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9064,6 +9577,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "session": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9080,6 +9594,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "close_reason": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9088,6 +9603,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "closed_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9096,30 +9612,35 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "created_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "harness_identity": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "last_turn_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -9134,12 +9655,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "close_reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -9154,12 +9677,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "harness_identity": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -9174,6 +9699,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -9183,6 +9709,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "next": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9204,18 +9731,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "length_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "volume_cm3": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9232,6 +9762,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "actual_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -9240,6 +9771,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "target_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -9248,6 +9780,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -9262,18 +9795,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "charged": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "printed_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9282,6 +9818,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "success": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
@@ -9296,6 +9833,7 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "bed_target_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9304,18 +9842,21 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "last_print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "moved": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -9324,6 +9865,7 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -9341,12 +9883,14 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "UnverifiedReason"
      }
     },
     "since": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -9364,6 +9908,7 @@ SHAPES: dict[str, object] = json.loads(
     "filament_change_unconfirmed": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
@@ -9376,6 +9921,7 @@ SHAPES: dict[str, object] = json.loads(
     "filament_change_unconfirmed_position": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
@@ -9388,12 +9934,14 @@ SHAPES: dict[str, object] = json.loads(
     "tally_reset": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "origin": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -9406,12 +9954,14 @@ SHAPES: dict[str, object] = json.loads(
     "unaccounted_print": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "printed_at": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -9424,6 +9974,7 @@ SHAPES: dict[str, object] = json.loads(
     "uncharged_print": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
@@ -9440,18 +9991,21 @@ SHAPES: dict[str, object] = json.loads(
   "struct": {
    "fields": {
     "sweeps_bed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"

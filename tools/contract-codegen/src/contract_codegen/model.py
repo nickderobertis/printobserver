@@ -279,9 +279,18 @@ def shape_of(expression: TypeExpr) -> dict[str, object]:
 
 
 def _shaped_fields(fields: tuple[Field, ...]) -> dict[str, object]:
-    """Every property of one object shape: its own shape, and whether it is required."""
+    """Every property of one object shape: its shape, whether it is required, and its pair.
+
+    A property held in step with an optional sibling names it as `paired_with`:
+    it is false exactly when that sibling is sent.
+    """
     return {
-        entry.name: {"shape": shape_of(entry.type), "required": entry.required} for entry in fields
+        entry.name: {
+            "shape": shape_of(entry.type),
+            "required": entry.required,
+            "paired_with": entry.paired_with,
+        }
+        for entry in fields
     }
 
 

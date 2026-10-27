@@ -2330,18 +2330,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryActionKind"
      }
     },
     "allowed": {
+     "paired_with": "refusal",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "refusal": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "ref": "RecoveryRejection"
@@ -2356,6 +2359,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "intervention": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -2364,6 +2368,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "printer_refusal": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -2372,6 +2377,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "record": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionRecord"
@@ -2386,12 +2392,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "intervention_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -2433,12 +2441,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
      }
     },
     "executed_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -2447,12 +2457,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -2461,12 +2473,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "request": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionRequest"
@@ -2481,12 +2495,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
@@ -2501,18 +2517,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "requested_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -2527,18 +2546,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintAction"
      }
     },
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
@@ -2556,6 +2578,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "agent": {
      "fields": {
       "session_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -2594,36 +2617,42 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "confidence": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Confidence"
      }
     },
     "did": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "escalating": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "should_continue": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "summary": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "why": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -2638,12 +2667,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "assessment": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "AgentAssessment"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -2658,6 +2689,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actual_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -2666,6 +2698,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "target_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -2682,18 +2715,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "attempts": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "cause": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "FrameCause"
      }
     },
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -2708,6 +2744,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "delivered": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -2717,6 +2754,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "waited_s": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -2734,18 +2772,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "print": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
        }
       },
       "segment": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -2758,30 +2799,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unobserved": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "generation": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "origin": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "print_number": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -2806,6 +2852,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "pending": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PendingCharge"
@@ -2820,36 +2867,42 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "density_g_cm3": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "diameter_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "grams": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "remaining_after_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "remaining_before_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -2864,12 +2917,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "UnverifiedReason"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -2891,12 +2946,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "context": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintContext"
      }
     },
     "image_path": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -2916,6 +2973,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "available": {
      "fields": {
       "since": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -2928,6 +2986,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unavailable": {
      "fields": {
       "since": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -2940,6 +2999,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unchecked": {
      "fields": {
       "since": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "null"
@@ -2956,12 +3016,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "status": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "DetectorStatus"
@@ -2982,6 +3044,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "allowed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "map": {
@@ -2998,6 +3061,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "error": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -3028,12 +3092,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "image": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3042,18 +3108,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "kind": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventKind"
      }
     },
     "payload": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "any": true
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3062,6 +3131,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "raw": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3070,12 +3140,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "received_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "source": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventSource"
@@ -3095,6 +3167,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "cursor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -3103,6 +3176,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -3112,6 +3186,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print_ended": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3131,6 +3206,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "failed": {
      "fields": {
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -3152,6 +3228,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3160,12 +3237,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "source_kind": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventKind"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3174,6 +3253,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "tool": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3190,6 +3270,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "analysed_length_mm": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3198,12 +3279,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "charge_key": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeKey"
      }
     },
     "charged": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3212,18 +3295,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "length_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "method": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeMethod"
      }
     },
     "note": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3232,6 +3318,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3240,6 +3327,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -3259,18 +3347,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "bytes": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "observed_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "size_bytes": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3287,54 +3378,63 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "disposition": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RebaselineDisposition"
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "new_failures": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "new_generation": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "new_successes": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "old_failures": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "old_generation": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "old_successes": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "origin": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -3349,24 +3449,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "max_x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "max_y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "min_x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "min_y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -3387,12 +3491,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "target_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -3407,6 +3513,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actual_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3415,6 +3522,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "offset_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3423,6 +3531,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "target_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3439,6 +3548,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -3456,6 +3566,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "path": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3464,6 +3575,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "record": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ImageRecord"
@@ -3483,54 +3595,63 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "byte_len": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "content_type": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "fetched_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ImageId"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "relative_path": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "sha256": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "source_url": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3547,12 +3668,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ImageId"
      }
     },
     "sha256": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -3567,54 +3690,63 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ActionId"
      }
     },
     "adjustable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Adjustable"
      }
     },
     "applied_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "applied_value": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "expires_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionOutcome"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "prior_value": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3623,6 +3755,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "restored_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3639,18 +3772,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "adjustable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Adjustable"
      }
     },
     "intervention_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "InterventionOutcome"
@@ -3673,6 +3809,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "restore_failed": {
      "fields": {
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -3700,6 +3837,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "superseded": {
      "fields": {
       "by": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionId"
@@ -3716,12 +3854,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "source": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ErrorSource"
      }
     },
     "text": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -3736,6 +3876,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "allowed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "map": {
@@ -3744,18 +3885,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "material": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "metadata": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "map": {
@@ -3764,12 +3908,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "nozzle_diameter_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "slicer_profile": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -3784,6 +3930,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "completion": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3792,6 +3939,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "error": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3800,6 +3948,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "estimated_print_time_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3808,6 +3957,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "filament": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -3817,6 +3967,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3825,6 +3976,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_origin": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3833,6 +3985,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_position_bytes": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3841,6 +3994,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print_time_left_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3849,6 +4003,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print_time_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3857,6 +4012,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "size_bytes": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3865,6 +4021,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -3879,18 +4036,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "footprint": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Footprint"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "tallest_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -3905,12 +4065,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -3925,6 +4087,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "arrived": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -3934,18 +4097,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "detector_paused": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "event": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventRecord"
      }
     },
     "frame": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3954,6 +4120,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "image_path": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3962,6 +4129,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3970,6 +4138,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -3986,6 +4155,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -4000,6 +4170,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "manifest": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4008,6 +4179,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "narrowings": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -4025,18 +4197,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "adjustable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Adjustable"
      }
     },
     "applied": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Range"
      }
     },
     "requested": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Range"
@@ -4051,6 +4226,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "ended_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4059,6 +4235,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4067,12 +4244,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "is_warning": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "obico_print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4081,12 +4260,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print_paused": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "started_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4115,6 +4296,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "ended_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4123,6 +4305,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4131,12 +4314,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "notification_type": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ObicoNotificationType"
      }
     },
     "obico_print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4145,6 +4330,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "started_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4161,12 +4347,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "acknowledged_event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "disposition": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "AcknowledgementDisposition"
@@ -4181,12 +4369,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "resumable": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
@@ -4201,6 +4391,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "analysed_length_mm": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4209,24 +4400,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "charge_key": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintSegmentKey"
      }
     },
     "length_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "method": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeMethod"
      }
     },
     "note": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4235,12 +4430,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "pended_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4257,12 +4454,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "charge_key": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ChargeKey"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
@@ -4277,12 +4476,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "interval_s": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4291,6 +4492,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4326,18 +4528,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "site": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PortFailureSite"
@@ -4368,18 +4573,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "checked_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -4389,6 +4597,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "verdict": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PreflightVerdict"
@@ -4403,6 +4612,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "preflight": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Preflight"
@@ -4417,6 +4627,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -4425,6 +4636,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "preflight": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Preflight"
@@ -4439,12 +4651,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "buffer_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "required_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -4462,6 +4676,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "insufficient": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "list": {
@@ -4471,18 +4686,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "need": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightNeed"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4495,12 +4713,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "no_analysis": {
      "fields": {
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4513,6 +4733,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unverified_spool": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -4522,6 +4743,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "need": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -4530,12 +4752,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4552,12 +4776,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -4572,12 +4798,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "result": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PreflightToolResult"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -4595,6 +4823,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "insufficient": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "list": {
@@ -4604,18 +4833,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "need": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightNeed"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4628,12 +4860,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "no_analysis": {
      "fields": {
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4646,6 +4880,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "overridden": {
      "fields": {
       "objection": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightObjection"
@@ -4658,18 +4893,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "passed": {
      "fields": {
       "need": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightNeed"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4687,6 +4925,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unverified_spool": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -4696,6 +4935,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "need": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -4704,12 +4944,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightSpool"
@@ -4722,6 +4964,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "warned": {
      "fields": {
       "objection": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PreflightObjection"
@@ -4752,24 +4995,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "acknowledge_failure": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "disposition": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "AcknowledgementDisposition"
        }
       },
       "event_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "EventId"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4782,12 +5029,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "cancel": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4800,18 +5049,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "close_print": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "outcome": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintOutcome"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4824,12 +5076,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "pause": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4842,12 +5096,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "resume": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4860,12 +5116,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "set_bed_target_c": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -4874,12 +5132,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "target_c": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -4892,12 +5152,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "set_fan_percent": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -4906,12 +5168,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "percent": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4924,12 +5188,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "set_feedrate_factor": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -4938,12 +5204,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "factor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4956,12 +5224,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "set_flowrate_factor": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -4970,12 +5240,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "factor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -4988,12 +5260,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "set_tool_target_c": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "duration_s": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -5002,18 +5276,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "target_c": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -5026,30 +5303,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "start_print": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "FileName"
        }
       },
       "manifest": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "JobManifest"
        }
       },
       "override_filament_check": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -5066,18 +5348,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "bounds": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EffectiveBounds"
      }
     },
     "detector": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "ref": "DetectorHealth"
      }
     },
     "interventions": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5087,6 +5372,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5095,6 +5381,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "latest_image": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5103,6 +5390,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "manifest": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5111,12 +5399,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintRecord"
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5125,6 +5415,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "recent_events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5142,18 +5433,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "event_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "EventId"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintOutcome"
      }
     },
     "received_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -5168,6 +5462,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "last_position": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5176,18 +5471,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintOutcome"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -5215,6 +5513,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "end_reason": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5223,6 +5522,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "ended_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5231,6 +5531,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5239,12 +5540,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "job_print_time_s": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5253,6 +5556,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "job_started_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5261,6 +5565,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "narrowings": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5270,12 +5575,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "opened_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "provider_print_id": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5284,6 +5591,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -5298,18 +5606,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "segment": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -5324,6 +5635,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "file_name": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5332,6 +5644,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "loaded": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5341,6 +5654,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "preflight": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5349,6 +5663,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "started_by": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5365,6 +5680,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5379,18 +5695,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "from": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
      }
     },
     "to": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
@@ -5405,12 +5724,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "during_print": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5427,6 +5748,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "bed": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5435,6 +5757,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "chamber": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5443,12 +5766,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "connection": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
      }
     },
     "fan_percent": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5457,6 +5782,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "feedrate_factor": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5465,6 +5791,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "flowrate_factor": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5473,12 +5800,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "observed_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5540,6 +5869,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "active": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -5548,6 +5878,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "prints": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5565,12 +5896,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "max": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "min": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -5604,6 +5937,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "recover_fan": {
      "fields": {
       "percent": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -5616,18 +5950,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "recover_heat": {
      "fields": {
       "clearance_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
        }
       },
       "target_c": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -5640,6 +5977,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "recover_home_xy": {
      "fields": {
       "clearance_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
@@ -5652,6 +5990,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "recover_home_z": {
      "fields": {
       "bed_clear_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
@@ -5664,6 +6003,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "recover_lift": {
      "fields": {
       "mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -5676,6 +6016,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "recover_park": {
      "fields": {
       "clearance_asserted": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "scalar": "boolean"
@@ -5703,24 +6044,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryDecision"
      }
     },
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -5759,24 +6104,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ExecutionOutcome"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -5801,18 +6150,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "z": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -5827,24 +6179,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "rejection": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryRejection"
@@ -5862,6 +6218,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "actor_may_not_request": {
      "fields": {
       "action": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryActionKind"
@@ -5874,6 +6231,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "assertion_required": {
      "fields": {
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryField"
@@ -5886,18 +6244,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "insufficient_clearance": {
      "fields": {
       "margin_mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "nozzle_z_mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "tallest_mm": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -5910,18 +6271,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "out_of_bounds": {
      "fields": {
       "allowed": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Range"
        }
       },
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryField"
        }
       },
       "requested": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -5934,6 +6298,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "print_running": {
      "fields": {
       "state": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrinterState"
@@ -5946,12 +6311,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "printer_cannot": {
      "fields": {
       "action": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "RecoveryActionKind"
        }
       },
       "detail": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -5983,18 +6350,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "action": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryAction"
      }
     },
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -6009,6 +6379,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actions": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6018,6 +6389,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "last_print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -6026,6 +6398,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "paused_print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -6034,6 +6407,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "position": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -6042,18 +6416,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "state": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrinterState"
      }
     },
     "temperatures": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "RecoveryTemperatures"
      }
     },
     "z_home": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -6062,6 +6439,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "z_trust": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "ZTrust"
@@ -6076,6 +6454,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "bed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -6084,6 +6463,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6104,12 +6484,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "actor_may_not_request": {
      "fields": {
       "action": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "ActionKind"
        }
       },
       "actor_class": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "ActorClass"
@@ -6122,12 +6504,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "analysis_unavailable": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "waited_s": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -6140,42 +6524,49 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "insufficient_filament": {
      "fields": {
       "buffer_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "required_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
        }
       },
       "spool_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "unverified": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6190,6 +6581,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "intervention_still_active": {
      "fields": {
       "intervention_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionId"
@@ -6202,6 +6594,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "invalid_from_state": {
      "fields": {
       "state": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrinterState"
@@ -6214,12 +6607,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "min_interval_not_elapsed": {
      "fields": {
       "interval_s": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
        }
       },
       "since_last_s": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -6237,18 +6632,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "out_of_bounds": {
      "fields": {
       "adjustable": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Adjustable"
        }
       },
       "allowed": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Range"
        }
       },
       "requested": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -6266,6 +6664,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "print_not_resumable": {
      "fields": {
       "recovery_event_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "EventId"
@@ -6278,6 +6677,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "print_still_active": {
      "fields": {
       "state": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrinterState"
@@ -6290,12 +6690,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "spool_refused": {
      "fields": {
       "cause": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolRefusalCause"
        }
       },
       "message": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -6308,6 +6710,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unsupported_adjustable": {
      "fields": {
       "adjustable": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Adjustable"
@@ -6320,24 +6723,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unverified_spool": {
      "fields": {
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "UnverifiedReason"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
        }
       },
       "spool_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -6354,12 +6761,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "out_of_range": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "value": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
@@ -6374,12 +6783,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "freshness": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PositionFreshness"
      }
     },
     "position": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "FilePosition"
@@ -6394,12 +6805,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "cleared_marks": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -6409,6 +6822,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "gross_g": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6417,30 +6831,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "remaining_after_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "remaining_before_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "took_pending": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -6458,6 +6877,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "recent": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6467,6 +6887,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "spool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolRecord"
@@ -6484,12 +6905,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "adjust_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "gross_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6498,12 +6921,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6512,6 +6937,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -6524,24 +6950,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "load_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
        }
       },
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -6554,12 +6984,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "register_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "color": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6568,6 +7000,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "density_g_cm3": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6576,6 +7009,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "diameter_mm": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6584,30 +7018,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "initial_g": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
        }
       },
       "material": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "remaining_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6616,6 +7055,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "tare_g": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6630,18 +7070,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "retire_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -6654,18 +7097,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unload_spool": {
      "fields": {
       "actor": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Actor"
        }
       },
       "reason": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -6682,12 +7128,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
      }
     },
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -6697,6 +7145,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "spool": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6713,12 +7162,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "command": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolCommand"
      }
     },
     "decision": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PolicyDecision"
@@ -6753,6 +7204,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "loaded": {
      "fields": {
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -6765,6 +7217,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "retired": {
      "fields": {
       "at": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -6786,12 +7239,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "cleared_marks": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -6801,12 +7256,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "replaced": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6815,12 +7272,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "took_pending": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "list": {
@@ -6830,6 +7289,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -6844,6 +7304,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "color": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6852,60 +7313,70 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "density_g_cm3": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "diameter_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "initial_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "lifecycle": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolLifecycle"
      }
     },
     "material": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "registered_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "remaining_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "tare_g": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -6914,12 +7385,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "trust": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolTrust"
      }
     },
     "updated_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -6937,6 +7410,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "conflicting_fields": {
      "fields": {
       "fields": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -6952,12 +7426,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "density_required": {
      "fields": {
       "material": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "spool_id": {
+       "paired_with": "",
        "required": false,
        "shape": {
         "nullable": {
@@ -6972,12 +7448,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "invalid_adjustment_figure": {
      "fields": {
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolField"
        }
       },
       "value": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "number"
@@ -6995,6 +7473,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "missing_field": {
      "fields": {
       "field": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolField"
@@ -7007,6 +7486,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "not_loaded": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -7019,6 +7499,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "nothing_to_confirm": {
      "fields": {
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -7031,6 +7512,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "retired_spool": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -7043,6 +7525,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "tare_required": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -7055,6 +7538,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unknown_spool": {
      "fields": {
       "spool_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "SpoolId"
@@ -7067,6 +7551,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unknown_tool": {
      "fields": {
       "tool": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "integer"
@@ -7083,18 +7568,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "spool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolRecord"
@@ -7109,24 +7597,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "remaining_g": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -7144,6 +7636,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unverified": {
      "fields": {
       "marks": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "list": {
@@ -7168,24 +7661,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actor": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Actor"
      }
     },
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -7200,12 +7697,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "UnverifiedReason"
      }
     },
     "spool_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "SpoolId"
@@ -7220,6 +7719,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "at_a_glance": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7229,6 +7729,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "pending": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7238,6 +7739,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "spools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7258,18 +7760,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "intervention_expired": {
      "fields": {
       "adjustable": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Adjustable"
        }
       },
       "intervention_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionId"
        }
       },
       "outcome": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "InterventionOutcome"
@@ -7287,6 +7792,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "session_resumed": {
      "fields": {
       "session_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -7303,12 +7809,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "outcome": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "StartupOutcome"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
@@ -7323,12 +7831,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "detector": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "DetectorHealth"
      }
     },
     "interventions": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7338,6 +7848,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "job": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7346,12 +7857,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "print": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintRecord"
      }
     },
     "printer": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7360,6 +7873,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "session": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7376,6 +7890,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "close_reason": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7384,6 +7899,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "closed_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7392,30 +7908,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "created_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "harness_identity": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "last_turn_at": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
      }
     },
     "print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -7430,12 +7951,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "close_reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -7450,12 +7973,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "harness_identity": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "session_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
@@ -7470,6 +7995,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "events": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7479,6 +8005,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "next": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7500,18 +8027,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "length_mm": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
      }
     },
     "volume_cm3": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7528,6 +8058,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "actual_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7536,6 +8067,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "target_c": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "nullable": {
@@ -7544,6 +8076,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "tool": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "integer"
@@ -7558,18 +8091,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "charged": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "file_name": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "printed_at": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7578,6 +8114,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "success": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
@@ -7592,6 +8129,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "bed_target_c": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7600,18 +8138,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "detail": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "string"
      }
     },
     "last_print_id": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "PrintId"
      }
     },
     "moved": {
+     "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
@@ -7620,6 +8161,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "tools": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "list": {
@@ -7637,12 +8179,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "reason": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "UnverifiedReason"
      }
     },
     "since": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "ref": "Timestamp"
@@ -7660,6 +8204,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "filament_change_unconfirmed": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
@@ -7672,6 +8217,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "filament_change_unconfirmed_position": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
@@ -7684,12 +8230,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "tally_reset": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "origin": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
@@ -7702,12 +8250,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "unaccounted_print": {
      "fields": {
       "file_name": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "scalar": "string"
        }
       },
       "printed_at": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "Timestamp"
@@ -7720,6 +8270,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     "uncharged_print": {
      "fields": {
       "print_id": {
+       "paired_with": "",
        "required": true,
        "shape": {
         "ref": "PrintId"
@@ -7736,18 +8287,21 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "struct": {
    "fields": {
     "sweeps_bed": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "boolean"
      }
     },
     "x": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
      }
     },
     "y": {
+     "paired_with": "",
      "required": true,
      "shape": {
       "scalar": "number"
