@@ -1248,6 +1248,87 @@ async fn a_print_a_recovery_moved_stays_not_resumable_across_a_restart() {
     );
 }
 
+/// Every kind of recovery the vocabulary executes costs a paused print its
+/// resume, not only a move: each is taken under a pause, with Z homed while
+/// the machine was idle so the actions that need it trusted are allowed, and
+/// the resume is then refused naming that action's own execution, with no job
+/// command sent. The paused print reads resumable until the action is taken.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_recovery_under_a_pause_costs_the_print_its_resume() {
+    for (action, fields) in every_action() {
+        let world = Recovering::start(with_recovery(|_| {})).await;
+        world.home_z().await;
+        world
+            .octoprint
+            .reports("Printing", JobScript::printing(FILE, 816, 400, 60));
+        world.until("print_started", 1).await;
+        world.watched().await;
+        world.octoprint.reports(
+            "Paused",
+            JobScript {
+                state: "Paused".to_owned(),
+                ..JobScript::printing(FILE, 816, 400, 60)
+            },
+        );
+        world.reads("paused").await;
+        let paused = world.status().await["paused_print"].clone();
+        assert_eq!(
+            paused["resumable"],
+            json!(true),
+            "before {action}: {paused:#}"
+        );
+        let print_id = paused["print_id"]
+            .as_str()
+            .expect("the paused print is named")
+            .to_owned();
+
+        let (status, taken) = world.ask(action, fields).await;
+        assert_eq!(status, StatusCode::OK, "{action}: {taken:#}");
+        let executed = taken["events"]
+            .as_array()
+            .and_then(|events| {
+                events
+                    .iter()
+                    .find(|event| event["kind"] == "recovery_executed")
+            })
+            .map_or_else(
+                || panic!("{action} recorded no execution: {taken:#}"),
+                |event| event["id"].clone(),
+            );
+        assert_eq!(
+            world.status().await["paused_print"],
+            json!({ "print_id": print_id, "resumable": false }),
+            "after {action}"
+        );
+
+        let jobs = world.octoprint.job_commands();
+        let resumed: Value = world
+            .client
+            .post(format!(
+                "{}/prints/{print_id}/actions/resume",
+                world.server.base_url()
+            ))
+            .json(&json!({ "actor": "operator", "reason": "carry on printing" }))
+            .send()
+            .await
+            .expect("the server answers")
+            .json()
+            .await
+            .expect("a JSON answer");
+        assert_eq!(
+            resumed["record"]["decision"]["rejected"],
+            json!({ "print_not_resumable": { "recovery_event_id": executed } }),
+            "the resume after {action}"
+        );
+        assert_eq!(
+            world.octoprint.job_commands(),
+            jobs,
+            "the resume after {action} reached the machine"
+        );
+        world.server.stop().await;
+    }
+}
+
 /// A recovery the printer failed under a pause still makes the paused print
 /// non-resumable, across a restart too: a command that failed at the printer
 /// may have done part of what it asked, and the print cannot know which part.
