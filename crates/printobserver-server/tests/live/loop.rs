@@ -857,6 +857,7 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
     }
     let mut body = match operation.effect {
         Effect::Command(_) => ledger_body(operation.name),
+        Effect::Recovery(_) => recovery_body(operation.name),
         _ => live(operation.name).accepted,
     };
     let object = body.as_object_mut().expect("the body is an object");
@@ -867,6 +868,25 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
         None => {
             object.remove("reason");
         }
+    }
+    body
+}
+
+/// A body one recovery action takes: the operator asking, and whatever else
+/// the action needs.
+fn recovery_body(name: &str) -> Value {
+    let mut body = json!({ "reason": "the live walk is asking a recovery", "actor": "operator" });
+    let object = body.as_object_mut().expect("the body is an object");
+    let fields = match name {
+        "recover_lift" => json!({ "mm": 5.0 }),
+        "recover_fan" => json!({ "percent": 50.0 }),
+        "recover_heat" => json!({ "tool": 0, "target_c": 150.0, "clearance_asserted": true }),
+        "recover_park" | "recover_home_xy" => json!({ "clearance_asserted": true }),
+        "recover_home_z" => json!({ "bed_clear_asserted": true }),
+        _ => json!({}),
+    };
+    if let Value::Object(fields) = fields {
+        object.extend(fields);
     }
     body
 }
