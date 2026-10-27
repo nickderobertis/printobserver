@@ -7,7 +7,10 @@
 
 use serde::de::DeserializeOwned;
 
-use crate::contract::{ActionAnswer, Actor, ErrorAnswer, RecoveryAnswer, SpoolCommandAnswer};
+use crate::contract::{
+    ActionAnswer, Actor, ErrorAnswer, ExecutionOutcome, RecoveryAnswer, RecoveryDecision,
+    SpoolCommandAnswer,
+};
 use crate::error::{ClientError, RecoveryRejected, RejectedAnswer, Rejection};
 use crate::transport::send;
 
@@ -174,12 +177,22 @@ fn rejection(body: &str, status: u16) -> ClientError {
 /// The machine's own refusal of an action the policy accepted.
 ///
 /// A recovery the machine refused carries no action record, and arrives as the
-/// supervisor's own words for it.
+/// supervisor's own words for it — and only a recovery carried out and failed
+/// at the printer is one: any other decision under this status is no answer
+/// this client can read.
 fn machine_refusal(body: &str, status: u16) -> ClientError {
     if let Ok(answer) = serde_json::from_str::<RecoveryAnswer>(body) {
-        return ClientError::Refused {
-            status,
-            detail: answer.detail,
+        return match answer.decision {
+            RecoveryDecision::Executed(ExecutionOutcome::Failed { .. }) => ClientError::Refused {
+                status,
+                detail: answer.detail,
+            },
+            _ => ClientError::Unreadable {
+                status,
+                detail: "the supervisor answered a machine refusal of a recovery that did not \
+                         fail at the printer"
+                    .to_owned(),
+            },
         };
     }
     match serde_json::from_str::<ActionAnswer>(body) {
