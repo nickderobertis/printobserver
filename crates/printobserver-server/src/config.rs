@@ -700,8 +700,8 @@ pub struct SpoolsSection {
 pub struct RecoverySection {
     /// Which way along Z moves the nozzle away from the bed: `z_plus` or
     /// `z_minus`.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub away_from_bed: Option<String>,
     /// The highest Z the machine reaches, in millimetres.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -738,18 +738,18 @@ pub struct RecoverySection {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct RecoveryPolicySection {
     /// The recovery actions the operator may ask for, by name.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub operator: Option<Vec<String>>,
     /// The recovery actions the agent may ask for, by name. `recover_home_z`
     /// is refused here.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub agent: Option<Vec<String>>,
     /// The actor classes whose word that the nozzle or the bed is clear
     /// counts. `agent` is refused here.
-    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub asserting: Option<Vec<String>>,
 }
 
