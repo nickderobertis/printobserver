@@ -1210,3 +1210,129 @@ async fn a_print_a_recovery_moved_stays_not_resumable_across_a_restart() {
         "the resume reached the machine"
     );
 }
+
+/// A recovery the printer failed under a pause still makes the paused print
+/// non-resumable, across a restart too: a command that failed at the printer
+/// may have done part of what it asked, and the print cannot know which part.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recovery_the_printer_failed_under_a_pause_still_costs_the_resume() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.octoprint.reports(
+        "Paused",
+        JobScript {
+            state: "Paused".to_owned(),
+            ..JobScript::printing(FILE, 816, 400, 60)
+        },
+    );
+    world.until("print_started", 1).await;
+    world.reads("paused").await;
+    world.octoprint.refuses_commands(true);
+    let (status, failed) = world.ask("recover_fan", json!({ "percent": 50.0 })).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{failed:#}");
+    assert!(
+        failed["decision"]["executed"]["failed"].is_object(),
+        "{failed:#}"
+    );
+    let moved = failed["events"][1]["id"].clone();
+    let print_id = world.status().await["paused_print"]["print_id"]
+        .as_str()
+        .expect("the paused print is named")
+        .to_owned();
+    assert_eq!(
+        world.status().await["paused_print"]["resumable"],
+        json!(false)
+    );
+
+    let world = world.restarted(with_recovery(|_| {})).await;
+    world.reads("paused").await;
+    let jobs = world.octoprint.job_commands();
+    let resumed: Value = world
+        .client
+        .post(format!(
+            "{}/prints/{print_id}/actions/resume",
+            world.server.base_url()
+        ))
+        .json(&json!({ "actor": "operator", "reason": "carry on printing" }))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("a JSON answer");
+    assert_eq!(
+        resumed["record"]["decision"]["rejected"],
+        json!({ "print_not_resumable": { "recovery_event_id": moved } })
+    );
+    assert_eq!(
+        world.octoprint.job_commands(),
+        jobs,
+        "the resume reached the machine"
+    );
+}
+
+/// A lift or a Z home the printer fails part-way may have stopped Z
+/// anywhere, so Z is no longer trusted and what needs it is refused; the
+/// operator homes Z again to trust it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_z_move_the_printer_failed_leaves_z_untrusted() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.connected().await;
+    for (action, fields) in [
+        ("recover_lift", json!({ "mm": 5.0 })),
+        ("recover_home_z", json!({ "bed_clear_asserted": true })),
+    ] {
+        world.octoprint.refuses_printhead(false);
+        world.home_z().await;
+        world.octoprint.refuses_printhead(true);
+
+        let (status, answer) = world.ask(action, fields).await;
+
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{action}: {answer:#}");
+        assert!(
+            answer["decision"]["executed"]["failed"].is_object(),
+            "{action}: {answer:#}"
+        );
+        let trust = world.status().await["z_trust"].clone();
+        assert!(
+            trust["untrusted"]
+                .as_str()
+                .is_some_and(|why| why.contains(action)),
+            "{action} left Z {trust}"
+        );
+        let (status, refused) = world
+            .ask("recover_park", json!({ "clearance_asserted": true }))
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{refused:#}");
+        assert_eq!(refused["decision"]["rejected"], json!("z_untrusted"));
+    }
+}
+
+/// A move the printer answers as not implemented after an earlier call of
+/// the same recovery already reached it is not a refusal that sent nothing:
+/// a cool whose tools were turned off and whose bed the printer implements no
+/// target for is recorded as executed and failed, and the tools stay off.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_the_printer_cannot_make_after_one_it_made_is_a_failure() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.octoprint.targets(215.0, 60.0);
+    world.octoprint.answers_bed_targets_with(501);
+    world.reads("operational").await;
+
+    let (status, answer) = world.ask("recover_cool", json!({})).await;
+
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{answer:#}");
+    assert!(
+        answer["decision"]["executed"]["failed"]["reason"]
+            .as_str()
+            .is_some_and(|said| said.contains("Not implemented")),
+        "{answer:#}"
+    );
+    assert_eq!(world.octoprint.reported_targets(), (0.0, 60.0));
+    assert_eq!(
+        world.recorded().await,
+        vec![
+            ("recovery_requested".to_owned(), "recover_cool".to_owned()),
+            ("recovery_executed".to_owned(), "recover_cool".to_owned()),
+        ]
+    );
+}

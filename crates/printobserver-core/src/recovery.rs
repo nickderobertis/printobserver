@@ -32,8 +32,8 @@
 //!
 //! Z is trusted from a Z home this supervisor executed, or a print it started,
 //! until the first of: the printer going offline or into error, a reset it
-//! pushed, a print ending `interrupted` or `failed`, or this supervisor
-//! starting again. A position reply cannot say whether Z was homed, so trust
+//! pushed, a print ending `interrupted` or `failed`, a Z home or a lift the
+//! printer failed part-way, or this supervisor starting again. A position reply cannot say whether Z was homed, so trust
 //! is never read from one, and the position is read only while Z is trusted.
 //!
 //! The tallest part is read from the last print's own G-code, up to the last
@@ -565,7 +565,9 @@ impl Supervisor {
     }
 
     /// Write down what became of one recovery the chokepoint has issued or
-    /// refused, and trust Z after a Z home the printer took.
+    /// refused: trust Z after a Z home the printer took, and stop trusting it
+    /// after a Z home or a lift the printer failed, which may have stopped Z
+    /// anywhere along the way.
     pub(crate) async fn recovery_settled(
         &self,
         requested: RecoveryRequestedPayload,
@@ -578,8 +580,18 @@ impl Supervisor {
             actor,
             reason,
         } = requested;
+        let moves_z = matches!(
+            action,
+            RecoveryAction::RecoverHomeZ { .. } | RecoveryAction::RecoverLift { .. }
+        );
         let homed_z = matches!(action, RecoveryAction::RecoverHomeZ { .. })
             && decision == RecoveryDecision::Executed(ExecutionOutcome::Succeeded);
+        let lost_z = moves_z
+            && matches!(
+                decision,
+                RecoveryDecision::Executed(ExecutionOutcome::Failed { .. })
+            );
+        let kind = action.kind();
         let draft = match &decision {
             RecoveryDecision::Executed(outcome) => self.draft_of(
                 None,
@@ -605,6 +617,12 @@ impl Supervisor {
         let settled = self.stores().events.append_event(draft).await?;
         if homed_z {
             self.trust_z();
+        }
+        if lost_z {
+            self.distrust_z(format!(
+                "a {} the printer failed may have stopped Z anywhere along the way",
+                kind.as_str()
+            ));
         }
         Ok(RecoveryIssued {
             decision,

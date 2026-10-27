@@ -501,7 +501,8 @@ refused `print_running` while a print is printing or cancelling and
 `printer_unreachable` while the printer is offline; lift, cool and fan need
 nothing more; heat, park and home XY need Z trusted — from a Z home or a print
 printobserver started, lost on a disconnect, an error, a reset, an
-`interrupted` or `failed` ending or a restart — and the nozzle
+`interrupted` or `failed` ending, a Z home or a lift the printer failed, or a
+restart — and the nozzle
 `recovery.clearance_margin_mm` above the last print's tallest part, or the
 operator's `clearance_asserted`. The agent's assertion never counts, and the
 agent holds no recovery unless `[policy.recovery]` grants one. Any recovery

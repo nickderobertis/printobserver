@@ -122,8 +122,10 @@ struct Script {
     answers_position: bool,
     /// Whether the command endpoint refuses every line.
     refuses_commands: bool,
-    /// Whether the bed endpoint refuses every target.
-    refuses_bed_targets: bool,
+    /// The status the bed endpoint refuses every target with, when it does.
+    bed_refusal: Option<u16>,
+    /// Whether the print-head endpoint refuses every move and home.
+    refuses_printhead: bool,
     /// How the push socket's upgrade is answered.
     upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
@@ -195,7 +197,8 @@ impl ScriptedOctoPrint {
             position: [0.0; 3],
             answers_position: true,
             refuses_commands: false,
-            refuses_bed_targets: false,
+            bed_refusal: None,
+            refuses_printhead: false,
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
@@ -307,7 +310,19 @@ impl ScriptedOctoPrint {
     /// Refuse every bed target from now on, as a printer whose bed heater is
     /// faulted does, or take them again.
     pub fn refuses_bed_targets(&self, refuses: bool) {
-        self.held().refuses_bed_targets = refuses;
+        self.held().bed_refusal = refuses.then_some(409);
+    }
+
+    /// Answer every bed target with `status` from now on: `501` is an
+    /// instance that implements no bed target at all.
+    pub fn answers_bed_targets_with(&self, status: u16) {
+        self.held().bed_refusal = Some(status);
+    }
+
+    /// Refuse every print-head move and home from now on, as a machine whose
+    /// endstop fails does, or take them again.
+    pub fn refuses_printhead(&self, refuses: bool) {
+        self.held().refuses_printhead = refuses;
     }
 
     /// Put the head here.
@@ -683,6 +698,10 @@ fn answer(
             held.printhead.push(body);
             (204, String::new())
         }
+        ("POST", "/api/printer/printhead") if held.refuses_printhead => (
+            400,
+            r#"{"error":"Homing failed: endstop not hit"}"#.to_owned(),
+        ),
         ("POST", "/api/printer/printhead") if held.job.state == "Printing" => (
             409,
             r#"{"error":"Printer is currently printing"}"#.to_owned(),
@@ -699,7 +718,10 @@ fn answer(
             }
             (204, String::new())
         }
-        ("POST", "/api/printer/bed") if held.refuses_bed_targets => {
+        ("POST", "/api/printer/bed") if held.bed_refusal == Some(501) => {
+            (501, r#"{"error":"Not implemented"}"#.to_owned())
+        }
+        ("POST", "/api/printer/bed") if held.bed_refusal.is_some() => {
             (409, r#"{"error":"Bed heater is faulted"}"#.to_owned())
         }
         ("POST", "/api/printer/bed") => {
