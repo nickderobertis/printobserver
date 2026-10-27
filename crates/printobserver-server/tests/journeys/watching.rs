@@ -1223,6 +1223,32 @@ async fn a_reset_pushed_just_after_the_idle_read_still_ends_interrupted() {
     assert_eq!(reset[0]["payload"]["during_print"], print_id.as_str());
 }
 
+/// A reset whose read of the running print is slow still names that print.
+///
+/// The close-out of a print that went idle waits for a reset to arrive, and
+/// ends the print the moment it learns of one. So the reset reads which print
+/// was running before the close-out learns of it: learned first, the
+/// close-out closes the print while the read is still waiting on the store,
+/// and the reset is recorded during no print. The read is slowed to well
+/// inside the close-out's wait, from the moment the reset is pushed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reset_whose_running_print_read_is_slow_still_names_the_print() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    let print_id = watch.printing(400).await;
+
+    watch.octoprint.reports("Operational", landed_idle());
+    tokio::time::sleep(POLL + Duration::from_millis(150)).await;
+    watch.prints.slowing(Some(Duration::from_millis(400)));
+    watch.octoprint.pushes_event("PrinterReset", &json!({}));
+    let reset = watch.until("printer_reset", 1).await;
+    watch.prints.slowing(None);
+
+    assert_eq!(reset[0]["payload"]["during_print"], print_id.as_str());
+    watch.until("print_ended", 1).await;
+    assert_eq!(ended(&watch.history().await, &print_id), "interrupted");
+}
+
 /// A reset the store refused to write is written by the next read once it
 /// answers: the push is not sent again, so what it said is kept.
 #[tokio::test(flavor = "multi_thread")]
