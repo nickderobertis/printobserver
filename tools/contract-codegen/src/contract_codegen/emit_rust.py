@@ -154,9 +154,9 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
         # the generator has no non-empty type yet, and suppressions.toml says so.
         lines.append(f"{indent}{NON_EMPTY_DIRECTIVE}")
     if entry.paired_with:
-        # Two fields the declaring type's own reading holds in step are two
-        # independent fields here; the client deserializes what the server
-        # sent, and the server's reading is what refuses a mismatched pair.
+        # Two fields held in step are two independent fields of the struct;
+        # what refuses a mismatched pair is the struct's own reading, through
+        # the form as sent that `_paired_struct` writes beside it.
         lines.append(f"{indent}{PAIRED_DIRECTIVE}")
     if entry.two_valued_fact:
         # A yes-or-no fact both of whose answers are real; the declaring

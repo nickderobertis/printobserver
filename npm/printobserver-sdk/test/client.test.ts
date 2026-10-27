@@ -180,3 +180,12 @@ test("a machine refusal whose record is not an object and says nothing is unread
 
   await expect(client.pause(PRINT, "because")).rejects.toBeInstanceOf(Unreadable);
 });
+
+test("a machine refusal of a recovery that did not fail is unreadable", async () => {
+  for (const decision of [{ rejected: "z_untrusted" }, { executed: "succeeded" }, null]) {
+    await using host = Host.answering(502, recovery(decision));
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
+  }
+});

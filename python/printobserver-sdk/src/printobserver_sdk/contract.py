@@ -8,7 +8,7 @@ generate-clients`, and commit what that writes.
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypeAlias, TypedDict, cast, overload
+from typing import Literal, NamedTuple, NotRequired, TypeAlias, TypedDict, cast, overload
 
 from printobserver_sdk._surface import GeneratedSurface, reason_given
 
@@ -4016,97 +4016,109 @@ def payload_of(event: EventRecord, kind: str) -> object | None:
     return event["payload"]
 
 
+class RefusalField(NamedTuple):
+    """One field a refusal's arm carries, as a reading client checks it.
+
+    Generated from the arm's own declaration in the contracts, so the
+    client holds a known refusal to them without a second copy of them.
+    """
+
+    #: The JSON form it takes: `string`, `number`, `integer`, `boolean`,
+    #: `object`, `array`, `string_or_object` or `any`.
+    kind: str
+    #: Whether the arm must carry it.
+    required: bool
+    #: Whether it may be null.
+    nullable: bool
+
+
 # Every arm of `RejectionReason`, and the fields it carries: `None` for an
-# arm carrying nothing, which travels as its own name, and otherwise each
-# field's JSON form, whether the arm must carry it, and whether it may be
-# null.
-REJECTION_REASON_FIELDS: dict[str, dict[str, tuple[str, bool, bool]] | None] = {
+# arm carrying nothing, which travels as its own name.
+REJECTION_REASON_FIELDS: dict[str, dict[str, RefusalField] | None] = {
     "out_of_bounds": {
-        "adjustable": ("string", True, False),
-        "allowed": ("object", True, False),
-        "requested": ("number", True, False),
+        "adjustable": RefusalField("string", True, False),
+        "allowed": RefusalField("object", True, False),
+        "requested": RefusalField("number", True, False),
     },
     "actor_may_not_request": {
-        "action": ("string", True, False),
-        "actor_class": ("string", True, False),
+        "action": RefusalField("string", True, False),
+        "actor_class": RefusalField("string", True, False),
     },
     "no_active_print": None,
     "invalid_from_state": {
-        "state": ("string_or_object", True, False),
+        "state": RefusalField("string_or_object", True, False),
     },
     "min_interval_not_elapsed": {
-        "interval_s": ("integer", True, False),
-        "since_last_s": ("integer", True, False),
+        "interval_s": RefusalField("integer", True, False),
+        "since_last_s": RefusalField("integer", True, False),
     },
     "unsupported_adjustable": {
-        "adjustable": ("string", True, False),
+        "adjustable": RefusalField("string", True, False),
     },
     "insufficient_filament": {
-        "buffer_g": ("number", True, False),
-        "remaining_g": ("number", True, False),
-        "required_g": ("number", True, False),
-        "spool_id": ("string", True, False),
-        "spool_name": ("string", True, False),
-        "tool": ("integer", True, False),
-        "unverified": ("object", False, True),
+        "buffer_g": RefusalField("number", True, False),
+        "remaining_g": RefusalField("number", True, False),
+        "required_g": RefusalField("number", True, False),
+        "spool_id": RefusalField("string", True, False),
+        "spool_name": RefusalField("string", True, False),
+        "tool": RefusalField("integer", True, False),
+        "unverified": RefusalField("object", False, True),
     },
     "unverified_spool": {
-        "reason": ("object", True, False),
-        "spool_id": ("string", True, False),
-        "spool_name": ("string", True, False),
-        "tool": ("integer", True, False),
+        "reason": RefusalField("object", True, False),
+        "spool_id": RefusalField("string", True, False),
+        "spool_name": RefusalField("string", True, False),
+        "tool": RefusalField("integer", True, False),
     },
     "analysis_unavailable": {
-        "file_name": ("string", True, False),
-        "waited_s": ("integer", True, False),
+        "file_name": RefusalField("string", True, False),
+        "waited_s": RefusalField("integer", True, False),
     },
     "print_already_ended": None,
     "print_still_active": {
-        "state": ("string_or_object", True, False),
+        "state": RefusalField("string_or_object", True, False),
     },
     "intervention_still_active": {
-        "intervention_id": ("string", True, False),
+        "intervention_id": RefusalField("string", True, False),
     },
     "print_not_resumable": {
-        "recovery_event_id": ("string", True, False),
+        "recovery_event_id": RefusalField("string", True, False),
     },
     "spool_refused": {
-        "cause": ("object", True, False),
-        "message": ("string", True, False),
+        "cause": RefusalField("object", True, False),
+        "message": RefusalField("string", True, False),
     },
 }
 
 
 # Every arm of `RecoveryRejection`, and the fields it carries: `None` for an
-# arm carrying nothing, which travels as its own name, and otherwise each
-# field's JSON form, whether the arm must carry it, and whether it may be
-# null.
-RECOVERY_REJECTION_FIELDS: dict[str, dict[str, tuple[str, bool, bool]] | None] = {
+# arm carrying nothing, which travels as its own name.
+RECOVERY_REJECTION_FIELDS: dict[str, dict[str, RefusalField] | None] = {
     "actor_may_not_request": {
-        "action": ("string", True, False),
+        "action": RefusalField("string", True, False),
     },
     "print_running": {
-        "state": ("string_or_object", True, False),
+        "state": RefusalField("string_or_object", True, False),
     },
     "printer_unreachable": None,
     "z_untrusted": None,
     "insufficient_clearance": {
-        "margin_mm": ("number", True, False),
-        "nozzle_z_mm": ("number", True, False),
-        "tallest_mm": ("number", True, False),
+        "margin_mm": RefusalField("number", True, False),
+        "nozzle_z_mm": RefusalField("number", True, False),
+        "tallest_mm": RefusalField("number", True, False),
     },
     "out_of_bounds": {
-        "allowed": ("object", True, False),
-        "field": ("string", True, False),
-        "requested": ("number", True, False),
+        "allowed": RefusalField("object", True, False),
+        "field": RefusalField("string", True, False),
+        "requested": RefusalField("number", True, False),
     },
     "assertion_required": {
-        "field": ("string", True, False),
+        "field": RefusalField("string", True, False),
     },
     "recovery_not_configured": None,
     "printer_cannot": {
-        "action": ("string", True, False),
-        "detail": ("string", True, False),
+        "action": RefusalField("string", True, False),
+        "detail": RefusalField("string", True, False),
     },
 }
 

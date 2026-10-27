@@ -508,20 +508,37 @@ def _refusal_tables(contract: Contract) -> list[str]:
     on as the contract's type; an arm the table does not name is a newer
     server's, and is handed on as it came.
     """
-    lines: list[str] = []
-    for name in REFUSALS:
-        arms = refusal_fields(contract, name)
-        if not arms:
-            continue
+    tables = [(name, refusal_fields(contract, name)) for name in REFUSALS]
+    tables = [(name, arms) for name, arms in tables if arms]
+    if not tables:
+        return []
+    lines = [
+        "class RefusalField(NamedTuple):",
+        *docstring(
+            "One field a refusal's arm carries, as a reading client checks it.",
+            "Generated from the arm's own declaration in the contracts, so the "
+            "client holds a known refusal to them without a second copy of them.",
+            "    ",
+        ),
+        "",
+        "    #: The JSON form it takes: `string`, `number`, `integer`, `boolean`,",
+        "    #: `object`, `array`, `string_or_object` or `any`.",
+        "    kind: str",
+        "    #: Whether the arm must carry it.",
+        "    required: bool",
+        "    #: Whether it may be null.",
+        "    nullable: bool",
+        "",
+        "",
+    ]
+    for name, arms in tables:
         lines += [
             *comment(
                 f"Every arm of `{name}`, and the fields it carries: `None` for an arm "
-                "carrying nothing, which travels as its own name, and otherwise each "
-                "field's JSON form, whether the arm must carry it, and whether it may "
-                "be null.",
+                "carrying nothing, which travels as its own name.",
                 "",
             ),
-            f"{refusal_table_name(name)}: dict[str, dict[str, tuple[str, bool, bool]] | None] = {{",
+            f"{refusal_table_name(name)}: dict[str, dict[str, RefusalField] | None] = {{",
         ]
         for tag, fields in arms:
             if fields is None:
@@ -529,7 +546,8 @@ def _refusal_tables(contract: Contract) -> list[str]:
                 continue
             lines.append(f'    "{tag}": {{')
             lines += [
-                f'        "{entry.name}": ("{entry.kind}", {entry.required}, {entry.nullable}),'
+                f'        "{entry.name}": RefusalField("{entry.kind}", {entry.required}, '
+                f"{entry.nullable}),"
                 for entry in fields
             ]
             lines.append("    },")
@@ -540,6 +558,8 @@ def _refusal_tables(contract: Contract) -> list[str]:
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
     typing_names = ["Literal", "NotRequired", "TypeAlias", "TypedDict", "cast"]
+    if any(refusal_fields(contract, name) for name in REFUSALS):
+        typing_names.append("NamedTuple")
     if contract.event_kinds:
         typing_names.append("overload")
     lines = [

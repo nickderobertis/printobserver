@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import math
 from typing import cast
 from urllib.parse import quote, urlsplit
 
@@ -35,6 +36,7 @@ from printobserver_sdk.contract import (
     Range,
     RecoveryAnswer,
     RecoveryRejection,
+    RefusalField,
     RejectionReason,
     SpoolCommandAnswer,
 )
@@ -233,26 +235,29 @@ _FORMS = {
 }
 
 
-def _carries(fields: dict[str, object], declared: dict[str, tuple[str, bool, bool]]) -> bool:
-    """Whether one variant's fields carry every field its table declares, each in its form."""
-    for name, (kind, required, nullable) in declared.items():
+def _carries(fields: dict[str, object], declared: dict[str, RefusalField]) -> bool:
+    """Whether one variant's fields carry every field its table declares, each in its form.
+
+    A field is held to its JSON form and not to the closed set of words or
+    arms the client was generated with, for the reason `_is_refusal` gives.
+    """
+    for name, field in declared.items():
         if name not in fields:
-            if required:
+            if field.required:
                 return False
             continue
         value = fields[name]
         if value is None:
-            if not nullable:
+            if not field.nullable:
                 return False
             continue
-        if not _FORMS.get(kind, lambda _: True)(value):
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        if not _FORMS.get(field.kind, lambda _: True)(value):
             return False
     return True
 
 
-def _is_refusal(
-    refused: object, known: dict[str, dict[str, tuple[str, bool, bool]] | None]
-) -> bool:
+def _is_refusal(refused: object, known: dict[str, dict[str, RefusalField] | None]) -> bool:
     """Whether one value is a refusal of one vocabulary.
 
     A refusal is a variant's name, or one variant carrying its fields. A
@@ -280,8 +285,12 @@ def _is_refusal(
 
 
 def _is_number(value: object) -> bool:
-    """Whether one parsed JSON value is a number: `bool` is an `int` to Python, and not to JSON."""
-    return isinstance(value, int | float) and not isinstance(value, bool)
+    """Whether one parsed JSON value is a finite number.
+
+    `bool` is an `int` to Python and not to JSON, and `json.loads` reads
+    `NaN` and `Infinity`, which no JSON number is.
+    """
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _machine_refusal(status: int, said: str) -> Exception:
@@ -292,7 +301,13 @@ def _machine_refusal(status: int, said: str) -> Exception:
     """
     document = _document(status, said)
     match document:
-        case {"action": _, "detail": str() as detail}:
+        # A recovery's answer: the action it was, and a decision carried out
+        # and failed at the printer, which is what a machine refusal is.
+        case {
+            "action": {"action": str()},
+            "decision": {"executed": {"failed": {"reason": str()}}},
+            "detail": str() as detail,
+        }:
             return RefusedError(status, detail)
         case {"record": dict()}:
             # The type `operations.json` declares for an answer carrying an

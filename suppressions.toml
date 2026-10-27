@@ -2841,3 +2841,39 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-core/src/records/recovery.rs"
 site = "impl<'de> Deserialize<'de> for ActionAllowance {"
 reason = "No program reads an allowance back through core: the server only writes one, in its recovery read. This reading exists so the record corpus round-trips the type, and it is held by `tests/records.rs` to both contradictions and to the published schema's own verdict on each. The readers that meet an allowance over a boundary are the clients, and the Rust one is driven with both contradictions through a real HTTP answer in `crates/printobserver-sdk/tests/answers.rs`."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "npm/printobserver-sdk/src/client.ts"
+site = "return takes(value, kind);"
+reason = "Each field of a known refusal is held to the JSON form its generated table declares — a finite number, an integer, a string, an object, an array, or a string or an object for a union some of whose arms are names alone — and not to the closed set of words or arms this client was generated with: a supervisor newer than the client may answer a printer state, an actor class or a spool cause the client has no word for, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
+site = "if not _FORMS.get(field.kind"
+reason = "Each field of a known refusal is held to the JSON form its generated table declares — a finite number, an integer, a string, an object, an array, or a string or an object for a union some of whose arms are names alone — and not to the closed set of words or arms this client was generated with: a supervisor newer than the client may answer a printer state, an actor class or a spool cause the client has no word for, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub away_from_bed: Option<String>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_facts` reads it into core's closed `AwayFromBed` before anything uses it, and refuses any other word naming `recovery.away_from_bed` and the two it admits — the pattern `spools.preflight` already follows. A serde enum here would refuse the same value with a parser message that names neither the key nor the accepted words."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub operator: Option<Vec<String>>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed `RecoveryActionKind` before anything uses it, and refuses an unknown one naming `policy.recovery.operator` and the action, as `spools.preflight` is read. A serde enum here would refuse it with a parser message naming neither."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub agent: Option<Vec<String>>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed `RecoveryActionKind`, refusing an unknown one, and refuses `recover_home_z` here naming `policy.recovery.agent` — a refusal about a valid value that no type could make and that must name the key. A serde enum here would refuse an unknown name with a parser message naming neither."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub asserting: Option<Vec<String>>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed actor class, refusing an unknown one, and refuses `agent` here naming `policy.recovery.asserting` — a refusal about a valid value that no type could make and that must name the key. A serde enum here would refuse an unknown name with a parser message naming neither."

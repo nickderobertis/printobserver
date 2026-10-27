@@ -255,6 +255,13 @@ def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> No
         {"printer_cannot": {"action": 7, "detail": None}},
         {"insufficient_clearance": {"margin_mm": "5", "nozzle_z_mm": 1.0, "tallest_mm": 2.0}},
         {"print_running": {"state": 7}},
+        {
+            "out_of_bounds": {
+                "field": "percent",
+                "requested": float("nan"),
+                "allowed": {"min": 0.0, "max": 100.0},
+            }
+        },
     ):
         with Host(409, _recovery({"rejected": refused})) as host:
             client = Client(host.address, ACTOR)
@@ -298,3 +305,17 @@ def test_a_refusal_this_client_does_not_know_still_arrives_as_a_refusal() -> Non
                 equal(rejected.reason, refused, describing=f"{refused!r}")
             else:
                 truth(False, describing=f"{refused!r} to be refused as a rejection")
+
+
+def test_a_machine_refusal_of_a_recovery_that_did_not_fail_is_unreadable() -> None:
+    """A 502 carrying a recovery whose decision is no failure at the printer is not one."""
+    for decision in ({"rejected": "z_untrusted"}, {"executed": "succeeded"}, None):
+        with Host(502, _recovery(decision)) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 502, describing=f"{decision!r}")
+            else:
+                truth(False, describing=f"{decision!r} at 502 to be unreadable")

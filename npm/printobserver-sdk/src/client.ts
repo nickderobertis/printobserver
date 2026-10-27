@@ -190,7 +190,13 @@ function takes(value: unknown, kind: string): boolean {
   }
 }
 
-/** Whether one variant's fields carry every field its table declares, each in its own form. */
+/**
+ * Whether one variant's fields carry every field its table declares, each in
+ * its own form.
+ *
+ * A field is held to its JSON form and not to the closed set of words or arms
+ * the client was generated with, for the reason `isRefusal` gives.
+ */
 function carries(
   fields: Record<string, unknown>,
   declared: Readonly<Record<string, RefusalField>>,
@@ -203,6 +209,7 @@ function carries(
     if (value === null) {
       return nullable;
     }
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return takes(value, kind);
   });
 }
@@ -308,12 +315,25 @@ function machineRefusal(status: number, said: string): Error {
     return new Unreadable(status, "the supervisor answered a refusal that is not an object");
   }
   // A recovery the machine refused carries no action record, and arrives as
-  // the supervisor's own words for it.
+  // the supervisor's own words for it: the action it was, and a decision
+  // carried out and failed at the printer, which is what a machine refusal is.
   if (!isObject(answered.record)) {
-    if (typeof answered.detail !== "string") {
-      return new Unreadable(status, "the supervisor answered a refusal saying nothing");
+    const { action, decision, detail } = answered;
+    const executed = isObject(decision) ? decision.executed : undefined;
+    const failed = isObject(executed) ? executed.failed : undefined;
+    if (
+      !isObject(action) ||
+      typeof action.action !== "string" ||
+      !isObject(failed) ||
+      typeof failed.reason !== "string" ||
+      typeof detail !== "string"
+    ) {
+      return new Unreadable(
+        status,
+        "the supervisor answered a refusal that is neither an action's nor a failed recovery's",
+      );
     }
-    return new Refused(status, answered.detail);
+    return new Refused(status, detail);
   }
   return new PrinterRefused(
     typeof answered.printer_refusal === "string"
