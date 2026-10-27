@@ -269,6 +269,9 @@ pub struct Supervisor {
     /// position it was read to, so a recovery read does not read the file
     /// again while neither has moved.
     recovery_extents: Mutex<Option<RecoveryExtent>>,
+    /// The prints a recovery moved the printer under while they were paused,
+    /// and the `recovery_executed` event of the first that did.
+    moved_while_paused: Mutex<BTreeMap<PrintId, printobserver_types::EventId>>,
 }
 
 /// One print's G-code read to one file position, and what it laid down.
@@ -344,6 +347,7 @@ impl Supervisor {
                 crate::recovery::UNTRUSTED_AT_START.to_owned(),
             )),
             recovery_extents: Mutex::new(None),
+            moved_while_paused: Mutex::new(BTreeMap::new()),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
@@ -377,6 +381,16 @@ impl Supervisor {
     /// read or write.
     pub(crate) fn recovery_extents(&self) -> MutexGuard<'_, Option<RecoveryExtent>> {
         self.recovery_extents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The prints a recovery moved the printer under while they were paused,
+    /// held for one read or write.
+    pub(crate) fn moved_while_paused(
+        &self,
+    ) -> MutexGuard<'_, BTreeMap<PrintId, printobserver_types::EventId>> {
+        self.moved_while_paused
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }

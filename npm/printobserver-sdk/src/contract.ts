@@ -264,12 +264,12 @@ export interface AgentAssessmentPayload {
 /** The bed heater, as a recovery read reports it. */
 export interface BedTemperature {
   /** What it reads, in degrees Celsius, `null` when not reported. */
-  actual_c?: number | null;
+  actual_c: number | null;
   /**
    * What it is driving towards, in degrees Celsius, `null` when not
    * reported.
    */
-  target_c?: number | null;
+  target_c: number | null;
 }
 
 /**
@@ -1662,14 +1662,14 @@ export interface RecoveryStatus {
    * What the last print laid down, `null` when there is no print with a
    * file to read or its file could not be read.
    */
-  last_print?: LastPrint | null;
+  last_print: LastPrint | null;
   /** The print paused under the printer, `null` when none is. */
-  paused_print?: PausedPrint | null;
+  paused_print: PausedPrint | null;
   /**
    * Where the head is, read only while Z is trusted; `null` otherwise or
    * when it could not be read.
    */
-  position?: RecoveryPosition | null;
+  position: RecoveryPosition | null;
   /** The state the printer reports; `offline` when it could not be read. */
   state: PrinterState;
   /** Every heater. */
@@ -1678,7 +1678,7 @@ export interface RecoveryStatus {
    * Where Z is homed and whether that sweeps the bed, `null` when
    * recovery is not configured.
    */
-  z_home?: ZHome | null;
+  z_home: ZHome | null;
   /** Whether Z is trusted. */
   z_trust: ZTrust;
 }
@@ -1686,7 +1686,7 @@ export interface RecoveryStatus {
 /** Every heater, as a recovery read reports it. */
 export interface RecoveryTemperatures {
   /** The bed, `null` when the printer reports none. */
-  bed?: BedTemperature | null;
+  bed: BedTemperature | null;
   /** Each tool. */
   tools: Array<ToolTemperature>;
 }
@@ -2123,12 +2123,12 @@ export interface ToolFilament {
 /** One tool heater, as a recovery read reports it. */
 export interface ToolTemperature {
   /** What it reads, in degrees Celsius, `null` when not reported. */
-  actual_c?: number | null;
+  actual_c: number | null;
   /**
    * What it is driving towards, in degrees Celsius, `null` when not
    * reported.
    */
-  target_c?: number | null;
+  target_c: number | null;
   /** The tool, in the printer's own numbering. */
   tool: number;
 }

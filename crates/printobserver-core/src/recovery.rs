@@ -511,6 +511,10 @@ impl Supervisor {
             actor,
             reason,
         };
+        let under_a_pause = facts
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.connection == PrinterState::Paused);
         match self
             .issue_decided_action(Decided::Recovery {
                 requested: Box::new(requested),
@@ -518,7 +522,18 @@ impl Supervisor {
             })
             .await?
         {
-            IssuedAs::Recovery(issued) => Ok(issued),
+            IssuedAs::Recovery(issued) => {
+                // The head moved under a paused print, which the printer will
+                // not put back on resume.
+                if under_a_pause && matches!(issued.decision, RecoveryDecision::Executed(_)) {
+                    for print in self.stores().prints.open_prints().await? {
+                        self.moved_while_paused()
+                            .entry(print.id)
+                            .or_insert(issued.settled.id);
+                    }
+                }
+                Ok(issued)
+            }
             // The chokepoint answers each request in its own kind, so this is
             // a chokepoint that has come apart from its callers.
             IssuedAs::Action(_) => Err(CoreError::Unrepresentable {
@@ -759,15 +774,25 @@ impl Supervisor {
         }))
     }
 
-    /// The latest recovery executed since one print opened, while it was
-    /// open: what makes it non-resumable. Recovery is refused while a print
-    /// runs, so one executed while it was open was executed while it was
-    /// paused.
+    /// The recovery executed under one print while it was paused: what makes
+    /// it non-resumable.
+    ///
+    /// This supervisor notes each recovery it executes under a paused print.
+    /// What an earlier supervisor executed under a print still open it cannot
+    /// tell the printer's state for, so for a print opened before this one
+    /// started, any recovery recorded between the print opening and this
+    /// supervisor starting counts.
     pub(crate) async fn recovery_while_open(
         &self,
         print: &PrintRecord,
     ) -> Result<Option<EventId>, CoreError> {
         if print.ended_at.is_some() {
+            return Ok(None);
+        }
+        if let Some(moved) = self.moved_while_paused().get(&print.id) {
+            return Ok(Some(*moved));
+        }
+        if print.opened_at >= self.started().wall {
             return Ok(None);
         }
         let executed = EventKind::new(RecoveryExecutedPayload::KIND).map_err(|error| {
@@ -781,7 +806,7 @@ impl Supervisor {
             .timeline(TimelineQuery {
                 kinds: vec![executed],
                 since: Some(print.opened_at),
-                until: None,
+                until: Some(self.started().wall),
                 spool_id: None,
                 before: None,
                 limit: Some(1),

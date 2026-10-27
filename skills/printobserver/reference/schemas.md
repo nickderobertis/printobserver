@@ -6529,6 +6529,10 @@ Declared by `printobserver-core`.
       ]
     }
   },
+  "required": [
+    "actual_c",
+    "target_c"
+  ],
   "title": "BedTemperature",
   "type": "object"
 }
@@ -24664,6 +24668,10 @@ Declared by `printobserver-core`.
           ]
         }
       },
+      "required": [
+        "actual_c",
+        "target_c"
+      ],
       "type": "object"
     },
     "Footprint": {
@@ -25132,6 +25140,7 @@ Declared by `printobserver-core`.
         }
       },
       "required": [
+        "bed",
         "tools"
       ],
       "type": "object"
@@ -25169,6 +25178,8 @@ Declared by `printobserver-core`.
         }
       },
       "required": [
+        "actual_c",
+        "target_c",
         "tool"
       ],
       "type": "object"
@@ -25300,10 +25311,14 @@ Declared by `printobserver-core`.
     }
   },
   "required": [
+    "actions",
+    "last_print",
+    "paused_print",
+    "position",
     "state",
-    "z_trust",
     "temperatures",
-    "actions"
+    "z_home",
+    "z_trust"
   ],
   "title": "RecoveryStatus",
   "type": "object"
@@ -25338,6 +25353,10 @@ Declared by `printobserver-core`.
           ]
         }
       },
+      "required": [
+        "actual_c",
+        "target_c"
+      ],
       "type": "object"
     },
     "ToolTemperature": {
@@ -25367,6 +25386,8 @@ Declared by `printobserver-core`.
         }
       },
       "required": [
+        "actual_c",
+        "target_c",
         "tool"
       ],
       "type": "object"
@@ -25396,6 +25417,7 @@ Declared by `printobserver-core`.
     }
   },
   "required": [
+    "bed",
     "tools"
   ],
   "title": "RecoveryTemperatures",
@@ -34811,6 +34833,8 @@ Declared by `printobserver-core`.
     }
   },
   "required": [
+    "actual_c",
+    "target_c",
     "tool"
   ],
   "title": "ToolTemperature",

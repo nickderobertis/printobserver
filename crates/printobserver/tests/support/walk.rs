@@ -259,6 +259,7 @@ fn ordered(world: &World) -> Vec<Entry> {
             ],
         ),
     ];
+    found.extend(recovery());
     found.extend(actions(world));
     found.push(named(
         "manifest-set",
@@ -332,6 +333,34 @@ fn ledger(world: &World) -> Vec<Entry> {
         acting("adjust-spool", vec![value("remaining_g", "640")]),
         acting("adjust-spool", vec![value("gross_g", "900")]),
         acting("retire-spool", vec![]),
+    ]
+}
+
+/// The recovery read and the seven recovery actions, each with values no
+/// other command drives, asked of an idle machine before anything this
+/// supervisor did trusts Z: the lift reads no position then, and the Z home
+/// is what trusts it before the three moves over the part, each carried out
+/// on the operator's word that the nozzle is clear.
+fn recovery() -> Vec<Entry> {
+    let acting = |command: &str, mut rest: Vec<(String, String)>| {
+        rest.push(("actor".to_owned(), "operator".to_owned()));
+        rest.push(("reason".to_owned(), reason_of(command)));
+        named(command, Reports::Operational, rest)
+    };
+    let value = |field: &str, given: &str| (field.to_owned(), given.to_owned());
+    let asserted = || value("clearance_asserted", "true");
+    vec![
+        named("recover-status", Reports::Operational, vec![]),
+        acting("recover-lift", vec![value("mm", "3")]),
+        acting("recover-cool", vec![]),
+        acting("recover-fan", vec![value("percent", "37")]),
+        acting("recover-home-z", vec![value("bed_clear_asserted", "true")]),
+        acting(
+            "recover-heat",
+            vec![value("tool", "0"), value("target_c", "131"), asserted()],
+        ),
+        acting("recover-park", vec![asserted()]),
+        acting("recover-home-xy", vec![asserted()]),
     ]
 }
 

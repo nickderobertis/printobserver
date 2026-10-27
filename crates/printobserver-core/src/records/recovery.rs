@@ -352,6 +352,27 @@ impl Default for RecoveryGrants {
     }
 }
 
+/// Declare every field of a shape required, as the null it may be: these
+/// shapes send each field always, `null` where there is nothing to report,
+/// and the derive would otherwise read an `Option` as a field that may be
+/// absent.
+fn every_field_is_sent(schema: &mut printobserver_types::schemars::Schema) {
+    let named: Vec<printobserver_types::serde_json::Value> = schema
+        .get("properties")
+        .and_then(printobserver_types::serde_json::Value::as_object)
+        .map(|properties| {
+            properties
+                .keys()
+                .map(|name| printobserver_types::serde_json::Value::from(name.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    schema.insert(
+        "required".to_owned(),
+        printobserver_types::serde_json::Value::Array(named),
+    );
+}
+
 /// Whether Z is trusted, and since when or why not.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
@@ -384,7 +405,7 @@ pub struct RecoveryPosition {
 /// One tool heater, as a recovery read reports it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
+#[schemars(crate = "printobserver_types::schemars", transform = every_field_is_sent)]
 pub struct ToolTemperature {
     /// The tool, in the printer's own numbering.
     pub tool: i64,
@@ -398,7 +419,7 @@ pub struct ToolTemperature {
 /// The bed heater, as a recovery read reports it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
+#[schemars(crate = "printobserver_types::schemars", transform = every_field_is_sent)]
 pub struct BedTemperature {
     /// What it reads, in degrees Celsius, `null` when not reported.
     pub actual_c: Option<f64>,
@@ -410,7 +431,7 @@ pub struct BedTemperature {
 /// Every heater, as a recovery read reports it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
+#[schemars(crate = "printobserver_types::schemars", transform = every_field_is_sent)]
 pub struct RecoveryTemperatures {
     /// Each tool.
     pub tools: Vec<ToolTemperature>,
@@ -563,7 +584,7 @@ impl JsonSchema for ActionAllowance {
 /// and what each action would meet now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
+#[schemars(crate = "printobserver_types::schemars", transform = every_field_is_sent)]
 pub struct RecoveryStatus {
     /// The state the printer reports; `offline` when it could not be read.
     pub state: PrinterState,

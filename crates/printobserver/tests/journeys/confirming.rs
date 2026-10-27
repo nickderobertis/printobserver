@@ -250,8 +250,35 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
         "register-spool" | "load-spool" | "unload-spool" | "adjust-spool" | "retire-spool" => {
             the_ledger_carried_it_out(world, one, &said);
         }
+        "recover-status" => {
+            assert_eq!(at(&said, "actions.0.action"), "recover_lift", "{said:#?}");
+            assert_eq!(at(&said, "z_home.x"), "100.0", "{said:#?}");
+        }
+        recovering if recovering.starts_with("recover-") => {
+            the_recovery_was_carried_out(one, &said);
+        }
         _ => the_action_was_carried_out(world, one, &said),
     }
+}
+
+/// One recovery reached the machine and the machine took it, recorded as the
+/// action this invocation named, carrying its reason, with no print.
+fn the_recovery_was_carried_out(one: &Driven, said: &BTreeMap<String, String>) {
+    let action = one.command.name.replace('-', "_");
+    assert_eq!(at(said, "outcome"), "succeeded", "{said:#?}");
+    assert_eq!(at(said, "action.action"), action, "{said:#?}");
+    assert_eq!(at(said, "events.0.kind"), "recovery_requested", "{said:#?}");
+    assert_eq!(at(said, "events.1.kind"), "recovery_executed", "{said:#?}");
+    assert_eq!(
+        at(said, "events.1.payload.reason"),
+        one.text("reason"),
+        "{said:#?}"
+    );
+    assert!(
+        !said.contains_key("events.1.print_id")
+            || said.get("events.1.print_id").map(String::as_str) == Some("null"),
+        "a recovery was recorded against a print: {said:#?}"
+    );
 }
 
 /// The spools listing names the walk's spool, with one line for every spool

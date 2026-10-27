@@ -318,10 +318,10 @@ class BedTemperature(TypedDict):
     """
 
     # What it reads, in degrees Celsius, `null` when not reported.
-    actual_c: NotRequired[float | None]
+    actual_c: float | None
     # What it is driving towards, in degrees Celsius, `null` when not
     # reported.
-    target_c: NotRequired[float | None]
+    target_c: float | None
 
 
 class CameraDegradedPayload(TypedDict):
@@ -2476,19 +2476,19 @@ class RecoveryStatus(TypedDict):
     actions: list[ActionAllowance]
     # What the last print laid down, `null` when there is no print with a
     # file to read or its file could not be read.
-    last_print: NotRequired[LastPrint | None]
+    last_print: LastPrint | None
     # The print paused under the printer, `null` when none is.
-    paused_print: NotRequired[PausedPrint | None]
+    paused_print: PausedPrint | None
     # Where the head is, read only while Z is trusted; `null` otherwise or
     # when it could not be read.
-    position: NotRequired[RecoveryPosition | None]
+    position: RecoveryPosition | None
     # The state the printer reports; `offline` when it could not be read.
     state: PrinterState
     # Every heater.
     temperatures: RecoveryTemperatures
     # Where Z is homed and whether that sweeps the bed, `null` when
     # recovery is not configured.
-    z_home: NotRequired[ZHome | None]
+    z_home: ZHome | None
     # Whether Z is trusted.
     z_trust: ZTrust
 
@@ -2500,7 +2500,7 @@ class RecoveryTemperatures(TypedDict):
     """
 
     # The bed, `null` when the printer reports none.
-    bed: NotRequired[BedTemperature | None]
+    bed: BedTemperature | None
     # Each tool.
     tools: list[ToolTemperature]
 
@@ -3526,10 +3526,10 @@ class ToolTemperature(TypedDict):
     """
 
     # What it reads, in degrees Celsius, `null` when not reported.
-    actual_c: NotRequired[float | None]
+    actual_c: float | None
     # What it is driving towards, in degrees Celsius, `null` when not
     # reported.
-    target_c: NotRequired[float | None]
+    target_c: float | None
     # The tool, in the printer's own numbering.
     tool: int
 

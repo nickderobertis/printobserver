@@ -26,6 +26,8 @@
     }
   },
   "required": [
+    "actual_c",
+    "target_c",
     "tool"
   ],
   "title": "ToolTemperature",

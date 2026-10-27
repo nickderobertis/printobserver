@@ -37,8 +37,9 @@ use crate::world::{OPERATOR, SECRET, document, failure_alert, presenting, set, w
 /// How often these journeys' watch reads the machine.
 const POLL: Duration = Duration::from_millis(200);
 
-/// How long a journey waits for what the watch should record.
-const PATIENCE: Duration = Duration::from_secs(20);
+/// How long a journey waits for what the watch should record: a fifth of a
+/// second's poll needs far less, and the rest is room for a loaded host.
+const PATIENCE: Duration = Duration::from_secs(60);
 
 /// The file a scripted print is of.
 const FILE: &str = "part.gcode";

@@ -300,6 +300,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("invalid_from_state", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
+            ("print_not_resumable", "object", true),
             ("print_still_active", "object", true),
             ("spool_refused", "object", true),
             ("unsupported_adjustable", "object", true),
@@ -419,6 +420,109 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("print_id", "PrintId", true),
             ("printed_at", "Timestamp", true),
             ("reason", "string", true),
+        ],
+    ),
+    (
+        "ActionAllowance",
+        &[
+            ("action", "RecoveryActionKind", true),
+            ("allowed", "boolean", true),
+            ("refusal", "RecoveryRejection", false),
+        ],
+    ),
+    (
+        "BedTemperature",
+        &[("actual_c", "number", true), ("target_c", "number", true)],
+    ),
+    (
+        "LastPrint",
+        &[
+            ("footprint", "Footprint", true),
+            ("print_id", "PrintId", true),
+            ("tallest_mm", "number", true),
+        ],
+    ),
+    (
+        "PausedPrint",
+        &[
+            ("print_id", "PrintId", true),
+            ("resumable", "boolean", true),
+        ],
+    ),
+    (
+        "RecoveryAction",
+        &[
+            ("action", "string", true),
+            ("bed_clear_asserted", "boolean", false),
+            ("clearance_asserted", "boolean", false),
+            ("mm", "number", true),
+            ("percent", "number", true),
+            ("target_c", "number", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    ("RecoveryActionKind", &[]),
+    ("RecoveryField", &[]),
+    (
+        "RecoveryPosition",
+        &[
+            ("x", "number", true),
+            ("y", "number", true),
+            ("z", "number", true),
+        ],
+    ),
+    (
+        "RecoveryRejection",
+        &[
+            ("actor_may_not_request", "object", true),
+            ("assertion_required", "object", true),
+            ("insufficient_clearance", "object", true),
+            ("out_of_bounds", "object", true),
+            ("print_running", "object", true),
+            ("printer_cannot", "object", true),
+        ],
+    ),
+    (
+        "RecoveryStatus",
+        &[
+            ("actions", "array:ActionAllowance", true),
+            ("last_print", "LastPrint", true),
+            ("paused_print", "PausedPrint", true),
+            ("position", "RecoveryPosition", true),
+            ("state", "PrinterState", true),
+            ("temperatures", "RecoveryTemperatures", true),
+            ("z_home", "ZHome", true),
+            ("z_trust", "ZTrust", true),
+        ],
+    ),
+    (
+        "RecoveryTemperatures",
+        &[
+            ("bed", "BedTemperature", true),
+            ("tools", "array:ToolTemperature", true),
+        ],
+    ),
+    (
+        "ToolTemperature",
+        &[
+            ("actual_c", "number", true),
+            ("target_c", "number", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
+        "ZHome",
+        &[
+            ("sweeps_bed", "boolean", true),
+            ("x", "number", true),
+            ("y", "number", true),
+        ],
+    ),
+    (
+        "ZTrust",
+        &[
+            ("trusted_since", "Timestamp", true),
+            ("untrusted", "string", true),
         ],
     ),
 ];

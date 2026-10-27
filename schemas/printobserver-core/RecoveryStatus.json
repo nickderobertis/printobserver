@@ -43,6 +43,10 @@
           ]
         }
       },
+      "required": [
+        "actual_c",
+        "target_c"
+      ],
       "type": "object"
     },
     "Footprint": {
@@ -511,6 +515,7 @@
         }
       },
       "required": [
+        "bed",
         "tools"
       ],
       "type": "object"
@@ -548,6 +553,8 @@
         }
       },
       "required": [
+        "actual_c",
+        "target_c",
         "tool"
       ],
       "type": "object"
@@ -679,10 +686,14 @@
     }
   },
   "required": [
+    "actions",
+    "last_print",
+    "paused_print",
+    "position",
     "state",
-    "z_trust",
     "temperatures",
-    "actions"
+    "z_home",
+    "z_trust"
   ],
   "title": "RecoveryStatus",
   "type": "object"

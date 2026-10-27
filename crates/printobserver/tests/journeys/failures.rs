@@ -76,6 +76,11 @@ pub fn rejected(world: &World, one: &Driven) -> Vec<String> {
     if one.operation().command_kind().is_some() {
         return refused_by_the_ledger(world, one);
     }
+    // A recovery is refused whatever it asks while a print runs, which is the
+    // machine it is asked of: see `rejected_from`.
+    if one.operation().recovery_kind().is_some() {
+        return succeeding(one);
+    }
     let mut given = vec![one.command.name.clone()];
     let mut out_of_bounds = false;
     for field in &one.command.fields {
@@ -105,10 +110,11 @@ pub fn rejected(world: &World, one: &Driven) -> Vec<String> {
 /// The command's own state, except a start: asked while the machine is idle, a
 /// start chooses a print of its own rather than the one it names, and would be
 /// carried out — so it is asked while the machine is printing, where it is
-/// held to the print it names.
+/// held to the print it names. A recovery is asked while the machine is
+/// printing too, which refuses every one of them.
 #[must_use]
 pub fn rejected_from(one: &Driven) -> Reports {
-    if one.command.name == "start-print" {
+    if one.command.name == "start-print" || one.operation().recovery_kind().is_some() {
         Reports::Printing
     } else {
         one.reports

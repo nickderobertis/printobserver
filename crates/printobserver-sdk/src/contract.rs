@@ -302,11 +302,9 @@ pub struct AgentAssessmentPayload {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BedTemperature {
     /// What it reads, in degrees Celsius, `null` when not reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_c: Option<f64>,
     /// What it is driving towards, in degrees Celsius, `null` when not
     /// reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_c: Option<f64>,
 }
 
@@ -2206,14 +2204,11 @@ pub struct RecoveryStatus {
     pub actions: Vec<ActionAllowance>,
     /// What the last print laid down, `null` when there is no print with a
     /// file to read or its file could not be read.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_print: Option<LastPrint>,
     /// The print paused under the printer, `null` when none is.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused_print: Option<PausedPrint>,
     /// Where the head is, read only while Z is trusted; `null` otherwise or
     /// when it could not be read.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<RecoveryPosition>,
     /// The state the printer reports; `offline` when it could not be read.
     pub state: PrinterState,
@@ -2221,7 +2216,6 @@ pub struct RecoveryStatus {
     pub temperatures: RecoveryTemperatures,
     /// Where Z is homed and whether that sweeps the bed, `null` when
     /// recovery is not configured.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub z_home: Option<ZHome>,
     /// Whether Z is trusted.
     pub z_trust: ZTrust,
@@ -2231,7 +2225,6 @@ pub struct RecoveryStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecoveryTemperatures {
     /// The bed, `null` when the printer reports none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bed: Option<BedTemperature>,
     /// Each tool.
     pub tools: Vec<ToolTemperature>,
@@ -2950,11 +2943,9 @@ pub struct ToolFilament {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolTemperature {
     /// What it reads, in degrees Celsius, `null` when not reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_c: Option<f64>,
     /// What it is driving towards, in degrees Celsius, `null` when not
     /// reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_c: Option<f64>,
     /// The tool, in the printer's own numbering.
     pub tool: i64,

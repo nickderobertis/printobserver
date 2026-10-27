@@ -20,6 +20,10 @@
       ]
     }
   },
+  "required": [
+    "actual_c",
+    "target_c"
+  ],
   "title": "BedTemperature",
   "type": "object"
 }
