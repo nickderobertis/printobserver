@@ -31,6 +31,7 @@ import pytest
 from environment import SCRIPT, answer, said, script
 from release_artifacts.installing import program_in
 from repo_checks.expect import contains, equal, failing, passing, refused_naming, truth
+from repo_checks.shell import start
 
 # What the server is replaced with to induce an instance that starts and never
 # answers: a program that runs, and says nothing.
@@ -143,6 +144,66 @@ def test_a_line_or_a_reconnect_for_no_running_instance_is_refused_by_name(
 
         failing(result, naming="octoprint-env: failed: terminal-refused")
         contains(said(result), "run `up` first", describing=f"what {asked} says")
+
+
+#: The stand-in for a running instance's API, answering one status to commands.
+ANSWERING_HOST = Path(__file__).resolve().parent / "answering_host.py"
+
+
+def _recorded_host(tmp_path: Path, status: int) -> tuple[subprocess.Popen[str], str]:
+    """A stand-in host answering `status`, recorded in a state directory as an instance.
+
+    The record is the one `up` writes — the host's process and its address —
+    beside an API key, which is everything `terminal` and `connect` find an
+    instance by.
+    """
+    host = start([sys.executable, str(ANSWERING_HOST), str(status)])
+    stdout = host.stdout
+    if stdout is None:
+        host.kill()
+        message = "the stand-in host's output was not captured"
+        raise AssertionError(message)
+    port = int(stdout.readline())
+    state = tmp_path / f"answering-{status}"
+    state.mkdir()
+    (state / "instance.json").write_text(
+        json.dumps({"pid": host.pid, "url": f"http://127.0.0.1:{port}"}), encoding="utf-8"
+    )
+    (state / "api-key").write_text("a-stand-in-key\n", encoding="utf-8")
+    return host, str(state)
+
+
+def test_a_line_or_a_reconnect_a_running_instance_refuses_is_refused_with_its_words(
+    tmp_path: Path,
+) -> None:
+    """A running instance refusing a line or a reconnect is reported with its status and words.
+
+    The same stand-in answering `204` takes both, so what refuses them is the
+    instance's answer and nothing about how it was found.
+    """
+    taking, taking_state = _recorded_host(tmp_path, 204)
+    refusing, refusing_state = _recorded_host(tmp_path, 409)
+    try:
+        for asked in (("terminal", "--line", "M117 hello"), ("connect",)):
+            passing(
+                script(*asked, "--state-dir", taking_state),
+                describing=f"{asked} to an instance taking it",
+            )
+
+            result = script(*asked, "--state-dir", refusing_state)
+
+            failing(result, naming="octoprint-env: failed: terminal-refused")
+            report = said(result)
+            contains(report, "409", describing=f"the status {asked} was refused with")
+            contains(
+                report,
+                "Printer is not operational",
+                describing=f"the instance's own words refusing {asked}",
+            )
+    finally:
+        for host in (taking, refusing):
+            host.kill()
+            host.wait(timeout=10)
 
 
 def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_text(
