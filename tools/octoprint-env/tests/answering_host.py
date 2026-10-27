@@ -9,14 +9,16 @@ a refusal. It prints the port it bound on its standard output, logs each request
 on its standard error as the standard library's server does, and serves until
 it is stopped.
 
-Usage: `python answering_host.py <status>`.
+Usage: `python answering_host.py <status>`, with `repo_checks` importable.
 """
 
 from __future__ import annotations
 
 import json
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from repo_checks.loopback import LoopbackServer
 
 #: What an instance says when it will not take a line or a reconnect.
 REFUSAL = {"error": "Printer is not operational"}
@@ -58,10 +60,10 @@ def handler_answering(status: int) -> type[BaseHTTPRequestHandler]:
 
 
 def main() -> int:
-    """Bind a port the system chooses, say which, and serve until stopped."""
+    """Bind a loopback port the system chooses, say which, and serve until stopped."""
     status = int(sys.argv[1])
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_answering(status))
-    print(server.server_address[1], flush=True)
+    server = LoopbackServer(handler_answering(status))
+    print(server.server_port, flush=True)
     server.serve_forever()
     return 0
 

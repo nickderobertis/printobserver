@@ -28,6 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+import repo_checks
 from environment import SCRIPT, answer, said, script
 from release_artifacts.installing import program_in
 from repo_checks.expect import contains, equal, failing, passing, refused_naming, truth
@@ -157,7 +158,13 @@ def _recorded_host(tmp_path: Path, status: int) -> tuple[subprocess.Popen[str], 
     beside an API key, which is everything `terminal` and `connect` find an
     instance by.
     """
-    host = start([sys.executable, str(ANSWERING_HOST), str(status)])
+    # The host is built on the repository's loopback helper, which a process of
+    # its own imports from where the tree keeps it.
+    helper = Path(repo_checks.__file__).resolve().parents[1]
+    host = start(
+        [sys.executable, str(ANSWERING_HOST), str(status)],
+        env={**os.environ, "PYTHONPATH": str(helper)},
+    )
     stdout = host.stdout
     if stdout is None:
         host.kill()
