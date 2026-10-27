@@ -984,6 +984,10 @@ async fn a_move_the_printer_cannot_make_is_refused_as_such() {
         "{answer:#}"
     );
     assert_eq!(reading.asked_of_the_machine(), before);
+    assert_eq!(
+        reading.recorded().await.last(),
+        Some(&("recovery_rejected".to_owned(), "recover_park".to_owned()))
+    );
     assert_eq!(reading.status().await["state"], "operational");
 }
 
