@@ -163,6 +163,11 @@ function refusalText(said: string): string {
   return "it said nothing this client can read";
 }
 
+/** Whether one parsed value is a finite number. */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 /** Whether one parsed value is an object of exactly one member: a decision's one arm. */
 function isOneArm(value: unknown): value is Record<string, unknown> {
   return isObject(value) && Object.keys(value).length === 1;
@@ -266,11 +271,12 @@ function boundsOf(refused: unknown): { requested?: number; allowed?: Range } | n
   // An action's bounds name the adjustable they ruled on; a recovery's, its field.
   const { adjustable, field, requested, allowed } = bounds;
   const ruledOn = field ?? adjustable;
-  if (typeof ruledOn !== "string" || typeof requested !== "number" || !isObject(allowed)) {
+  // `JSON.parse` reads a literal past any float as `Infinity`, which no bound is.
+  if (typeof ruledOn !== "string" || !isFiniteNumber(requested) || !isObject(allowed)) {
     return null;
   }
   const { min, max } = allowed;
-  if (typeof min !== "number" || typeof max !== "number") {
+  if (!isFiniteNumber(min) || !isFiniteNumber(max)) {
     return null;
   }
   return { requested, allowed: { min, max } };

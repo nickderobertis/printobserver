@@ -30,9 +30,8 @@ export class Host {
   private readonly arrivals: Received[] = [];
   private readonly server: ReturnType<typeof Bun.serve>;
 
-  private constructor(status: number, answer: unknown) {
+  private constructor(status: number, said: string) {
     const arrivals = this.arrivals;
-    const said = JSON.stringify(answer);
     this.server = Bun.serve({
       port: 0,
       hostname: "127.0.0.1",
@@ -53,7 +52,15 @@ export class Host {
 
   /** A host answering `status` with `answer`, on a port the system chooses. */
   static answering(status: number, answer: unknown): Host {
-    return new Host(status, answer);
+    return new Host(status, JSON.stringify(answer));
+  }
+
+  /**
+   * A host answering `status` with `said` exactly as written: a document
+   * `JSON.stringify` would never write, such as a number past any float.
+   */
+  static answeringText(status: number, said: string): Host {
+    return new Host(status, said);
   }
 
   /** Where this host answers. */

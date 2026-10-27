@@ -205,3 +205,18 @@ test("a policy refusal whose decision has two arms is unreadable", async () => {
 
   await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
 });
+
+test("a refusal whose bounds overflow every float is unreadable", async () => {
+  for (const bound of ['"requested": 1e400', '"allowed": {"min": 0, "max": 1e400}']) {
+    const bounds = bound.startsWith('"requested"')
+      ? `{"field": "percent", ${bound}, "allowed": {"min": 0, "max": 100}}`
+      : `{"field": "percent", "requested": 150, ${bound}}`;
+    await using host = Host.answeringText(
+      409,
+      `{"action": {"action": "recover_fan", "percent": 50}, "decision": {"rejected": {"out_of_bounds": ${bounds}}}, "detail": "refused", "events": []}`,
+    );
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
+  }
+});
