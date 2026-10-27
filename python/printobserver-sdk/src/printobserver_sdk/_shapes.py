@@ -3,9 +3,10 @@
 What a type is comes from `SHAPES`, the table generated from the same
 declarations as every type in `contract.py`; this module only walks it. An
 object admits members it does not declare, as the Rust client's types do, and
-an optional member sent as null reads as one left out, as an `Option` does.
-Every closed set admits only what it declares: an enumeration's names, a
-union's arms, a tagged object's tags.
+an optional member is either left out or of its declared shape: one sent as
+null is refused unless that shape is nullable. Every closed set admits only
+what it declares: an enumeration's names, a union's arms, a tagged object's
+tags.
 """
 
 from __future__ import annotations
@@ -111,8 +112,6 @@ def _fields(value: dict[object, object], fields: dict[object, object]) -> bool:
                 return False
             continue
         member = value[name]
-        if member is None and not required:
-            continue
         if not _conforms(member, shape):
             return False
     return True

@@ -4,9 +4,10 @@
  * What a type is comes from `SHAPES`, the table generated from the same
  * declarations as every type in `contract.ts`; this module only walks it. An
  * object admits members it does not declare, as the Rust client's types do,
- * and an optional member sent as null reads as one left out. Every closed set
- * admits only what it declares: an enumeration's names, a union's arms, a
- * tagged object's tags.
+ * and an optional member is either left out or of its declared shape: one sent
+ * as null is refused unless that shape is nullable. Every closed set admits
+ * only what it declares: an enumeration's names, a union's arms, a tagged
+ * object's tags.
  */
 
 import { SHAPES } from "./contract.ts";
@@ -18,16 +19,28 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 /** Whether `value` is a document of the type the contracts declare as `declared`. */
 export function conforms(value: unknown, declared: string): boolean {
-  return isDeclared(value, SHAPES[declared]);
+  return conformsIn(SHAPES, value, declared);
+}
+
+/** A shape table: each declaration's name, and what it declares. */
+export type Table = Readonly<Record<string, unknown>>;
+
+/**
+ * Whether `value` is a document of `declared` as one shape table writes it.
+ * `conforms` walks the generated table; a table that is not one this walker
+ * reads admits nothing, rather than everything.
+ */
+export function conformsIn(table: Table, value: unknown, declared: string): boolean {
+  return isDeclared(table, value, table[declared]);
 }
 
 /** Whether `value` is of one type expression of the table. */
-function isOf(value: unknown, shape: unknown): boolean {
+function isOf(table: Table, value: unknown, shape: unknown): boolean {
   if (!isObject(shape)) {
     return false;
   }
   if (typeof shape.ref === "string") {
-    return isDeclared(value, SHAPES[shape.ref]);
+    return isDeclared(table, value, table[shape.ref]);
   }
   if (typeof shape.scalar === "string") {
     return isScalar(value, shape.scalar);
@@ -36,14 +49,14 @@ function isOf(value: unknown, shape: unknown): boolean {
     return (
       Array.isArray(value) &&
       (value.length > 0 || shape.non_empty !== true) &&
-      value.every((entry) => isOf(entry, shape.list))
+      value.every((entry) => isOf(table, entry, shape.list))
     );
   }
   if ("map" in shape) {
-    return isObject(value) && Object.values(value).every((entry) => isOf(entry, shape.map));
+    return isObject(value) && Object.values(value).every((entry) => isOf(table, entry, shape.map));
   }
   if ("nullable" in shape) {
-    return value === null || isOf(value, shape.nullable);
+    return value === null || isOf(table, value, shape.nullable);
   }
   return shape.any === true;
 }
@@ -67,28 +80,28 @@ function isScalar(value: unknown, kind: string): boolean {
 }
 
 /** Whether `value` is of one declaration of the table. */
-function isDeclared(value: unknown, declaration: unknown): boolean {
+function isDeclared(table: Table, value: unknown, declaration: unknown): boolean {
   if (!isObject(declaration)) {
     return false;
   }
   if ("alias" in declaration) {
-    return isOf(value, declaration.alias);
+    return isOf(table, value, declaration.alias);
   }
   if (Array.isArray(declaration.enum)) {
     return typeof value === "string" && declaration.enum.includes(value);
   }
   const { struct, union } = declaration;
   if (isObject(struct) && isObject(struct.fields) && isObject(struct.variants)) {
-    if (!(isObject(value) && hasFields(value, struct.fields))) {
+    if (!(isObject(value) && hasFields(table, value, struct.fields))) {
       return false;
     }
-    return !struct.tag_field || isTagged(value, String(struct.tag_field), struct.variants);
+    return !struct.tag_field || isTagged(table, value, String(struct.tag_field), struct.variants);
   }
   if (isObject(union) && isObject(union.variants)) {
     if (typeof union.tag_field === "string" && union.tag_field !== "") {
-      return isObject(value) && isTagged(value, union.tag_field, union.variants);
+      return isObject(value) && isTagged(table, value, union.tag_field, union.variants);
     }
-    return isExternal(value, union.variants);
+    return isExternal(table, value, union.variants);
   }
   return false;
 }
@@ -107,7 +120,11 @@ function isPaired(flag: unknown, value: Record<string, unknown>, pair: string): 
  * type. A member paired with an optional sibling is false exactly when that
  * sibling is sent, and the sibling is never sent as null.
  */
-function hasFields(value: Record<string, unknown>, fields: Record<string, unknown>): boolean {
+function hasFields(
+  table: Table,
+  value: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): boolean {
   return Object.entries(fields).every(([name, field]) => {
     if (!isObject(field) || typeof field.required !== "boolean") {
       return false;
@@ -121,15 +138,13 @@ function hasFields(value: Record<string, unknown>, fields: Record<string, unknow
     if (member === undefined) {
       return !field.required;
     }
-    if (member === null && !field.required) {
-      return true;
-    }
-    return isOf(member, field.shape);
+    return isOf(table, member, field.shape);
   });
 }
 
 /** Whether an object names one declared arm in `tagField`, and carries that arm. */
 function isTagged(
+  table: Table,
   value: Record<string, unknown>,
   tagField: string,
   variants: Record<string, unknown>,
@@ -138,7 +153,7 @@ function isTagged(
   if (typeof tag !== "string" || !Object.hasOwn(variants, tag)) {
     return false;
   }
-  return isArm(value, variants[tag]);
+  return isArm(table, value, variants[tag]);
 }
 
 /**
@@ -146,7 +161,7 @@ function isTagged(
  * nothing travels as its own name, and any other as an object of exactly one
  * member, its name, holding what it carries.
  */
-function isExternal(value: unknown, variants: Record<string, unknown>): boolean {
+function isExternal(table: Table, value: unknown, variants: Record<string, unknown>): boolean {
   if (typeof value === "string") {
     const variant = Object.hasOwn(variants, value) ? variants[value] : undefined;
     return isObject(variant) && variant.unit === true;
@@ -165,18 +180,18 @@ function isExternal(value: unknown, variants: Record<string, unknown>): boolean 
     return false;
   }
   if (isObject(variant.payload)) {
-    return isOf(carried, variant.payload);
+    return isOf(table, carried, variant.payload);
   }
-  return isObject(carried) && isObject(variant.fields) && hasFields(carried, variant.fields);
+  return isObject(carried) && isObject(variant.fields) && hasFields(table, carried, variant.fields);
 }
 
 /** Whether an object carries one arm of an internally tagged set beside its tag. */
-function isArm(value: Record<string, unknown>, variant: unknown): boolean {
+function isArm(table: Table, value: Record<string, unknown>, variant: unknown): boolean {
   if (!isObject(variant)) {
     return false;
   }
   if (isObject(variant.payload)) {
-    return isOf(value, variant.payload);
+    return isOf(table, value, variant.payload);
   }
-  return isObject(variant.fields) && hasFields(value, variant.fields);
+  return isObject(variant.fields) && hasFields(table, value, variant.fields);
 }
