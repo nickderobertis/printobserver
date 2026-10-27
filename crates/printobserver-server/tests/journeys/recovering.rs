@@ -338,6 +338,23 @@ impl Recovering {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
+    /// Wait until the watch itself has read the printer's state since now:
+    /// the watch takes it from the job, which no recovery reads, so a job
+    /// read the printer receives is the watch's own poll. A state change the
+    /// watch is to record is a change from a state it has read, so a journey
+    /// that changes the printer's state waits for this first.
+    async fn watched(&self) {
+        let before = self.octoprint.job_reads();
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        while self.octoprint.job_reads() <= before {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the watch never read the printer"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     /// Home Z as the operator with the bed asserted clear, and wait until Z
     /// reads trusted.
     async fn home_z(&self) {
@@ -816,6 +833,7 @@ async fn z_trust_is_lost_to_every_event_that_could_have_moved_z() {
     world.connected().await;
 
     world.home_z().await;
+    world.watched().await;
     world.octoprint.reports("Offline", down("Offline"));
     world.until("printer_connection_changed", 1).await;
     world.octoprint.reports("Operational", JobScript::idle());
@@ -823,6 +841,7 @@ async fn z_trust_is_lost_to_every_event_that_could_have_moved_z() {
     untrusted(&world, "going offline and coming back").await;
 
     world.home_z().await;
+    world.watched().await;
     world.octoprint.reports("Error", down("Error"));
     world.until("printer_connection_changed", 3).await;
     world.octoprint.reports("Operational", JobScript::idle());
@@ -1357,4 +1376,94 @@ async fn a_printer_whose_state_cannot_be_read_refuses_every_recovery() {
     );
     assert_eq!(status["position"], Value::Null, "{status:#}");
     every_action_refused(&world, "printer_unreachable").await;
+}
+
+/// A recovery claiming somebody its credential is not is refused `403`
+/// before anything is recorded or asked of the machine: the operator's
+/// credential claiming the agent or the system, and an agent's claiming the
+/// operator or another session.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recovery_claiming_somebody_else_is_refused_before_anything() {
+    let world = Recovering::start(with_recovery(|document| {
+        set(
+            document,
+            "policy",
+            toml::from_str("[recovery]\nagent = [\"recover_fan\"]\n").expect("a policy table"),
+        );
+    }))
+    .await;
+    let (agent, _) = world.agent_turn().await;
+    for (client, claimed) in [
+        (
+            &world.client,
+            json!({ "agent": { "session_name": "a-session" } }),
+        ),
+        (&world.client, json!("system")),
+        (&agent, json!("operator")),
+        (
+            &agent,
+            json!({ "agent": { "session_name": "another-session" } }),
+        ),
+    ] {
+        let before = world.asked_of_the_machine();
+        let recorded = world.recorded().await;
+        let (status, answer) = world
+            .ask_as(
+                client,
+                "recover_fan",
+                with_actor(json!({ "percent": 50.0 }), claimed.clone()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{claimed}: {answer:#}");
+        assert_eq!(world.recorded().await, recorded, "{claimed} was recorded");
+        assert_eq!(
+            world.asked_of_the_machine(),
+            before,
+            "{claimed} reached the machine"
+        );
+    }
+}
+
+/// With `policy.recovery.asserting` empty nobody's word counts: the
+/// operator's word that the bed is clear no longer lets Z be homed, so it is
+/// refused naming the assertion, and the read says the same of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn with_no_class_asserting_the_operators_bed_clear_word_homes_nothing() {
+    let world = Recovering::start(with_recovery(|document| {
+        set(
+            document,
+            "policy",
+            toml::from_str("[recovery]\nasserting = []\n").expect("a policy table"),
+        );
+    }))
+    .await;
+    world.connected().await;
+    let before = world.asked_of_the_machine();
+    let (status, answer) = world
+        .ask("recover_home_z", json!({ "bed_clear_asserted": true }))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+    assert_eq!(
+        answer["decision"]["rejected"],
+        json!({ "assertion_required": { "field": "bed_clear_asserted" } })
+    );
+    assert_eq!(
+        world.asked_of_the_machine(),
+        before,
+        "the home reached the machine"
+    );
+    let status = world.status().await;
+    assert_eq!(status["z_trust"].get("trusted_since"), None, "{status:#}");
+    let home_z = status["actions"]
+        .as_array()
+        .expect("every action")
+        .iter()
+        .find(|entry| entry["action"] == "recover_home_z")
+        .cloned()
+        .expect("the Z home's allowance");
+    assert_eq!(
+        home_z["refusal"],
+        json!({ "assertion_required": { "field": "bed_clear_asserted" } }),
+        "{home_z:#}"
+    );
 }

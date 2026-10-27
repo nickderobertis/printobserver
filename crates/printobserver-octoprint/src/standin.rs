@@ -120,14 +120,10 @@ struct Script {
     position: [f64; 3],
     /// Whether an `M114` is answered on the push socket.
     answers_position: bool,
-    /// Whether the command endpoint refuses every line.
-    refuses_commands: bool,
+    /// Which endpoints fail every request they are sent.
+    failing: Failing,
     /// The status the bed endpoint refuses every target with, when it does.
     bed_refusal: Option<u16>,
-    /// Whether the print-head endpoint refuses every move and home.
-    refuses_printhead: bool,
-    /// Whether every read of the printer's state fails at the instance.
-    fails_printer_reads: bool,
     /// How the push socket's upgrade is answered.
     upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
@@ -156,6 +152,17 @@ struct Script {
     /// The file whose last print the instance records as a success, its size
     /// and when that print ended, in seconds since the epoch.
     succeeded: Option<(String, i64, f64)>,
+}
+
+/// The endpoints a script has made fail every request they are sent.
+#[derive(Debug, Default)]
+struct Failing {
+    /// The command endpoint, refusing every line.
+    commands: bool,
+    /// The print-head endpoint, refusing every move and home.
+    printhead: bool,
+    /// The printer's state, failing every read of it at the instance.
+    printer_reads: bool,
 }
 
 /// A scripted `OctoPrint` on a loopback socket.
@@ -198,10 +205,8 @@ impl ScriptedOctoPrint {
             bed_target: 0.0,
             position: [0.0; 3],
             answers_position: true,
-            refuses_commands: false,
+            failing: Failing::default(),
             bed_refusal: None,
-            refuses_printhead: false,
-            fails_printer_reads: false,
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
@@ -326,13 +331,13 @@ impl ScriptedOctoPrint {
     /// instance whose own printer plugin has crashed does, or answer them
     /// again.
     pub fn fails_printer_reads(&self, fails: bool) {
-        self.held().fails_printer_reads = fails;
+        self.held().failing.printer_reads = fails;
     }
 
     /// Refuse every print-head move and home from now on, as a machine whose
     /// endstop fails does, or take them again.
     pub fn refuses_printhead(&self, refuses: bool) {
-        self.held().refuses_printhead = refuses;
+        self.held().failing.printhead = refuses;
     }
 
     /// Put the head here.
@@ -343,7 +348,7 @@ impl ScriptedOctoPrint {
     /// Refuse every line sent through the command endpoint from now on, or
     /// take them again.
     pub fn refuses_commands(&self, refuses: bool) {
-        self.held().refuses_commands = refuses;
+        self.held().failing.commands = refuses;
     }
 
     /// Answer `M114` on the push socket, or not.
@@ -492,6 +497,17 @@ impl ScriptedOctoPrint {
             .requests
             .iter()
             .filter(|request| request.as_str() == "POST /api/printer/tool")
+            .count()
+    }
+
+    /// How many reads of the job it has received: the read a watch takes the
+    /// printer's state from.
+    #[must_use]
+    pub fn job_reads(&self) -> usize {
+        self.held()
+            .requests
+            .iter()
+            .filter(|request| request.as_str() == "GET /api/job")
             .count()
     }
 
@@ -685,7 +701,7 @@ fn answer(
             200,
             json!({ "current": { "state": held.connection, "port": "VIRTUAL" } }).to_string(),
         ),
-        ("GET", path) if path.starts_with("/api/printer") && held.fails_printer_reads => {
+        ("GET", path) if path.starts_with("/api/printer") && held.failing.printer_reads => {
             (500, r#"{"error":"Internal server error"}"#.to_owned())
         }
         ("GET", path) if path.starts_with("/api/printer") => printer_body(&held),
@@ -701,7 +717,7 @@ fn answer(
             held.job_commands.push(command);
             (204, String::new())
         }
-        ("POST", "/api/printer/command") if held.refuses_commands => {
+        ("POST", "/api/printer/command") if held.failing.commands => {
             (409, r#"{"error":"Printer is not operational"}"#.to_owned())
         }
         ("POST", "/api/printer/command") => commanded(held, sockets, &body),
@@ -711,7 +727,7 @@ fn answer(
             held.printhead.push(body);
             (204, String::new())
         }
-        ("POST", "/api/printer/printhead") if held.refuses_printhead => (
+        ("POST", "/api/printer/printhead") if held.failing.printhead => (
             400,
             r#"{"error":"Homing failed: endstop not hit"}"#.to_owned(),
         ),

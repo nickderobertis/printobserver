@@ -224,6 +224,11 @@ fn a_configuration_granting_the_agent_a_z_home_or_its_own_clearance_is_refused_a
             "policy.recovery.asserting",
             "assert clearance",
         ),
+        (
+            json!({ "asserting": ["operator", "a-robot"] }),
+            "policy.recovery.asserting",
+            "\"a-robot\" is not an actor whose word can count",
+        ),
     ] {
         let said = starting::refused_start(|document| {
             document["recovery"] = recovery_facts();
