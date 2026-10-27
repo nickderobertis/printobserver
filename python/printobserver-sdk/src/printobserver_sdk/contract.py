@@ -8,7 +8,8 @@ generate-clients`, and commit what that writes.
 
 from __future__ import annotations
 
-from typing import Literal, NamedTuple, NotRequired, TypeAlias, TypedDict, cast, overload
+import json
+from typing import Literal, NotRequired, TypeAlias, TypedDict, cast, overload
 
 from printobserver_sdk._surface import GeneratedSurface, reason_given
 
@@ -4016,111 +4017,5475 @@ def payload_of(event: EventRecord, kind: str) -> object | None:
     return event["payload"]
 
 
-class RefusalField(NamedTuple):
-    """One field a refusal's arm carries, as a reading client checks it.
-
-    Generated from the arm's own declaration in the contracts, so the
-    client holds a known refusal to them without a second copy of them.
+# Every declaration of the contracts, as the client checks a document
+# against its declared type: generated from the same declarations as every
+# type above.
+SHAPES: dict[str, object] = json.loads(
     """
-
-    #: The JSON form it takes: `string`, `number`, `integer`, `boolean`,
-    #: `object`, `array`, `string_or_object` or `any`.
-    kind: str
-    #: Whether the arm must carry it.
-    required: bool
-    #: Whether it may be null.
-    nullable: bool
-
-
-# Every arm of `RejectionReason`, and the fields it carries: `None` for an
-# arm carrying nothing, which travels as its own name.
-REJECTION_REASON_FIELDS: dict[str, dict[str, RefusalField] | None] = {
-    "out_of_bounds": {
-        "adjustable": RefusalField("string", True, False),
-        "allowed": RefusalField("object", True, False),
-        "requested": RefusalField("number", True, False),
+{
+ "AcknowledgementDisposition": {
+  "enum": [
+   "continue",
+   "watch",
+   "stop"
+  ]
+ },
+ "ActionAllowance": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryActionKind"
+     }
     },
-    "actor_may_not_request": {
-        "action": RefusalField("string", True, False),
-        "actor_class": RefusalField("string", True, False),
+    "allowed": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
     },
-    "no_active_print": None,
-    "invalid_from_state": {
-        "state": RefusalField("string_or_object", True, False),
+    "refusal": {
+     "required": false,
+     "shape": {
+      "ref": "RecoveryRejection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionAnswer": {
+  "struct": {
+   "fields": {
+    "intervention": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Intervention"
+      }
+     }
     },
-    "min_interval_not_elapsed": {
-        "interval_s": RefusalField("integer", True, False),
-        "since_last_s": RefusalField("integer", True, False),
+    "printer_refusal": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
     },
-    "unsupported_adjustable": {
-        "adjustable": RefusalField("string", True, False),
+    "record": {
+     "required": true,
+     "shape": {
+      "ref": "ActionRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionExecutedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
     },
-    "insufficient_filament": {
-        "buffer_g": RefusalField("number", True, False),
-        "remaining_g": RefusalField("number", True, False),
-        "required_g": RefusalField("number", True, False),
-        "spool_id": RefusalField("string", True, False),
-        "spool_name": RefusalField("string", True, False),
-        "tool": RefusalField("integer", True, False),
-        "unverified": RefusalField("object", False, True),
+    "intervention_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "InterventionId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ActionKind": {
+  "enum": [
+   "pause",
+   "resume",
+   "cancel",
+   "start_print",
+   "set_feedrate_factor",
+   "set_flowrate_factor",
+   "set_tool_target_c",
+   "set_bed_target_c",
+   "set_fan_percent",
+   "acknowledge_failure",
+   "close_print",
+   "register_spool",
+   "load_spool",
+   "unload_spool",
+   "adjust_spool",
+   "retire_spool"
+  ]
+ },
+ "ActionRecord": {
+  "struct": {
+   "fields": {
+    "decision": {
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    },
+    "executed_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "outcome": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ExecutionOutcome"
+      }
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "request": {
+     "required": true,
+     "shape": {
+      "ref": "ActionRequest"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRejectedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "decision": {
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRequest": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "PrintAction"
+     }
+    },
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "requested_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRequestedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "PrintAction"
+     }
+    },
+    "action_id": {
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Actor": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "agent": {
+     "fields": {
+      "session_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "operator": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "system": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "ActorClass": {
+  "enum": [
+   "agent",
+   "operator",
+   "system"
+  ]
+ },
+ "Adjustable": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "AgentAssessment": {
+  "struct": {
+   "fields": {
+    "confidence": {
+     "required": true,
+     "shape": {
+      "ref": "Confidence"
+     }
+    },
+    "did": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "escalating": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "should_continue": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "summary": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "why": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentAssessmentPayload": {
+  "struct": {
+   "fields": {
+    "assessment": {
+     "required": true,
+     "shape": {
+      "ref": "AgentAssessment"
+     }
+    },
+    "session_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedTemperature": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraDegradedPayload": {
+  "struct": {
+   "fields": {
+    "attempts": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "cause": {
+     "required": true,
+     "shape": {
+      "ref": "FrameCause"
+     }
+    },
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraLookPayload": {
+  "struct": {
+   "fields": {
+    "delivered": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "EventId"
+      },
+      "non_empty": false
+     }
+    },
+    "waited_s": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ChargeKey": {
+  "union": {
+   "tag_field": "key",
+   "variants": {
+    "print": {
+     "fields": {
+      "print_id": {
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      },
+      "segment": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unobserved": {
+     "fields": {
+      "file_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "generation": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "origin": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "print_number": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "ChargeMethod": {
+  "enum": [
+   "slicer_estimate",
+   "gcode_extrusion",
+   "file_fraction",
+   "unobserved_estimate"
+  ]
+ },
+ "ChargePendedPayload": {
+  "struct": {
+   "fields": {
+    "pending": {
+     "required": true,
+     "shape": {
+      "ref": "PendingCharge"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ChargedFilament": {
+  "struct": {
+   "fields": {
+    "density_g_cm3": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "diameter_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "grams": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_after_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_before_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ClearedMark": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Confidence": {
+  "enum": [
+   "low",
+   "medium",
+   "high"
+  ]
+ },
+ "ContextAnswer": {
+  "struct": {
+   "fields": {
+    "context": {
+     "required": true,
+     "shape": {
+      "ref": "PrintContext"
+     }
+    },
+    "image_path": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "DetectorHealth": {
+  "union": {
+   "tag_field": "status",
+   "variants": {
+    "available": {
+     "fields": {
+      "since": {
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unavailable": {
+     "fields": {
+      "since": {
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {
+      "since": {
+       "required": true,
+       "shape": {
+        "scalar": "null"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "DetectorHealthChangedPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "status": {
+     "required": true,
+     "shape": {
+      "ref": "DetectorStatus"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "DetectorStatus": {
+  "enum": [
+   "available",
+   "unavailable"
+  ]
+ },
+ "EffectiveBounds": {
+  "struct": {
+   "fields": {
+    "allowed": {
+     "required": true,
+     "shape": {
+      "map": {
+       "ref": "Range"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ErrorAnswer": {
+  "struct": {
+   "fields": {
+    "error": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ErrorSource": {
+  "enum": [
+   "printer",
+   "host"
+  ]
+ },
+ "EventId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventKind": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventRecord": {
+  "struct": {
+   "fields": {
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "image": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "kind": {
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "payload": {
+     "required": true,
+     "shape": {
+      "any": true
+     }
+    },
+    "print_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    },
+    "raw": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "RawBytes"
+      }
+     }
+    },
+    "received_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "source": {
+     "required": true,
+     "shape": {
+      "ref": "EventSource"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "EventSource": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventsAnswer": {
+  "struct": {
+   "fields": {
+    "cursor": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
+    "events": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "print_ended": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintEnded"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ExecutionOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "failed": {
+     "fields": {
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "succeeded": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "FilamentChangeSignalledPayload": {
+  "struct": {
+   "fields": {
+    "position": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SignalPosition"
+      }
+     }
+    },
+    "source_kind": {
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "spool_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "tool": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FilamentConsumedPayload": {
+  "struct": {
+   "fields": {
+    "analysed_length_mm": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "charge_key": {
+     "required": true,
+     "shape": {
+      "ref": "ChargeKey"
+     }
+    },
+    "charged": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ChargedFilament"
+      }
+     }
+    },
+    "length_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "method": {
+     "required": true,
+     "shape": {
+      "ref": "ChargeMethod"
+     }
+    },
+    "note": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "position": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FileName": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "FilePosition": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "observed_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "size_bytes": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FileTallyRebaselinedPayload": {
+  "struct": {
+   "fields": {
+    "disposition": {
+     "required": true,
+     "shape": {
+      "ref": "RebaselineDisposition"
+     }
+    },
+    "file_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "new_failures": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "new_generation": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "new_successes": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_failures": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_generation": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_successes": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "origin": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Footprint": {
+  "struct": {
+   "fields": {
+    "max_x": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "max_y": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min_x": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min_y": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FrameCause": {
+  "enum": [
+   "blank",
+   "undecodable"
+  ]
+ },
+ "HeatedTool": {
+  "struct": {
+   "fields": {
+    "target_c": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "HeaterSnapshot": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "offset_c": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "target_c": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "HistoryAnswer": {
+  "struct": {
+   "fields": {
+    "events": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageAnswer": {
+  "struct": {
+   "fields": {
+    "path": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "record": {
+     "required": true,
+     "shape": {
+      "ref": "ImageRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ImageRecord": {
+  "struct": {
+   "fields": {
+    "byte_len": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "content_type": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event_id": {
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "fetched_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "ImageId"
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "relative_path": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "sha256": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "source_url": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageRef": {
+  "struct": {
+   "fields": {
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "ImageId"
+     }
+    },
+    "sha256": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Intervention": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "adjustable": {
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "applied_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "applied_value": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "expires_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "InterventionId"
+     }
+    },
+    "outcome": {
+     "required": true,
+     "shape": {
+      "ref": "InterventionOutcome"
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "prior_value": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "restored_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "InterventionExpiredPayload": {
+  "struct": {
+   "fields": {
+    "adjustable": {
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "intervention_id": {
+     "required": true,
+     "shape": {
+      "ref": "InterventionId"
+     }
+    },
+    "outcome": {
+     "required": true,
+     "shape": {
+      "ref": "InterventionOutcome"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "InterventionId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "InterventionOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "restore_failed": {
+     "fields": {
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "restore_unavailable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "restored": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "still_active": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "superseded": {
+     "fields": {
+      "by": {
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "JobError": {
+  "struct": {
+   "fields": {
+    "source": {
+     "required": true,
+     "shape": {
+      "ref": "ErrorSource"
+     }
+    },
+    "text": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "JobManifest": {
+  "struct": {
+   "fields": {
+    "allowed": {
+     "required": true,
+     "shape": {
+      "map": {
+       "ref": "Range"
+      }
+     }
+    },
+    "file_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "material": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "metadata": {
+     "required": true,
+     "shape": {
+      "map": {
+       "scalar": "string"
+      }
+     }
+    },
+    "nozzle_diameter_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "slicer_profile": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "JobSnapshot": {
+  "struct": {
+   "fields": {
+    "completion": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "error": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobError"
+      }
+     }
+    },
+    "estimated_print_time_s": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "filament": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ToolFilament"
+      },
+      "non_empty": false
+     }
+    },
+    "file_name": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_origin": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_position_bytes": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_left_s": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_s": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "size_bytes": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "LastPrint": {
+  "struct": {
+   "fields": {
+    "footprint": {
+     "required": true,
+     "shape": {
+      "ref": "Footprint"
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "tallest_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "LoadedSpool": {
+  "struct": {
+   "fields": {
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Look": {
+  "struct": {
+   "fields": {
+    "arrived": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "detector_paused": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "event": {
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    },
+    "frame": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "image_path": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "job": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "printer": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "MalformedExternalEventPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ManifestAnswer": {
+  "struct": {
+   "fields": {
+    "manifest": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "narrowings": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ManifestNarrowing"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ManifestNarrowing": {
+  "struct": {
+   "fields": {
+    "adjustable": {
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "applied": {
+     "required": true,
+     "shape": {
+      "ref": "Range"
+     }
+    },
+    "requested": {
+     "required": true,
+     "shape": {
+      "ref": "Range"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ObicoFailureAlertPayload": {
+  "struct": {
+   "fields": {
+    "ended_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "is_warning": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "obico_print_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_paused": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "started_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ObicoNotificationType": {
+  "enum": [
+   "started",
+   "done",
+   "cancelled",
+   "paused",
+   "resumed",
+   "filament_change",
+   "heater_cooled",
+   "heater_target"
+  ]
+ },
+ "ObicoPrinterNotificationPayload": {
+  "struct": {
+   "fields": {
+    "ended_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "notification_type": {
+     "required": true,
+     "shape": {
+      "ref": "ObicoNotificationType"
+     }
+    },
+    "obico_print_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "started_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "OperatorAcknowledgementPayload": {
+  "struct": {
+   "fields": {
+    "acknowledged_event_id": {
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "disposition": {
+     "required": true,
+     "shape": {
+      "ref": "AcknowledgementDisposition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PausedPrint": {
+  "struct": {
+   "fields": {
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "resumable": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PendingCharge": {
+  "struct": {
+   "fields": {
+    "analysed_length_mm": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "charge_key": {
+     "required": true,
+     "shape": {
+      "ref": "PrintSegmentKey"
+     }
+    },
+    "length_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "method": {
+     "required": true,
+     "shape": {
+      "ref": "ChargeMethod"
+     }
+    },
+    "note": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "pended_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "position": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PendingTaken": {
+  "struct": {
+   "fields": {
+    "charge_key": {
+     "required": true,
+     "shape": {
+      "ref": "ChargeKey"
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PeriodicObservationPayload": {
+  "struct": {
+   "fields": {
+    "interval_s": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "job": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "printer": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PolicyDecision": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "accepted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "rejected": {
+     "fields": {},
+     "payload": {
+      "ref": "RejectionReason"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "PortFailurePayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event_id": {
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "site": {
+     "required": true,
+     "shape": {
+      "ref": "PortFailureSite"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PortFailureSite": {
+  "enum": [
+   "printer_snapshot",
+   "printer_job",
+   "image_write",
+   "supervision_turn",
+   "camera_look",
+   "detector_acknowledgement"
+  ]
+ },
+ "PositionFreshness": {
+  "enum": [
+   "read_at_signal",
+   "last_recorded"
+  ]
+ },
+ "Preflight": {
+  "struct": {
+   "fields": {
+    "checked_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "file_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "tools": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PreflightTool"
+      },
+      "non_empty": false
+     }
+    },
+    "verdict": {
+     "required": true,
+     "shape": {
+      "ref": "PreflightVerdict"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightAnswer": {
+  "struct": {
+   "fields": {
+    "preflight": {
+     "required": true,
+     "shape": {
+      "ref": "Preflight"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightCheckedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ActionId"
+      }
+     }
+    },
+    "preflight": {
+     "required": true,
+     "shape": {
+      "ref": "Preflight"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightNeed": {
+  "struct": {
+   "fields": {
+    "buffer_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "required_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightObjection": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "insufficient": {
+     "fields": {
+      "marks": {
+       "required": false,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": false
+       }
+      },
+      "need": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_analysis": {
+     "fields": {
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
     "unverified_spool": {
-        "reason": RefusalField("object", True, False),
-        "spool_id": RefusalField("string", True, False),
-        "spool_name": RefusalField("string", True, False),
-        "tool": RefusalField("integer", True, False),
+     "fields": {
+      "marks": {
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      },
+      "need": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "PreflightNeed"
+        }
+       }
+      },
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PreflightSpool": {
+  "struct": {
+   "fields": {
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
     },
-    "analysis_unavailable": {
-        "file_name": RefusalField("string", True, False),
-        "waited_s": RefusalField("integer", True, False),
+    "name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightTool": {
+  "struct": {
+   "fields": {
+    "result": {
+     "required": true,
+     "shape": {
+      "ref": "PreflightToolResult"
+     }
     },
-    "print_already_ended": None,
-    "print_still_active": {
-        "state": RefusalField("string_or_object", True, False),
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightToolResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "insufficient": {
+     "fields": {
+      "marks": {
+       "required": false,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": false
+       }
+      },
+      "need": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
-    "intervention_still_active": {
-        "intervention_id": RefusalField("string", True, False),
+    "no_analysis": {
+     "fields": {
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
-    "print_not_resumable": {
-        "recovery_event_id": RefusalField("string", True, False),
+    "overridden": {
+     "fields": {
+      "objection": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
-    "spool_refused": {
-        "cause": RefusalField("object", True, False),
-        "message": RefusalField("string", True, False),
+    "passed": {
+     "fields": {
+      "need": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
-}
-
-
-# Every arm of `RecoveryRejection`, and the fields it carries: `None` for an
-# arm carrying nothing, which travels as its own name.
-RECOVERY_REJECTION_FIELDS: dict[str, dict[str, RefusalField] | None] = {
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unverified_spool": {
+     "fields": {
+      "marks": {
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      },
+      "need": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "PreflightNeed"
+        }
+       }
+      },
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "required": true,
+       "shape": {
+        "ref": "PreflightObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PreflightVerdict": {
+  "enum": [
+   "passed",
+   "unchecked",
+   "insufficient",
+   "unverified_spool",
+   "no_analysis",
+   "overridden",
+   "warned"
+  ]
+ },
+ "PrintAction": {
+  "union": {
+   "tag_field": "action",
+   "variants": {
+    "acknowledge_failure": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "disposition": {
+       "required": true,
+       "shape": {
+        "ref": "AcknowledgementDisposition"
+       }
+      },
+      "event_id": {
+       "required": true,
+       "shape": {
+        "ref": "EventId"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "cancel": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "close_print": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "outcome": {
+       "required": true,
+       "shape": {
+        "ref": "PrintOutcome"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "pause": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "resume": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_bed_target_c": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "target_c": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_fan_percent": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "percent": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_feedrate_factor": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "factor": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_flowrate_factor": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "factor": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_tool_target_c": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "target_c": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "start_print": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "file_name": {
+       "required": true,
+       "shape": {
+        "ref": "FileName"
+       }
+      },
+      "manifest": {
+       "required": true,
+       "shape": {
+        "ref": "JobManifest"
+       }
+      },
+      "override_filament_check": {
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PrintContext": {
+  "struct": {
+   "fields": {
+    "bounds": {
+     "required": true,
+     "shape": {
+      "ref": "EffectiveBounds"
+     }
+    },
+    "detector": {
+     "required": false,
+     "shape": {
+      "ref": "DetectorHealth"
+     }
+    },
+    "interventions": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "latest_image": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "manifest": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "print": {
+     "required": true,
+     "shape": {
+      "ref": "PrintRecord"
+     }
+    },
+    "printer": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    },
+    "recent_events": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintEnded": {
+  "struct": {
+   "fields": {
+    "event_id": {
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "outcome": {
+     "required": true,
+     "shape": {
+      "ref": "PrintOutcome"
+     }
+    },
+    "received_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintEndedPayload": {
+  "struct": {
+   "fields": {
+    "last_position": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    },
+    "outcome": {
+     "required": true,
+     "shape": {
+      "ref": "PrintOutcome"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "state": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "PrintOutcome": {
+  "enum": [
+   "completed",
+   "cancelled",
+   "failed",
+   "interrupted"
+  ]
+ },
+ "PrintRecord": {
+  "struct": {
+   "fields": {
+    "end_reason": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "ended_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "job_print_time_s": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "job_started_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "narrowings": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ManifestNarrowing"
+      },
+      "non_empty": false
+     }
+    },
+    "opened_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "provider_print_id": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintSegmentKey": {
+  "struct": {
+   "fields": {
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "segment": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintStartedPayload": {
+  "struct": {
+   "fields": {
+    "file_name": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "loaded": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "LoadedSpool"
+      },
+      "non_empty": false
+     }
+    },
+    "preflight": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Preflight"
+      }
+     }
+    },
+    "started_by": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ActionId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintUntrackedPayload": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterConnectionChangedPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "from": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "to": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterResetPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "during_print": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterSnapshot": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "HeaterSnapshot"
+      }
+     }
+    },
+    "chamber": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "HeaterSnapshot"
+      }
+     }
+    },
+    "connection": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "fan_percent": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "feedrate_factor": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "flowrate_factor": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "observed_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "tools": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "HeaterSnapshot"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterState": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "cancelling": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "error": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "offline": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "operational": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "paused": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "printing": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unknown": {
+     "fields": {},
+     "payload": {
+      "scalar": "string"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "PrintsAnswer": {
+  "struct": {
+   "fields": {
+    "active": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    },
+    "prints": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PrintRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Range": {
+  "struct": {
+   "fields": {
+    "max": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RawBytes": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "RebaselineDisposition": {
+  "enum": [
+   "accounted",
+   "unverified"
+  ]
+ },
+ "RecoveryAction": {
+  "union": {
+   "tag_field": "action",
+   "variants": {
+    "recover_cool": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "recover_fan": {
+     "fields": {
+      "percent": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_heat": {
+     "fields": {
+      "clearance_asserted": {
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "target_c": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_home_xy": {
+     "fields": {
+      "clearance_asserted": {
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_home_z": {
+     "fields": {
+      "bed_clear_asserted": {
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_lift": {
+     "fields": {
+      "mm": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_park": {
+     "fields": {
+      "clearance_asserted": {
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "RecoveryActionKind": {
+  "enum": [
+   "recover_lift",
+   "recover_cool",
+   "recover_fan",
+   "recover_heat",
+   "recover_park",
+   "recover_home_xy",
+   "recover_home_z"
+  ]
+ },
+ "RecoveryAnswer": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "decision": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryDecision"
+     }
+    },
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "events": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryDecision": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "executed": {
+     "fields": {},
+     "payload": {
+      "ref": "ExecutionOutcome"
+     },
+     "unit": false
+    },
+    "rejected": {
+     "fields": {},
+     "payload": {
+      "ref": "RecoveryRejection"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "RecoveryExecutedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "outcome": {
+     "required": true,
+     "shape": {
+      "ref": "ExecutionOutcome"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryField": {
+  "enum": [
+   "mm",
+   "percent",
+   "tool",
+   "target_c",
+   "clearance_asserted",
+   "bed_clear_asserted"
+  ]
+ },
+ "RecoveryPosition": {
+  "struct": {
+   "fields": {
+    "x": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "z": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryRejectedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "rejection": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryRejection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryRejection": {
+  "union": {
+   "tag_field": "",
+   "variants": {
     "actor_may_not_request": {
-        "action": RefusalField("string", True, False),
-    },
-    "print_running": {
-        "state": RefusalField("string_or_object", True, False),
-    },
-    "printer_unreachable": None,
-    "z_untrusted": None,
-    "insufficient_clearance": {
-        "margin_mm": RefusalField("number", True, False),
-        "nozzle_z_mm": RefusalField("number", True, False),
-        "tallest_mm": RefusalField("number", True, False),
-    },
-    "out_of_bounds": {
-        "allowed": RefusalField("object", True, False),
-        "field": RefusalField("string", True, False),
-        "requested": RefusalField("number", True, False),
+     "fields": {
+      "action": {
+       "required": true,
+       "shape": {
+        "ref": "RecoveryActionKind"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
     "assertion_required": {
-        "field": RefusalField("string", True, False),
+     "fields": {
+      "field": {
+       "required": true,
+       "shape": {
+        "ref": "RecoveryField"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
-    "recovery_not_configured": None,
+    "insufficient_clearance": {
+     "fields": {
+      "margin_mm": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "nozzle_z_mm": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tallest_mm": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "out_of_bounds": {
+     "fields": {
+      "allowed": {
+       "required": true,
+       "shape": {
+        "ref": "Range"
+       }
+      },
+      "field": {
+       "required": true,
+       "shape": {
+        "ref": "RecoveryField"
+       }
+      },
+      "requested": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_running": {
+     "fields": {
+      "state": {
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
     "printer_cannot": {
-        "action": RefusalField("string", True, False),
-        "detail": RefusalField("string", True, False),
+     "fields": {
+      "action": {
+       "required": true,
+       "shape": {
+        "ref": "RecoveryActionKind"
+       }
+      },
+      "detail": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
     },
+    "printer_unreachable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "recovery_not_configured": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "z_untrusted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "RecoveryRequestedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryStatus": {
+  "struct": {
+   "fields": {
+    "actions": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ActionAllowance"
+      },
+      "non_empty": false
+     }
+    },
+    "last_print": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "LastPrint"
+      }
+     }
+    },
+    "paused_print": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "PausedPrint"
+      }
+     }
+    },
+    "position": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "RecoveryPosition"
+      }
+     }
+    },
+    "state": {
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "temperatures": {
+     "required": true,
+     "shape": {
+      "ref": "RecoveryTemperatures"
+     }
+    },
+    "z_home": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "ZHome"
+      }
+     }
+    },
+    "z_trust": {
+     "required": true,
+     "shape": {
+      "ref": "ZTrust"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryTemperatures": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "BedTemperature"
+      }
+     }
+    },
+    "tools": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ToolTemperature"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RejectionReason": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "actor_may_not_request": {
+     "fields": {
+      "action": {
+       "required": true,
+       "shape": {
+        "ref": "ActionKind"
+       }
+      },
+      "actor_class": {
+       "required": true,
+       "shape": {
+        "ref": "ActorClass"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "analysis_unavailable": {
+     "fields": {
+      "file_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "waited_s": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "insufficient_filament": {
+     "fields": {
+      "buffer_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "remaining_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "required_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "spool_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "unverified": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "UnverifiedReason"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "intervention_still_active": {
+     "fields": {
+      "intervention_id": {
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "invalid_from_state": {
+     "fields": {
+      "state": {
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "min_interval_not_elapsed": {
+     "fields": {
+      "interval_s": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "since_last_s": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_active_print": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "out_of_bounds": {
+     "fields": {
+      "adjustable": {
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      },
+      "allowed": {
+       "required": true,
+       "shape": {
+        "ref": "Range"
+       }
+      },
+      "requested": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_already_ended": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "print_not_resumable": {
+     "fields": {
+      "recovery_event_id": {
+       "required": true,
+       "shape": {
+        "ref": "EventId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_still_active": {
+     "fields": {
+      "state": {
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "spool_refused": {
+     "fields": {
+      "cause": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolRefusalCause"
+       }
+      },
+      "message": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unsupported_adjustable": {
+     "fields": {
+      "adjustable": {
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unverified_spool": {
+     "fields": {
+      "reason": {
+       "required": true,
+       "shape": {
+        "ref": "UnverifiedReason"
+       }
+      },
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "spool_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "Reported": {
+  "struct": {
+   "fields": {
+    "out_of_range": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "value": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SignalPosition": {
+  "struct": {
+   "fields": {
+    "freshness": {
+     "required": true,
+     "shape": {
+      "ref": "PositionFreshness"
+     }
+    },
+    "position": {
+     "required": true,
+     "shape": {
+      "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolAdjustedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "cleared_marks": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ClearedMark"
+      },
+      "non_empty": false
+     }
+    },
+    "gross_g": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "remaining_after_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_before_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "took_pending": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PendingTaken"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolAnswer": {
+  "struct": {
+   "fields": {
+    "recent": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "spool": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolCommand": {
+  "union": {
+   "tag_field": "command",
+   "variants": {
+    "adjust_spool": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "gross_g": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "remaining_g": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "load_spool": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "register_spool": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "color": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "string"
+        }
+       }
+      },
+      "density_g_cm3": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "diameter_mm": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "initial_g": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "material": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "remaining_g": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "tare_g": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retire_spool": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unload_spool": {
+     "fields": {
+      "actor": {
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SpoolCommandAnswer": {
+  "struct": {
+   "fields": {
+    "decision": {
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    },
+    "events": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "spool": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolRecord"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolCommandRejectedPayload": {
+  "struct": {
+   "fields": {
+    "command": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolCommand"
+     }
+    },
+    "decision": {
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolField": {
+  "enum": [
+   "name",
+   "material",
+   "diameter_mm",
+   "density_g_cm3",
+   "initial_g",
+   "remaining_g",
+   "tare_g",
+   "gross_g"
+  ]
+ },
+ "SpoolId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "SpoolLifecycle": {
+  "union": {
+   "tag_field": "state",
+   "variants": {
+    "loaded": {
+     "fields": {
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retired": {
+     "fields": {
+      "at": {
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "shelved": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "SpoolLoadedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "cleared_marks": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ClearedMark"
+      },
+      "non_empty": false
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "replaced": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "took_pending": {
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PendingTaken"
+      },
+      "non_empty": false
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRecord": {
+  "struct": {
+   "fields": {
+    "color": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "density_g_cm3": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "diameter_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "initial_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "lifecycle": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolLifecycle"
+     }
+    },
+    "material": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "registered_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "remaining_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tare_g": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "trust": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolTrust"
+     }
+    },
+    "updated_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRefusalCause": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "conflicting_fields": {
+     "fields": {
+      "fields": {
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "SpoolField"
+        },
+        "non_empty": false
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "density_required": {
+     "fields": {
+      "material": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "SpoolId"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "invalid_adjustment_figure": {
+     "fields": {
+      "field": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolField"
+       }
+      },
+      "value": {
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "ledger_refused": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "missing_field": {
+     "fields": {
+      "field": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolField"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "not_loaded": {
+     "fields": {
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "nothing_to_confirm": {
+     "fields": {
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retired_spool": {
+     "fields": {
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "tare_required": {
+     "fields": {
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_spool": {
+     "fields": {
+      "spool_id": {
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_tool": {
+     "fields": {
+      "tool": {
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SpoolRegisteredPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "spool": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRetiredPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "remaining_g": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolTrust": {
+  "union": {
+   "tag_field": "state",
+   "variants": {
+    "unverified": {
+     "fields": {
+      "marks": {
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "verified": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "SpoolUnloadedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolUnverifiedPayload": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "spool_id": {
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolsAnswer": {
+  "struct": {
+   "fields": {
+    "at_a_glance": {
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "pending": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PendingCharge"
+      },
+      "non_empty": false
+     }
+    },
+    "spools": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "SpoolRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "StartupOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "intervention_expired": {
+     "fields": {
+      "adjustable": {
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      },
+      "intervention_id": {
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      },
+      "outcome": {
+       "required": true,
+       "shape": {
+        "ref": "InterventionOutcome"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_adopted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "session_resumed": {
+     "fields": {
+      "session_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "StartupReconciliationPayload": {
+  "struct": {
+   "fields": {
+    "outcome": {
+     "required": true,
+     "shape": {
+      "ref": "StartupOutcome"
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "StatusAnswer": {
+  "struct": {
+   "fields": {
+    "detector": {
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealth"
+     }
+    },
+    "interventions": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "print": {
+     "required": true,
+     "shape": {
+      "ref": "PrintRecord"
+     }
+    },
+    "printer": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    },
+    "session": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SupervisionSession"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSession": {
+  "struct": {
+   "fields": {
+    "close_reason": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "closed_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "created_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "harness_identity": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "last_turn_at": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "session_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSessionClosedPayload": {
+  "struct": {
+   "fields": {
+    "close_reason": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "session_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSessionOpenedPayload": {
+  "struct": {
+   "fields": {
+    "harness_identity": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "session_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "TimelineAnswer": {
+  "struct": {
+   "fields": {
+    "events": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "next": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Timestamp": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ToolFilament": {
+  "struct": {
+   "fields": {
+    "length_mm": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "volume_cm3": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ToolTemperature": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "tool": {
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnaccountedPrintPayload": {
+  "struct": {
+   "fields": {
+    "charged": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "file_name": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "printed_at": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "success": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnattendedPrinterActivityPayload": {
+  "struct": {
+   "fields": {
+    "bed_target_c": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "detail": {
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "last_print_id": {
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "moved": {
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "boolean"
+      }
+     }
+    },
+    "tools": {
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "HeatedTool"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnverifiedMark": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "since": {
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnverifiedReason": {
+  "union": {
+   "tag_field": "reason",
+   "variants": {
+    "filament_change_unconfirmed": {
+     "fields": {
+      "print_id": {
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "filament_change_unconfirmed_position": {
+     "fields": {
+      "print_id": {
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "tally_reset": {
+     "fields": {
+      "file_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "origin": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unaccounted_print": {
+     "fields": {
+      "file_name": {
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "printed_at": {
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "uncharged_print": {
+     "fields": {
+      "print_id": {
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "ZHome": {
+  "struct": {
+   "fields": {
+    "sweeps_bed": {
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "x": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y": {
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ZTrust": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "trusted_since": {
+     "fields": {},
+     "payload": {
+      "ref": "Timestamp"
+     },
+     "unit": false
+    },
+    "untrusted": {
+     "fields": {},
+     "payload": {
+      "scalar": "string"
+     },
+     "unit": false
+    }
+   }
+  }
+ }
 }
+"""
+)
 
 
 class GeneratedClient(GeneratedSurface):

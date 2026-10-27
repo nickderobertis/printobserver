@@ -8,7 +8,6 @@ about what a shape is by disagreeing about how to read it.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
 
@@ -259,97 +258,80 @@ class Operation:
 #: The shape a recovery action answers with, carried out or refused.
 RECOVERY_ANSWER = "RecoveryAnswer"
 
-#: The two refusal vocabularies a client reads out of a refused answer: the
-#: print policy's, which an action's and a spool command's answer carry, and a
-#: recovery's own.
-REFUSALS = ("RejectionReason", "RecoveryRejection")
 
-
-#: The JSON form one field of a refusal must take, as a reading client
-#: checks it: `string`, `number`, `integer`, `boolean`, `object`, `array`,
-#: `string_or_object` for a union some of whose arms are names alone, and
-#: `any` for a value the contracts constrain not at all.
-FieldKind = str
-
-
-@dataclass(frozen=True, slots=True)
-class RefusalField:
-    """One field a refusal's arm carries, as a reading client checks it."""
-
-    name: str
-    kind: FieldKind
-    #: Whether the arm must carry it.
-    required: bool
-    #: Whether it may be null.
-    nullable: bool
-
-
-def json_kind(shape: TypeExpr, contract: Contract) -> tuple[FieldKind, bool]:
-    """The JSON form one shape takes, and whether it may be null."""
-    match shape:
-        case Nullable(inner):
-            return json_kind(inner, contract)[0], True
-        case Scalar(kind):
-            return kind, False
-        case ListOf():
-            return "array", False
-        case MapOf():
-            return "object", False
-        case AnyValue():
-            return "any", False
+def shape_of(expression: TypeExpr) -> dict[str, object]:
+    """One type expression, as a reading client's shape table writes it."""
+    match expression:
         case Ref(name):
-            match contract.by_name.get(name):
-                case Alias(_, target, _):
-                    return json_kind(target, contract)
-                case Enumeration():
-                    return "string", False
-                case Union(_, _, variants, tag_field) if not tag_field:
-                    units = {variant.unit for variant in variants}
-                    if units == {True}:
-                        return "string", False
-                    return ("object" if units == {False} else "string_or_object"), False
-                case _:
-                    return "object", False
-    return "any", False
+            return {"ref": name}
+        case Scalar(kind):
+            return {"scalar": kind}
+        case ListOf(item, non_empty):
+            return {"list": shape_of(item), "non_empty": non_empty}
+        case MapOf(value):
+            return {"map": shape_of(value)}
+        case Nullable(inner):
+            return {"nullable": shape_of(inner)}
+        case AnyValue():
+            return {"any": True}
+    msg = f"{expression!r} is not a type expression a shape is written for"
+    raise TypeError(msg)
 
 
-@dataclass(frozen=True, slots=True)
-class RefusalArm:
-    """One arm of a refusal vocabulary, as a reading client checks it."""
-
-    #: The arm's name, which it travels under.
-    tag: str
-    #: Every field the arm may carry, or `None` for an arm carrying nothing.
-    fields: tuple[RefusalField, ...] | None
+def _shaped_fields(fields: tuple[Field, ...]) -> dict[str, object]:
+    """Every property of one object shape: its own shape, and whether it is required."""
+    return {
+        entry.name: {"shape": shape_of(entry.type), "required": entry.required} for entry in fields
+    }
 
 
-def refusal_fields(contract: Contract, name: str) -> tuple[RefusalArm, ...]:
-    """Each arm of one refusal vocabulary, and the fields it carries.
+def _shaped_variants(variants: tuple[Variant, ...]) -> dict[str, object]:
+    """Every arm of one closed set: carrying nothing, one named shape, or its own fields."""
+    return {
+        variant.tag: {
+            "unit": variant.unit,
+            "payload": None if variant.payload is None else shape_of(variant.payload),
+            "fields": _shaped_fields(variant.fields),
+        }
+        for variant in variants
+    }
 
-    `None` is an arm carrying nothing, which travels as its own name; a tuple
-    is an arm that travels as an object under its name, and every field that
-    object may carry, each with the form it takes. A client reading a refusal
-    holds a known arm to this, and reads no other table to do it.
+
+def shape_table(contract: Contract) -> dict[str, object]:
+    """Every declaration of the contracts, as a reading client checks a document against it.
+
+    One table, generated from the same declarations each client's types are,
+    so a client holding an answer to its declared type reads no second copy of
+    the contracts to do it. An object admits members it does not declare, as
+    the Rust client's types do; every closed set — a name, an arm, a tag —
+    admits only what it declares.
+
+    Raises:
+        TypeError: If a declaration is of no kind a shape is written for.
     """
-    declared = contract.by_name.get(name)
-    if not isinstance(declared, Union):
-        return ()
-    arms: list[RefusalArm] = []
-    for variant in declared.variants:
-        if variant.unit:
-            arms.append(RefusalArm(variant.tag, None))
-            continue
-        fields = []
-        for entry in sorted(variant.fields, key=lambda entry: entry.name):
-            kind, nullable = json_kind(entry.type, contract)
-            fields.append(RefusalField(entry.name, kind, entry.required, nullable))
-        arms.append(RefusalArm(variant.tag, tuple(fields)))
-    return tuple(arms)
-
-
-def refusal_table_name(name: str) -> str:
-    """The constant a refusal vocabulary's field table is emitted as."""
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).upper() + "_FIELDS"
+    table: dict[str, object] = {}
+    for declaration in contract.declarations:
+        match declaration:
+            case Alias(name, target, _):
+                table[name] = {"alias": shape_of(target)}
+            case Enumeration(name, _, values):
+                table[name] = {"enum": [value for value, _ in values]}
+            case Struct(name, _, fields, variants, tag_field):
+                table[name] = {
+                    "struct": {
+                        "fields": _shaped_fields(fields),
+                        "tag_field": tag_field,
+                        "variants": _shaped_variants(variants),
+                    }
+                }
+            case Union(name, _, variants, tag_field):
+                table[name] = {
+                    "union": {"tag_field": tag_field, "variants": _shaped_variants(variants)}
+                }
+            case _:  # pragma: no cover - the model declares no fifth kind
+                msg = f"{declaration!r} is not a declaration a shape is written for"
+                raise TypeError(msg)
+    return table
 
 
 #: The value every mutating request carries saying who is asking, which a

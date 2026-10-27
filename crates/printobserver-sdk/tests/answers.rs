@@ -136,3 +136,79 @@ fn a_policy_refused_recovery_is_read_only_when_it_is_a_refusal() {
         );
     }
 }
+
+/// A recovery answer with `field` replaced by `value`.
+fn recovery_replacing(field: &str, value: &Value) -> String {
+    let mut answer: Value =
+        serde_json::from_str(&recovery_with(&json!({ "rejected": "z_untrusted" })))
+            .expect("a recovery answer is a document");
+    answer[field] = value.clone();
+    answer.to_string()
+}
+
+/// Recovery answers the contracts forbid, each refused under `409` through
+/// `recover_fan`: a recovery action missing its parameter, naming no declared
+/// action, or carrying a parameter of the wrong type; a refusal no vocabulary
+/// declares, or carrying a printer state no vocabulary names; and an event
+/// entry of no declared shape. The same documents the Python and Node clients'
+/// suites hold their readers to.
+#[test]
+fn a_recovery_refusal_no_contract_declares_is_unreadable() {
+    let malformed = [
+        recovery_replacing("action", &json!({ "action": "recover_lift" })),
+        recovery_replacing("action", &json!({ "action": "recover_dance" })),
+        recovery_replacing(
+            "action",
+            &json!({ "action": "recover_fan", "percent": "lots" }),
+        ),
+        recovery_with(&json!({ "rejected": "a_newer_reason" })),
+        recovery_with(&json!({ "rejected": { "a_newer_reason": { "anything": 1 } } })),
+        recovery_with(&json!({ "rejected": { "print_running": { "state": "melting" } } })),
+        recovery_replacing("events", &json!([{ "kind": 7 }])),
+    ];
+    for answer in malformed {
+        let host = Host::answering(409, &answer);
+        let read = Client::new(host.address(), Actor::Operator).recover_fan(50.0, "because");
+        assert!(
+            matches!(&read, Err(ClientError::Unreadable { status: 409, .. })),
+            "{answer}: {read:?}"
+        );
+    }
+}
+
+/// A spool command's refusal, around one spool refusal cause.
+fn spool_refusal(cause: &Value) -> String {
+    json!({
+        "decision": { "rejected": { "spool_refused": { "cause": cause, "message": "refused" } } },
+        "events": [],
+    })
+    .to_string()
+}
+
+/// A spool refusal arrives through `retire_spool` as a refusal only when its
+/// cause is one the contracts declare, carrying what that cause carries.
+#[test]
+fn a_spool_refusal_is_read_only_with_a_cause_the_contracts_declare() {
+    let spool = "0198f0a1-2b3c-7d4e-8f90-123456789abc";
+    let host = Host::answering(
+        409,
+        &spool_refusal(&json!({ "cause": "unknown_spool", "spool_id": spool })),
+    );
+    let refused = Client::new(host.address(), Actor::Operator).retire_spool(spool, "because");
+    assert!(
+        matches!(&refused, Err(ClientError::Rejected(_))),
+        "{refused:?}"
+    );
+
+    for cause in [
+        json!({ "cause": "melted" }),
+        json!({ "cause": "unknown_spool" }),
+    ] {
+        let host = Host::answering(409, &spool_refusal(&cause));
+        let read = Client::new(host.address(), Actor::Operator).retire_spool(spool, "because");
+        assert!(
+            matches!(&read, Err(ClientError::Unreadable { status: 409, .. })),
+            "{cause}: {read:?}"
+        );
+    }
+}

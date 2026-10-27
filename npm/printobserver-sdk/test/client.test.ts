@@ -154,23 +154,68 @@ test("a recovery refused with bounds no reader can read is unreadable", async ()
   }
 });
 
-test("a refusal this client does not know, or a known one well formed, arrives as a refusal", async () => {
-  for (const refused of [
-    "a_newer_reason",
-    { a_newer_reason: { anything: 1 } },
-    { print_running: { state: { unknown: "Connecting" } } },
-  ]) {
-    await using host = Host.answering(409, recovery({ rejected: refused }));
+test("a known refusal well formed arrives as a refusal", async () => {
+  const refused = { print_running: { state: { unknown: "Connecting" } } };
+  await using host = Host.answering(409, recovery({ rejected: refused }));
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const raised = await client.recoverFan(50, "because").catch((error: unknown) => error);
+
+  if (!(raised instanceof Rejected)) {
+    throw new Error(`the refusal was not a Rejected: ${String(raised)}`);
+  }
+  expect(raised.reason).toEqual(refused);
+});
+
+/**
+ * Recovery answers the contracts forbid, each refused under `409`: a recovery
+ * action missing its parameter, naming no declared action, or carrying a
+ * parameter of the wrong type; a refusal no vocabulary declares, or carrying a
+ * printer state no vocabulary names; and an event entry of no declared shape.
+ */
+const MALFORMED_RECOVERIES = [
+  { ...recovery({ rejected: "z_untrusted" }), action: { action: "recover_lift" } },
+  { ...recovery({ rejected: "z_untrusted" }), action: { action: "recover_dance" } },
+  { ...recovery({ rejected: "z_untrusted" }), action: { action: "recover_fan", percent: "lots" } },
+  recovery({ rejected: "a_newer_reason" }),
+  recovery({ rejected: { a_newer_reason: { anything: 1 } } }),
+  recovery({ rejected: { print_running: { state: "melting" } } }),
+  { ...recovery({ rejected: "z_untrusted" }), events: [{ kind: 7 }] },
+];
+
+test("a recovery refusal no contract declares is unreadable", async () => {
+  for (const answer of MALFORMED_RECOVERIES) {
+    await using host = Host.answering(409, answer);
     const client = new Client({ server: host.address, actor: ACTOR });
 
-    const raised = await client.recoverFan(50, "because").catch((error: unknown) => error);
+    await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
+  }
+});
 
-    if (!(raised instanceof Rejected)) {
-      throw new Error(`the refusal was not a Rejected: ${String(raised)}`);
-    }
-    // A reason no generated type names: read as the document it arrived as.
-    const reason: unknown = raised.reason;
-    expect(reason).toEqual(refused);
+/** A spool command's refusal, around one spool refusal cause. */
+function spoolRefusal(cause: unknown): Record<string, unknown> {
+  return {
+    decision: { rejected: { spool_refused: { cause, message: "refused" } } },
+    events: [],
+  };
+}
+
+test("a spool refusal is read only with a cause the contracts declare", async () => {
+  const spool = "0198f0a1-2b3c-7d4e-8f90-123456789abc";
+  {
+    await using host = Host.answering(
+      409,
+      spoolRefusal({ cause: "unknown_spool", spool_id: spool }),
+    );
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.retireSpool(spool, "because")).rejects.toBeInstanceOf(Rejected);
+  }
+  for (const cause of [{ cause: "melted" }, { cause: "unknown_spool" }]) {
+    await using host = Host.answering(409, spoolRefusal(cause));
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.retireSpool(spool, "because")).rejects.toBeInstanceOf(Unreadable);
   }
 });
 

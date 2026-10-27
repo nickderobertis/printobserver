@@ -19,7 +19,6 @@ from contract_codegen.model import (
     ENVELOPE,
     KIND_FIELD,
     PAYLOAD_FIELD,
-    REFUSALS,
     Alias,
     AnyValue,
     Contract,
@@ -37,8 +36,7 @@ from contract_codegen.model import (
     TypeExpr,
     Union,
     Variant,
-    refusal_fields,
-    refusal_table_name,
+    shape_table,
 )
 from contract_codegen.naming import (
     NAME_DIRECTIVE,
@@ -366,49 +364,24 @@ def _contract_version() -> list[str]:
     ]
 
 
-def _refusal_tables(contract: Contract) -> list[str]:
-    """Each refusal vocabulary's arms, and the fields each carries.
+def _shape_table(contract: Contract) -> list[str]:
+    """Every declaration, as the client checks a document against it.
 
-    The client holds a refusal of a known arm to its table before handing it
-    on as the contract's type; an arm the table does not name is a newer
-    server's, and is handed on as it came.
+    Written as the JSON it is, inside one template string parsed once on
+    import, so the table is the generator's own text rather than a second
+    rendering of it.
     """
-    tables = [(name, refusal_fields(contract, name)) for name in REFUSALS]
-    tables = [(name, arms) for name, arms in tables if arms]
-    if not tables:
-        return []
-    lines = [
+    table = json.dumps(shape_table(contract), indent=1, sort_keys=True)
+    return [
         *doc_lines(
-            "One field a refusal's arm carries: the JSON form it takes, whether the "
-            "arm must carry it, and whether it may be null."
+            "Every declaration of the contracts, as the client checks a document against "
+            "its declared type: generated from the same declarations as every type above."
         ),
-        "export type RefusalField = readonly [kind: string, required: boolean, nullable: boolean];",
+        "export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`",
+        *table.splitlines(),
+        "`);",
         "",
     ]
-    for name, arms in tables:
-        lines += [
-            *doc_lines(
-                f"Every arm of `{name}`, and the fields it carries: `null` for an arm "
-                "carrying nothing, which travels as its own name."
-            ),
-            f"export const {refusal_table_name(name)}: Readonly<",
-            "  Record<string, Readonly<Record<string, RefusalField>> | null>",
-            "> = {",
-        ]
-        for arm in arms:
-            tag, fields = arm.tag, arm.fields
-            if fields is None:
-                lines.append(f"  {typescript_property(tag)}: null,")
-                continue
-            lines.append(f"  {typescript_property(tag)}: {{")
-            lines += [
-                f'    {typescript_property(entry.name)}: ["{entry.kind}", '
-                f"{str(entry.required).lower()}, {str(entry.nullable).lower()}],"
-                for entry in fields
-            ]
-            lines.append("  },")
-        lines += ["};", ""]
-    return lines
 
 
 def emit(contract: Contract) -> str:
@@ -439,7 +412,7 @@ def emit(contract: Contract) -> str:
         lines.append("")
 
     lines.extend(_kind_table(contract))
-    lines.extend(_refusal_tables(contract))
+    lines.extend(_shape_table(contract))
 
     lines.extend(
         doc_lines(

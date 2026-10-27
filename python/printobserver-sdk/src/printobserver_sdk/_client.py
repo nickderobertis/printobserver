@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import http.client
 import json
-import math
 from typing import cast
 from urllib.parse import quote, urlsplit
 
+from printobserver_sdk._shapes import conforms
 from printobserver_sdk._surface import (
     NoReasonError,
     PrinterRefusedError,
@@ -28,15 +28,12 @@ from printobserver_sdk._surface import (
     UnreadableError,
 )
 from printobserver_sdk.contract import (
-    RECOVERY_REJECTION_FIELDS,
-    REJECTION_REASON_FIELDS,
     ActionAnswer,
     Actor,
     GeneratedClient,
     Range,
     RecoveryAnswer,
     RecoveryRejection,
-    RefusalField,
     RejectionReason,
     SpoolCommandAnswer,
 )
@@ -170,167 +167,80 @@ def _said(said: str) -> str:
     return "it said nothing this client can read"
 
 
+def _answer_type(document: object) -> str:
+    """The answer type a refused document declares itself as by its members.
+
+    An action's answer carries its record; a recovery's names its action beside
+    its decision; a spool command's carries its decision at the top.
+    """
+    if isinstance(document, dict) and "record" in document:
+        return "ActionAnswer"
+    if isinstance(document, dict) and "action" in document:
+        return "RecoveryAnswer"
+    return "SpoolCommandAnswer"
+
+
 def _rejection(status: int, said: str) -> Exception:
-    """The policy's own refusal, as the answer to it carries it."""
+    """The policy's own refusal, as the answer to it carries it.
+
+    The whole answer is held to the type the contracts declare for it — every
+    member, every closed set of names and arms, every nested shape — before
+    any of it is handed on as that type.
+    """
     document = _document(status, said)
-    # An action's answer carries its decision in its record; a recovery's names
-    # its action beside its decision, and a spool command's carries its decision
-    # at the top. Each `cast` below names the type `operations.json` declares for
-    # the refusal the match has just told apart: `_document` hands back the
-    # server's JSON untyped, and the match is the check this client makes of its
-    # shape before naming it. A decision is one arm: one carrying a refusal
-    # beside anything else is no decision.
-    answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer
-    known = REJECTION_REASON_FIELDS
+    declared = _answer_type(document)
+    if not conforms(document, declared):
+        return UnreadableError(
+            status, f"the supervisor refused this and answered no {declared}: {document!r}"
+        )
     match document:
-        case {"record": {"decision": {"rejected": refused} as decision}} if len(decision) == 1:
-            answer = cast(ActionAnswer, document)
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-        case {
-            "action": {"action": str()},
-            "detail": str(),
-            "events": list(),
-            "decision": {"rejected": refused} as decision,
-        } if len(decision) == 1:
-            answer = cast(RecoveryAnswer, document)
-            known = RECOVERY_REJECTION_FIELDS
-        case {"decision": {"rejected": refused} as decision} if (
-            len(decision) == 1 and "action" not in document
-        ):
-            answer = cast(SpoolCommandAnswer, document)
+        case {"record": {"decision": {"rejected": refused}}} | {"decision": {"rejected": refused}}:
+            pass
         case _:
             return UnreadableError(
                 status,
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
-    if not _is_refusal(refused, known):
-        return UnreadableError(status, f"the supervisor refused with no refusal: {refused!r}")
-    # What `rejected` holds is the contracts' `RejectionReason` or their
-    # `RecoveryRejection`, which the server serializes it from; the match bound
-    # it untyped, and the check above holds a known variant to its fields.
+    # Each `cast` names the type the document was just held to.
+    answer = cast(ActionAnswer | SpoolCommandAnswer | RecoveryAnswer, document)
     reason = cast(RejectionReason | RecoveryRejection, refused)
     requested: float | None = None
     allowed: Range | None = None
-    if isinstance(refused, dict) and "out_of_bounds" in refused:
-        match refused["out_of_bounds"]:
-            # An action's bounds name the adjustable they ruled on; a
-            # recovery's, its field.
-            case {
-                "requested": asked,
-                "allowed": {"min": low, "max": high} as bounds,
-            } as ruled if isinstance(ruled.get("field", ruled.get("adjustable")), str) and all(
-                _is_number(value) for value in (asked, low, high)
-            ):
-                requested = float(asked)
-                allowed = cast(Range, bounds)
-            case malformed:
-                return UnreadableError(
-                    status,
-                    f"the refusal's bounds are not a field, a value and a range: {malformed!r}",
-                )
-    return RejectedError(reason, requested, allowed, answer)
-
-
-#: What each JSON form a refusal's field declares admits, of a parsed value.
-_FORMS = {
-    "string": lambda value: isinstance(value, str),
-    "number": lambda value: _is_number(value),
-    "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
-    "boolean": lambda value: isinstance(value, bool),
-    "object": lambda value: isinstance(value, dict),
-    "array": lambda value: isinstance(value, list),
-    "string_or_object": lambda value: isinstance(value, str | dict),
-}
-
-
-def _carries(fields: dict[str, object], declared: dict[str, RefusalField]) -> bool:
-    """Whether one variant's fields carry every field its table declares, each in its form.
-
-    A field is held to its JSON form and not to the closed set of words or
-    arms the client was generated with, for the reason `_is_refusal` gives.
-    """
-    for name, field in declared.items():
-        if name not in fields:
-            if field.required:
-                return False
-            continue
-        value = fields[name]
-        if value is None:
-            if not field.nullable:
-                return False
-            continue
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-        if not _FORMS.get(field.kind, lambda _: True)(value):
-            return False
-    return True
-
-
-def _is_refusal(refused: object, known: dict[str, dict[str, RefusalField] | None]) -> bool:
-    """Whether one value is a refusal of one vocabulary.
-
-    A refusal is a variant's name, or one variant carrying its fields. A
-    variant the vocabulary's generated table names is held to it — named alone
-    when it carries nothing, and carrying each field it declares in that
-    field's own form when it carries any. A variant the table does not name is
-    a newer supervisor's, whose reason this client does not know; it still
-    reaches the caller as a refusal rather than as an unreadable answer.
-    """
     match refused:
-        case str() as name if name:
-            # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-            return name not in known or known[name] is None
-        case {**arms} if len(arms) == 1:
-            ((name, fields),) = arms.items()
-            if not (isinstance(name, str) and isinstance(fields, dict)):
-                return False
-            # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-            if name not in known:
-                return True
-            declared = known[name]
-            return declared is not None and _carries(fields, declared)
+        case {
+            "out_of_bounds": {"requested": int() | float() as asked, "allowed": dict() as bounds}
+        }:
+            requested = float(asked)
+            allowed = cast(Range, bounds)
         case _:
-            return False
-
-
-def _is_number(value: object) -> bool:
-    """Whether one parsed JSON value is a finite number a float can hold.
-
-    `bool` is an `int` to Python and not to JSON; `json.loads` reads `NaN` and
-    `Infinity`, which no JSON number is; and an integer past what a float holds
-    is no value a bound can be read as.
-    """
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return False
-    try:
-        return math.isfinite(value)
-    except OverflowError:
-        return False
+            pass
+    return RejectedError(reason, requested, allowed, answer)
 
 
 def _machine_refusal(status: int, said: str) -> Exception:
     """The machine's own refusal of an action the policy accepted.
 
     A recovery the machine refused carries no action record, and arrives as the
-    supervisor's own words for it.
+    supervisor's own words for it: a recovery answer whose decision was carried
+    out and failed at the printer. Either answer is held to the type the
+    contracts declare for it before any of it is handed on.
     """
     document = _document(status, said)
+    declared = _answer_type(document)
+    if declared == "SpoolCommandAnswer" or not conforms(document, declared):
+        return UnreadableError(
+            status, "the supervisor answered a refusal carrying neither a record nor words"
+        )
     match document:
-        # A recovery's answer: the action it was, and a decision carried out
-        # and failed at the printer, which is what a machine refusal is.
-        case {
-            "action": {"action": str()},
-            "decision": {"executed": {"failed": {"reason": str()}} as outcome} as decision,
-            "detail": str() as detail,
-        } if len(decision) == 1 and len(outcome) == 1:
+        case {"decision": {"executed": {"failed": {"reason": str()}}}, "detail": str() as detail}:
             return RefusedError(status, detail)
         case {"record": dict()}:
-            # The type `operations.json` declares for an answer carrying an
-            # action record, which the match has just found.
+            # The type the document was just held to.
             answer = cast(ActionAnswer, document)
         case _:
             return UnreadableError(
-                status, "the supervisor answered a refusal carrying neither a record nor words"
+                status, "the supervisor answered a machine refusal of a recovery that did not fail"
             )
     return PrinterRefusedError(
         answer.get("printer_refusal") or "it said nothing this client can read", answer

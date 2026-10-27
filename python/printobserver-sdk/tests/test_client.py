@@ -296,22 +296,84 @@ def test_a_refusal_whose_answer_is_not_an_object_is_unreadable() -> None:
                     truth(False, describing=f"{answer!r} at {status} to be unreadable")
 
 
-def test_a_refusal_this_client_does_not_know_still_arrives_as_a_refusal() -> None:
-    """A newer supervisor's reason, and a known one well formed, are handed on as they came."""
-    for refused in (
-        "a_newer_reason",
-        {"a_newer_reason": {"anything": 1}},
-        {"print_running": {"state": {"unknown": "Connecting"}}},
-    ):
-        with Host(409, _recovery({"rejected": refused})) as host:
+def test_a_known_refusal_well_formed_arrives_as_a_refusal() -> None:
+    """A refusal the contracts declare, carrying a state no vocabulary names, is handed on."""
+    refused = {"print_running": {"state": {"unknown": "Connecting"}}}
+    with Host(409, _recovery({"rejected": refused})) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_fan(50.0, "because")
+        except RejectedError as rejected:
+            equal(rejected.reason, refused)
+        else:
+            truth(False, describing="a well-formed refusal to arrive as one")
+
+
+#: Recovery answers the contracts forbid, each refused under `409`: a recovery
+#: action missing its parameter, naming no declared action, or carrying a
+#: parameter of the wrong type; a refusal no vocabulary declares, or carrying a
+#: printer state no vocabulary names; and an event entry of no declared shape.
+MALFORMED_RECOVERIES = (
+    {**_recovery({"rejected": "z_untrusted"}), "action": {"action": "recover_lift"}},
+    {**_recovery({"rejected": "z_untrusted"}), "action": {"action": "recover_dance"}},
+    {
+        **_recovery({"rejected": "z_untrusted"}),
+        "action": {"action": "recover_fan", "percent": "lots"},
+    },
+    _recovery({"rejected": "a_newer_reason"}),
+    _recovery({"rejected": {"a_newer_reason": {"anything": 1}}}),
+    _recovery({"rejected": {"print_running": {"state": "melting"}}}),
+    {**_recovery({"rejected": "z_untrusted"}), "events": [{"kind": 7}]},
+)
+
+
+def test_a_recovery_refusal_no_contract_declares_is_unreadable() -> None:
+    """Every malformed recovery answer is refused as unreadable rather than handed on."""
+    for answer in MALFORMED_RECOVERIES:
+        with Host(409, answer) as host:
             client = Client(host.address, ACTOR)
             try:
                 # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
                 client.recover_fan(50.0, "because")
-            except RejectedError as rejected:
-                equal(rejected.reason, refused, describing=f"{refused!r}")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{answer!r}")
             else:
-                truth(False, describing=f"{refused!r} to be refused as a rejection")
+                truth(False, describing=f"{answer!r} to be unreadable")
+
+
+#: A spool command's refusal, around one spool refusal cause.
+def _spool_refusal(cause: object) -> dict[str, object]:
+    """A spool command answer refused with `spool_refused` for `cause`."""
+    return {
+        "decision": {"rejected": {"spool_refused": {"cause": cause, "message": "refused"}}},
+        "events": [],
+    }
+
+
+def test_a_spool_refusal_is_read_only_with_a_cause_the_contracts_declare() -> None:
+    """A declared cause arrives as a refusal; an undeclared one is unreadable."""
+    spool = "0198f0a1-2b3c-7d4e-8f90-123456789abc"
+    declared = _spool_refusal({"cause": "unknown_spool", "spool_id": spool})
+    with Host(409, declared) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.retire_spool(spool, "because")
+        except RejectedError as rejected:
+            equal(rejected.answer, declared)
+        else:
+            truth(False, describing="a declared spool refusal to arrive as one")
+    for cause in ({"cause": "melted"}, {"cause": "unknown_spool"}):
+        with Host(409, _spool_refusal(cause)) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.retire_spool(spool, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{cause!r}")
+            else:
+                truth(False, describing=f"{cause!r} to be unreadable")
 
 
 def test_a_machine_refusal_of_a_recovery_that_did_not_fail_is_unreadable() -> None:

@@ -410,7 +410,6 @@ file = "crates/printobserver/tests/journeys/documented.rs"
 site = "pub fn operator_workflow("
 reason = "The function is the six steps of one supervision turn, written in the order the skill states them, and each step's inputs are what the steps before it resolved out of the documentation. Splitting it would put the reader's own sequence in six places and leave nothing carrying the turn, which is the one thing this journey is about."
 
-
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "crates/printobserver-server/src/config.rs"
@@ -2407,16 +2406,11 @@ file = "tools/release-artifacts/tests/test_tracking.py"
 site = "exchange("
 reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
 
-
-
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."
-
-
-
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -2576,13 +2570,11 @@ file = ".github/lib/graph.mjs"
 site = "export function triggers("
 reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
 
-
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/lib/graph.mjs"
 site = "function cellsOf("
 reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
-
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -2771,18 +2763,6 @@ site = 'client.recover_fan(50.0, "because")'
 reason = "These tests hold the published synchronous Python client's refusal reading to a host answering malformed refusals, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
 
 [[suppression]]
-rule = "boundary_inputs_validated"
-file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
-site = "name not in known"
-reason = "A variant the generated `REJECTION_REASON_FIELDS` or `RECOVERY_REJECTION_FIELDS` table names is held to it — named alone when it carries nothing, carrying every field it requires otherwise, with any bounds checked field by field. A variant the table does not name is deliberately passed through: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "npm/printobserver-sdk/src/client.ts"
-site = "!Object.hasOwn(known, "
-reason = "A variant the generated `REJECTION_REASON_FIELDS` or `RECOVERY_REJECTION_FIELDS` table names is held to it — named alone when it carries nothing, carrying every field it requires otherwise, with any bounds checked field by field. A variant the table does not name is deliberately passed through: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
-
-[[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/records/recovery.rs"
 site = "pub z_home_sweeps_bed: bool,"
@@ -2835,18 +2815,6 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-core/src/records/recovery.rs"
 site = "impl<'de> Deserialize<'de> for ActionAllowance {"
 reason = "No program reads an allowance back through core: the server only writes one, in its recovery read. This reading exists so the record corpus round-trips the type, and it is held by `tests/records.rs` to both contradictions and to the published schema's own verdict on each. The readers that meet an allowance over a boundary are the clients, and the Rust one is driven with both contradictions through a real HTTP answer in `crates/printobserver-sdk/tests/answers.rs`."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "npm/printobserver-sdk/src/client.ts"
-site = "return takes(value, kind);"
-reason = "Each field of a known refusal is held to the JSON form its generated table declares — a finite number, an integer, a string, an object, an array, or a string or an object for a union some of whose arms are names alone — and not to the closed set of words or arms this client was generated with: a supervisor newer than the client may answer a printer state, an actor class or a spool cause the client has no word for, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
-site = "if not _FORMS.get(field.kind"
-reason = "Each field of a known refusal is held to the JSON form its generated table declares — a finite number, an integer, a string, an object, an array, or a string or an object for a union some of whose arms are names alone — and not to the closed set of words or arms this client was generated with: a supervisor newer than the client may answer a printer state, an actor class or a spool cause the client has no word for, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
@@ -2909,18 +2877,6 @@ site = "bed_clear_asserted: Option<bool>,"
 reason = "Generated from core's `RecoveryAction`, whose `bed_clear_asserted` the schema marks `x-two-valued-fact`, both in its variant and in the method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that homing Z will meet nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state; core's own entry for the field says so."
 
 [[suppression]]
-rule = "boundary_inputs_validated"
-file = "npm/printobserver-sdk/src/client.ts"
-site = "recovers &&"
-reason = "A refused answer is read for what decides the error a caller gets and for the refusal it carries — the decision's one arm, a known refusal's fields in their forms, finite bounds, and that a recovery's answer names its action, says why and lists its events. The rest of the envelope — the action's own parameters and each event's entries — is handed on as every successful answer is handed on, as the server sent it and unvalidated beyond its shape, which is this client's documented design; holding a refusal's envelope to more than a success's would make the two paths disagree about the same document. This objection recurred across seven judged-lint passes at this site, each asking for one layer more."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
-site = '"action": {"action": str()},'
-reason = "A refused answer is read for what decides the error a caller gets and for the refusal it carries — the decision's one arm, a known refusal's fields in their forms, finite bounds, and that a recovery's answer names its action, says why and lists its events. The rest of the envelope — the action's own parameters and each event's entries — is handed on as every successful answer is handed on, as the server sent it and unvalidated beyond its shape, which is this client's documented design; holding a refusal's envelope to more than a success's would make the two paths disagree about the same document. This objection recurred across seven judged-lint passes at this site, each asking for one layer more."
-
-[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/tests/test_running_environment.py"
 site = "one sequential command to its instance"
@@ -2937,3 +2893,9 @@ rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/octoprint-env/tests/test_running_environment.py"
 site = "A `G91` jog closed by `G90` moves Z by what it asked, however long the queue."
 reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs its fast suites file by file, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey proves the install's repair of that instance's virtual printer on the running instance, beside the other journeys that drive it; moving it into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = 'client.retire_spool(spool, "because")'
+reason = "These tests hold the published synchronous Python client's reading of a spool command's refusal to a host answering declared and undeclared refusal causes, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."

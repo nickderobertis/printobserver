@@ -20,7 +20,6 @@ from contract_codegen.model import (
     ENVELOPE,
     KIND_FIELD,
     PAYLOAD_FIELD,
-    REFUSALS,
     Alias,
     AnyValue,
     Contract,
@@ -38,8 +37,7 @@ from contract_codegen.model import (
     TypeExpr,
     Union,
     Variant,
-    refusal_fields,
-    refusal_table_name,
+    shape_table,
 )
 from contract_codegen.naming import (
     NAME_DIRECTIVE,
@@ -501,66 +499,33 @@ def _contract_version() -> list[str]:
     ]
 
 
-def _refusal_tables(contract: Contract) -> list[str]:
-    """Each refusal vocabulary's arms, and the fields each carries.
+def _shape_table(contract: Contract) -> list[str]:
+    """Every declaration, as the client checks a document against it.
 
-    The client holds a refusal of a known arm to its table before handing it
-    on as the contract's type; an arm the table does not name is a newer
-    server's, and is handed on as it came.
+    Written as the JSON it is, inside one string read once on import, so the
+    table is the generator's own text rather than a second rendering of it.
     """
-    tables = [(name, refusal_fields(contract, name)) for name in REFUSALS]
-    tables = [(name, arms) for name, arms in tables if arms]
-    if not tables:
-        return []
-    lines = [
-        "class RefusalField(NamedTuple):",
-        *docstring(
-            "One field a refusal's arm carries, as a reading client checks it.",
-            "Generated from the arm's own declaration in the contracts, so the "
-            "client holds a known refusal to them without a second copy of them.",
-            "    ",
+    table = json.dumps(shape_table(contract), indent=1, sort_keys=True)
+    return [
+        *comment(
+            "Every declaration of the contracts, as the client checks a document "
+            "against its declared type: generated from the same declarations as "
+            "every type above.",
+            "",
         ),
-        "",
-        "    #: The JSON form it takes: `string`, `number`, `integer`, `boolean`,",
-        "    #: `object`, `array`, `string_or_object` or `any`.",
-        "    kind: str",
-        "    #: Whether the arm must carry it.",
-        "    required: bool",
-        "    #: Whether it may be null.",
-        "    nullable: bool",
+        "SHAPES: dict[str, object] = json.loads(",
+        '    """',
+        *table.splitlines(),
+        '"""',
+        ")",
         "",
         "",
     ]
-    for name, arms in tables:
-        lines += [
-            *comment(
-                f"Every arm of `{name}`, and the fields it carries: `None` for an arm "
-                "carrying nothing, which travels as its own name.",
-                "",
-            ),
-            f"{refusal_table_name(name)}: dict[str, dict[str, RefusalField] | None] = {{",
-        ]
-        for arm in arms:
-            tag, fields = arm.tag, arm.fields
-            if fields is None:
-                lines.append(f'    "{tag}": None,')
-                continue
-            lines.append(f'    "{tag}": {{')
-            lines += [
-                f'        "{entry.name}": RefusalField("{entry.kind}", {entry.required}, '
-                f"{entry.nullable}),"
-                for entry in fields
-            ]
-            lines.append("    },")
-        lines += ["}", "", ""]
-    return lines
 
 
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
     typing_names = ["Literal", "NotRequired", "TypeAlias", "TypedDict", "cast"]
-    if any(refusal_fields(contract, name) for name in REFUSALS):
-        typing_names.append("NamedTuple")
     if contract.event_kinds:
         typing_names.append("overload")
     lines = [
@@ -569,6 +534,7 @@ def emit(contract: Contract) -> str:
         "",
         "from __future__ import annotations",
         "",
+        "import json",
         f"from typing import {', '.join(sorted(typing_names))}",
         "",
         "from printobserver_sdk._surface import GeneratedSurface, reason_given",
@@ -589,7 +555,7 @@ def emit(contract: Contract) -> str:
         lines.append("")
 
     lines.extend(_kind_table(contract))
-    lines.extend(_refusal_tables(contract))
+    lines.extend(_shape_table(contract))
 
     lines.append("class GeneratedClient(GeneratedSurface):")
     lines.extend(
