@@ -1257,6 +1257,319 @@
       "path": "/v1/spools/{spool_id}/actions/retire_spool"
     },
     {
+      "answers": [
+        "success"
+      ],
+      "command": "recover-status",
+      "image_path_field": null,
+      "method": "GET",
+      "mutating": false,
+      "operation": "recover_status",
+      "options": [],
+      "path": "/v1/printer/recovery"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-lift",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_lift",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "mm",
+          "located": "body",
+          "option": "--mm",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_lift"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-cool",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_cool",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_cool"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-fan",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_fan",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "percent",
+          "located": "body",
+          "option": "--percent",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_fan"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-heat",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_heat",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "clearance_asserted",
+          "located": "body",
+          "option": "--clearance-asserted",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "target_c",
+          "located": "body",
+          "option": "--target-c",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "tool",
+          "located": "body",
+          "option": "--tool",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_heat"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-park",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_park",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "clearance_asserted",
+          "located": "body",
+          "option": "--clearance-asserted",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_park"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-home-xy",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_home_xy",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "clearance_asserted",
+          "located": "body",
+          "option": "--clearance-asserted",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_home_xy"
+    },
+    {
+      "answers": [
+        "success",
+        "rejected"
+      ],
+      "command": "recover-home-z",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "recover_home_z",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "bed_clear_asserted",
+          "located": "body",
+          "option": "--bed-clear-asserted",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_home_z"
+    },
+    {
       "command": "watch",
       "operation": null,
       "options": [

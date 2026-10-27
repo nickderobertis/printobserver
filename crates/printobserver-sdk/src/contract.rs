@@ -3063,9 +3063,10 @@ pub enum UnverifiedReason {
 pub struct ZHome {
     /// Whether homing Z brings a gantry down over the whole bed.
     pub sweeps_bed: bool,
-    /// Where in X and Y Z is homed.
-    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
-    pub xy: Vec<f64>,
+    /// Where in X Z is homed, in millimetres.
+    pub x: f64,
+    /// Where in Y Z is homed, in millimetres.
+    pub y: f64,
 }
 
 /// Whether Z is trusted, and since when or why not.

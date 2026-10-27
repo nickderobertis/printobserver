@@ -656,7 +656,7 @@ async fn an_adopted_print(world: World) -> (World, String, String) {
 /// or start debits its spool.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_print_the_operator_closed_is_not_charged_again_as_unseen() {
-    let (world, print_id, spool) = an_adopted_print(World::open().await).await;
+    let (world, print_id, spool) = Box::pin(an_adopted_print(World::open().await)).await;
     // The job finishes with nothing reading the machine, so the record stays
     // open until the operator closes it.
     finishes(&world);
@@ -691,7 +691,7 @@ async fn a_print_the_operator_closed_is_not_charged_again_as_unseen() {
 /// second `print_ended` and no debit.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_close_whose_settlement_committed_and_died_is_finished_by_the_next_close() {
-    let (world, print_id, spool) = an_adopted_print(World::open().await).await;
+    let (world, print_id, spool) = Box::pin(an_adopted_print(World::open().await)).await;
     let state_dir = world.state_dir();
     let world = world
         .restart_over(|_| {
@@ -770,7 +770,7 @@ async fn a_close_whose_session_closure_committed_and_died_is_finished_by_the_nex
 async fn a_close_whose_write_committed_and_died_is_finished_by_the_next_close(write: &'static str) {
     use printobserver_core::store::SessionStore as _;
 
-    let (world, print_id, _) = an_adopted_print(World::open().await).await;
+    let (world, print_id, _) = Box::pin(an_adopted_print(World::open().await)).await;
     let state_dir = world.state_dir();
     let print: printobserver_types::PrintId = print_id.parse().expect("a print identifier");
     let opened = Timestamp::now();

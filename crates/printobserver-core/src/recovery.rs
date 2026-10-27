@@ -512,7 +512,10 @@ impl Supervisor {
             reason,
         };
         match self
-            .issue_decided_action(Decided::Recovery { requested, calls })
+            .issue_decided_action(Decided::Recovery {
+                requested: Box::new(requested),
+                calls,
+            })
             .await?
         {
             IssuedAs::Recovery(issued) => Ok(issued),
@@ -522,6 +525,16 @@ impl Supervisor {
                 detail: "a recovery was answered as a print action".to_owned(),
             }),
         }
+    }
+
+    /// Write one recovery request down, before anything reaches the machine.
+    pub(crate) async fn write_recovery_request(
+        &self,
+        requested: &RecoveryRequestedPayload,
+    ) -> Result<printobserver_types::EventRecord, CoreError> {
+        let source = crate::actions::source_of(&requested.actor);
+        let draft = self.draft_of(None, source, requested)?;
+        Ok(self.stores().events.append_event(draft).await?)
     }
 
     /// Write down what became of one recovery the chokepoint has issued or
@@ -635,7 +648,8 @@ impl Supervisor {
             ),
             paused_print,
             z_home: config.map(|config| ZHome {
-                xy: config.z_home_xy,
+                x: config.z_home_xy[0],
+                y: config.z_home_xy[1],
                 sweeps_bed: config.z_home_sweeps_bed,
             }),
             actions,
@@ -647,6 +661,17 @@ impl Supervisor {
     /// down, each when asked for.
     async fn facts(&self, position: bool, tallest: bool) -> Facts {
         let snapshot = self.read_snapshot().await.ok();
+        // A printer found offline or in error by this read may have reset or
+        // moved since, however briefly, and between two of the watch's reads.
+        if let Some(down) = snapshot
+            .as_ref()
+            .map(|snapshot| &snapshot.connection)
+            .filter(|state| matches!(state, PrinterState::Offline | PrinterState::Error))
+        {
+            self.distrust_z(format!(
+                "the printer was read {down:?}, and Z may have moved since"
+            ));
+        }
         let trusted = matches!(self.z_trust(), ZTrust::TrustedSince(_));
         let reachable = snapshot.as_ref().is_some_and(|snapshot| {
             matches!(

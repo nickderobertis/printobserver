@@ -1695,7 +1695,7 @@ reason = "This journey proves `release_artifacts.world`, which the client worlds
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, answer = call("
-reason = "The one request `upload` makes: a file put on an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before it starts that file. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
+reason = "The one request `upload` makes, and the one `terminal` and `connect` make: a file put on, a line typed at, or a reconnect asked of an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before its next. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -2709,3 +2709,33 @@ rule = "invalid_states_unrepresentable"
 file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
 site = "NON_EMPTY_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated Rust list the schema bounds with `minItems: 1`, so that the directives standing in `crates/printobserver-sdk/src/contract.rs` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "clearance_asserted: bool,"
+reason = "The recovery vocabulary's own contract, agreed across the plan and built against by its consumers, fixes `clearance_asserted` as a boolean defaulting to false. It is the operator's yes-or-no word that the nozzle is clear of the part; every combination of it with the action's other fields is a request the policy rules on, and an agent's assertion is refused as clearance by the grants rather than by the type."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "bed_clear_asserted: bool,"
+reason = "The recovery vocabulary's own contract fixes `bed_clear_asserted` as a boolean defaulting to false: the operator's yes-or-no word that homing Z meets nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "pub resumable: bool,"
+reason = "The contract answers a paused print's resumability as `{print_id, resumable}`. Both values are real states of a paused print; the event that made it non-resumable is named where a caller acts on it, in the `print_not_resumable` refusal of its resume."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "pub sweeps_bed: bool,"
+reason = "Whether homing Z sweeps a gantry over the whole bed is a yes-or-no fact of the machine the operator states in `recovery.z_home_sweeps_bed`; both answers are machines that exist."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub z_home_sweeps_bed: Option<bool>,"
+reason = "The operator states this fact of the machine as yes or no under `recovery.z_home_sweeps_bed`; it is read as written so that a section leaving it out is refused naming the key, and both answers are machines that exist."

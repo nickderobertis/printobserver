@@ -720,7 +720,7 @@ pub struct RecoverySection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub z_home_xy: Option<Vec<f64>>,
     /// Whether homing Z brings a gantry down over the whole bed.
-    // llmlint: ignore[invalid_states_unrepresentable] The operator states this fact of the machine as yes or no; left out it is refused naming the key, and both answers are machines that exist.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub z_home_sweeps_bed: Option<bool>,
 }

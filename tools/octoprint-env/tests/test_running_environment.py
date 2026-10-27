@@ -183,6 +183,25 @@ def test_a_file_uploaded_to_the_running_instance_is_held_and_printed_by_nothing(
     equal(after, before, describing="the job, which an upload leaves alone")
 
 
+def test_a_line_typed_at_the_running_instance_reaches_its_printer(
+    brought_up: dict[str, Any],
+) -> None:
+    """`terminal` types one line, which the printer's own serial log then shows sent."""
+    serial = STATE_DIR / "instance" / "logs" / "serial.log"
+    before = serial.read_text(encoding="utf-8") if serial.is_file() else ""
+    line = "M117 a line the tier typed"
+
+    result = script("terminal", "--state-dir", str(STATE_DIR), "--line", line)
+
+    equal(result.returncode, 0, describing=f"the line: {result.stderr}")
+    equal(answer(result)["sent"], line)
+    deadline = time.monotonic() + 30
+    while line not in serial.read_text(encoding="utf-8")[len(before) :]:
+        truth(time.monotonic() < deadline, describing=f"{line!r} sent, by the serial log")
+        time.sleep(0.5)
+    truth(brought_up["printing"], describing="the instance the line was typed at")
+
+
 def test_the_instance_reports_a_connected_printer(brought_up: dict[str, Any]) -> None:
     """A tier that drives a printer needs one connected."""
     state = printer_state(str(brought_up["url"]), key_from_record(brought_up))

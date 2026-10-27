@@ -70,6 +70,7 @@ use crate::convert::{
 };
 use crate::gcode::ExtrudedTo;
 use crate::http::{self, Method, Response, Sink, Transport};
+use crate::push::Taken;
 use crate::wire::{
     ConnectionPayload, DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload,
     TOOL_PREFIX,
@@ -218,18 +219,18 @@ impl OctoPrintPrinter {
                 asked = Some(std::time::Instant::now());
             }
             match stream.try_next() {
-                Some(Some(PrinterPush::Log { line })) => {
+                Taken::Push(PrinterPush::Log { line }) => {
                     if let Some([x, y, z]) = crate::push::position_of(&line) {
                         return Ok(AxisPosition { x, y, z });
                     }
                 }
-                Some(Some(_)) => {}
-                Some(None) => {
+                Taken::Push(_) => {}
+                Taken::Ended => {
                     return Err(PrinterError::Unreachable {
                         detail: "the push socket ended before the position was reported".to_owned(),
                     });
                 }
-                None => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Taken::Nothing => std::thread::sleep(std::time::Duration::from_millis(20)),
             }
         }
         Err(PrinterError::Unreachable {

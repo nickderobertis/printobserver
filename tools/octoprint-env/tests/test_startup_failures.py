@@ -133,6 +133,18 @@ def test_an_upload_to_no_running_instance_is_reported_by_name(
     contains(said(result), "run `up` first", describing="what an upload with nothing up says")
 
 
+def test_a_line_or_a_reconnect_for_no_running_instance_is_refused_by_name(
+    state_dir: Callable[[str], str],
+) -> None:
+    """A line typed at, or a reconnect asked of, an instance nothing started is refused."""
+    empty = state_dir("terminal")
+    for asked in (("terminal", "--line", "M117 hello"), ("connect",), ("terminal",)):
+        result = script(*asked, "--state-dir", empty)
+
+        failing(result, naming="octoprint-env: failed: terminal-refused")
+        contains(said(result), "run `up` first", describing=f"what {asked} says")
+
+
 def test_a_failure_outside_the_declared_set_carries_the_underlying_errors_own_text(
     state_dir: Callable[[str], str],
 ) -> None:

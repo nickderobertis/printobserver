@@ -98,6 +98,36 @@ impl Issued {
 /// The status a printer port answers a method it does not implement with.
 const NOT_SUPPORTED: u16 = 501;
 
+/// What became of a recovery whose calls the printer answered so: carried
+/// out, or failed at the printer — or, when its first call is one the printer
+/// answers as not supported, which sent nothing, refused as one it cannot make.
+fn recovery_decision_of(
+    action: crate::records::RecoveryActionKind,
+    executed: Result<(), PrinterError>,
+    first: bool,
+) -> RecoveryDecision {
+    match executed {
+        Ok(()) => RecoveryDecision::Executed(ExecutionOutcome::Succeeded),
+        Err(PrinterError::Refused {
+            status: NOT_SUPPORTED,
+            detail,
+        }) if first => {
+            RecoveryDecision::Rejected(RecoveryRejection::PrinterCannot { action, detail })
+        }
+        failed @ Err(_) => RecoveryDecision::Executed(outcome_of(&failed)),
+    }
+}
+
+/// What the printer made of one request, as its record keeps it.
+fn outcome_of(executed: &Result<(), PrinterError>) -> ExecutionOutcome {
+    match executed {
+        Ok(()) => ExecutionOutcome::Succeeded,
+        Err(error) => ExecutionOutcome::Failed {
+            reason: error.to_string(),
+        },
+    }
+}
+
 /// One call a recovery makes at an action method of the printer port, which
 /// only [`Supervisor::issue_decided_action`] turns into one.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -130,7 +160,7 @@ pub(crate) enum Decided {
     /// A print action.
     Action {
         /// The request.
-        request: ActionRequest,
+        request: Box<ActionRequest>,
         /// The decision taken on it.
         decision: PolicyDecision,
         /// The print it was asked of, when it was asked of one.
@@ -139,7 +169,7 @@ pub(crate) enum Decided {
     /// A recovery.
     Recovery {
         /// The request, as it is written down.
-        requested: RecoveryRequestedPayload,
+        requested: Box<RecoveryRequestedPayload>,
         /// The calls it makes, in order, or the refusal it met.
         calls: Result<Vec<PortCall>, RecoveryRejection>,
     },
@@ -636,76 +666,39 @@ impl Supervisor {
                 request,
                 decision,
                 against,
-            } => (request, decision, against),
+            } => (*request, decision, against),
+            // The request is written down before anything reaches the machine.
             Decided::Recovery { requested, calls } => {
-                // The request is written down before anything reaches the
-                // machine, and a refusal is written beside it instead.
-                let source = crate::actions::source_of(&requested.actor);
-                let draft = self.draft_of(None, source.clone(), &requested)?;
-                let requested_event = self.stores.events.append_event(draft).await?;
-                let calls = match calls {
-                    Ok(calls) => calls,
-                    Err(rejection) => {
-                        return self
-                            .recovery_settled(
-                                requested,
-                                requested_event,
-                                RecoveryDecision::Rejected(rejection),
-                            )
-                            .await
-                            .map(IssuedAs::Recovery);
-                    }
-                };
-                let mut executed: Result<(), PrinterError> = Ok(());
-                for (index, call) in calls.into_iter().enumerate() {
-                    executed = match call {
-                        PortCall::ToolTarget { tool, target_c } => {
-                            self.printer.set_tool_target_c(tool, target_c).await
+                let requested_event = self.write_recovery_request(&requested).await?;
+                let decision = match calls {
+                    Err(rejection) => RecoveryDecision::Rejected(rejection),
+                    Ok(calls) => {
+                        let (mut executed, mut first) = (Ok(()), true);
+                        for call in calls {
+                            executed = match call {
+                                PortCall::ToolTarget { tool, target_c } => {
+                                    self.printer.set_tool_target_c(tool, target_c).await
+                                }
+                                PortCall::BedTarget { target_c } => {
+                                    self.printer.set_bed_target_c(target_c).await
+                                }
+                                PortCall::Fan { percent } => {
+                                    self.printer.set_fan_percent(percent).await
+                                }
+                                PortCall::Command(command) => {
+                                    self.printer.send_command(command).await
+                                }
+                            };
+                            if executed.is_err() {
+                                break;
+                            }
+                            first = false;
                         }
-                        PortCall::BedTarget { target_c } => {
-                            self.printer.set_bed_target_c(target_c).await
-                        }
-                        PortCall::Fan { percent } => self.printer.set_fan_percent(percent).await,
-                        PortCall::Command(command) => self.printer.send_command(command).await,
-                    };
-                    // A first call the printer answers as not supported sent
-                    // nothing, so the action is refused rather than carried
-                    // out.
-                    if index == 0
-                        && let Err(PrinterError::Refused {
-                            status: NOT_SUPPORTED,
-                            detail,
-                        }) = &executed
-                    {
-                        let rejection = RecoveryRejection::PrinterCannot {
-                            action: requested.action.kind(),
-                            detail: detail.clone(),
-                        };
-                        return self
-                            .recovery_settled(
-                                requested,
-                                requested_event,
-                                RecoveryDecision::Rejected(rejection),
-                            )
-                            .await
-                            .map(IssuedAs::Recovery);
+                        recovery_decision_of(requested.action.kind(), executed, first)
                     }
-                    if executed.is_err() {
-                        break;
-                    }
-                }
-                let outcome = match &executed {
-                    Ok(()) => ExecutionOutcome::Succeeded,
-                    Err(error) => ExecutionOutcome::Failed {
-                        reason: error.to_string(),
-                    },
                 };
                 return self
-                    .recovery_settled(
-                        requested,
-                        requested_event,
-                        RecoveryDecision::Executed(outcome),
-                    )
+                    .recovery_settled(*requested, requested_event, decision)
                     .await
                     .map(IssuedAs::Recovery);
             }
@@ -764,12 +757,7 @@ impl Supervisor {
             // its execution is recorded ([`crate::closing`]).
             PrintAction::AcknowledgeFailure { .. } | PrintAction::ClosePrint { .. } => Ok(()),
         };
-        let outcome = match &executed {
-            Ok(()) => ExecutionOutcome::Succeeded,
-            Err(error) => ExecutionOutcome::Failed {
-                reason: error.to_string(),
-            },
-        };
+        let outcome = outcome_of(&executed);
         let record = self
             .stores
             .actions
@@ -791,7 +779,7 @@ impl Supervisor {
     ) -> Result<Issued, CoreError> {
         match self
             .issue_decided_action(Decided::Action {
-                request,
+                request: Box::new(request),
                 decision,
                 against,
             })

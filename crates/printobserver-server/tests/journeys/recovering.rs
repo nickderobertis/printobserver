@@ -563,7 +563,13 @@ async fn a_value_outside_its_bound_is_refused_and_reaches_nothing() {
         json!({ "field": "mm", "requested": 20.0, "allowed": { "min": 0.0, "max": 10.0 } })
     );
     assert_eq!(world.asked_of_the_machine(), before);
-    assert_eq!(world.octoprint.head(), [0.0, 0.0, 190.0]);
+    let head = world.octoprint.head();
+    assert!(
+        head.iter()
+            .zip([0.0, 0.0, 190.0])
+            .all(|(at, was)| (at - was).abs() < 1e-9),
+        "the refused lift moved the head to {head:?}"
+    );
 }
 
 /// Homing Z without the operator's word that the bed is clear is refused
@@ -669,6 +675,20 @@ async fn the_agent_is_granted_nothing_and_its_word_is_never_clearance() {
     );
 }
 
+/// Z reads untrusted after one event, and a park is refused for it.
+async fn untrusted(world: &Recovering, after: &str) {
+    let status = world.status().await;
+    assert!(
+        status["z_trust"].get("untrusted").is_some(),
+        "Z was still trusted after {after}: {status:#}"
+    );
+    let before = world.asked_of_the_machine();
+    let (status, answer) = world.ask("recover_park", json!({})).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{after}: {answer:#}");
+    assert_eq!(answer["rejection"], "z_untrusted", "{after}");
+    assert_eq!(world.asked_of_the_machine(), before, "{after}");
+}
+
 /// Z trust is lost after the printer goes offline and comes back, after it
 /// reports an error, after a reset while idle that changes nothing a read
 /// reports, after a print ends `interrupted` and after one ends `failed`, and
@@ -678,19 +698,6 @@ async fn the_agent_is_granted_nothing_and_its_word_is_never_clearance() {
 async fn z_trust_is_lost_to_every_event_that_could_have_moved_z() {
     let mut world = Recovering::start(with_recovery(|_| {})).await;
     world.connected().await;
-
-    async fn untrusted(world: &Recovering, after: &str) {
-        let status = world.status().await;
-        assert!(
-            status["z_trust"].get("untrusted").is_some(),
-            "Z was still trusted after {after}: {status:#}"
-        );
-        let before = world.asked_of_the_machine();
-        let (status, answer) = world.ask("recover_park", json!({})).await;
-        assert_eq!(status, StatusCode::CONFLICT, "{after}: {answer:#}");
-        assert_eq!(answer["rejection"], "z_untrusted", "{after}");
-        assert_eq!(world.asked_of_the_machine(), before, "{after}");
-    }
 
     world.home_z().await;
     world.octoprint.reports("Offline", down("Offline"));
@@ -856,7 +863,7 @@ async fn the_recovery_read_answers_each_allowance_and_a_cool_turns_every_heater_
     let status = world.status().await;
     assert_eq!(
         status["z_home"],
-        json!({ "xy": [100.0, 100.0], "sweeps_bed": true })
+        json!({ "x": 100.0, "y": 100.0, "sweeps_bed": true })
     );
     assert_eq!(status["temperatures"]["tools"][0]["target_c"], 215.0);
     assert_eq!(status["temperatures"]["bed"]["target_c"], 60.0);

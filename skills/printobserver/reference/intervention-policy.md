@@ -82,6 +82,14 @@ because the record might still be live:
 - `intervention_still_active` — an adjustment of the print has neither expired
   nor been restored. It carries `intervention_id`.
 
+One more refuses a resume:
+
+- `print_not_resumable` — a recovery action was executed while the print was
+  paused. The head moved, and the printer restores no position on resume, so
+  the rest of the layer would print at the wrong height. It carries
+  `recovery_event_id`, the recovery's own executed event that made it so. Cancel
+  the print instead.
+
 Four more belong to the filament ledger. The first three refuse a start the
 filament check objected to, and the fourth a spool command the ledger could not
 carry out:

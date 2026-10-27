@@ -117,19 +117,28 @@ impl Stream for PushStream {
     }
 }
 
+/// What taking from the stream without waiting found.
+pub(crate) enum Taken {
+    /// One push.
+    Push(PrinterPush),
+    /// The socket has ended, and everything it read has been taken.
+    Ended,
+    /// Nothing has arrived yet.
+    Nothing,
+}
+
 impl PushStream {
-    /// Take what has arrived without waiting: one push, `Some(None)` once the
-    /// socket has ended and everything it read is taken, and `None` while
-    /// nothing has arrived yet.
-    pub(crate) fn try_next(&self) -> Option<Option<PrinterPush>> {
+    /// Take what has arrived, without waiting.
+    pub(crate) fn try_next(&self) -> Taken {
         let mut shared = self
             .shared
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(push) = shared.queue.pop_front() {
-            return Some(Some(push));
+        match shared.queue.pop_front() {
+            Some(push) => Taken::Push(push),
+            None if shared.ended => Taken::Ended,
+            None => Taken::Nothing,
         }
-        shared.ended.then_some(None)
     }
 }
 

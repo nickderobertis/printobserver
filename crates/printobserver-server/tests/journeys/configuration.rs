@@ -167,16 +167,11 @@ fn unacceptable(
         | ConfigField::SpoolsBufferPercent
         | ConfigField::SpoolsBufferMinG
         | ConfigField::SpoolsAnalysisWaitSeconds => unacceptable_spools(field, &mut document),
-        ConfigField::RecoveryAwayFromBed
-        | ConfigField::RecoveryMaxZMm
-        | ConfigField::RecoveryMaxLiftMm
-        | ConfigField::RecoveryClearanceMarginMm
-        | ConfigField::RecoveryParkXy
-        | ConfigField::RecoveryZHomeXy
-        | ConfigField::RecoveryZHomeSweepsBed => unacceptable_recovery(field, &mut document),
-        ConfigField::PolicyRecoveryOperator
-        | ConfigField::PolicyRecoveryAgent
-        | ConfigField::PolicyRecoveryAsserting => unacceptable_grants(field, &mut document),
+        // The `[recovery]` keys and the `[policy.recovery]` ones.
+        recovery if recovery.key().starts_with("recovery.") => {
+            unacceptable_recovery(recovery, &mut document);
+        }
+        grants => unacceptable_grants(grants, &mut document),
     }
     document
 }

@@ -632,69 +632,18 @@ fn answer(
         ("POST", "/api/printer/command") if held.refuses_commands => {
             (409, r#"{"error":"Printer is not operational"}"#.to_owned())
         }
-        ("POST", "/api/printer/command") => {
-            let printing = held.job.state == "Printing";
-            let lines: Vec<String> = body["commands"]
-                .as_array()
-                .map(|lines| {
-                    lines
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default();
-            let answer = lines.iter().any(|line| line == "M114") && held.answers_position;
-            let [x, y, z] = held.position;
-            let reply = held.position_reply.clone().unwrap_or_else(|| {
-                format!("Recv: X:{x:.2} Y:{y:.2} Z:{z:.2} E:0.00 Count X:0 Y:0 Z:0")
-            });
-            for line in lines {
-                held.commands.push((line, printing));
-            }
-            drop(held);
-            if answer {
-                broadcast_to(sockets, &current_with(&["Send: M114", &reply]));
-            }
-            (204, String::new())
-        }
+        ("POST", "/api/printer/command") => commanded(held, sockets, &body),
         // A move or a home, which a printing job refuses, as `OctoPrint`
-        // does; a jog moves Z from where it is and X and Y to a place when it
-        // says so, and a home puts the axes it names at zero.
+        // does.
         ("POST", "/api/printer/printhead") if body["command"] == "feedrate" => {
             held.printhead.push(body);
             (204, String::new())
         }
-        ("POST", "/api/printer/printhead") if held.job.state == "Printing" => {
-            (409, r#"{"error":"Printer is currently printing"}"#.to_owned())
-        }
-        ("POST", "/api/printer/printhead") => {
-            let mut at = held.position;
-            match body["command"].as_str() {
-                Some("jog") => {
-                    let absolute = body["absolute"].as_bool().unwrap_or(false);
-                    for (index, axis) in ["x", "y", "z"].iter().enumerate() {
-                        if let Some(value) = body[*axis].as_f64() {
-                            at[index] = if absolute { value } else { at[index] + value };
-                        }
-                    }
-                }
-                Some("home") => {
-                    for (index, axis) in ["x", "y", "z"].iter().enumerate() {
-                        let named = body["axes"]
-                            .as_array()
-                            .is_some_and(|axes| axes.iter().any(|named| named == axis));
-                        if named {
-                            at[index] = 0.0;
-                        }
-                    }
-                }
-                _ => return (400, r#"{"error":"Unknown command"}"#.to_owned()),
-            }
-            held.position = at;
-            held.printhead.push(body);
-            (204, String::new())
-        }
+        ("POST", "/api/printer/printhead") if held.job.state == "Printing" => (
+            409,
+            r#"{"error":"Printer is currently printing"}"#.to_owned(),
+        ),
+        ("POST", "/api/printer/printhead") => moved(&mut held, body),
         ("POST", "/api/printer/tool") => {
             if let Some(target) = body["targets"]["tool0"].as_f64() {
                 held.tool_target = target;
@@ -733,6 +682,70 @@ fn answer(
         }
         _ => (404, r#"{"error":"Not found"}"#.to_owned()),
     }
+}
+
+/// Lines sent through the command endpoint, each recorded with whether a job
+/// was printing, and an `M114` answered on the push socket.
+fn commanded(
+    mut held: MutexGuard<'_, Script>,
+    sockets: &Mutex<Vec<TcpStream>>,
+    body: &Value,
+) -> (u16, String) {
+    let printing = held.job.state == "Printing";
+    let lines: Vec<String> = body["commands"]
+        .as_array()
+        .map(|lines| {
+            lines
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let answer = lines.iter().any(|line| line == "M114") && held.answers_position;
+    let [x, y, z] = held.position;
+    let reply = held
+        .position_reply
+        .clone()
+        .unwrap_or_else(|| format!("Recv: X:{x:.2} Y:{y:.2} Z:{z:.2} E:0.00 Count X:0 Y:0 Z:0"));
+    for line in lines {
+        held.commands.push((line, printing));
+    }
+    drop(held);
+    if answer {
+        broadcast_to(sockets, &current_with(&["Send: M114", &reply]));
+    }
+    (204, String::new())
+}
+
+/// One move or home of the print head: a jog moves Z from where it is and X
+/// and Y to a place when it says so, and a home puts the axes it names at zero.
+fn moved(held: &mut Script, body: Value) -> (u16, String) {
+    let mut at = held.position;
+    match body["command"].as_str() {
+        Some("jog") => {
+            let absolute = body["absolute"].as_bool().unwrap_or(false);
+            for (index, axis) in ["x", "y", "z"].iter().enumerate() {
+                if let Some(value) = body[*axis].as_f64() {
+                    at[index] = if absolute { value } else { at[index] + value };
+                }
+            }
+        }
+        Some("home") => {
+            for (index, axis) in ["x", "y", "z"].iter().enumerate() {
+                let named = body["axes"]
+                    .as_array()
+                    .is_some_and(|axes| axes.iter().any(|named| named == axis));
+                if named {
+                    at[index] = 0.0;
+                }
+            }
+        }
+        _ => return (400, r#"{"error":"Unknown command"}"#.to_owned()),
+    }
+    held.position = at;
+    held.printhead.push(body);
+    (204, String::new())
 }
 
 /// What `GET /api/printer` answers for what the stand-in holds: `409` for a

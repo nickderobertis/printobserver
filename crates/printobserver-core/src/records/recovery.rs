@@ -128,28 +128,28 @@ pub enum RecoveryAction {
         /// The target, in degrees Celsius.
         target_c: f64,
         /// The operator's word that the nozzle is clear of the part.
-        // llmlint: ignore[invalid_states_unrepresentable] An assertion is a yes-or-no statement the operator makes, and every combination of it with the action's other fields is a request the policy rules on; the vocabulary's own contract fixes it as a boolean defaulting to false.
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
         clearance_asserted: bool,
     },
     /// Move the head to `recovery.park_xy`.
     RecoverPark {
         /// The operator's word that the nozzle is clear of the part.
-        // llmlint: ignore[invalid_states_unrepresentable] An assertion is a yes-or-no statement the operator makes; the vocabulary's own contract fixes it as a boolean defaulting to false.
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
         clearance_asserted: bool,
     },
     /// Home X and Y.
     RecoverHomeXy {
         /// The operator's word that the nozzle is clear of the part.
-        // llmlint: ignore[invalid_states_unrepresentable] An assertion is a yes-or-no statement the operator makes; the vocabulary's own contract fixes it as a boolean defaulting to false.
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
         clearance_asserted: bool,
     },
     /// Home Z.
     RecoverHomeZ {
         /// The operator's word that homing Z will meet nothing on the bed.
-        // llmlint: ignore[invalid_states_unrepresentable] An assertion is a yes-or-no statement the operator makes; the vocabulary's own contract fixes it as a boolean defaulting to false.
+        // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default)]
         bed_clear_asserted: bool,
     },
@@ -444,7 +444,7 @@ pub struct PausedPrint {
     /// The print.
     pub print_id: PrintId,
     /// Whether it may be resumed.
-    // llmlint: ignore[invalid_states_unrepresentable] The contract answers resumability as this boolean beside the print; the event that made a print non-resumable is named where it matters, in the `print_not_resumable` refusal of its resume.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub resumable: bool,
 }
 
@@ -453,10 +453,12 @@ pub struct PausedPrint {
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct ZHome {
-    /// Where in X and Y Z is homed.
-    pub xy: [f64; 2],
+    /// Where in X Z is homed, in millimetres.
+    pub x: f64,
+    /// Where in Y Z is homed, in millimetres.
+    pub y: f64,
     /// Whether homing Z brings a gantry down over the whole bed.
-    // llmlint: ignore[invalid_states_unrepresentable] The operator states this fact of the machine as a yes or no in `recovery.z_home_sweeps_bed`; both answers are machines that exist.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub sweeps_bed: bool,
 }
 
@@ -767,7 +769,8 @@ impl Sample for PausedPrint {
 impl Sample for ZHome {
     fn sample_full() -> Self {
         Self {
-            xy: [125.0, 105.0],
+            x: 125.0,
+            y: 105.0,
             sweeps_bed: true,
         }
     }

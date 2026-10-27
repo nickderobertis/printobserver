@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-159 types. The set is every type any crate declares under
+179 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -51,6 +51,369 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "AcknowledgementDisposition"
+}
+```
+
+### ActionAllowance
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "RecoveryActionKind": {
+      "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+      "oneOf": [
+        {
+          "const": "recover_lift",
+          "description": "Move the nozzle away from the bed.",
+          "type": "string"
+        },
+        {
+          "const": "recover_cool",
+          "description": "Every heater's target to zero.",
+          "type": "string"
+        },
+        {
+          "const": "recover_fan",
+          "description": "Set the part-cooling fan.",
+          "type": "string"
+        },
+        {
+          "const": "recover_heat",
+          "description": "Heat one tool.",
+          "type": "string"
+        },
+        {
+          "const": "recover_park",
+          "description": "Move the head to the configured park place.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_xy",
+          "description": "Home X and Y.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_z",
+          "description": "Home Z.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryField": {
+      "description": "One field of a recovery action a bound is held to.",
+      "oneOf": [
+        {
+          "const": "mm",
+          "description": "A lift's distance, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "percent",
+          "description": "The fan's percentage.",
+          "type": "string"
+        },
+        {
+          "const": "tool",
+          "description": "A heat's tool.",
+          "type": "string"
+        },
+        {
+          "const": "target_c",
+          "description": "A heat's target, in degrees Celsius.",
+          "type": "string"
+        },
+        {
+          "const": "clearance_asserted",
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "string"
+        },
+        {
+          "const": "bed_clear_asserted",
+          "description": "The operator's word that homing Z will meet nothing on the bed.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryRejection": {
+      "description": "Why a recovery request was refused, each a variant of its own so a\nconsumer tells them apart by matching rather than by reading words.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The asking actor's class is not granted this action.",
+          "properties": {
+            "actor_may_not_request": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "actor_may_not_request"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print is running, or being cancelled: nothing may move the printer\nunder it.",
+          "properties": {
+            "print_running": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_running"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "printer_unreachable",
+          "description": "The printer could not be read, or reports itself offline or in error.",
+          "type": "string"
+        },
+        {
+          "const": "z_untrusted",
+          "description": "Nothing printobserver did has told it where Z is, so no move that\ndepends on the nozzle's height above the part may be made.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The nozzle is not far enough above the tallest part the last print\nlaid down.",
+          "properties": {
+            "insufficient_clearance": {
+              "additionalProperties": false,
+              "properties": {
+                "margin_mm": {
+                  "description": "The clearance asked above it, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "nozzle_z_mm": {
+                  "description": "Where the printer reports the nozzle, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "tallest_mm": {
+                  "description": "The tallest part the last print laid down, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "nozzle_z_mm",
+                "tallest_mm",
+                "margin_mm"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "insufficient_clearance"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value the request carries is outside the range allowed for it.",
+          "properties": {
+            "out_of_bounds": {
+              "additionalProperties": false,
+              "properties": {
+                "allowed": {
+                  "$ref": "#/$defs/Range",
+                  "description": "The range allowed, inclusive."
+                },
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The field."
+                },
+                "requested": {
+                  "description": "The value asked for.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "field",
+                "requested",
+                "allowed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "out_of_bounds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "This action needs an assertion the request did not make.",
+          "properties": {
+            "assertion_required": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The assertion it needs."
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "assertion_required"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "recovery_not_configured",
+          "description": "The configuration states nothing of this printer's recovery facts, so\nno recovery action can be checked.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer cannot do what this action needs: a move its adapter does\nnot support, or a nozzle position it cannot read.",
+          "properties": {
+            "printer_cannot": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                },
+                "detail": {
+                  "description": "What the printer cannot do, in words.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "detail"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "printer_cannot"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Whether one recovery action is allowed now: `allowed`, and the refusal it would meet, present exactly when it is not.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/RecoveryActionKind"
+    },
+    "allowed": {
+      "description": "Whether it is allowed now.",
+      "type": "boolean"
+    },
+    "refusal": {
+      "$ref": "#/$defs/RecoveryRejection"
+    }
+  },
+  "required": [
+    "action",
+    "allowed"
+  ],
+  "title": "ActionAllowance",
+  "type": "object"
 }
 ```
 
@@ -1377,6 +1740,29 @@ Declared by `printobserver-server`.
           },
           "required": [
             "intervention_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
           ],
           "type": "object"
         },
@@ -3146,6 +3532,29 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "A spool command could not be carried out.",
           "properties": {
             "spool_refused": {
@@ -3753,6 +4162,13 @@ Declared by `printobserver-core`.
       "title": "Adjustable",
       "type": "string"
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -4185,6 +4601,29 @@ Declared by `printobserver-core`.
           },
           "required": [
             "intervention_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
           ],
           "type": "object"
         },
@@ -6060,6 +6499,38 @@ Declared by `printobserver-core`.
   "title": "AgentAssessmentPayload",
   "type": "object",
   "x-event-kind": "agent_assessment"
+}
+```
+
+### BedTemperature
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The bed heater, as a recovery read reports it.",
+  "properties": {
+    "actual_c": {
+      "description": "What it reads, in degrees Celsius, `null` when not reported.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "target_c": {
+      "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "title": "BedTemperature",
+  "type": "object"
 }
 ```
 
@@ -9581,6 +10052,48 @@ Declared by `printobserver-core`.
 }
 ```
 
+### Footprint
+
+Declared by `printobserver-printer-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+  "properties": {
+    "max_x": {
+      "description": "The largest X.",
+      "format": "double",
+      "type": "number"
+    },
+    "max_y": {
+      "description": "The largest Y.",
+      "format": "double",
+      "type": "number"
+    },
+    "min_x": {
+      "description": "The smallest X.",
+      "format": "double",
+      "type": "number"
+    },
+    "min_y": {
+      "description": "The smallest Y.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "min_x",
+    "min_y",
+    "max_x",
+    "max_y"
+  ],
+  "title": "Footprint",
+  "type": "object"
+}
+```
+
 ### FrameCause
 
 Declared by `printobserver-core`.
@@ -10956,6 +11469,82 @@ Declared by `printobserver-printer-api`.
     "state"
   ],
   "title": "JobSnapshot",
+  "type": "object"
+}
+```
+
+### LastPrint
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Footprint": {
+      "additionalProperties": false,
+      "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+      "properties": {
+        "max_x": {
+          "description": "The largest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_y": {
+          "description": "The largest Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_x": {
+          "description": "The smallest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_y": {
+          "description": "The smallest Y.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_x",
+        "min_y",
+        "max_x",
+        "max_y"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the last print laid down, read from its own G-code up to the last\nfile position recorded for it.",
+  "properties": {
+    "footprint": {
+      "$ref": "#/$defs/Footprint",
+      "description": "Where in X and Y it laid material."
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print."
+    },
+    "tallest_mm": {
+      "description": "The tallest part it laid down, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "print_id",
+    "tallest_mm",
+    "footprint"
+  ],
+  "title": "LastPrint",
   "type": "object"
 }
 ```
@@ -12891,6 +13480,43 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PausedPrint
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The print paused under the printer, and whether resuming it is still safe.\n\nA recovery action executed while it was paused moved the head, and\n`OctoPrint` restores no position on resume, so the rest of the layer would\nprint at the wrong height: such a print is not resumable.",
+  "properties": {
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print."
+    },
+    "resumable": {
+      "description": "Whether it may be resumed.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "print_id",
+    "resumable"
+  ],
+  "title": "PausedPrint",
+  "type": "object"
+}
+```
+
 ### PendingCharge
 
 Declared by `printobserver-core`.
@@ -13690,6 +14316,13 @@ Declared by `printobserver-core`.
       "title": "Adjustable",
       "type": "string"
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -14099,6 +14732,29 @@ Declared by `printobserver-core`.
           },
           "required": [
             "intervention_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
           ],
           "type": "object"
         },
@@ -20770,6 +21426,70 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PrintedExtent
+
+Declared by `printobserver-printer-api`.
+
+```json
+{
+  "$defs": {
+    "Footprint": {
+      "additionalProperties": false,
+      "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+      "properties": {
+        "max_x": {
+          "description": "The largest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_y": {
+          "description": "The largest Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_x": {
+          "description": "The smallest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_y": {
+          "description": "The smallest Y.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_x",
+        "min_y",
+        "max_x",
+        "max_y"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a file printed up to a byte position in it: the highest Z any\nextruding move reached, and where in XY it laid material.",
+  "properties": {
+    "footprint": {
+      "$ref": "#/$defs/Footprint",
+      "description": "The XY rectangle of every extruding move."
+    },
+    "tallest_mm": {
+      "description": "The highest Z an extruding move started or ended at, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "tallest_mm",
+    "footprint"
+  ],
+  "title": "PrintedExtent",
+  "type": "object"
+}
+```
+
 ### PrinterConnectionChangedPayload
 
 Declared by `printobserver-core`.
@@ -21532,6 +22252,3157 @@ Declared by `printobserver-core`.
 }
 ```
 
+### RecoveryAction
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Move the nozzle away from the bed by `mm`.",
+      "properties": {
+        "action": {
+          "const": "recover_lift",
+          "type": "string"
+        },
+        "mm": {
+          "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "mm"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set every heater's target to zero.",
+      "properties": {
+        "action": {
+          "const": "recover_cool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set the part-cooling fan.",
+      "properties": {
+        "action": {
+          "const": "recover_fan",
+          "type": "string"
+        },
+        "percent": {
+          "description": "The percentage, from 0 to 100.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "percent"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Heat one tool, within the safety envelope's range for it.",
+      "properties": {
+        "action": {
+          "const": "recover_heat",
+          "type": "string"
+        },
+        "clearance_asserted": {
+          "default": false,
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "boolean"
+        },
+        "target_c": {
+          "description": "The target, in degrees Celsius.",
+          "format": "double",
+          "type": "number"
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "tool",
+        "target_c"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Move the head to `recovery.park_xy`.",
+      "properties": {
+        "action": {
+          "const": "recover_park",
+          "type": "string"
+        },
+        "clearance_asserted": {
+          "default": false,
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Home X and Y.",
+      "properties": {
+        "action": {
+          "const": "recover_home_xy",
+          "type": "string"
+        },
+        "clearance_asserted": {
+          "default": false,
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Home Z.",
+      "properties": {
+        "action": {
+          "const": "recover_home_z",
+          "type": "string"
+        },
+        "bed_clear_asserted": {
+          "default": false,
+          "description": "The operator's word that homing Z will meet nothing on the bed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "RecoveryAction"
+}
+```
+
+### RecoveryActionKind
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+  "oneOf": [
+    {
+      "const": "recover_lift",
+      "description": "Move the nozzle away from the bed.",
+      "type": "string"
+    },
+    {
+      "const": "recover_cool",
+      "description": "Every heater's target to zero.",
+      "type": "string"
+    },
+    {
+      "const": "recover_fan",
+      "description": "Set the part-cooling fan.",
+      "type": "string"
+    },
+    {
+      "const": "recover_heat",
+      "description": "Heat one tool.",
+      "type": "string"
+    },
+    {
+      "const": "recover_park",
+      "description": "Move the head to the configured park place.",
+      "type": "string"
+    },
+    {
+      "const": "recover_home_xy",
+      "description": "Home X and Y.",
+      "type": "string"
+    },
+    {
+      "const": "recover_home_z",
+      "description": "Home Z.",
+      "type": "string"
+    }
+  ],
+  "title": "RecoveryActionKind"
+}
+```
+
+### RecoveryAnswer
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventRecord": {
+      "description": "One event, as the store holds it and the server serves it.\n\n`raw` holds the bytes exactly as received for an externally sourced event\nand is absent for an internally raised one \u2014 it is what makes the history\nauditable when a normalization turns out to be wrong. `print_id` is\noptional, because an externally sourced event may name no print this system\nknows.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "This event's identifier, minted by the store."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The image it arrived with, when it arrived with one."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "Which event this is."
+        },
+        "payload": {
+          "description": "What it carries, in the form its kind declares."
+        },
+        "print_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one."
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RawBytes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bytes exactly as received, for an externally sourced event."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource",
+          "description": "Where it came from."
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "received_at",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "ExecutionOutcome": {
+      "description": "What happened when an accepted action reached the printer.",
+      "oneOf": [
+        {
+          "const": "succeeded",
+          "description": "The printer took it.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer did not, for this reason.",
+          "properties": {
+            "failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "failed"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "RecoveryAction": {
+      "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Move the nozzle away from the bed by `mm`.",
+          "properties": {
+            "action": {
+              "const": "recover_lift",
+              "type": "string"
+            },
+            "mm": {
+              "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "mm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set every heater's target to zero.",
+          "properties": {
+            "action": {
+              "const": "recover_cool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan.",
+          "properties": {
+            "action": {
+              "const": "recover_fan",
+              "type": "string"
+            },
+            "percent": {
+              "description": "The percentage, from 0 to 100.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "percent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Heat one tool, within the safety envelope's range for it.",
+          "properties": {
+            "action": {
+              "const": "recover_heat",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            },
+            "target_c": {
+              "description": "The target, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Move the head to `recovery.park_xy`.",
+          "properties": {
+            "action": {
+              "const": "recover_park",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home X and Y.",
+          "properties": {
+            "action": {
+              "const": "recover_home_xy",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home Z.",
+          "properties": {
+            "action": {
+              "const": "recover_home_z",
+              "type": "string"
+            },
+            "bed_clear_asserted": {
+              "default": false,
+              "description": "The operator's word that homing Z will meet nothing on the bed.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecoveryActionKind": {
+      "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+      "oneOf": [
+        {
+          "const": "recover_lift",
+          "description": "Move the nozzle away from the bed.",
+          "type": "string"
+        },
+        {
+          "const": "recover_cool",
+          "description": "Every heater's target to zero.",
+          "type": "string"
+        },
+        {
+          "const": "recover_fan",
+          "description": "Set the part-cooling fan.",
+          "type": "string"
+        },
+        {
+          "const": "recover_heat",
+          "description": "Heat one tool.",
+          "type": "string"
+        },
+        {
+          "const": "recover_park",
+          "description": "Move the head to the configured park place.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_xy",
+          "description": "Home X and Y.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_z",
+          "description": "Home Z.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryField": {
+      "description": "One field of a recovery action a bound is held to.",
+      "oneOf": [
+        {
+          "const": "mm",
+          "description": "A lift's distance, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "percent",
+          "description": "The fan's percentage.",
+          "type": "string"
+        },
+        {
+          "const": "tool",
+          "description": "A heat's tool.",
+          "type": "string"
+        },
+        {
+          "const": "target_c",
+          "description": "A heat's target, in degrees Celsius.",
+          "type": "string"
+        },
+        {
+          "const": "clearance_asserted",
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "string"
+        },
+        {
+          "const": "bed_clear_asserted",
+          "description": "The operator's word that homing Z will meet nothing on the bed.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryRejection": {
+      "description": "Why a recovery request was refused, each a variant of its own so a\nconsumer tells them apart by matching rather than by reading words.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The asking actor's class is not granted this action.",
+          "properties": {
+            "actor_may_not_request": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "actor_may_not_request"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print is running, or being cancelled: nothing may move the printer\nunder it.",
+          "properties": {
+            "print_running": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_running"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "printer_unreachable",
+          "description": "The printer could not be read, or reports itself offline or in error.",
+          "type": "string"
+        },
+        {
+          "const": "z_untrusted",
+          "description": "Nothing printobserver did has told it where Z is, so no move that\ndepends on the nozzle's height above the part may be made.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The nozzle is not far enough above the tallest part the last print\nlaid down.",
+          "properties": {
+            "insufficient_clearance": {
+              "additionalProperties": false,
+              "properties": {
+                "margin_mm": {
+                  "description": "The clearance asked above it, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "nozzle_z_mm": {
+                  "description": "Where the printer reports the nozzle, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "tallest_mm": {
+                  "description": "The tallest part the last print laid down, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "nozzle_z_mm",
+                "tallest_mm",
+                "margin_mm"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "insufficient_clearance"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value the request carries is outside the range allowed for it.",
+          "properties": {
+            "out_of_bounds": {
+              "additionalProperties": false,
+              "properties": {
+                "allowed": {
+                  "$ref": "#/$defs/Range",
+                  "description": "The range allowed, inclusive."
+                },
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The field."
+                },
+                "requested": {
+                  "description": "The value asked for.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "field",
+                "requested",
+                "allowed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "out_of_bounds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "This action needs an assertion the request did not make.",
+          "properties": {
+            "assertion_required": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The assertion it needs."
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "assertion_required"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "recovery_not_configured",
+          "description": "The configuration states nothing of this printer's recovery facts, so\nno recovery action can be checked.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer cannot do what this action needs: a move its adapter does\nnot support, or a nozzle position it cannot read.",
+          "properties": {
+            "printer_cannot": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                },
+                "detail": {
+                  "description": "What the printer cannot do, in words.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "detail"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "printer_cannot"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a recovery action answers, carried out or refused.\n\nA refusal is the same shape and deliberately so: `rejection` carries the\nreason, and the two events are what the request wrote.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/RecoveryAction",
+      "description": "What was asked for."
+    },
+    "detail": {
+      "description": "What became of it, in a sentence for a person: why it was refused and\nwhat would let it go ahead, or what it did.",
+      "type": "string"
+    },
+    "events": {
+      "description": "The `recovery_requested` event, and the `recovery_executed` or\n`recovery_rejected` beside it.",
+      "items": {
+        "$ref": "#/$defs/EventRecord"
+      },
+      "type": "array"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionOutcome"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the printer made of it, when it reached the printer."
+    },
+    "rejection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecoveryRejection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why it was refused, when it was."
+    }
+  },
+  "required": [
+    "action",
+    "detail",
+    "events"
+  ],
+  "title": "RecoveryAnswer",
+  "type": "object"
+}
+```
+
+### RecoveryExecutedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "ExecutionOutcome": {
+      "description": "What happened when an accepted action reached the printer.",
+      "oneOf": [
+        {
+          "const": "succeeded",
+          "description": "The printer took it.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer did not, for this reason.",
+          "properties": {
+            "failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "failed"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecoveryAction": {
+      "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Move the nozzle away from the bed by `mm`.",
+          "properties": {
+            "action": {
+              "const": "recover_lift",
+              "type": "string"
+            },
+            "mm": {
+              "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "mm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set every heater's target to zero.",
+          "properties": {
+            "action": {
+              "const": "recover_cool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan.",
+          "properties": {
+            "action": {
+              "const": "recover_fan",
+              "type": "string"
+            },
+            "percent": {
+              "description": "The percentage, from 0 to 100.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "percent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Heat one tool, within the safety envelope's range for it.",
+          "properties": {
+            "action": {
+              "const": "recover_heat",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            },
+            "target_c": {
+              "description": "The target, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Move the head to `recovery.park_xy`.",
+          "properties": {
+            "action": {
+              "const": "recover_park",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home X and Y.",
+          "properties": {
+            "action": {
+              "const": "recover_home_xy",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home Z.",
+          "properties": {
+            "action": {
+              "const": "recover_home_z",
+              "type": "string"
+            },
+            "bed_clear_asserted": {
+              "default": false,
+              "description": "The operator's word that homing Z will meet nothing on the bed.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A recovery action reached the printer, and what the printer made of it.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/RecoveryAction",
+      "description": "What was asked for."
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who asked."
+    },
+    "outcome": {
+      "$ref": "#/$defs/ExecutionOutcome",
+      "description": "What the printer made of it."
+    },
+    "reason": {
+      "description": "Why.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "actor",
+    "reason",
+    "outcome"
+  ],
+  "title": "RecoveryExecutedPayload",
+  "type": "object",
+  "x-event-kind": "recovery_executed"
+}
+```
+
+### RecoveryField
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One field of a recovery action a bound is held to.",
+  "oneOf": [
+    {
+      "const": "mm",
+      "description": "A lift's distance, in millimetres.",
+      "type": "string"
+    },
+    {
+      "const": "percent",
+      "description": "The fan's percentage.",
+      "type": "string"
+    },
+    {
+      "const": "tool",
+      "description": "A heat's tool.",
+      "type": "string"
+    },
+    {
+      "const": "target_c",
+      "description": "A heat's target, in degrees Celsius.",
+      "type": "string"
+    },
+    {
+      "const": "clearance_asserted",
+      "description": "The operator's word that the nozzle is clear of the part.",
+      "type": "string"
+    },
+    {
+      "const": "bed_clear_asserted",
+      "description": "The operator's word that homing Z will meet nothing on the bed.",
+      "type": "string"
+    }
+  ],
+  "title": "RecoveryField"
+}
+```
+
+### RecoveryPosition
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Where the print head is, in millimetres, as the printer reported it.",
+  "properties": {
+    "x": {
+      "description": "X.",
+      "format": "double",
+      "type": "number"
+    },
+    "y": {
+      "description": "Y.",
+      "format": "double",
+      "type": "number"
+    },
+    "z": {
+      "description": "Z.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "x",
+    "y",
+    "z"
+  ],
+  "title": "RecoveryPosition",
+  "type": "object"
+}
+```
+
+### RecoveryRejectedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "RecoveryAction": {
+      "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Move the nozzle away from the bed by `mm`.",
+          "properties": {
+            "action": {
+              "const": "recover_lift",
+              "type": "string"
+            },
+            "mm": {
+              "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "mm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set every heater's target to zero.",
+          "properties": {
+            "action": {
+              "const": "recover_cool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan.",
+          "properties": {
+            "action": {
+              "const": "recover_fan",
+              "type": "string"
+            },
+            "percent": {
+              "description": "The percentage, from 0 to 100.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "percent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Heat one tool, within the safety envelope's range for it.",
+          "properties": {
+            "action": {
+              "const": "recover_heat",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            },
+            "target_c": {
+              "description": "The target, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Move the head to `recovery.park_xy`.",
+          "properties": {
+            "action": {
+              "const": "recover_park",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home X and Y.",
+          "properties": {
+            "action": {
+              "const": "recover_home_xy",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home Z.",
+          "properties": {
+            "action": {
+              "const": "recover_home_z",
+              "type": "string"
+            },
+            "bed_clear_asserted": {
+              "default": false,
+              "description": "The operator's word that homing Z will meet nothing on the bed.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecoveryActionKind": {
+      "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+      "oneOf": [
+        {
+          "const": "recover_lift",
+          "description": "Move the nozzle away from the bed.",
+          "type": "string"
+        },
+        {
+          "const": "recover_cool",
+          "description": "Every heater's target to zero.",
+          "type": "string"
+        },
+        {
+          "const": "recover_fan",
+          "description": "Set the part-cooling fan.",
+          "type": "string"
+        },
+        {
+          "const": "recover_heat",
+          "description": "Heat one tool.",
+          "type": "string"
+        },
+        {
+          "const": "recover_park",
+          "description": "Move the head to the configured park place.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_xy",
+          "description": "Home X and Y.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_z",
+          "description": "Home Z.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryField": {
+      "description": "One field of a recovery action a bound is held to.",
+      "oneOf": [
+        {
+          "const": "mm",
+          "description": "A lift's distance, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "percent",
+          "description": "The fan's percentage.",
+          "type": "string"
+        },
+        {
+          "const": "tool",
+          "description": "A heat's tool.",
+          "type": "string"
+        },
+        {
+          "const": "target_c",
+          "description": "A heat's target, in degrees Celsius.",
+          "type": "string"
+        },
+        {
+          "const": "clearance_asserted",
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "string"
+        },
+        {
+          "const": "bed_clear_asserted",
+          "description": "The operator's word that homing Z will meet nothing on the bed.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryRejection": {
+      "description": "Why a recovery request was refused, each a variant of its own so a\nconsumer tells them apart by matching rather than by reading words.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The asking actor's class is not granted this action.",
+          "properties": {
+            "actor_may_not_request": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "actor_may_not_request"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print is running, or being cancelled: nothing may move the printer\nunder it.",
+          "properties": {
+            "print_running": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_running"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "printer_unreachable",
+          "description": "The printer could not be read, or reports itself offline or in error.",
+          "type": "string"
+        },
+        {
+          "const": "z_untrusted",
+          "description": "Nothing printobserver did has told it where Z is, so no move that\ndepends on the nozzle's height above the part may be made.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The nozzle is not far enough above the tallest part the last print\nlaid down.",
+          "properties": {
+            "insufficient_clearance": {
+              "additionalProperties": false,
+              "properties": {
+                "margin_mm": {
+                  "description": "The clearance asked above it, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "nozzle_z_mm": {
+                  "description": "Where the printer reports the nozzle, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "tallest_mm": {
+                  "description": "The tallest part the last print laid down, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "nozzle_z_mm",
+                "tallest_mm",
+                "margin_mm"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "insufficient_clearance"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value the request carries is outside the range allowed for it.",
+          "properties": {
+            "out_of_bounds": {
+              "additionalProperties": false,
+              "properties": {
+                "allowed": {
+                  "$ref": "#/$defs/Range",
+                  "description": "The range allowed, inclusive."
+                },
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The field."
+                },
+                "requested": {
+                  "description": "The value asked for.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "field",
+                "requested",
+                "allowed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "out_of_bounds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "This action needs an assertion the request did not make.",
+          "properties": {
+            "assertion_required": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The assertion it needs."
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "assertion_required"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "recovery_not_configured",
+          "description": "The configuration states nothing of this printer's recovery facts, so\nno recovery action can be checked.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer cannot do what this action needs: a move its adapter does\nnot support, or a nozzle position it cannot read.",
+          "properties": {
+            "printer_cannot": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                },
+                "detail": {
+                  "description": "What the printer cannot do, in words.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "detail"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "printer_cannot"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A recovery action was refused, and reached nothing.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/RecoveryAction",
+      "description": "What was asked for."
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who asked."
+    },
+    "reason": {
+      "description": "Why.",
+      "type": "string"
+    },
+    "rejection": {
+      "$ref": "#/$defs/RecoveryRejection",
+      "description": "Why it was refused."
+    }
+  },
+  "required": [
+    "action",
+    "actor",
+    "reason",
+    "rejection"
+  ],
+  "title": "RecoveryRejectedPayload",
+  "type": "object",
+  "x-event-kind": "recovery_rejected"
+}
+```
+
+### RecoveryRejection
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "RecoveryActionKind": {
+      "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+      "oneOf": [
+        {
+          "const": "recover_lift",
+          "description": "Move the nozzle away from the bed.",
+          "type": "string"
+        },
+        {
+          "const": "recover_cool",
+          "description": "Every heater's target to zero.",
+          "type": "string"
+        },
+        {
+          "const": "recover_fan",
+          "description": "Set the part-cooling fan.",
+          "type": "string"
+        },
+        {
+          "const": "recover_heat",
+          "description": "Heat one tool.",
+          "type": "string"
+        },
+        {
+          "const": "recover_park",
+          "description": "Move the head to the configured park place.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_xy",
+          "description": "Home X and Y.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_z",
+          "description": "Home Z.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryField": {
+      "description": "One field of a recovery action a bound is held to.",
+      "oneOf": [
+        {
+          "const": "mm",
+          "description": "A lift's distance, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "percent",
+          "description": "The fan's percentage.",
+          "type": "string"
+        },
+        {
+          "const": "tool",
+          "description": "A heat's tool.",
+          "type": "string"
+        },
+        {
+          "const": "target_c",
+          "description": "A heat's target, in degrees Celsius.",
+          "type": "string"
+        },
+        {
+          "const": "clearance_asserted",
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "string"
+        },
+        {
+          "const": "bed_clear_asserted",
+          "description": "The operator's word that homing Z will meet nothing on the bed.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a recovery request was refused, each a variant of its own so a\nconsumer tells them apart by matching rather than by reading words.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The asking actor's class is not granted this action.",
+      "properties": {
+        "actor_may_not_request": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/RecoveryActionKind",
+              "description": "The action asked for."
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "actor_may_not_request"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A print is running, or being cancelled: nothing may move the printer\nunder it.",
+      "properties": {
+        "print_running": {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/PrinterState",
+              "description": "The state the printer reported."
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "print_running"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "printer_unreachable",
+      "description": "The printer could not be read, or reports itself offline or in error.",
+      "type": "string"
+    },
+    {
+      "const": "z_untrusted",
+      "description": "Nothing printobserver did has told it where Z is, so no move that\ndepends on the nozzle's height above the part may be made.",
+      "type": "string"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The nozzle is not far enough above the tallest part the last print\nlaid down.",
+      "properties": {
+        "insufficient_clearance": {
+          "additionalProperties": false,
+          "properties": {
+            "margin_mm": {
+              "description": "The clearance asked above it, in millimetres.",
+              "format": "double",
+              "type": "number"
+            },
+            "nozzle_z_mm": {
+              "description": "Where the printer reports the nozzle, in millimetres.",
+              "format": "double",
+              "type": "number"
+            },
+            "tallest_mm": {
+              "description": "The tallest part the last print laid down, in millimetres.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "nozzle_z_mm",
+            "tallest_mm",
+            "margin_mm"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "insufficient_clearance"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A value the request carries is outside the range allowed for it.",
+      "properties": {
+        "out_of_bounds": {
+          "additionalProperties": false,
+          "properties": {
+            "allowed": {
+              "$ref": "#/$defs/Range",
+              "description": "The range allowed, inclusive."
+            },
+            "field": {
+              "$ref": "#/$defs/RecoveryField",
+              "description": "The field."
+            },
+            "requested": {
+              "description": "The value asked for.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "field",
+            "requested",
+            "allowed"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "out_of_bounds"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "This action needs an assertion the request did not make.",
+      "properties": {
+        "assertion_required": {
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "$ref": "#/$defs/RecoveryField",
+              "description": "The assertion it needs."
+            }
+          },
+          "required": [
+            "field"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "assertion_required"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "recovery_not_configured",
+      "description": "The configuration states nothing of this printer's recovery facts, so\nno recovery action can be checked.",
+      "type": "string"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The printer cannot do what this action needs: a move its adapter does\nnot support, or a nozzle position it cannot read.",
+      "properties": {
+        "printer_cannot": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/RecoveryActionKind",
+              "description": "The action asked for."
+            },
+            "detail": {
+              "description": "What the printer cannot do, in words.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "detail"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "printer_cannot"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "RecoveryRejection"
+}
+```
+
+### RecoveryRequestedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryAction": {
+      "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Move the nozzle away from the bed by `mm`.",
+          "properties": {
+            "action": {
+              "const": "recover_lift",
+              "type": "string"
+            },
+            "mm": {
+              "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "mm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set every heater's target to zero.",
+          "properties": {
+            "action": {
+              "const": "recover_cool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan.",
+          "properties": {
+            "action": {
+              "const": "recover_fan",
+              "type": "string"
+            },
+            "percent": {
+              "description": "The percentage, from 0 to 100.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "percent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Heat one tool, within the safety envelope's range for it.",
+          "properties": {
+            "action": {
+              "const": "recover_heat",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            },
+            "target_c": {
+              "description": "The target, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Move the head to `recovery.park_xy`.",
+          "properties": {
+            "action": {
+              "const": "recover_park",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home X and Y.",
+          "properties": {
+            "action": {
+              "const": "recover_home_xy",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home Z.",
+          "properties": {
+            "action": {
+              "const": "recover_home_z",
+              "type": "string"
+            },
+            "bed_clear_asserted": {
+              "default": false,
+              "description": "The operator's word that homing Z will meet nothing on the bed.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A recovery action was asked for.\n\nThe printer's rather than any print's, so it is written with no print.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/RecoveryAction",
+      "description": "What was asked for."
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who asked."
+    },
+    "reason": {
+      "description": "Why.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "actor",
+    "reason"
+  ],
+  "title": "RecoveryRequestedPayload",
+  "type": "object",
+  "x-event-kind": "recovery_requested"
+}
+```
+
+### RecoveryStatus
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "ActionAllowance": {
+      "additionalProperties": false,
+      "description": "Whether one recovery action is allowed now: `allowed`, and the refusal it would meet, present exactly when it is not.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/RecoveryActionKind"
+        },
+        "allowed": {
+          "description": "Whether it is allowed now.",
+          "type": "boolean"
+        },
+        "refusal": {
+          "$ref": "#/$defs/RecoveryRejection"
+        }
+      },
+      "required": [
+        "action",
+        "allowed"
+      ],
+      "title": "ActionAllowance",
+      "type": "object"
+    },
+    "BedTemperature": {
+      "additionalProperties": false,
+      "description": "The bed heater, as a recovery read reports it.",
+      "properties": {
+        "actual_c": {
+          "description": "What it reads, in degrees Celsius, `null` when not reported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_c": {
+          "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Footprint": {
+      "additionalProperties": false,
+      "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+      "properties": {
+        "max_x": {
+          "description": "The largest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_y": {
+          "description": "The largest Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_x": {
+          "description": "The smallest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_y": {
+          "description": "The smallest Y.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_x",
+        "min_y",
+        "max_x",
+        "max_y"
+      ],
+      "type": "object"
+    },
+    "LastPrint": {
+      "additionalProperties": false,
+      "description": "What the last print laid down, read from its own G-code up to the last\nfile position recorded for it.",
+      "properties": {
+        "footprint": {
+          "$ref": "#/$defs/Footprint",
+          "description": "Where in X and Y it laid material."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "tallest_mm": {
+          "description": "The tallest part it laid down, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "print_id",
+        "tallest_mm",
+        "footprint"
+      ],
+      "type": "object"
+    },
+    "PausedPrint": {
+      "additionalProperties": false,
+      "description": "The print paused under the printer, and whether resuming it is still safe.\n\nA recovery action executed while it was paused moved the head, and\n`OctoPrint` restores no position on resume, so the rest of the layer would\nprint at the wrong height: such a print is not resumable.",
+      "properties": {
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print."
+        },
+        "resumable": {
+          "description": "Whether it may be resumed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "print_id",
+        "resumable"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "RecoveryActionKind": {
+      "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+      "oneOf": [
+        {
+          "const": "recover_lift",
+          "description": "Move the nozzle away from the bed.",
+          "type": "string"
+        },
+        {
+          "const": "recover_cool",
+          "description": "Every heater's target to zero.",
+          "type": "string"
+        },
+        {
+          "const": "recover_fan",
+          "description": "Set the part-cooling fan.",
+          "type": "string"
+        },
+        {
+          "const": "recover_heat",
+          "description": "Heat one tool.",
+          "type": "string"
+        },
+        {
+          "const": "recover_park",
+          "description": "Move the head to the configured park place.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_xy",
+          "description": "Home X and Y.",
+          "type": "string"
+        },
+        {
+          "const": "recover_home_z",
+          "description": "Home Z.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryField": {
+      "description": "One field of a recovery action a bound is held to.",
+      "oneOf": [
+        {
+          "const": "mm",
+          "description": "A lift's distance, in millimetres.",
+          "type": "string"
+        },
+        {
+          "const": "percent",
+          "description": "The fan's percentage.",
+          "type": "string"
+        },
+        {
+          "const": "tool",
+          "description": "A heat's tool.",
+          "type": "string"
+        },
+        {
+          "const": "target_c",
+          "description": "A heat's target, in degrees Celsius.",
+          "type": "string"
+        },
+        {
+          "const": "clearance_asserted",
+          "description": "The operator's word that the nozzle is clear of the part.",
+          "type": "string"
+        },
+        {
+          "const": "bed_clear_asserted",
+          "description": "The operator's word that homing Z will meet nothing on the bed.",
+          "type": "string"
+        }
+      ]
+    },
+    "RecoveryPosition": {
+      "additionalProperties": false,
+      "description": "Where the print head is, in millimetres, as the printer reported it.",
+      "properties": {
+        "x": {
+          "description": "X.",
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "description": "Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "z": {
+          "description": "Z.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "type": "object"
+    },
+    "RecoveryRejection": {
+      "description": "Why a recovery request was refused, each a variant of its own so a\nconsumer tells them apart by matching rather than by reading words.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The asking actor's class is not granted this action.",
+          "properties": {
+            "actor_may_not_request": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "actor_may_not_request"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A print is running, or being cancelled: nothing may move the printer\nunder it.",
+          "properties": {
+            "print_running": {
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/PrinterState",
+                  "description": "The state the printer reported."
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_running"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "printer_unreachable",
+          "description": "The printer could not be read, or reports itself offline or in error.",
+          "type": "string"
+        },
+        {
+          "const": "z_untrusted",
+          "description": "Nothing printobserver did has told it where Z is, so no move that\ndepends on the nozzle's height above the part may be made.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The nozzle is not far enough above the tallest part the last print\nlaid down.",
+          "properties": {
+            "insufficient_clearance": {
+              "additionalProperties": false,
+              "properties": {
+                "margin_mm": {
+                  "description": "The clearance asked above it, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "nozzle_z_mm": {
+                  "description": "Where the printer reports the nozzle, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                },
+                "tallest_mm": {
+                  "description": "The tallest part the last print laid down, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "nozzle_z_mm",
+                "tallest_mm",
+                "margin_mm"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "insufficient_clearance"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value the request carries is outside the range allowed for it.",
+          "properties": {
+            "out_of_bounds": {
+              "additionalProperties": false,
+              "properties": {
+                "allowed": {
+                  "$ref": "#/$defs/Range",
+                  "description": "The range allowed, inclusive."
+                },
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The field."
+                },
+                "requested": {
+                  "description": "The value asked for.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "field",
+                "requested",
+                "allowed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "out_of_bounds"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "This action needs an assertion the request did not make.",
+          "properties": {
+            "assertion_required": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "$ref": "#/$defs/RecoveryField",
+                  "description": "The assertion it needs."
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "assertion_required"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "recovery_not_configured",
+          "description": "The configuration states nothing of this printer's recovery facts, so\nno recovery action can be checked.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer cannot do what this action needs: a move its adapter does\nnot support, or a nozzle position it cannot read.",
+          "properties": {
+            "printer_cannot": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/RecoveryActionKind",
+                  "description": "The action asked for."
+                },
+                "detail": {
+                  "description": "What the printer cannot do, in words.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "detail"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "printer_cannot"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecoveryTemperatures": {
+      "additionalProperties": false,
+      "description": "Every heater, as a recovery read reports it.",
+      "properties": {
+        "bed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BedTemperature"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bed, `null` when the printer reports none."
+        },
+        "tools": {
+          "description": "Each tool.",
+          "items": {
+            "$ref": "#/$defs/ToolTemperature"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "tools"
+      ],
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "ToolTemperature": {
+      "additionalProperties": false,
+      "description": "One tool heater, as a recovery read reports it.",
+      "properties": {
+        "actual_c": {
+          "description": "What it reads, in degrees Celsius, `null` when not reported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_c": {
+          "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "type": "object"
+    },
+    "ZHome": {
+      "additionalProperties": false,
+      "description": "Where the machine homes Z, and whether doing so sweeps the bed.",
+      "properties": {
+        "sweeps_bed": {
+          "description": "Whether homing Z brings a gantry down over the whole bed.",
+          "type": "boolean"
+        },
+        "x": {
+          "description": "Where in X Z is homed, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y": {
+          "description": "Where in Y Z is homed, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "sweeps_bed"
+      ],
+      "type": "object"
+    },
+    "ZTrust": {
+      "description": "Whether Z is trusted, and since when or why not.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Z is where printobserver last put it, from this instant on: a `home_z`\nit executed, or a print it started.",
+          "properties": {
+            "trusted_since": {
+              "$ref": "#/$defs/Timestamp"
+            }
+          },
+          "required": [
+            "trusted_since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Z is not trusted, and why.",
+          "properties": {
+            "untrusted": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "untrusted"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a recovery read answers: everything a recovery is checked against,\nand what each action would meet now.",
+  "properties": {
+    "actions": {
+      "description": "Each action, and whether it is allowed now.",
+      "items": {
+        "$ref": "#/$defs/ActionAllowance"
+      },
+      "type": "array"
+    },
+    "last_print": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LastPrint"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the last print laid down, `null` when there is no print with a\nfile to read or its file could not be read."
+    },
+    "paused_print": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PausedPrint"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The print paused under the printer, `null` when none is."
+    },
+    "position": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecoveryPosition"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Where the head is, read only while Z is trusted; `null` otherwise or\nwhen it could not be read."
+    },
+    "state": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state the printer reports; `offline` when it could not be read."
+    },
+    "temperatures": {
+      "$ref": "#/$defs/RecoveryTemperatures",
+      "description": "Every heater."
+    },
+    "z_home": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ZHome"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Where Z is homed and whether that sweeps the bed, `null` when\nrecovery is not configured."
+    },
+    "z_trust": {
+      "$ref": "#/$defs/ZTrust",
+      "description": "Whether Z is trusted."
+    }
+  },
+  "required": [
+    "state",
+    "z_trust",
+    "temperatures",
+    "actions"
+  ],
+  "title": "RecoveryStatus",
+  "type": "object"
+}
+```
+
+### RecoveryTemperatures
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "BedTemperature": {
+      "additionalProperties": false,
+      "description": "The bed heater, as a recovery read reports it.",
+      "properties": {
+        "actual_c": {
+          "description": "What it reads, in degrees Celsius, `null` when not reported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_c": {
+          "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ToolTemperature": {
+      "additionalProperties": false,
+      "description": "One tool heater, as a recovery read reports it.",
+      "properties": {
+        "actual_c": {
+          "description": "What it reads, in degrees Celsius, `null` when not reported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_c": {
+          "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Every heater, as a recovery read reports it.",
+  "properties": {
+    "bed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BedTemperature"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The bed, `null` when the printer reports none."
+    },
+    "tools": {
+      "description": "Each tool.",
+      "items": {
+        "$ref": "#/$defs/ToolTemperature"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "tools"
+  ],
+  "title": "RecoveryTemperatures",
+  "type": "object"
+}
+```
+
 ### RejectionReason
 
 Declared by `printobserver-core`.
@@ -21648,6 +25519,13 @@ Declared by `printobserver-core`.
       "description": "One thing an adjustment may change.",
       "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
       "title": "Adjustable",
+      "type": "string"
+    },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
       "type": "string"
     },
     "InterventionId": {
@@ -22459,6 +26337,29 @@ Declared by `printobserver-core`.
       },
       "required": [
         "intervention_still_active"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+      "properties": {
+        "print_not_resumable": {
+          "additionalProperties": false,
+          "properties": {
+            "recovery_event_id": {
+              "$ref": "#/$defs/EventId",
+              "description": "The `recovery_executed` event that made it so."
+            }
+          },
+          "required": [
+            "recovery_event_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "print_not_resumable"
       ],
       "type": "object"
     },
@@ -24793,6 +28694,29 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "A spool command could not be carried out.",
           "properties": {
             "spool_refused": {
@@ -25614,6 +29538,13 @@ Declared by `printobserver-core`.
       "title": "Adjustable",
       "type": "string"
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -26046,6 +29977,29 @@ Declared by `printobserver-core`.
           },
           "required": [
             "intervention_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
           ],
           "type": "object"
         },
@@ -30824,6 +34778,46 @@ Declared by `printobserver-printer-api`.
 }
 ```
 
+### ToolTemperature
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One tool heater, as a recovery read reports it.",
+  "properties": {
+    "actual_c": {
+      "description": "What it reads, in degrees Celsius, `null` when not reported.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "target_c": {
+      "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool"
+  ],
+  "title": "ToolTemperature",
+  "type": "object"
+}
+```
+
 ### TurnOutcome
 
 Declared by `printobserver-supervisor-api`.
@@ -31994,6 +35988,89 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "UnverifiedReason"
+}
+```
+
+### ZHome
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Where the machine homes Z, and whether doing so sweeps the bed.",
+  "properties": {
+    "sweeps_bed": {
+      "description": "Whether homing Z brings a gantry down over the whole bed.",
+      "type": "boolean"
+    },
+    "x": {
+      "description": "Where in X Z is homed, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "y": {
+      "description": "Where in Y Z is homed, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "x",
+    "y",
+    "sweeps_bed"
+  ],
+  "title": "ZHome",
+  "type": "object"
+}
+```
+
+### ZTrust
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether Z is trusted, and since when or why not.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Z is where printobserver last put it, from this instant on: a `home_z`\nit executed, or a print it started.",
+      "properties": {
+        "trusted_since": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "trusted_since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Z is not trusted, and why.",
+      "properties": {
+        "untrusted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "untrusted"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ZTrust"
 }
 ```
 
@@ -33693,6 +37770,419 @@ Declared by `printobserver-server`.
         {
           "answer": "rejected",
           "type": "SpoolCommandAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": null,
+      "method": "GET",
+      "name": "recover_status",
+      "parameters": [],
+      "path": "/v1/printer/recovery",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryStatus"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_lift",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_lift",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "mm",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_lift",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_cool",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_cool",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_cool",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_fan",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_fan",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "percent",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "The percentage, from 0 to 100.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_fan",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_heat",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_heat",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "clearance_asserted",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "default": false,
+            "description": "The operator's word that the nozzle is clear of the part.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        },
+        {
+          "kind": "number",
+          "located": "body",
+          "name": "target_c",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "The target, in degrees Celsius.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        {
+          "kind": "integer",
+          "located": "body",
+          "name": "tool",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "The tool, in the printer's own numbering.",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_heat",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_park",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_park",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "clearance_asserted",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "default": false,
+            "description": "The operator's word that the nozzle is clear of the part.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_park",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_home_xy",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_home_xy",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "clearance_asserted",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "default": false,
+            "description": "The operator's word that the nozzle is clear of the part.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_home_xy",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "mutating:recover_home_z",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "recover_home_z",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor",
+            "description": "Who is asking."
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "bed_clear_asserted",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "default": false,
+            "description": "The operator's word that homing Z will meet nothing on the bed.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "description": "Why the actor is asking for this.",
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/recovery/recover_home_z",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecoveryAnswer"
+        },
+        {
+          "answer": "rejected",
+          "type": "RecoveryAnswer"
         }
       ]
     }

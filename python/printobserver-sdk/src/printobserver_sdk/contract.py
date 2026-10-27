@@ -3677,8 +3677,10 @@ class ZHome(TypedDict):
 
     # Whether homing Z brings a gantry down over the whole bed.
     sweeps_bed: bool
-    # Where in X and Y Z is homed.
-    xy: list[float]
+    # Where in X Z is homed, in millimetres.
+    x: float
+    # Where in Y Z is homed, in millimetres.
+    y: float
 
 
 class ZTrustTrustedSince(TypedDict):

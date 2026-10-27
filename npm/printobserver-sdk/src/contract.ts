@@ -2192,8 +2192,10 @@ export type UnverifiedReason =
 export interface ZHome {
   /** Whether homing Z brings a gantry down over the whole bed. */
   sweeps_bed: boolean;
-  /** Where in X and Y Z is homed. */
-  xy: Array<number>;
+  /** Where in X Z is homed, in millimetres. */
+  x: number;
+  /** Where in Y Z is homed, in millimetres. */
+  y: number;
 }
 
 /** Whether Z is trusted, and since when or why not. */

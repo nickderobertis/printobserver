@@ -2573,9 +2573,9 @@ def test_recover_status_sends_what_it_declares_and_answers_what_was_sent() -> No
         'le": true}, "position": {"x": 1.5, "y": 1.5, "z": 1.5}, "sta'
         'te": "operational", "temperatures": {"bed": {"actual_c": 1.5'
         ', "target_c": 1.5}, "tools": [{"actual_c": 1.5, "target_c": '
-        '1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "xy": [1.5'
-        ']}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e-8f90-12'
-        '3456789abc"}}'
+        '1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "x": 1.5, '
+        '"y": 1.5}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc"}}'
     )
 
     with Host(200, answer) as host:

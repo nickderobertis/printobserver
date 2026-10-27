@@ -247,6 +247,11 @@ FAILURE_CLASSES: dict[str, str] = {
         "with `--into`, and run `retain` again before the bring-down: the instance's "
         "logs are still where it wrote them until then"
     ),
+    "terminal-refused": (
+        "run `up` first and name the line with `--line`: `terminal` types one line at an "
+        "instance that is already answering, and `connect` reconnects its printer; the "
+        "instance's own answer says why it refused either"
+    ),
     "upload-refused": (
         "run `up` first and name the file with `--file`: `upload` puts a file on an "
         "instance that is already answering, and the instance's own answer says why it "
@@ -1085,6 +1090,47 @@ def upload(instance: Instance, gcode: Path, as_name: str | None) -> Uploaded:
     return Uploaded(file_name=name, origin="local")
 
 
+class Typed(TypedDict):
+    """What `terminal` and `connect` answer: what was asked of the instance."""
+
+    sent: str
+
+
+def at_the_terminal(instance: Instance, line: str | None) -> Typed:
+    """Type one line at the running instance's terminal, or reconnect its printer.
+
+    With no line it reconnects. What a journey needs to cause what the virtual
+    printer only does when told to — a serial drop, a fatal error, a reset — and
+    to bring a printer that went offline back. One request, answered by the
+    instance.
+
+    Raises:
+        StartupError: If no instance is running, or it refused the request.
+    """
+    record = _already_running(instance)
+    if record is None:
+        raise StartupError(
+            "terminal-refused", f"no instance under {instance.state_dir} is answering its API"
+        )
+    path, asked = (
+        ("/api/printer/command", {"commands": [line]})
+        if line is not None
+        else ("/api/connection", {"command": "connect", "autoconnect": True})
+    )
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    status, answer = call(
+        record_url(record),
+        api_key(instance),
+        path,
+        method="POST",
+        body=json.dumps(asked).encode("utf-8"),
+        content_type="application/json",
+    )
+    if status != 204:
+        raise StartupError("terminal-refused", f"{path} refused {asked} with {status}: {answer}")
+    return Typed(sent=line if line is not None else "connect")
+
+
 def stop(instance: Instance) -> dict[str, Any]:
     """Stop whatever this state directory started, leaving no process behind."""
     if not instance.record.is_file():
@@ -1505,7 +1551,13 @@ def argument_parser() -> argparse.ArgumentParser:
     """The command surface, whose defaults every recipe and caller shares."""
     parser = argparse.ArgumentParser(prog="octoprint-env", description=__doc__)
     parser.add_argument(
-        "command", choices=("install", "up", "down", "upload", "diagnostics", "retain")
+        "command",
+        choices=("install", "up", "down", "upload", "terminal", "connect", "diagnostics", "retain"),
+    )
+    parser.add_argument(
+        "--line",
+        default=None,
+        help="the one line `terminal` types at the running instance's terminal",
     )
     parser.add_argument(
         "--supervisor-status",
@@ -1612,6 +1664,14 @@ def main(argv: list[str] | None = None) -> int:
                 # printed is only where to find it.
                 print(retained_line(retain(instance, Path(arguments.into))))
                 return 0
+            case "terminal":
+                if not arguments.line:
+                    raise StartupError(
+                        "terminal-refused", "`terminal` needs the line, named with `--line`"
+                    )
+                answer = at_the_terminal(instance, arguments.line)
+            case "connect":
+                answer = at_the_terminal(instance, None)
             case "upload":
                 if not arguments.file:
                     raise StartupError(
