@@ -6,6 +6,11 @@
 //! `vocabulary` test, which holds the action vocabulary closed — so the three
 //! read one list rather than each keeping its own.
 
+use printobserver_core::records::{
+    ActionAllowance, BedTemperature, LastPrint, PausedPrint, RecoveryAction, RecoveryActionKind,
+    RecoveryField, RecoveryPosition, RecoveryRejection, RecoveryStatus, RecoveryTemperatures,
+    ToolTemperature, ZHome, ZTrust,
+};
 use printobserver_core::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
     ActorClass, ChargeKey, ChargeMethod, ChargedFilament, ClearedMark, DoubtedSpool,
@@ -22,12 +27,14 @@ use printobserver_types::contract::TypeContract;
 pub fn declared() -> Vec<TypeContract> {
     vec![
         TypeContract::of::<AcknowledgementDisposition>("AcknowledgementDisposition"),
+        TypeContract::of::<ActionAllowance>("ActionAllowance"),
         TypeContract::of::<ActionId>("ActionId"),
         TypeContract::of::<ActionKind>("ActionKind"),
         TypeContract::of::<ActionRecord>("ActionRecord"),
         TypeContract::of::<ActionRequest>("ActionRequest"),
         TypeContract::of::<Actor>("Actor"),
         TypeContract::of::<ActorClass>("ActorClass"),
+        TypeContract::of::<BedTemperature>("BedTemperature"),
         TypeContract::of::<ChargeKey>("ChargeKey"),
         TypeContract::of::<ChargeMethod>("ChargeMethod"),
         TypeContract::of::<ChargedFilament>("ChargedFilament"),
@@ -41,8 +48,10 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<InterventionId>("InterventionId"),
         TypeContract::of::<InterventionOutcome>("InterventionOutcome"),
         TypeContract::of::<JobManifest>("JobManifest"),
+        TypeContract::of::<LastPrint>("LastPrint"),
         TypeContract::of::<LoadedSpool>("LoadedSpool"),
         TypeContract::of::<ManifestNarrowing>("ManifestNarrowing"),
+        TypeContract::of::<PausedPrint>("PausedPrint"),
         TypeContract::of::<PendingCharge>("PendingCharge"),
         TypeContract::of::<PendingTaken>("PendingTaken"),
         TypeContract::of::<PolicyDecision>("PolicyDecision"),
@@ -57,6 +66,13 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<PrintOutcome>("PrintOutcome"),
         TypeContract::of::<PrintRecord>("PrintRecord"),
         TypeContract::of::<PrintSegmentKey>("PrintSegmentKey"),
+        TypeContract::of::<RecoveryAction>("RecoveryAction"),
+        TypeContract::of::<RecoveryActionKind>("RecoveryActionKind"),
+        TypeContract::of::<RecoveryField>("RecoveryField"),
+        TypeContract::of::<RecoveryPosition>("RecoveryPosition"),
+        TypeContract::of::<RecoveryRejection>("RecoveryRejection"),
+        TypeContract::of::<RecoveryStatus>("RecoveryStatus"),
+        TypeContract::of::<RecoveryTemperatures>("RecoveryTemperatures"),
         TypeContract::of::<RejectionReason>("RejectionReason"),
         TypeContract::of::<SafetyEnvelope>("SafetyEnvelope"),
         TypeContract::of::<ShortSpool>("ShortSpool"),
@@ -67,8 +83,11 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<SpoolRecord>("SpoolRecord"),
         TypeContract::of::<SpoolRefusalCause>("SpoolRefusalCause"),
         TypeContract::of::<SpoolTrust>("SpoolTrust"),
+        TypeContract::of::<ToolTemperature>("ToolTemperature"),
         TypeContract::of::<UnanalysedSpool>("UnanalysedSpool"),
         TypeContract::of::<UnverifiedMark>("UnverifiedMark"),
         TypeContract::of::<UnverifiedReason>("UnverifiedReason"),
+        TypeContract::of::<ZHome>("ZHome"),
+        TypeContract::of::<ZTrust>("ZTrust"),
     ]
 }

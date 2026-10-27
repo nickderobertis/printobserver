@@ -17,7 +17,7 @@
 
 use crate::records::{
     AcknowledgementDisposition, ActionRecord, ActionRequest, Actor, ActorClass, Intervention,
-    InterventionOutcome, PolicyDecision, Preflight, PrintAction, PrintRecord,
+    InterventionOutcome, PolicyDecision, Preflight, PrintAction, PrintRecord, RejectionReason,
 };
 use printobserver_printer_api::Adjustable;
 use printobserver_printer_api::{PrinterSnapshot, PrinterState};
@@ -174,9 +174,7 @@ impl Supervisor {
             actor: actor.clone(),
             requested_at,
         };
-        let issued = self
-            .issue_decided_action(request, decision, Some(print_id))
-            .await?;
+        let issued = self.issue_action(request, decision, Some(print_id)).await?;
         let source = source_of(&actor);
         self.write_decision_down(print_id, &source, &action, &issued, preflight.as_ref())
             .await?;
@@ -301,6 +299,16 @@ impl Supervisor {
                 }
                 Ok(Some(checked))
             }
+            PrintAction::Resume { .. } => {
+                if let Some(print) = print
+                    && let Some(recovery_event_id) = self.recovery_while_open(print).await?
+                {
+                    *decision = PolicyDecision::Rejected(RejectionReason::PrintNotResumable {
+                        recovery_event_id,
+                    });
+                }
+                Ok(None)
+            }
             PrintAction::Cancel { .. } => {
                 // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
                 if let Some(print) = print
@@ -327,6 +335,9 @@ impl Supervisor {
         preflight: Option<Preflight>,
     ) -> Result<(), CoreError> {
         self.note_seen_running(print_id);
+        // A print homes the machine as it starts, so Z is where its own
+        // G-code put it from here on.
+        self.trust_z();
         if self.print_started_of(print_id).await?.is_none() {
             self.record_print_started(
                 print_id,

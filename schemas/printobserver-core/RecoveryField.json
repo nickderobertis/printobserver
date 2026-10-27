@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One field of a recovery action a bound is held to.",
+  "oneOf": [
+    {
+      "const": "mm",
+      "description": "A lift's distance, in millimetres.",
+      "type": "string"
+    },
+    {
+      "const": "percent",
+      "description": "The fan's percentage.",
+      "type": "string"
+    },
+    {
+      "const": "tool",
+      "description": "A heat's tool.",
+      "type": "string"
+    },
+    {
+      "const": "target_c",
+      "description": "A heat's target, in degrees Celsius.",
+      "type": "string"
+    },
+    {
+      "const": "clearance_asserted",
+      "description": "The operator's word that the nozzle is clear of the part.",
+      "type": "string"
+    },
+    {
+      "const": "bed_clear_asserted",
+      "description": "The operator's word that homing Z will meet nothing on the bed.",
+      "type": "string"
+    }
+  ],
+  "title": "RecoveryField"
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One tool heater, as a recovery read reports it.",
+  "properties": {
+    "actual_c": {
+      "description": "What it reads, in degrees Celsius, `null` when not reported.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "target_c": {
+      "description": "What it is driving towards, in degrees Celsius, `null` when not\nreported.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool"
+  ],
+  "title": "ToolTemperature",
+  "type": "object"
+}

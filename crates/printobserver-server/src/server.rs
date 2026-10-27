@@ -586,6 +586,10 @@ fn core_config_of(config: &ServerConfig) -> CoreConfig {
     core_config.printer_poll = config.printer_poll;
     core_config.unattended_window = config.unattended_window;
     core_config.spools = config.spools;
+    core_config.recovery = config.recovery;
+    core_config
+        .recovery_grants
+        .clone_from(&config.recovery_grants);
     core_config
 }
 

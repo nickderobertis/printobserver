@@ -112,6 +112,11 @@ pub struct CoreConfig {
     /// How long after an `interrupted` or `failed` ending the printer acting
     /// on its own is recorded.
     pub unattended_window: Duration,
+    /// The printer's own facts a recovery is checked against; absent, every
+    /// recovery action is refused as not configured.
+    pub recovery: Option<crate::records::RecoveryConfig>,
+    /// Who may ask for which recovery action.
+    pub recovery_grants: crate::records::RecoveryGrants,
 }
 
 impl CoreConfig {
@@ -129,6 +134,8 @@ impl CoreConfig {
             spools: SpoolPolicy::default(),
             printer_poll: crate::watch::DEFAULT_PRINTER_POLL,
             unattended_window: crate::watch::DEFAULT_UNATTENDED_WINDOW,
+            recovery: None,
+            recovery_grants: crate::records::RecoveryGrants::default(),
         }
     }
 

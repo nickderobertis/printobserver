@@ -1,14 +1,15 @@
 //! The types this port declares into the schema set — the three snapshots,
 //! the closed set of adjustables, and the facts
-//! of a file and the filament it uses — each with its canonical values.
+//! of a file, the filament it uses and what it printed — each with its
+//! canonical values.
 //!
 //! Shared by the `schemas` test, which reconciles the checked-in schema files
 //! against them, and the `ranges` test, which drives every ranged field of them
 //! at its boundary — so the two read one list rather than each keeping its own.
 
 use printobserver_printer_api::{
-    Adjustable, ErrorSource, FileFacts, FilePrint, HeaterSnapshot, JobError, JobSnapshot,
-    PrinterSnapshot, ToolFilament,
+    Adjustable, ErrorSource, FileFacts, FilePrint, Footprint, HeaterSnapshot, JobError,
+    JobSnapshot, PrintedExtent, PrinterSnapshot, ToolFilament,
 };
 use printobserver_types::contract::TypeContract;
 
@@ -19,9 +20,11 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<ErrorSource>("ErrorSource"),
         TypeContract::of::<FileFacts>("FileFacts"),
         TypeContract::of::<FilePrint>("FilePrint"),
+        TypeContract::of::<Footprint>("Footprint"),
         TypeContract::of::<HeaterSnapshot>("HeaterSnapshot"),
         TypeContract::of::<JobError>("JobError"),
         TypeContract::of::<JobSnapshot>("JobSnapshot"),
+        TypeContract::of::<PrintedExtent>("PrintedExtent"),
         TypeContract::of::<PrinterSnapshot>("PrinterSnapshot"),
         TypeContract::of::<ToolFilament>("ToolFilament"),
     ]

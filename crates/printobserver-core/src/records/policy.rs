@@ -3,9 +3,9 @@
 use std::collections::BTreeMap;
 
 use printobserver_printer_api::{Adjustable, PrinterState};
-use printobserver_types::Range;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{EventId, Range};
 
 use super::action::{ActionKind, ActorClass};
 use super::ids::{InterventionId, SpoolId};
@@ -141,6 +141,13 @@ pub enum RejectionReason {
     InterventionStillActive {
         /// The intervention still standing.
         intervention_id: InterventionId,
+    },
+    /// A resume was refused because a recovery action was executed while the
+    /// print was paused: the head moved, and `OctoPrint` restores no position
+    /// on resume, so the rest of the layer would print at the wrong height.
+    PrintNotResumable {
+        /// The `recovery_executed` event that made it so.
+        recovery_event_id: EventId,
     },
     /// A spool command could not be carried out.
     SpoolRefused {

@@ -117,6 +117,22 @@ impl Stream for PushStream {
     }
 }
 
+impl PushStream {
+    /// Take what has arrived without waiting: one push, `Some(None)` once the
+    /// socket has ended and everything it read is taken, and `None` while
+    /// nothing has arrived yet.
+    pub(crate) fn try_next(&self) -> Option<Option<PrinterPush>> {
+        let mut shared = self
+            .shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(push) = shared.queue.pop_front() {
+            return Some(Some(push));
+        }
+        shared.ended.then_some(None)
+    }
+}
+
 impl Drop for PushStream {
     fn drop(&mut self) {
         let _ = self.socket.shutdown(Shutdown::Both);

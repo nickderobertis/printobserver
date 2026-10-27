@@ -122,6 +122,9 @@ fn refuse(reason: &RejectionReason) -> Refused {
         | RejectionReason::SpoolRefused { .. } => {
             unreachable!("{reason:?} is the filament ledger's, which this walk does not drive")
         }
+        RejectionReason::PrintNotResumable { .. } => {
+            unreachable!("{reason:?} follows a recovery, which this walk does not drive")
+        }
     };
 
     let against = match reason {
@@ -213,12 +216,16 @@ fn as_reached(stated: RejectionReason, decision: &PolicyDecision) -> RejectionRe
 /// start's filament check makes are written down beside the check itself, and
 /// `spool_refused` answers a spool command rather than a print action. Each is
 /// walked by the journeys of its own path — `preflight` and `spool_commands` —
-/// which assert the printer is never asked and the refusal is recorded.
-const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 4] = [
+/// which assert the printer is never asked and the refusal is recorded. And
+/// `print_not_resumable` is reached only after a recovery action moved the
+/// printer under a paused print, which the server's recovery journeys drive
+/// against the virtual printer and assert the resume reaches nothing.
+const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 5] = [
     "InsufficientFilament",
     "UnverifiedSpool",
     "AnalysisUnavailable",
     "SpoolRefused",
+    "PrintNotResumable",
 ];
 
 /// Every rejected variant the contracts declare, each built to be reached.

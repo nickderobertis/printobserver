@@ -8,7 +8,9 @@
 //! ([`image`]), and the filament ledger — a registered spool and how far its
 //! figure can be trusted ([`spool`]), the commands that change one
 //! ([`spool_command`]), what a print took from one ([`charge`]) and the check
-//! made before a print starts ([`preflight`]) — with the three identifiers
+//! made before a print starts ([`preflight`]) — the closed vocabulary for
+//! moving the printer after a print fails and what it is checked against
+//! ([`recovery`]) — with the three identifiers
 //! only this domain keys records by ([`ids`]), minted through the type crate's exported rule. Each is declared
 //! into the schema set under `schemas/printobserver-core/` by this crate's own
 //! `schemas` test, through the type crate's [`TypeContract::of`]; nothing
@@ -25,6 +27,7 @@ pub mod manifest;
 pub mod policy;
 pub mod preflight;
 pub mod print;
+pub mod recovery;
 mod samples;
 pub mod spool;
 pub mod spool_command;
@@ -55,6 +58,12 @@ pub use preflight::{
     PreflightToolResult, PreflightVerdict, ShortSpool, UnanalysedSpool,
 };
 pub use print::{ManifestNarrowing, PrintRecord};
+pub use recovery::{
+    ActionAllowance, AwayFromBed, BedTemperature, DEFAULT_CLEARANCE_MARGIN_MM, DEFAULT_MAX_LIFT_MM,
+    LastPrint, PausedPrint, RecoveryAction, RecoveryActionKind, RecoveryConfig, RecoveryDecision,
+    RecoveryField, RecoveryGrants, RecoveryPosition, RecoveryRejection, RecoveryStatus,
+    RecoveryTemperatures, ToolTemperature, ZHome, ZTrust,
+};
 pub use spool::{
     ClearedMark, LoadedSpool, SpoolLifecycle, SpoolRecord, SpoolTrust, UnverifiedMark,
     UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind,

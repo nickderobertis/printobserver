@@ -1,0 +1,252 @@
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "ExecutionOutcome": {
+      "description": "What happened when an accepted action reached the printer.",
+      "oneOf": [
+        {
+          "const": "succeeded",
+          "description": "The printer took it.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The printer did not, for this reason.",
+          "properties": {
+            "failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "failed"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecoveryAction": {
+      "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Move the nozzle away from the bed by `mm`.",
+          "properties": {
+            "action": {
+              "const": "recover_lift",
+              "type": "string"
+            },
+            "mm": {
+              "description": "How far, in millimetres: above zero and at most\n`recovery.max_lift_mm`.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "mm"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set every heater's target to zero.",
+          "properties": {
+            "action": {
+              "const": "recover_cool",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set the part-cooling fan.",
+          "properties": {
+            "action": {
+              "const": "recover_fan",
+              "type": "string"
+            },
+            "percent": {
+              "description": "The percentage, from 0 to 100.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "action",
+            "percent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Heat one tool, within the safety envelope's range for it.",
+          "properties": {
+            "action": {
+              "const": "recover_heat",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            },
+            "target_c": {
+              "description": "The target, in degrees Celsius.",
+              "format": "double",
+              "type": "number"
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "tool",
+            "target_c"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Move the head to `recovery.park_xy`.",
+          "properties": {
+            "action": {
+              "const": "recover_park",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home X and Y.",
+          "properties": {
+            "action": {
+              "const": "recover_home_xy",
+              "type": "string"
+            },
+            "clearance_asserted": {
+              "default": false,
+              "description": "The operator's word that the nozzle is clear of the part.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Home Z.",
+          "properties": {
+            "action": {
+              "const": "recover_home_z",
+              "type": "string"
+            },
+            "bed_clear_asserted": {
+              "default": false,
+              "description": "The operator's word that homing Z will meet nothing on the bed.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A recovery action reached the printer, and what the printer made of it.",
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/RecoveryAction",
+      "description": "What was asked for."
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who asked."
+    },
+    "outcome": {
+      "$ref": "#/$defs/ExecutionOutcome",
+      "description": "What the printer made of it."
+    },
+    "reason": {
+      "description": "Why.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "actor",
+    "reason",
+    "outcome"
+  ],
+  "title": "RecoveryExecutedPayload",
+  "type": "object",
+  "x-event-kind": "recovery_executed"
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Where the print head is, in millimetres, as the printer reported it.",
+  "properties": {
+    "x": {
+      "description": "X.",
+      "format": "double",
+      "type": "number"
+    },
+    "y": {
+      "description": "Y.",
+      "format": "double",
+      "type": "number"
+    },
+    "z": {
+      "description": "Z.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "x",
+    "y",
+    "z"
+  ],
+  "title": "RecoveryPosition",
+  "type": "object"
+}

@@ -118,6 +118,13 @@
       "title": "Adjustable",
       "type": "string"
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -550,6 +557,29 @@
           },
           "required": [
             "intervention_still_active"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
           ],
           "type": "object"
         },

@@ -12,6 +12,8 @@
 //! [`PrinterPort::send_command`](crate::PrinterPort::send_command) takes. It is
 //! a closed vocabulary rather than a line, so nothing a caller writes reaches a
 //! machine through it; each adapter renders a variant to its own line.
+//! [`AxisPosition`] is what
+//! [`PrinterPort::read_position`](crate::PrinterPort::read_position) answers.
 
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -66,8 +68,50 @@ pub enum PrinterErrorReason {
 
 /// A command a printer may be sent: a closed vocabulary, each variant rendered
 /// by the adapter to its own line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Every number a variant carries is a distance or a place in millimetres that
+/// policy has already ruled on; no variant carries text.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PrinterCommand {
     /// Report where the print head is. The answer arrives on the push channel.
     ReportPosition,
+    /// Move the print head along Z by a distance from where it is, in
+    /// millimetres: positive moves Z up the axis, negative down it.
+    MoveZ {
+        /// How far, in millimetres, signed along the axis.
+        mm: f64,
+    },
+    /// Move the print head to a place in X and Y, in millimetres, leaving Z
+    /// where it is.
+    MoveXy {
+        /// Where in X.
+        x_mm: f64,
+        /// Where in Y.
+        y_mm: f64,
+    },
+    /// Home the axes named.
+    Home {
+        /// Which axes.
+        axes: HomeAxes,
+    },
+}
+
+/// Which axes a [`PrinterCommand::Home`] homes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeAxes {
+    /// X and Y, leaving Z where it is.
+    Xy,
+    /// Z alone.
+    Z,
+}
+
+/// Where the print head is, in millimetres, as the printer reported it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AxisPosition {
+    /// X.
+    pub x: f64,
+    /// Y.
+    pub y: f64,
+    /// Z.
+    pub z: f64,
 }

@@ -111,6 +111,9 @@ fn described(operation: &Operation) -> Value {
                     .and_then(|value| value.as_str().map(str::to_owned))
                     .expect("an action renders as the tag it is spelled by")
             ),
+            // A recovery action carries a reason and an actor and is answered
+            // with its rejection too, so it is described as one.
+            Effect::Recovery(kind) => format!("mutating:{kind}"),
         },
         "accepts": operation.accepts,
         "answers": operation.answers,
@@ -189,6 +192,10 @@ fn answer_schemas() -> Vec<(String, Value)> {
         (
             "SpoolCommandAnswer.json".to_owned(),
             schema_of::<printobserver_server::SpoolCommandAnswer>(),
+        ),
+        (
+            "RecoveryAnswer.json".to_owned(),
+            schema_of::<printobserver_server::RecoveryAnswer>(),
         ),
         (
             "SpoolsAnswer.json".to_owned(),
@@ -391,7 +398,7 @@ fn every_mutating_operation_is_described_as_answering_a_rejection() {
             })
             .collect();
         match operation.effect {
-            Effect::Mutating(_) | Effect::Command(_) => assert_eq!(
+            Effect::Mutating(_) | Effect::Command(_) | Effect::Recovery(_) => assert_eq!(
                 answers,
                 vec!["success".to_owned(), "rejected".to_owned()],
                 "`{}`",

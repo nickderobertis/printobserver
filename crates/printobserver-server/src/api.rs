@@ -52,6 +52,11 @@
 //! reads what is loaded and what a file needs — and its commands are held to
 //! the same claim and then to the envelope's own grants, which the domain rules
 //! on and records.
+//!
+//! The recovery operations are the printer's too: their read is open to every
+//! caller, answering what each action would meet for that caller, and each
+//! action is held to the same claim and then to the recovery grants and the
+//! machine's own state, which the domain rules on and records.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -64,11 +69,15 @@ use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Router, routing::MethodRouter};
+use printobserver_core::recovery::recovery_detail;
 use printobserver_core::store::TimelineQuery;
 use printobserver_core::store::{
     EventStore, HistoryQuery, ImageStore, PrintStore, SessionStore, StoreError,
 };
-use printobserver_core::{ActionKind, Actor, ExecutionOutcome, PolicyDecision, SpoolId};
+use printobserver_core::{
+    ActionKind, Actor, ActorClass, ExecutionOutcome, PolicyDecision, RecoveryActionKind,
+    RecoveryDecision, SpoolId,
+};
 use printobserver_core::{CoreError, MAX_LOOK_WAIT_S, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::serde_json::Value;
@@ -79,8 +88,9 @@ use crate::server::{CREDENTIAL_ISSUE, OperatorCredential};
 use crate::turns::{TurnBinding, TurnCredentials};
 use crate::wire::{
     ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer, SpoolAnswer, SpoolCommandAnswer,
-    SpoolsAnswer, StatusAnswer, TimelineAnswer, claimed_actor, spool_command_of,
+    ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer, RecoveryAnswer, SpoolAnswer,
+    SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, claimed_actor, recovery_of,
+    spool_command_of,
 };
 
 /// What every handler is given: the supervisor, and the stores the reads
@@ -406,6 +416,15 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
             },
         );
     }
+    if let Effect::Recovery(kind) = operation.effect {
+        return post(
+            move |state: State<ApiState>,
+                  caller: Extension<Caller>,
+                  body: Result<Json<Value>, JsonRejection>| async move {
+                recover(kind, state, caller, body).await
+            },
+        );
+    }
     if let Effect::Mutating(kind) = operation.effect {
         return post(
             move |state: State<ApiState>,
@@ -430,6 +449,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("spool", Method::Get) => get(spool),
         ("printer_history", Method::Get) => get(printer_history),
         ("preflight", Method::Get) => get(preflight),
+        (crate::operations::RECOVERY_STATUS, Method::Get) => get(recover_status),
         (name, method) => panic!(
             "the operation `{name}` is declared as {method} and this router serves no such route"
         ),
@@ -600,6 +620,87 @@ async fn command(
             events: outcome.events,
         },
     )
+}
+
+/// Ask the printer for one recovery action.
+///
+/// The body is held to the action's own fields, a reason and an actor before
+/// anything is decided, and the claimed actor to the caller — so a request
+/// refused here is recorded nowhere and reaches no printer. Whether the actor
+/// may ask, and whether the printer is in a state the action is safe from, is
+/// the supervision core's to rule on and record.
+async fn recover(
+    kind: RecoveryActionKind,
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
+    if let Some(fields) = body.as_object() {
+        let actor = match claimed_actor(fields) {
+            Ok(actor) => actor,
+            Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+        };
+        if let Some(refused) = claim_refused(&caller, &actor) {
+            return refused;
+        }
+    }
+    let (action, actor, reason) = match recovery_of(kind, body) {
+        Ok(asked) => asked,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    let issued = match state
+        .supervisor
+        .request_recovery(action.clone(), actor, reason)
+        .await
+    {
+        Ok(issued) => issued,
+        Err(error) => return refusal(core_status(&error), error),
+    };
+    let config = state.supervisor.config().recovery;
+    let (status, rejection, outcome) = match &issued.decision {
+        RecoveryDecision::Executed(outcome @ ExecutionOutcome::Succeeded) => {
+            (StatusCode::OK, None, Some(outcome.clone()))
+        }
+        // The printer was asked and refused: a request that was made rather
+        // than one that never happened, answered with the printer's words.
+        RecoveryDecision::Executed(outcome @ ExecutionOutcome::Failed { .. }) => {
+            (StatusCode::BAD_GATEWAY, None, Some(outcome.clone()))
+        }
+        // The refusal is the answer, as a print action's is.
+        RecoveryDecision::Rejected(rejection) => {
+            (StatusCode::CONFLICT, Some(rejection.clone()), None)
+        }
+    };
+    answer(
+        status,
+        &RecoveryAnswer {
+            detail: recovery_detail(&action, &issued.decision, config.as_ref()),
+            action,
+            rejection,
+            outcome,
+            events: vec![issued.requested, issued.settled],
+        },
+    )
+}
+
+/// Everything a recovery is checked against now, and what each action would
+/// meet for the caller.
+async fn recover_status(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+) -> Response {
+    let class = match caller {
+        Caller::Operator => ActorClass::Operator,
+        Caller::Turn(_) => ActorClass::Agent,
+    };
+    match state.supervisor.recovery_status(class).await {
+        Ok(status) => answer(StatusCode::OK, &status),
+        Err(error) => refusal(core_status(&error), error),
+    }
 }
 
 /// Every spool, beside one line each and the charges a tool is holding.

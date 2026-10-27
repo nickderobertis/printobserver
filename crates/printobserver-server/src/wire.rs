@@ -10,11 +10,13 @@
 
 use std::path::PathBuf;
 
+use printobserver_core::ExecutionOutcome;
 use printobserver_core::store::ImageLookup;
 use printobserver_core::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, ImageRecord, Intervention,
     JobManifest, ManifestNarrowing, PendingCharge, PolicyDecision, Preflight, PrintOutcome,
-    PrintRecord, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust,
+    PrintRecord, RecoveryAction, RecoveryActionKind, RecoveryRejection, SpoolCommand, SpoolId,
+    SpoolRecord, SpoolTrust,
 };
 use printobserver_core::{DetectorHealth, PrintContext};
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
@@ -344,6 +346,80 @@ pub fn claimed_actor(body: &Map<String, Value>) -> Result<Actor, BodyRefusal> {
         detail: format!("`actor` is not an actor this system has: {error}"),
     })
 }
+
+/// The recovery action one request asks for, assembled from its body.
+///
+/// The body is the action's own fields beside the actor and the reason, less
+/// the tag a caller never supplies: the operation it was sent to names the
+/// action. A field no variant of the vocabulary carries — raw G-code among
+/// them — is refused, and so is a reason that is absent or nothing but
+/// whitespace, before anything is decided or recorded.
+///
+/// # Errors
+///
+/// Returns [`BodyRefusal`] when the body is not a document, carries the tag,
+/// gives no reason or no actor, or is not that action's body.
+pub fn recovery_of(
+    kind: RecoveryActionKind,
+    body: Value,
+) -> Result<(RecoveryAction, Actor, String), BodyRefusal> {
+    let Value::Object(mut fields) = body else {
+        return Err(BodyRefusal {
+            detail: "a recovery action's body is a document of its fields".to_owned(),
+        });
+    };
+    let reason = reason_of(fields.get("reason").and_then(Value::as_str))?;
+    let actor = claimed_actor(&fields)?;
+    fields.remove("reason");
+    fields.remove("actor");
+    if fields.contains_key("action") {
+        return Err(BodyRefusal {
+            detail: "a recovery action's body does not carry `action`: the operation it is \
+                     sent to names it"
+                .to_owned(),
+        });
+    }
+    fields.insert("action".to_owned(), Value::String(kind.as_str().to_owned()));
+    let action: RecoveryAction = printobserver_types::serde_json::from_value(Value::Object(fields))
+        .map_err(|error| BodyRefusal {
+            detail: format!("this is not a `{kind}` body: {error}"),
+        })?;
+    if action.kind() == kind {
+        Ok((action, actor, reason))
+    } else {
+        Err(BodyRefusal {
+            detail: format!("this body is not a `{kind}`"),
+        })
+    }
+}
+
+/// What a recovery action answers, carried out or refused.
+///
+/// A refusal is the same shape and deliberately so: `rejection` carries the
+/// reason, and the two events are what the request wrote.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecoveryAnswer {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Why it was refused, when it was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejection: Option<RecoveryRejection>,
+    /// What the printer made of it, when it reached the printer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<ExecutionOutcome>,
+    /// What became of it, in a sentence for a person: why it was refused and
+    /// what would let it go ahead, or what it did.
+    pub detail: String,
+    /// The `recovery_requested` event, and the `recovery_executed` or
+    /// `recovery_rejected` beside it.
+    pub events: Vec<EventRecord>,
+}
+
+/// What the recovery read answers: everything a recovery is checked against
+/// now, as the supervision core reads it.
+pub type RecoveryStatusAnswer = printobserver_core::RecoveryStatus;
 
 /// What a spool command answers, accepted or refused.
 ///

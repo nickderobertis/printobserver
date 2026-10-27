@@ -1,0 +1,30 @@
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The print paused under the printer, and whether resuming it is still safe.\n\nA recovery action executed while it was paused moved the head, and\n`OctoPrint` restores no position on resume, so the rest of the layer would\nprint at the wrong height: such a print is not resumable.",
+  "properties": {
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print."
+    },
+    "resumable": {
+      "description": "Whether it may be resumed.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "print_id",
+    "resumable"
+  ],
+  "title": "PausedPrint",
+  "type": "object"
+}

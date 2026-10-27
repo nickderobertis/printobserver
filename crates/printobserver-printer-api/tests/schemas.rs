@@ -86,6 +86,15 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
         &[("at", "Timestamp", true), ("success", "boolean", true)],
     ),
     (
+        "Footprint",
+        &[
+            ("max_x", "number", true),
+            ("max_y", "number", true),
+            ("min_x", "number", true),
+            ("min_y", "number", true),
+        ],
+    ),
+    (
         "HeaterSnapshot",
         &[
             ("actual_c", "Reported", false),
@@ -107,6 +116,13 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
             ("print_time_s", "integer", false),
             ("size_bytes", "integer", false),
             ("state", "PrinterState", true),
+        ],
+    ),
+    (
+        "PrintedExtent",
+        &[
+            ("footprint", "Footprint", true),
+            ("tallest_mm", "number", true),
         ],
     ),
     (

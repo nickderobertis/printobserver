@@ -573,6 +573,8 @@ impl Supervisor {
         match push {
             PrinterPush::Reset => {
                 self.watch_state().pushes.reset = true;
+                // A reset forgets where every axis is.
+                self.distrust_z("the printer pushed a reset, and a reset forgets where Z is");
                 // A reset is recorded whatever the store answers about which
                 // print was running: the push is not sent again.
                 let (during_print, detail) = match self.running_print().await {
@@ -706,6 +708,13 @@ impl Supervisor {
             let held = self.watch_state();
             (held.last_state.clone(), held.channel_is_down())
         };
+        if is_down(state) && previous.as_ref() != Some(state) {
+            // A printer that went offline or into error may have been
+            // reset, moved or powered off since: where Z is is unknown.
+            self.distrust_z(format!(
+                "the printer went {state:?}, and Z may have moved since"
+            ));
+        }
         let changed = previous
             .as_ref()
             .filter(|previous| *previous != state && (is_down(previous) || is_down(state)));
@@ -767,6 +776,14 @@ impl Supervisor {
             self.watch_state().unattended = None;
             return Ok(());
         }
+        self.distrust_z(format!(
+            "print {print_id} ended {}, and where it left Z is unknown",
+            if payload.outcome == PrintOutcome::Failed {
+                "failed"
+            } else {
+                "interrupted"
+            }
+        ));
         self.watch_state().unattended = Some(Unattended {
             print_id,
             began: self.clock().elapsed(),

@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "Footprint": {
+      "additionalProperties": false,
+      "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+      "properties": {
+        "max_x": {
+          "description": "The largest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_y": {
+          "description": "The largest Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_x": {
+          "description": "The smallest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_y": {
+          "description": "The smallest Y.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_x",
+        "min_y",
+        "max_x",
+        "max_y"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the last print laid down, read from its own G-code up to the last\nfile position recorded for it.",
+  "properties": {
+    "footprint": {
+      "$ref": "#/$defs/Footprint",
+      "description": "Where in X and Y it laid material."
+    },
+    "print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print."
+    },
+    "tallest_mm": {
+      "description": "The tallest part it laid down, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "print_id",
+    "tallest_mm",
+    "footprint"
+  ],
+  "title": "LastPrint",
+  "type": "object"
+}

@@ -77,6 +77,19 @@
 //! grey-level spread at or below which a frame is blank — from 1 to 128, 36.5
 //! when left out.
 //!
+//! # Recovery
+//!
+//! `[recovery]` states the printer's own facts a recovery action is checked
+//! against — `away_from_bed` (`z_plus` or `z_minus`), `max_z_mm`,
+//! `max_lift_mm` (50 when left out), `clearance_margin_mm` (5 when left out),
+//! `park_xy`, `z_home_xy` and `z_home_sweeps_bed`. Left out, every recovery
+//! action is refused as not configured; written, every key without a default
+//! is required. `[policy.recovery]` says who may ask for which: `operator`,
+//! `agent` and `asserting`, by default every action, none, and the operator
+//! alone. Granting `recover_home_z` to the agent, or letting the agent's word
+//! count as clearance, is refused naming the key, and so is every value
+//! outside the range its key admits.
+//!
 //! # The spool check
 //!
 //! `[spools]` is optional, and so is every key in it: `preflight` is what a
@@ -90,7 +103,10 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use printobserver_core::{ActionKind, ActorClass, PreflightMode, SafetyEnvelope, SpoolPolicy};
+use printobserver_core::{
+    ActionKind, ActorClass, AwayFromBed, DEFAULT_CLEARANCE_MARGIN_MM, DEFAULT_MAX_LIFT_MM,
+    PreflightMode, RecoveryActionKind, RecoveryConfig, RecoveryGrants, SafetyEnvelope, SpoolPolicy,
+};
 use printobserver_obico::{
     AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
 };
@@ -217,11 +233,31 @@ pub enum ConfigField {
     SpoolsBufferMinG,
     /// How long a start waits for a file's analysis, in seconds.
     SpoolsAnalysisWaitSeconds,
+    /// Which way along Z moves the nozzle away from the bed.
+    RecoveryAwayFromBed,
+    /// The highest Z the machine reaches, in millimetres.
+    RecoveryMaxZMm,
+    /// The longest lift one recovery may ask for, in millimetres.
+    RecoveryMaxLiftMm,
+    /// How far above the tallest part the nozzle must be, in millimetres.
+    RecoveryClearanceMarginMm,
+    /// Where a park moves the head, in X and Y.
+    RecoveryParkXy,
+    /// Where the machine homes Z, in X and Y.
+    RecoveryZHomeXy,
+    /// Whether homing Z brings a gantry down over the whole bed.
+    RecoveryZHomeSweepsBed,
+    /// The recovery actions the operator may ask for.
+    PolicyRecoveryOperator,
+    /// The recovery actions the agent may ask for.
+    PolicyRecoveryAgent,
+    /// The actor classes whose clearance assertions count.
+    PolicyRecoveryAsserting,
 }
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 36] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -248,6 +284,16 @@ impl ConfigField {
         Self::SpoolsBufferPercent,
         Self::SpoolsBufferMinG,
         Self::SpoolsAnalysisWaitSeconds,
+        Self::RecoveryAwayFromBed,
+        Self::RecoveryMaxZMm,
+        Self::RecoveryMaxLiftMm,
+        Self::RecoveryClearanceMarginMm,
+        Self::RecoveryParkXy,
+        Self::RecoveryZHomeXy,
+        Self::RecoveryZHomeSweepsBed,
+        Self::PolicyRecoveryOperator,
+        Self::PolicyRecoveryAgent,
+        Self::PolicyRecoveryAsserting,
     ];
 
     /// The dotted key this field is spelled under in the configuration file.
@@ -280,6 +326,16 @@ impl ConfigField {
             Self::SpoolsBufferPercent => "spools.buffer_percent",
             Self::SpoolsBufferMinG => "spools.buffer_min_g",
             Self::SpoolsAnalysisWaitSeconds => "spools.analysis_wait_seconds",
+            Self::RecoveryAwayFromBed => "recovery.away_from_bed",
+            Self::RecoveryMaxZMm => "recovery.max_z_mm",
+            Self::RecoveryMaxLiftMm => "recovery.max_lift_mm",
+            Self::RecoveryClearanceMarginMm => "recovery.clearance_margin_mm",
+            Self::RecoveryParkXy => "recovery.park_xy",
+            Self::RecoveryZHomeXy => "recovery.z_home_xy",
+            Self::RecoveryZHomeSweepsBed => "recovery.z_home_sweeps_bed",
+            Self::PolicyRecoveryOperator => "policy.recovery.operator",
+            Self::PolicyRecoveryAgent => "policy.recovery.agent",
+            Self::PolicyRecoveryAsserting => "policy.recovery.asserting",
         }
     }
 }
@@ -628,6 +684,85 @@ pub struct SpoolsSection {
     pub analysis_wait_seconds: Option<i64>,
 }
 
+/// The printer's own facts a recovery is checked against, as written down.
+///
+/// Left out altogether, or written with no key, no recovery action can be
+/// checked and every one is refused as not configured. Written with any key,
+/// every key without a default is required. Each is read as written so that a
+/// value that cannot work is refused naming its key.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecoverySection {
+    /// Which way along Z moves the nozzle away from the bed: `z_plus` or
+    /// `z_minus`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub away_from_bed: Option<String>,
+    /// The highest Z the machine reaches, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_z_mm: Option<f64>,
+    /// The longest lift one recovery may ask for, in millimetres; 50 when
+    /// left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_lift_mm: Option<f64>,
+    /// How far above the tallest part the nozzle must be, in millimetres; 5
+    /// when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clearance_margin_mm: Option<f64>,
+    /// Where a park moves the head, as `[x, y]` in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub park_xy: Option<Vec<f64>>,
+    /// Where the machine homes Z, as `[x, y]` in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z_home_xy: Option<Vec<f64>>,
+    /// Whether homing Z brings a gantry down over the whole bed.
+    // llmlint: ignore[invalid_states_unrepresentable] The operator states this fact of the machine as yes or no; left out it is refused naming the key, and both answers are machines that exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z_home_sweeps_bed: Option<bool>,
+}
+
+/// Who may ask for which recovery action, as written down under
+/// `[policy.recovery]`. Each list left out takes its default: the operator
+/// every action, the agent none, and only the operator's assertions counting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecoveryPolicySection {
+    /// The recovery actions the operator may ask for, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator: Option<Vec<String>>,
+    /// The recovery actions the agent may ask for, by name. `recover_home_z`
+    /// is refused here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<Vec<String>>,
+    /// The actor classes whose word that the nozzle or the bed is clear
+    /// counts. `agent` is refused here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asserting: Option<Vec<String>>,
+}
+
+/// The policies this program is configured with beside the safety envelope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PolicySection {
+    /// Who may ask for which recovery action.
+    #[serde(default)]
+    pub recovery: RecoveryPolicySection,
+}
+
 /// The whole configuration file, exactly as it is written down.
 ///
 /// This is the parsed document rather than the validated configuration:
@@ -674,6 +809,12 @@ pub struct ConfigFile {
     /// How spools are checked before a print.
     #[serde(default)]
     pub spools: SpoolsSection,
+    /// The printer's own facts a recovery is checked against.
+    #[serde(default)]
+    pub recovery: RecoverySection,
+    /// The policies beside the safety envelope.
+    #[serde(default)]
+    pub policy: PolicySection,
 }
 
 /// The shared secret the ingress requires of every post.
@@ -1001,6 +1142,10 @@ pub struct ServerConfig {
     pub obico_api: Option<ObicoApi>,
     /// How spools are checked before a print, and the margin asked for.
     pub spools: SpoolPolicy,
+    /// The printer's own facts a recovery is checked against, when stated.
+    pub recovery: Option<RecoveryConfig>,
+    /// Who may ask for which recovery action.
+    pub recovery_grants: RecoveryGrants,
 }
 
 impl ServerConfig {
@@ -1106,6 +1251,8 @@ impl ServerConfig {
             .transpose()?;
         let obico_api = obico_api(file.obico)?;
         let spools = spool_policy(&file.spools)?;
+        let recovery = recovery_facts(&file.recovery)?;
+        let recovery_grants = recovery_grants(&file.policy.recovery)?;
         Ok(Self {
             state_dir,
             listen,
@@ -1127,6 +1274,8 @@ impl ServerConfig {
             camera_snapshot_url,
             obico_api,
             spools,
+            recovery,
+            recovery_grants,
         })
     }
 
@@ -1484,6 +1633,158 @@ fn spool_policy(section: &SpoolsSection) -> Result<SpoolPolicy, ConfigError> {
         buffer_percent,
         buffer_min_g,
         analysis_wait_s,
+    })
+}
+
+/// The printer's recovery facts, absent when the section states none.
+fn recovery_facts(section: &RecoverySection) -> Result<Option<RecoveryConfig>, ConfigError> {
+    if *section == RecoverySection::default() {
+        return Ok(None);
+    }
+    let absent = |field: ConfigField| {
+        ConfigError::about(
+            field,
+            "`[recovery]` states this printer's facts, and this one is one of them",
+        )
+    };
+    let away_from_bed = match section.away_from_bed.as_deref() {
+        None => return Err(absent(ConfigField::RecoveryAwayFromBed)),
+        Some("z_plus") => AwayFromBed::ZPlus,
+        Some("z_minus") => AwayFromBed::ZMinus,
+        Some(other) => {
+            return Err(ConfigError::about(
+                ConfigField::RecoveryAwayFromBed,
+                format!("{other:?} is neither `z_plus` nor `z_minus`"),
+            ));
+        }
+    };
+    let max_z_mm = section
+        .max_z_mm
+        .ok_or_else(|| absent(ConfigField::RecoveryMaxZMm))?;
+    if !(max_z_mm.is_finite() && max_z_mm > 0.0) {
+        return Err(ConfigError::about(
+            ConfigField::RecoveryMaxZMm,
+            format!("{max_z_mm} mm is no height a machine reaches; it is a figure above zero"),
+        ));
+    }
+    let max_lift_mm = section
+        .max_lift_mm
+        .unwrap_or_else(|| DEFAULT_MAX_LIFT_MM.min(max_z_mm));
+    if !(max_lift_mm.is_finite() && max_lift_mm > 0.0 && max_lift_mm <= max_z_mm) {
+        return Err(ConfigError::about(
+            ConfigField::RecoveryMaxLiftMm,
+            format!(
+                "{max_lift_mm} mm is outside the lifts a machine of {max_z_mm} mm makes: above \
+                 zero, and at most `recovery.max_z_mm`"
+            ),
+        ));
+    }
+    let clearance_margin_mm = section
+        .clearance_margin_mm
+        .unwrap_or(DEFAULT_CLEARANCE_MARGIN_MM);
+    if !(clearance_margin_mm.is_finite()
+        && clearance_margin_mm >= 0.0
+        && clearance_margin_mm < max_z_mm)
+    {
+        return Err(ConfigError::about(
+            ConfigField::RecoveryClearanceMarginMm,
+            format!(
+                "{clearance_margin_mm} mm is outside the margins a machine of {max_z_mm} mm \
+                 admits: at or above zero, and below `recovery.max_z_mm`"
+            ),
+        ));
+    }
+    let place = |field: ConfigField, written: Option<&Vec<f64>>| match written.map(Vec::as_slice) {
+        None => Err(absent(field)),
+        Some([x, y]) if x.is_finite() && y.is_finite() && *x >= 0.0 && *y >= 0.0 => Ok([*x, *y]),
+        Some(_) => Err(ConfigError::about(
+            field,
+            "a place is `[x, y]`, two figures in millimetres at or above zero",
+        )),
+    };
+    let park_xy = place(ConfigField::RecoveryParkXy, section.park_xy.as_ref())?;
+    let z_home_xy = place(ConfigField::RecoveryZHomeXy, section.z_home_xy.as_ref())?;
+    let z_home_sweeps_bed = section
+        .z_home_sweeps_bed
+        .ok_or_else(|| absent(ConfigField::RecoveryZHomeSweepsBed))?;
+    Ok(Some(RecoveryConfig {
+        away_from_bed,
+        max_z_mm,
+        max_lift_mm,
+        clearance_margin_mm,
+        park_xy,
+        z_home_xy,
+        z_home_sweeps_bed,
+    }))
+}
+
+/// Who may ask for which recovery action, each list left out taking its
+/// default, and the two grants no configuration may make refused.
+fn recovery_grants(section: &RecoveryPolicySection) -> Result<RecoveryGrants, ConfigError> {
+    let defaults = RecoveryGrants::default();
+    let actions = |field: ConfigField, written: Option<&Vec<String>>, default: Vec<_>| {
+        let Some(written) = written else {
+            return Ok(default);
+        };
+        written
+            .iter()
+            .map(|name| {
+                RecoveryActionKind::ALL
+                    .iter()
+                    .find(|kind| kind.as_str() == name.trim())
+                    .copied()
+                    .ok_or_else(|| {
+                        ConfigError::about(
+                            field,
+                            format!("{name:?} is not a recovery action of this program"),
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()
+    };
+    let operator = actions(
+        ConfigField::PolicyRecoveryOperator,
+        section.operator.as_ref(),
+        defaults.operator,
+    )?;
+    let agent = actions(
+        ConfigField::PolicyRecoveryAgent,
+        section.agent.as_ref(),
+        defaults.agent,
+    )?;
+    // Homing Z drives the nozzle or a gantry down onto whatever is on the bed,
+    // and only a person standing at the machine can say nothing is.
+    if agent.contains(&RecoveryActionKind::RecoverHomeZ) {
+        return Err(ConfigError::about(
+            ConfigField::PolicyRecoveryAgent,
+            "it grants `recover_home_z` to the agent, and only a person at the machine can \
+             say the bed is clear for Z to be homed",
+        ));
+    }
+    let asserting = match section.asserting.as_ref() {
+        None => defaults.asserting,
+        Some(written) => written
+            .iter()
+            .map(|class| match class.trim() {
+                "operator" => Ok(ActorClass::Operator),
+                // An assertion is a person's word for what they can see, and
+                // an agent's word for clearance is no measurement of it.
+                "agent" => Err(ConfigError::about(
+                    ConfigField::PolicyRecoveryAsserting,
+                    "it lets the agent assert clearance, and an assertion is a person's word \
+                     for what they can see at the machine",
+                )),
+                other => Err(ConfigError::about(
+                    ConfigField::PolicyRecoveryAsserting,
+                    format!("{other:?} is not an actor whose word can count; only `operator` is"),
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    };
+    Ok(RecoveryGrants {
+        operator,
+        agent,
+        asserting,
     })
 }
 

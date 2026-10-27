@@ -30,9 +30,10 @@ use printobserver_core::{
     InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
     PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
     PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
-    PrinterResetPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
-    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
-    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
+    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
+    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
+    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
@@ -131,6 +132,9 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<PrinterResetPayload>("PrinterResetPayload"),
         kind_of::<UnattendedPrinterActivityPayload>("UnattendedPrinterActivityPayload"),
         kind_of::<DetectorHealthChangedPayload>("DetectorHealthChangedPayload"),
+        kind_of::<RecoveryRequestedPayload>("RecoveryRequestedPayload"),
+        kind_of::<RecoveryExecutedPayload>("RecoveryExecutedPayload"),
+        kind_of::<RecoveryRejectedPayload>("RecoveryRejectedPayload"),
     ]
 }
 
@@ -241,6 +245,9 @@ fn each_kind_is_written_under_its_own_name() {
                 "unattended_printer_activity"
             ),
             ("DetectorHealthChangedPayload", "detector_health_changed"),
+            ("RecoveryRequestedPayload", "recovery_requested"),
+            ("RecoveryExecutedPayload", "recovery_executed"),
+            ("RecoveryRejectedPayload", "recovery_rejected"),
         ]
     );
     for declared in declared_kinds() {
@@ -259,11 +266,11 @@ fn each_kind_is_written_under_its_own_name() {
     }
 }
 
-/// The printer timeline is exactly the twenty kinds the ledger and the printer
-/// watch declare, in the order the contract lists them, each written under its
-/// payload's own kind.
+/// The printer timeline is exactly the twenty-three kinds the ledger, the
+/// printer watch and recovery declare, in the order the contract lists them,
+/// each written under its payload's own kind.
 #[test]
-fn the_timeline_is_exactly_the_ledgers_and_the_watchs_twenty_kinds() {
+fn the_timeline_is_exactly_the_ledgers_the_watchs_and_recoverys_kinds() {
     let ledger: Vec<&str> = declared_kinds()
         .iter()
         .skip_while(|declared| declared.name != "PrintStartedPayload")
@@ -293,6 +300,9 @@ fn the_timeline_is_exactly_the_ledgers_and_the_watchs_twenty_kinds() {
             "printer_reset",
             "unattended_printer_activity",
             "detector_health_changed",
+            "recovery_requested",
+            "recovery_executed",
+            "recovery_rejected",
         ]
     );
 }

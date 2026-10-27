@@ -18,8 +18,10 @@
 //! connection that says the printer is offline or in error is answered as a
 //! snapshot in that state rather than as a conflict, because it is the state
 //! the printer is in rather than a request it could not take. The push socket
-//! is [`crate::push`]'s, and the one command sent as a line is `M114`. Acting is `POST` to
-//! `/api/job`, `/api/printer/printhead`, `/api/printer/tool`,
+//! is [`crate::push`]'s, and the one command sent as a line is `M114`, whose
+//! reply [`PrinterPort::read_position`] reads off a push socket of its own.
+//! Acting is `POST` to `/api/job`, `/api/printer/printhead` — the feedrate
+//! factor, and every move and home `PrinterCommand` names — `/api/printer/tool`,
 //! `/api/printer/bed` and — for the fan alone — `/api/printer/command`. Every
 //! acting endpoint answers `204 No Content` on success, so what happened is read
 //! from the status rather than from a body.
@@ -52,7 +54,9 @@
 use core::fmt::Write as _;
 use core::ops::ControlFlow;
 
-use printobserver_printer_api::{Adjustable, FileFacts, ToolFilament};
+use printobserver_printer_api::{
+    Adjustable, AxisPosition, FileFacts, HomeAxes, PrintedExtent, ToolFilament,
+};
 use printobserver_printer_api::{
     BoxFuture, BoxStream, JobSnapshot, PrinterCommand, PrinterError, PrinterPort, PrinterPush,
     PrinterSnapshot,
@@ -176,14 +180,64 @@ impl OctoPrintPrinter {
         payload.disconnected(Timestamp::now())
     }
 
-    /// Send one command of the closed vocabulary, as the line it renders to.
-    fn command_line(&self, command: PrinterCommand) -> Result<(), PrinterError> {
-        self.request(
-            Method::Post,
-            COMMAND_PATH,
-            Some(json!({ "commands": [line_of(command)] })),
-        )
-        .map(|_| ())
+    /// Send one command of the closed vocabulary, as the request it renders
+    /// to: a report as its terminal line, and every move and home through the
+    /// print head's own endpoint.
+    fn command(&self, command: PrinterCommand) -> Result<(), PrinterError> {
+        let (path, body) = match command {
+            PrinterCommand::ReportPosition => {
+                (COMMAND_PATH, json!({ "commands": [POSITION_REPORT] }))
+            }
+            PrinterCommand::MoveZ { mm } => (PRINTHEAD_PATH, json!({ "command": "jog", "z": mm })),
+            PrinterCommand::MoveXy { x_mm, y_mm } => (
+                PRINTHEAD_PATH,
+                json!({ "command": "jog", "x": x_mm, "y": y_mm, "absolute": true }),
+            ),
+            PrinterCommand::Home { axes } => (
+                PRINTHEAD_PATH,
+                json!({ "command": "home", "axes": match axes {
+                    HomeAxes::Xy => &["x", "y"][..],
+                    HomeAxes::Z => &["z"][..],
+                } }),
+            ),
+        };
+        self.request(Method::Post, path, Some(body)).map(|_| ())
+    }
+
+    /// Read where the head is: open the push socket, ask for a report, and
+    /// take the first position a terminal line after it states, asking again
+    /// each [`POSITION_ASK_EVERY`] — a socket only just authenticated may not
+    /// be carrying lines yet — until [`POSITION_WAIT`] has passed.
+    fn read_head(&self) -> Result<AxisPosition, PrinterError> {
+        let stream = crate::push::open(&self.config)?;
+        let started = std::time::Instant::now();
+        let mut asked: Option<std::time::Instant> = None;
+        while started.elapsed() < POSITION_WAIT {
+            if asked.is_none_or(|at| at.elapsed() >= POSITION_ASK_EVERY) {
+                self.command(PrinterCommand::ReportPosition)?;
+                asked = Some(std::time::Instant::now());
+            }
+            match stream.try_next() {
+                Some(Some(PrinterPush::Log { line })) => {
+                    if let Some([x, y, z]) = crate::push::position_of(&line) {
+                        return Ok(AxisPosition { x, y, z });
+                    }
+                }
+                Some(Some(_)) => {}
+                Some(None) => {
+                    return Err(PrinterError::Unreachable {
+                        detail: "the push socket ended before the position was reported".to_owned(),
+                    });
+                }
+                None => std::thread::sleep(std::time::Duration::from_millis(20)),
+            }
+        }
+        Err(PrinterError::Unreachable {
+            detail: format!(
+                "the printer reported no position within {}s of being asked",
+                POSITION_WAIT.as_secs()
+            ),
+        })
     }
 
     /// Read the job, as this adapter's own snapshot.
@@ -215,6 +269,26 @@ impl OctoPrintPrinter {
         file_name: &FileName,
         position_bytes: i64,
     ) -> Result<Vec<ToolFilament>, PrinterError> {
+        self.read_gcode_to(file_name, position_bytes)
+            .map(|reader| reader.fed())
+    }
+
+    /// Read what one file's G-code printed up to a byte.
+    fn read_printed_extent(
+        &self,
+        file_name: &FileName,
+        position_bytes: i64,
+    ) -> Result<Option<PrintedExtent>, PrinterError> {
+        self.read_gcode_to(file_name, position_bytes)
+            .map(|reader| reader.extent())
+    }
+
+    /// Stream one file's G-code through the reader, up to a byte.
+    fn read_gcode_to(
+        &self,
+        file_name: &FileName,
+        position_bytes: i64,
+    ) -> Result<ExtrudedTo, PrinterError> {
         let file = self.read_file(file_name)?;
         let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
@@ -247,8 +321,8 @@ impl OctoPrintPrinter {
             &mut reader,
         );
         match outcome {
-            Ok(None) => Ok(reader.0.fed()),
-            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| reader.0.fed()),
+            Ok(None) => Ok(reader.0),
+            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| reader.0),
             Err(transport) => {
                 let error = match transport {
                     Transport::Unreachable(detail) => PrinterError::Unreachable { detail },
@@ -305,12 +379,14 @@ impl OctoPrintPrinter {
     }
 }
 
-/// The one line each command renders to.
-const fn line_of(command: PrinterCommand) -> &'static str {
-    match command {
-        PrinterCommand::ReportPosition => "M114",
-    }
-}
+/// The one line sent as a line: asking where the head is.
+const POSITION_REPORT: &str = "M114";
+
+/// How long a position read waits for the printer to report one.
+const POSITION_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How often a position read asks again while nothing has answered.
+const POSITION_ASK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The G-code reader, as the sink a download is streamed into.
 struct Reader(ExtrudedTo);
@@ -494,6 +570,18 @@ impl PrinterPort for OctoPrintPrinter {
         Box::pin(async move { self.read_extruded_to(&file_name, position_bytes) })
     }
 
+    fn printed_extent(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> BoxFuture<'_, Result<Option<PrintedExtent>, PrinterError>> {
+        Box::pin(async move { self.read_printed_extent(&file_name, position_bytes) })
+    }
+
+    fn read_position(&self) -> BoxFuture<'_, Result<AxisPosition, PrinterError>> {
+        Box::pin(async move { self.read_head() })
+    }
+
     fn push_events(&self) -> BoxFuture<'_, Result<BoxStream<'static, PrinterPush>, PrinterError>> {
         Box::pin(async move {
             crate::push::open(&self.config)
@@ -502,6 +590,6 @@ impl PrinterPort for OctoPrintPrinter {
     }
 
     fn send_command(&self, command: PrinterCommand) -> BoxFuture<'_, Result<(), PrinterError>> {
-        Box::pin(async move { self.command_line(command) })
+        Box::pin(async move { self.command(command) })
     }
 }

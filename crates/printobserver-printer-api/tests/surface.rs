@@ -110,6 +110,16 @@ fn printer_port_declares_exactly_the_stated_methods() {
             "BoxFuture<'_,Result<Vec<ToolFilament>,PrinterError>>",
         ),
         method(
+            "printed_extent",
+            &[("file_name", "FileName"), ("position_bytes", "i64")],
+            "BoxFuture<'_,Result<Option<PrintedExtent>,PrinterError>>",
+        ),
+        method(
+            "read_position",
+            &[],
+            "BoxFuture<'_,Result<AxisPosition,PrinterError>>",
+        ),
+        method(
             "push_events",
             &[],
             "BoxFuture<'_,Result<BoxStream<'static,PrinterPush>,PrinterError>>",
@@ -256,7 +266,7 @@ fn printer_port_closure_carries_no_bytes_and_one_string() {
     );
 }
 
-/// The printer-port methods that take a `FileName` are `start` and the two
+/// The printer-port methods that take a `FileName` are `start` and the three
 /// reads of one file, each taking exactly one.
 #[test]
 fn only_start_and_the_file_reads_take_a_file_name() {
@@ -279,6 +289,7 @@ fn only_start_and_the_file_reads_take_a_file_name() {
             ("start".to_owned(), 1),
             ("file_facts".to_owned(), 1),
             ("extruded_to".to_owned(), 1),
+            ("printed_extent".to_owned(), 1),
         ]
     );
 }
