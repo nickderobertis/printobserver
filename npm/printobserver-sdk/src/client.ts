@@ -158,32 +158,48 @@ function refusalText(said: string): string {
   return "it said nothing this client can read";
 }
 
-/** Whether one value is a refusal's shape: a variant's name, or one variant carrying its fields. */
+/** Whether one parsed value is a JSON object, whose members can then be read. */
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether one value is a refusal's shape: a variant's name, or one variant
+ * carrying its fields.
+ *
+ * The variant's name is not held to the names this client was generated with:
+ * a supervisor newer than this client refuses for reasons it does not know,
+ * and that refusal still reaches the caller as one rather than as an
+ * unreadable answer.
+ */
 function isRefusal(refused: unknown): boolean {
   if (typeof refused === "string") {
     return refused !== "";
   }
-  if (typeof refused !== "object" || refused === null) {
+  if (!isObject(refused)) {
     return false;
   }
   const arms = Object.values(refused);
-  return arms.length === 1 && typeof arms[0] === "object" && arms[0] !== null;
+  // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+  return arms.length === 1 && isObject(arms[0]);
 }
 
 /** A refusal's value asked for and range allowed, when it ruled on a value; `null` when its bounds are malformed. */
 function boundsOf(refused: unknown): { requested?: number; allowed?: Range } | null {
-  if (typeof refused !== "object" || refused === null || !("out_of_bounds" in refused)) {
+  if (!isObject(refused) || !("out_of_bounds" in refused)) {
     return {};
   }
-  const bounds: unknown = refused.out_of_bounds;
-  if (typeof bounds !== "object" || bounds === null) {
+  const bounds = refused.out_of_bounds;
+  if (!isObject(bounds)) {
     return null;
   }
-  const { requested, allowed } = bounds as { requested?: unknown; allowed?: unknown };
-  if (typeof requested !== "number" || typeof allowed !== "object" || allowed === null) {
+  // An action's bounds name the adjustable they ruled on; a recovery's, its field.
+  const { adjustable, field, requested, allowed } = bounds;
+  const ruledOn = field ?? adjustable;
+  if (typeof ruledOn !== "string" || typeof requested !== "number" || !isObject(allowed)) {
     return null;
   }
-  const { min, max } = allowed as { min?: unknown; max?: unknown };
+  const { min, max } = allowed;
   if (typeof min !== "number" || typeof max !== "number") {
     return null;
   }
@@ -192,14 +208,14 @@ function boundsOf(refused: unknown): { requested?: number; allowed?: Range } | n
 
 /** The policy's own refusal, as the answer to it carries it. */
 function rejection(status: number, said: string): Error {
-  const answer = document<ActionAnswer | SpoolCommandAnswer | RecoveryAnswer>(status, said);
+  const answer: unknown = document<unknown>(status, said);
+  if (!isObject(answer)) {
+    return new Unreadable(status, "the supervisor refused this action and answered no object");
+  }
   // An action's answer carries its decision in its record; a recovery's and a
   // spool command's carry it at the top.
-  const decision: unknown = "record" in answer ? answer.record.decision : answer.decision;
-  const refused: unknown =
-    typeof decision === "object" && decision !== null && "rejected" in decision
-      ? decision.rejected
-      : undefined;
+  const decision = isObject(answer.record) ? answer.record.decision : answer.decision;
+  const refused = isObject(decision) ? decision.rejected : undefined;
   if (!isRefusal(refused)) {
     return new Unreadable(
       status,
@@ -211,16 +227,22 @@ function rejection(status: number, said: string): Error {
     return new Unreadable(status, "the refusal's bounds are not a value and a range");
   }
   return new Rejected(
+    // The shape is checked above; the variant is passed through as `isRefusal`
+    // says why, so the type is the contract's own name for a refusal.
     refused as RejectionReason | RecoveryRejection,
     bounds.requested,
     bounds.allowed,
-    answer,
+    // An object whose decision is a refusal: the answer the contract names.
+    answer as unknown as ActionAnswer | SpoolCommandAnswer | RecoveryAnswer,
   );
 }
 
 /** The machine's own refusal of an action the policy accepted. */
 function machineRefusal(status: number, said: string): Error {
-  const answered = document<ActionAnswer | RecoveryAnswer>(status, said);
+  const answered: unknown = document<unknown>(status, said);
+  if (!isObject(answered)) {
+    return new Unreadable(status, "the supervisor answered a refusal that is not an object");
+  }
   // A recovery the machine refused carries no action record, and arrives as
   // the supervisor's own words for it.
   if (!("record" in answered)) {
@@ -229,9 +251,11 @@ function machineRefusal(status: number, said: string): Error {
     }
     return new Refused(status, answered.detail);
   }
-  const answer: ActionAnswer = answered;
   return new PrinterRefused(
-    answer.printer_refusal ?? "it said nothing this client can read",
-    answer,
+    typeof answered.printer_refusal === "string"
+      ? answered.printer_refusal
+      : "it said nothing this client can read",
+    // An object carrying an action record: the answer the contract names.
+    answered as unknown as ActionAnswer,
   );
 }

@@ -115,15 +115,29 @@ test("a recovery the machine refused carries the supervisor's words", async () =
 
   const refused = await client.recoverFan(50, "because").catch((raised: unknown) => raised);
 
-  expect(refused).toBeInstanceOf(Refused);
-  expect((refused as Refused).status).toBe(502);
-  expect((refused as Refused).detail).toContain("the fan is stuck");
+  if (!(refused instanceof Refused)) {
+    throw new Error(`the refusal was not a Refused: ${String(refused)}`);
+  }
+  expect(refused.status).toBe(502);
+  expect(refused.detail).toContain("the fan is stuck");
+});
+
+test("a refusal whose answer is not an object is unreadable", async () => {
+  for (const status of [409, 502]) {
+    for (const answer of [null, "refused", 7, [recovery({ rejected: "print_running" })]]) {
+      await using host = Host.answering(status, answer);
+      const client = new Client({ server: host.address, actor: ACTOR });
+
+      await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
+    }
+  }
 });
 
 test("a recovery refused with bounds no reader can read is unreadable", async () => {
   for (const refused of [
     { out_of_bounds: { field: "percent", requested: "lots", allowed: {} } },
     { out_of_bounds: "everything" },
+    { out_of_bounds: { requested: 150, allowed: { min: 0, max: 100 } } },
     null,
     { two: {}, arms: {} },
   ]) {

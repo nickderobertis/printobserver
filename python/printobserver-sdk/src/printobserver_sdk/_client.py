@@ -189,7 +189,12 @@ def _rejection(status: int, said: str) -> Exception:
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
-    # A refusal is a variant's name, or one variant carrying its fields.
+    # A refusal is a variant's name, or one variant carrying its fields. The
+    # name is not held to the names this client was generated with: a
+    # supervisor newer than this client refuses for reasons it does not know,
+    # and that refusal still reaches the caller as one rather than as an
+    # unreadable answer.
+    # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     is_named = isinstance(refused, str) and bool(refused)
     is_carried = (
         isinstance(refused, dict)
@@ -206,17 +211,27 @@ def _rejection(status: int, said: str) -> Exception:
     allowed: Range | None = None
     if isinstance(refused, dict) and "out_of_bounds" in refused:
         match refused["out_of_bounds"]:
+            # An action's bounds name the adjustable they ruled on; a
+            # recovery's, its field.
             case {
-                "requested": int() | float() as asked,
-                "allowed": {"min": int() | float(), "max": int() | float()} as bounds,
-            }:
+                "requested": asked,
+                "allowed": {"min": low, "max": high} as bounds,
+            } as ruled if isinstance(ruled.get("field", ruled.get("adjustable")), str) and all(
+                _is_number(value) for value in (asked, low, high)
+            ):
                 requested = float(asked)
                 allowed = cast(Range, bounds)
             case malformed:
                 return UnreadableError(
-                    status, f"the refusal's bounds are not a value and a range: {malformed!r}"
+                    status,
+                    f"the refusal's bounds are not a field, a value and a range: {malformed!r}",
                 )
     return RejectedError(reason, requested, allowed, answer)
+
+
+def _is_number(value: object) -> bool:
+    """Whether one parsed JSON value is a number: `bool` is an `int` to Python, and not to JSON."""
+    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 def _machine_refusal(status: int, said: str) -> Exception:
@@ -229,7 +244,14 @@ def _machine_refusal(status: int, said: str) -> Exception:
     match document:
         case {"action": _, "detail": str() as detail}:
             return RefusedError(status, detail)
-    answer = cast(ActionAnswer, document)
+        case {"record": dict()}:
+            # The type `operations.json` declares for an answer carrying an
+            # action record, which the match has just found.
+            answer = cast(ActionAnswer, document)
+        case _:
+            return UnreadableError(
+                status, "the supervisor answered a refusal carrying neither a record nor words"
+            )
     return PrinterRefusedError(
         answer.get("printer_refusal") or "it said nothing this client can read", answer
     )

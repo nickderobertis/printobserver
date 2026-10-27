@@ -68,13 +68,24 @@ pub const UNTRUSTED_AT_START: &str =
 struct Facts {
     /// The printer's state, when it could be read.
     snapshot: Option<PrinterSnapshot>,
-    /// Whether Z is trusted.
-    trusted: bool,
-    /// Where the head is, when it was read: only while Z is trusted.
-    position: Option<Result<AxisPosition, String>>,
-    /// The tallest part the last print laid down, when it was read; zero when
-    /// no print has laid anything down.
-    tallest: Option<Result<f64, String>>,
+    /// Whether Z is trusted, and what was read only because it is.
+    z: ZFacts,
+}
+
+/// What a recovery reads of Z: nothing while it is untrusted, because a
+/// position or an extent measured against an untrusted Z means nothing.
+#[derive(Debug, Clone)]
+enum ZFacts {
+    /// Z is untrusted.
+    Untrusted,
+    /// Z is trusted.
+    Trusted {
+        /// Where the head is, when it was read.
+        position: Option<Result<AxisPosition, String>>,
+        /// The tallest part the last print laid down, when it was read; zero
+        /// when no print has laid anything down.
+        tallest: Option<Result<f64, String>>,
+    },
 }
 
 /// The decision on one recovery request: the calls it makes, or its refusal.
@@ -171,8 +182,8 @@ fn lift(
             allowed: printobserver_types::Range::new(0.0, config.max_lift_mm),
         });
     }
-    if facts.trusted {
-        let at = position_of(facts, kind)?;
+    if let ZFacts::Trusted { position, .. } = &facts.z {
+        let at = position_of(position.as_ref(), kind)?;
         // How far the head can still travel away from the bed.
         let room = match config.away_from_bed {
             AwayFromBed::ZPlus => config.max_z_mm - at.z,
@@ -255,15 +266,15 @@ fn clear_of_the_part(
     action: &RecoveryAction,
     facts: &Facts,
 ) -> Result<(), RecoveryRejection> {
-    if !facts.trusted {
+    let ZFacts::Trusted { position, tallest } = &facts.z else {
         return Err(RecoveryRejection::ZUntrusted);
-    }
+    };
     if action.clearance_asserted() && grants.assertion_counts(class) {
         return Ok(());
     }
     let kind = action.kind();
-    let at = position_of(facts, kind)?;
-    let tallest = match &facts.tallest {
+    let at = position_of(position.as_ref(), kind)?;
+    let tallest = match tallest {
         Some(Ok(tallest)) => *tallest,
         Some(Err(detail)) => {
             return Err(RecoveryRejection::PrinterCannot {
@@ -290,8 +301,11 @@ fn clear_of_the_part(
 
 /// Where the head is, or the refusal of an action that needs it and cannot
 /// read it.
-fn position_of(facts: &Facts, kind: RecoveryActionKind) -> Result<AxisPosition, RecoveryRejection> {
-    match &facts.position {
+fn position_of(
+    position: Option<&Result<AxisPosition, String>>,
+    kind: RecoveryActionKind,
+) -> Result<AxisPosition, RecoveryRejection> {
+    match position {
         Some(Ok(at)) => Ok(*at),
         Some(Err(detail)) => Err(RecoveryRejection::PrinterCannot {
             action: kind,
@@ -493,9 +507,7 @@ impl Supervisor {
             // A request refused before the printer matters reads nothing of it.
             Facts {
                 snapshot: None,
-                trusted: false,
-                position: None,
-                tallest: None,
+                z: ZFacts::Untrusted,
             }
         };
         let calls = decide(
@@ -643,8 +655,11 @@ impl Supervisor {
         Ok(RecoveryStatus {
             state,
             z_trust: self.z_trust(),
-            position: match facts.position {
-                Some(Ok(at)) => Some(RecoveryPosition {
+            position: match facts.z {
+                ZFacts::Trusted {
+                    position: Some(Ok(at)),
+                    ..
+                } => Some(RecoveryPosition {
                     x: at.x,
                     y: at.y,
                     z: at.z,
@@ -694,30 +709,31 @@ impl Supervisor {
                 PrinterState::Operational | PrinterState::Paused
             )
         });
-        let position = if position && trusted && reachable {
-            Some(
-                self.read_position()
-                    .await
-                    .map_err(|error| error.to_string()),
-            )
+        let z = if !trusted {
+            ZFacts::Untrusted
         } else {
-            None
+            ZFacts::Trusted {
+                position: if position && reachable {
+                    Some(
+                        self.read_position()
+                            .await
+                            .map_err(|error| error.to_string()),
+                    )
+                } else {
+                    None
+                },
+                tallest: if tallest && reachable {
+                    Some(match self.last_print_extent().await {
+                        Ok(Some((_, Some(extent)))) => Ok(extent.tallest_mm),
+                        Ok(None | Some((_, None))) => Ok(0.0),
+                        Err(error) => Err(error.to_string()),
+                    })
+                } else {
+                    None
+                },
+            }
         };
-        let tallest = if tallest && trusted && reachable {
-            Some(match self.last_print_extent().await {
-                Ok(Some((_, Some(extent)))) => Ok(extent.tallest_mm),
-                Ok(None | Some((_, None))) => Ok(0.0),
-                Err(error) => Err(error.to_string()),
-            })
-        } else {
-            None
-        };
-        Facts {
-            snapshot,
-            trusted,
-            position,
-            tallest,
-        }
+        Facts { snapshot, z }
     }
 
     /// The last print with a file, and what its G-code laid down up to the

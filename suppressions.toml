@@ -2769,3 +2769,21 @@ rule = "changed_behavior_has_e2e"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "if status != 204:"
 reason = "The one branch of `terminal` and `connect` no journey drives is a running instance refusing the line or the reconnect. Making the shared instance refuse one means taking its printer offline in the middle of the integration tier every other suite of that tier acts on, so the branch is held to the same failure class, next action and wording the refusal of an absent instance is driven through in `test_startup_failures.py`, and it reports the instance's own status and words."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = 'client.recover_fan(50.0, "because")'
+reason = "These tests hold the published synchronous Python client's refusal reading to a host answering malformed refusals, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
+site = "is_named = isinstance(refused, str) and bool(refused)"
+reason = "A refusal's shape is checked — a non-empty variant name, or exactly one variant carrying an object, with any bounds checked field by field — but its variant name is deliberately not held to the names this client was generated with: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "npm/printobserver-sdk/src/client.ts"
+site = "return arms.length === 1 && isObject(arms[0]);"
+reason = "A refusal's shape is checked — a non-empty variant name, or exactly one variant carrying an object, with any bounds checked field by field — but its variant name is deliberately not held to the names this client was generated with: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."

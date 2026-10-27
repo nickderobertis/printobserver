@@ -231,6 +231,7 @@ def test_a_recovery_the_machine_refused_carries_the_supervisors_words() -> None:
     with Host(502, _recovery({"executed": {"failed": {"reason": "the fan is stuck"}}})) as host:
         client = Client(host.address, ACTOR)
         try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             client.recover_fan(50.0, "because")
         except RefusedError as refused:
             equal(refused.status, 502)
@@ -244,14 +245,32 @@ def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> No
     for refused in (
         {"out_of_bounds": {"field": "percent", "requested": "lots", "allowed": {}}},
         {"out_of_bounds": "everything"},
+        {"out_of_bounds": {"field": "percent", "requested": True, "allowed": {"min": 0, "max": 1}}},
+        {"out_of_bounds": {"requested": 150.0, "allowed": {"min": 0.0, "max": 100.0}}},
         None,
         {"two": {}, "arms": {}},
     ):
         with Host(409, _recovery({"rejected": refused})) as host:
             client = Client(host.address, ACTOR)
             try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
                 client.recover_fan(50.0, "because")
             except UnreadableError as unreadable:
                 equal(unreadable.status, 409, describing=f"{refused!r}")
             else:
                 truth(False, describing=f"{refused!r} to be refused as unreadable")
+
+
+def test_a_refusal_whose_answer_is_not_an_object_is_unreadable() -> None:
+    """A policy or machine refusal answered as anything but an object is not handed on as one."""
+    for status in (409, 502):
+        for answer in (None, "refused", 7, [_recovery({"rejected": "print_running"})]):
+            with Host(status, answer) as host:
+                client = Client(host.address, ACTOR)
+                try:
+                    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                    client.recover_fan(50.0, "because")
+                except UnreadableError as unreadable:
+                    equal(unreadable.status, status, describing=f"{answer!r}")
+                else:
+                    truth(False, describing=f"{answer!r} at {status} to be unreadable")
