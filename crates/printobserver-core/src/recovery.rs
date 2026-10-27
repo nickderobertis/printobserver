@@ -581,6 +581,9 @@ impl Supervisor {
     /// Returns the store's own error when the prints or the events could not
     /// be read.
     pub async fn recovery_status(&self, class: ActorClass) -> Result<RecoveryStatus, CoreError> {
+        // The store answers which print was last before anything is read of
+        // the machine: a store that cannot is this server's own failure.
+        self.stores().prints.prints().await?;
         let facts = self.facts(true, true).await;
         let config = self.config().recovery;
         let actions = RecoveryActionKind::ALL
@@ -700,6 +703,11 @@ impl Supervisor {
             .file_position(print.id)
             .await?
             .map_or(0, |position| position.bytes);
+        // A print no read found past its first byte sent nothing that could
+        // lay material down, so its file need not be read.
+        if position <= 0 {
+            return Ok(Some((print.id, None)));
+        }
         let key = (print.id, position);
         if let Some((cached, extent)) = self.recovery_extents().as_ref()
             && *cached == key

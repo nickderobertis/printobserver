@@ -15,8 +15,10 @@
 
 use std::collections::BTreeSet;
 
-use printobserver_core::{PrintAction, SpoolCommand};
-use printobserver_server::{BESIDE_THE_ACTIONS, Effect, MEDIA_TYPE, Method, OPERATIONS, Operation};
+use printobserver_core::{PrintAction, RecoveryAction, SpoolCommand};
+use printobserver_server::{
+    BESIDE_THE_ACTIONS, Effect, MEDIA_TYPE, Method, OPERATIONS, Operation, RECOVERY_STATUS,
+};
 use printobserver_types::serde_json::{Value, json};
 
 use crate::world::{World, manifest_write};
@@ -54,8 +56,9 @@ fn served() -> Vec<Served> {
     OPERATIONS.iter().map(Served::of).collect()
 }
 
-/// One operation per variant the contracts' own `PrintAction` declares, plus
-/// the seven operations this server is required to serve beside them.
+/// One operation per variant the contracts' own `PrintAction`, `SpoolCommand`
+/// and `RecoveryAction` declare, the recovery read beside the last, plus the
+/// operations this server is required to serve beside them.
 ///
 /// Read out of the schema that type generates rather than out of a list here,
 /// so a variant added to the contracts enters this set the moment it is added.
@@ -95,6 +98,25 @@ fn required() -> BTreeSet<String> {
         commands.len()
     );
     found.extend(commands);
+    let recovery = printobserver_types::contract::schema_of::<RecoveryAction>();
+    let recoveries: Vec<String> = recovery["oneOf"]
+        .as_array()
+        .expect("the recovery vocabulary is a union")
+        .iter()
+        .map(|variant| {
+            variant["properties"]["action"]["const"]
+                .as_str()
+                .expect("every recovery action is tagged with its own name")
+                .to_owned()
+        })
+        .collect();
+    assert!(
+        recoveries.len() >= 7,
+        "the contracts declare only {} recovery actions, which is not the vocabulary",
+        recoveries.len()
+    );
+    found.extend(recoveries);
+    found.insert(RECOVERY_STATUS.to_owned());
     found.extend(BESIDE_THE_ACTIONS.iter().map(|name| (*name).to_owned()));
     found
 }

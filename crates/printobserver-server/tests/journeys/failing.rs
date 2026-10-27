@@ -94,9 +94,10 @@ async fn every_operation_answers_this_servers_own_failure_when_the_store_has() {
         };
         let request = match operation.method {
             Method::Get => client.get(&url),
-            Method::Post => match operation.command_kind() {
-                Some(kind) => client.post(&url).json(&crate::world::spool_body(kind)),
-                None => client.post(&url).json(&body(operation.action_kind())),
+            Method::Post => match (operation.command_kind(), operation.recovery_kind()) {
+                (Some(kind), _) => client.post(&url).json(&crate::world::spool_body(kind)),
+                (None, Some(kind)) => client.post(&url).json(&crate::world::recovery_body(kind)),
+                (None, None) => client.post(&url).json(&body(operation.action_kind())),
             },
             Method::Put => client.put(&url).json(&manifest_write(&manifest())),
         };

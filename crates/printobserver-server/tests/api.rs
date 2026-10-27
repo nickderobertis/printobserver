@@ -58,6 +58,8 @@ mod observing;
 mod operating;
 #[path = "journeys/reconciling.rs"]
 mod reconciling;
+#[path = "journeys/recovering.rs"]
+mod recovering;
 #[path = "journeys/refusing.rs"]
 mod refusing;
 // The responder binary this journey runs is built only under the feature this

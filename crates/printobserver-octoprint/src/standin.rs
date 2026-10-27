@@ -129,6 +129,8 @@ struct Script {
     commands: Vec<(String, bool)>,
     /// Every job command received.
     job_commands: Vec<String>,
+    /// Every print-head request received, as its body.
+    printhead: Vec<Value>,
     /// Every request received, as its method and path.
     requests: Vec<String>,
     /// The key it admits.
@@ -194,6 +196,7 @@ impl ScriptedOctoPrint {
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
+            printhead: Vec::new(),
             requests: Vec::new(),
             api_key: minted("octoprint-key"),
             session: minted("octoprint-session"),
@@ -417,6 +420,25 @@ impl ScriptedOctoPrint {
         self.held().job_commands.clone()
     }
 
+    /// Every print-head request received — each move and home — as its body.
+    #[must_use]
+    pub fn printhead_requests(&self) -> Vec<Value> {
+        self.held().printhead.clone()
+    }
+
+    /// Where the head is now.
+    #[must_use]
+    pub fn head(&self) -> [f64; 3] {
+        self.held().position
+    }
+
+    /// The tool's and the bed's targets now.
+    #[must_use]
+    pub fn reported_targets(&self) -> (f64, f64) {
+        let held = self.held();
+        (held.tool_target, held.bed_target)
+    }
+
     /// Every request received, as `METHOD path`.
     #[must_use]
     pub fn requests(&self) -> Vec<String> {
@@ -634,6 +656,43 @@ fn answer(
             if answer {
                 broadcast_to(sockets, &current_with(&["Send: M114", &reply]));
             }
+            (204, String::new())
+        }
+        // A move or a home, which a printing job refuses, as `OctoPrint`
+        // does; a jog moves Z from where it is and X and Y to a place when it
+        // says so, and a home puts the axes it names at zero.
+        ("POST", "/api/printer/printhead") if body["command"] == "feedrate" => {
+            held.printhead.push(body);
+            (204, String::new())
+        }
+        ("POST", "/api/printer/printhead") if held.job.state == "Printing" => {
+            (409, r#"{"error":"Printer is currently printing"}"#.to_owned())
+        }
+        ("POST", "/api/printer/printhead") => {
+            let mut at = held.position;
+            match body["command"].as_str() {
+                Some("jog") => {
+                    let absolute = body["absolute"].as_bool().unwrap_or(false);
+                    for (index, axis) in ["x", "y", "z"].iter().enumerate() {
+                        if let Some(value) = body[*axis].as_f64() {
+                            at[index] = if absolute { value } else { at[index] + value };
+                        }
+                    }
+                }
+                Some("home") => {
+                    for (index, axis) in ["x", "y", "z"].iter().enumerate() {
+                        let named = body["axes"]
+                            .as_array()
+                            .is_some_and(|axes| axes.iter().any(|named| named == axis));
+                        if named {
+                            at[index] = 0.0;
+                        }
+                    }
+                }
+                _ => return (400, r#"{"error":"Unknown command"}"#.to_owned()),
+            }
+            held.position = at;
+            held.printhead.push(body);
             (204, String::new())
         }
         ("POST", "/api/printer/tool") => {
