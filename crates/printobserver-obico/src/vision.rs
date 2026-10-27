@@ -37,7 +37,7 @@ pub struct ObicoVisionConfig {
     /// The most bytes to read of it.
     pub max_image_bytes: i64,
     /// The grey-level spread at or below which a frame is blank.
-    pub blank_frame_max_stddev: f64,
+    pub blank_frame_max_stddev: crate::frame::BlankFrameBound,
 }
 
 impl Default for ObicoVisionConfig {
@@ -45,7 +45,7 @@ impl Default for ObicoVisionConfig {
         Self {
             fetch_timeout: DEFAULT_FETCH_TIMEOUT,
             max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
-            blank_frame_max_stddev: crate::frame::DEFAULT_BLANK_FRAME_MAX_STDDEV,
+            blank_frame_max_stddev: crate::frame::BlankFrameBound::DEFAULT,
         }
     }
 }

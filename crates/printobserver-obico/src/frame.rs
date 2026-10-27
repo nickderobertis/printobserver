@@ -28,14 +28,53 @@ pub const MIN_BLANK_FRAME_MAX_STDDEV: f64 = 1.0;
 /// The greatest blank-frame bound a configuration may name.
 pub const MAX_BLANK_FRAME_MAX_STDDEV: f64 = 128.0;
 
+/// A grey-level spread at or below which a frame is blank: a finite number
+/// from [`MIN_BLANK_FRAME_MAX_STDDEV`] to [`MAX_BLANK_FRAME_MAX_STDDEV`], so a
+/// bound that would judge every frame blank, or none, cannot be held.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct BlankFrameBound(f64);
+
+impl BlankFrameBound {
+    /// The bound used unless one is configured,
+    /// [`DEFAULT_BLANK_FRAME_MAX_STDDEV`].
+    pub const DEFAULT: Self = Self(DEFAULT_BLANK_FRAME_MAX_STDDEV);
+
+    /// The bound `spread` names, when it is one a configuration may name.
+    ///
+    /// # Errors
+    ///
+    /// Answers the refused number for one that is not finite or lies outside
+    /// [`MIN_BLANK_FRAME_MAX_STDDEV`] to [`MAX_BLANK_FRAME_MAX_STDDEV`].
+    pub fn new(spread: f64) -> Result<Self, f64> {
+        if (MIN_BLANK_FRAME_MAX_STDDEV..=MAX_BLANK_FRAME_MAX_STDDEV).contains(&spread) {
+            Ok(Self(spread))
+        } else {
+            Err(spread)
+        }
+    }
+
+    /// The spread, in grey levels.
+    #[must_use]
+    pub const fn value(self) -> f64 {
+        self.0
+    }
+}
+
+impl Default for BlankFrameBound {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Judge one frame: answered back when it decodes whole and its grey levels
-/// spread wider than `max_stddev`.
+/// spread wider than `bound`.
 ///
 /// # Errors
 ///
 /// Answers [`FrameFault::Undecodable`] for a frame a strict decode refuses, and
 /// [`FrameFault::Blank`] for one whose spread is at or below the bound.
-pub fn judge(image: FetchedImage, max_stddev: f64) -> Result<FetchedImage, FrameFault> {
+pub fn judge(image: FetchedImage, bound: BlankFrameBound) -> Result<FetchedImage, FrameFault> {
+    let max_stddev = bound.value();
     let options = DecoderOptions::new_cmd()
         .set_strict_mode(true)
         .jpeg_set_out_colorspace(ColorSpace::Luma);
@@ -74,4 +113,32 @@ fn stddev(pixels: &[u8]) -> Option<f64> {
         .sum::<f64>()
         / count;
     Some(variance.sqrt())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BlankFrameBound, DEFAULT_BLANK_FRAME_MAX_STDDEV, MAX_BLANK_FRAME_MAX_STDDEV,
+        MIN_BLANK_FRAME_MAX_STDDEV,
+    };
+
+    /// Both ends of the range are bounds, and nothing past them or not a
+    /// number at all is.
+    #[test]
+    fn a_bound_is_a_finite_spread_inside_its_range() {
+        for spread in [MIN_BLANK_FRAME_MAX_STDDEV, 36.5, MAX_BLANK_FRAME_MAX_STDDEV] {
+            assert_eq!(
+                BlankFrameBound::new(spread).map(BlankFrameBound::value),
+                Ok(spread)
+            );
+        }
+        for spread in [0.99, 128.01, -1.0, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(BlankFrameBound::new(spread), Err(spread));
+        }
+        assert!(BlankFrameBound::new(f64::NAN).is_err_and(f64::is_nan));
+        assert_eq!(
+            BlankFrameBound::default(),
+            BlankFrameBound::new(DEFAULT_BLANK_FRAME_MAX_STDDEV).expect("the default is a bound")
+        );
+    }
 }

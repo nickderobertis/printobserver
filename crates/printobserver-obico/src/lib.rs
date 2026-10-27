@@ -67,7 +67,8 @@ pub use events::{
     obico_source,
 };
 pub use frame::{
-    DEFAULT_BLANK_FRAME_MAX_STDDEV, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, judge,
+    BlankFrameBound, DEFAULT_BLANK_FRAME_MAX_STDDEV, MAX_BLANK_FRAME_MAX_STDDEV,
+    MIN_BLANK_FRAME_MAX_STDDEV, judge,
 };
 pub use health::{DetectorHealthCheck, HEALTH_PATH, HEALTH_TIMEOUT};
 pub use ingress::{IngressError, ObicoIngress, Receipt};

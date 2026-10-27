@@ -92,8 +92,7 @@ use std::path::{Path, PathBuf};
 
 use printobserver_core::{ActionKind, ActorClass, PreflightMode, SafetyEnvelope, SpoolPolicy};
 use printobserver_obico::{
-    AccessToken, DEFAULT_BLANK_FRAME_MAX_STDDEV, MAX_BLANK_FRAME_MAX_STDDEV,
-    MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
+    AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
 };
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
@@ -980,7 +979,7 @@ pub struct ServerConfig {
     /// recorded.
     pub unattended_window: core::time::Duration,
     /// The grey-level spread at or below which a camera frame is blank.
-    pub blank_frame_max_stddev: f64,
+    pub blank_frame_max_stddev: BlankFrameBound,
     /// Where the failure detector's own service answers its health check,
     /// when configured.
     pub obico_ml_api_url: Option<WebAddress>,
@@ -1517,20 +1516,18 @@ fn seconds_within(
 }
 
 /// The blank-frame bound, refused outside the range it admits.
-fn blank_frame_bound(written: Option<f64>) -> Result<f64, ConfigError> {
-    let Some(bound) = written else {
-        return Ok(DEFAULT_BLANK_FRAME_MAX_STDDEV);
-    };
-    if !(MIN_BLANK_FRAME_MAX_STDDEV..=MAX_BLANK_FRAME_MAX_STDDEV).contains(&bound) {
-        return Err(ConfigError::about(
-            ConfigField::VisionBlankFrameMaxStddev,
-            format!(
-                "{bound} is outside the {MIN_BLANK_FRAME_MAX_STDDEV} to \
-                 {MAX_BLANK_FRAME_MAX_STDDEV} grey levels it admits"
-            ),
-        ));
-    }
-    Ok(bound)
+fn blank_frame_bound(written: Option<f64>) -> Result<BlankFrameBound, ConfigError> {
+    written.map_or(Ok(BlankFrameBound::DEFAULT), |bound| {
+        BlankFrameBound::new(bound).map_err(|refused| {
+            ConfigError::about(
+                ConfigField::VisionBlankFrameMaxStddev,
+                format!(
+                    "{refused} is outside the {MIN_BLANK_FRAME_MAX_STDDEV} to \
+                     {MAX_BLANK_FRAME_MAX_STDDEV} grey levels it admits"
+                ),
+            )
+        })
+    })
 }
 
 /// The answer bound, refused when it is not one this program admits.
