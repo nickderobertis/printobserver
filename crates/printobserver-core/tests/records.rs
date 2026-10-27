@@ -40,7 +40,7 @@ use printobserver_core::{
     EffectiveBounds, InterventionId, PrintAction, SafetyEnvelope,
 };
 use printobserver_printer_api::Adjustable;
-use printobserver_types::contract::{Sample, TypeContract};
+use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::{self, Value};
 use printobserver_types::{Range, WireField, wire_fields};
 use records::declared;
@@ -614,9 +614,13 @@ fn every_action_reads_back_what_it_carries() {
 /// A recovery allowance is read back only when `allowed` and `refusal` agree:
 /// allowed with no refusal, or refused with one. Either contradiction is
 /// refused at the boundary, naming what it got wrong, rather than read as
-/// whichever half a reader looked at first.
+/// whichever half a reader looked at first — and the published schema, which
+/// states the same pairing for every client, gives each document the verdict
+/// reading it does.
 #[test]
 fn a_recovery_allowance_whose_two_halves_disagree_is_refused() {
+    let schema = jsonschema::validator_for(&schema_of::<ActionAllowance>())
+        .expect("the allowance's schema compiles");
     let allowed = serde_json::json!({ "action": "recover_lift", "allowed": true });
     let refused = serde_json::json!({
         "action": "recover_heat", "allowed": false, "refusal": "z_untrusted",
@@ -624,6 +628,7 @@ fn a_recovery_allowance_whose_two_halves_disagree_is_refused() {
     for agreeing in [&allowed, &refused] {
         let read: ActionAllowance =
             serde_json::from_value(agreeing.clone()).expect("an agreeing allowance reads");
+        assert!(schema.is_valid(agreeing), "the schema refused {agreeing}");
         assert_eq!(
             &serde_json::to_value(&read).expect("an allowance emits"),
             agreeing
@@ -642,6 +647,10 @@ fn a_recovery_allowance_whose_two_halves_disagree_is_refused() {
             "a refused action carries its refusal",
         ),
     ] {
+        assert!(
+            !schema.is_valid(&contradiction),
+            "the schema admitted {contradiction}"
+        );
         let error = serde_json::from_value::<ActionAllowance>(contradiction.clone())
             .expect_err("a contradictory allowance is refused");
         assert!(

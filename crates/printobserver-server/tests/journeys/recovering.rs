@@ -310,8 +310,13 @@ impl Recovering {
 
     /// Wait until the recovery read reports the printer in one state.
     async fn reads(&self, state: &str) {
+        self.reads_as(&json!(state)).await;
+    }
+
+    /// Wait until the recovery read answers this state, as it is sent.
+    async fn reads_as(&self, state: &Value) {
         let deadline = tokio::time::Instant::now() + PATIENCE;
-        while self.status().await["state"] != state {
+        while &self.status().await["state"] != state {
             assert!(
                 tokio::time::Instant::now() < deadline,
                 "the printer never read {state}"
@@ -503,6 +508,24 @@ async fn every_action_is_refused_under_a_running_print_and_an_offline_printer() 
     world.octoprint.reports("Offline", down("Offline"));
     world.reads("offline").await;
     every_action_refused(&world, "printer_unreachable").await;
+
+    // A state this program has no word for is one something may be happening
+    // in: a serial connection still being opened, which `OctoPrint` flags as
+    // neither operational nor closed, is refused as a running print.
+    world.octoprint.reports(
+        "Connecting",
+        JobScript {
+            state: "Connecting".to_owned(),
+            ..JobScript::idle()
+        },
+    );
+    world.reads_as(&json!({ "unknown": "Connecting" })).await;
+    let (_, answer) = world.ask("recover_lift", json!({ "mm": 5.0 })).await;
+    assert_eq!(
+        answer["decision"]["rejected"],
+        json!({ "print_running": { "state": { "unknown": "Connecting" } } })
+    );
+    every_action_refused(&world, "print_running").await;
 }
 
 /// A value outside its bound is refused naming the field, the value and the
@@ -576,6 +599,42 @@ async fn a_value_outside_its_bound_is_refused_and_reaches_nothing() {
     assert!(
         head.iter()
             .zip([0.0, 0.0, 190.0])
+            .all(|(at, was)| (at - was).abs() < 1e-9),
+        "the refused lift moved the head to {head:?}"
+    );
+}
+
+/// On a machine whose bed rises to meet the nozzle, away from the bed is
+/// toward Z 0, so the room a lift has is the head's own height: from Z 8,
+/// 20 mm is refused naming 8 as all there is, and the head stays where it
+/// was.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lift_on_a_z_minus_machine_is_bounded_by_the_height_left_to_zero() {
+    let world = Recovering::start(with_recovery(|document| {
+        set(
+            document,
+            "recovery.away_from_bed",
+            toml::Value::String("z_minus".to_owned()),
+        );
+    }))
+    .await;
+    world.connected().await;
+    world.home_z().await;
+    world.octoprint.moves_head_to([0.0, 0.0, 8.0]);
+
+    let before = world.asked_of_the_machine();
+    let (status, answer) = world.ask("recover_lift", json!({ "mm": 20.0 })).await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+    assert_eq!(
+        answer["decision"]["rejected"]["out_of_bounds"],
+        json!({ "field": "mm", "requested": 20.0, "allowed": { "min": 0.0, "max": 8.0 } })
+    );
+    assert_eq!(world.asked_of_the_machine(), before);
+    let head = world.octoprint.head();
+    assert!(
+        head.iter()
+            .zip([0.0, 0.0, 8.0])
             .all(|(at, was)| (at - was).abs() < 1e-9),
         "the refused lift moved the head to {head:?}"
     );

@@ -21,9 +21,10 @@ from contract_codegen.schemas import (
     PAIRED_WITH_MARKER,
     SCHEMAS_DIR,
     TWO_VALUED_FACT_MARKER,
+    ContractError,
     load,
 )
-from repo_checks.expect import equal
+from repo_checks.expect import contains, equal
 
 #: The core schema carrying every declaration these read under its `$defs`.
 STATUS = Path(SCHEMAS_DIR) / "printobserver-core" / "RecoveryStatus.json"
@@ -97,3 +98,39 @@ def test_without_the_markers_no_field_is_written_under_the_directive(
         equal(read.paired_with, "", describing=f"{declaration}.{name}'s pairing")
         equal(read.two_valued_fact, False, describing=f"{declaration}.{name}'s marker")
         equal(_directed(emitted, name), False, describing=f"{declaration}.{name}'s directive")
+
+
+def _marked(copy: Path, declaration: str, name: str, marker: str, value: object) -> None:
+    """Set one property's marker to `value`, wherever the declaration is checked in."""
+    status = copy / STATUS
+    for path, at in (
+        (status, ("$defs", declaration)),
+        (status.with_name(f"{declaration}.json"), ()),
+    ):
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        held = schema
+        for key in at:
+            held = held[key]
+        held["properties"][name][marker] = value
+        path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+
+
+def test_a_marker_no_reading_could_hold_is_refused_naming_the_field(
+    scratch: Callable[[], Path],
+) -> None:
+    """A pairing naming no sibling, and a two-valued mark off a boolean, refuse the contract."""
+    for declaration, name, marker, value in (
+        ("ActionAllowance", "allowed", PAIRED_WITH_MARKER, 7),
+        ("ActionAllowance", "allowed", PAIRED_WITH_MARKER, "nothing_here"),
+        ("ActionAllowance", "allowed", PAIRED_WITH_MARKER, "allowed"),
+        ("PausedPrint", "resumable", TWO_VALUED_FACT_MARKER, "yes"),
+        ("PausedPrint", "print_id", TWO_VALUED_FACT_MARKER, True),
+    ):
+        copy = scratch()
+        _marked(copy, declaration, name, marker, value)
+        try:
+            load(copy)
+        except ContractError as refused:
+            contains(str(refused), f"`{name}`", describing=f"{marker} {value!r}")
+        else:
+            equal(f"{marker} {value!r}", "refused", describing="a malformed marker")

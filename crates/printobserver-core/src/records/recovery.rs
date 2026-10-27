@@ -554,7 +554,8 @@ impl<'de> Deserialize<'de> for ActionAllowance {
 }
 
 /// The schema is the wire form's own object: `allowed`, and `refusal` present
-/// exactly when it is false, which reading one back holds it to.
+/// exactly when it is false — stated in the schema itself, and held to the
+/// same verdicts as reading one back by `tests/records.rs`.
 impl JsonSchema for ActionAllowance {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         std::borrow::Cow::Borrowed("ActionAllowance")
@@ -584,6 +585,11 @@ impl JsonSchema for ActionAllowance {
             },
             "required": ["action", "allowed"],
             "additionalProperties": false,
+            // The pairing its reading holds it to: a refused action carries
+            // its refusal, and an allowed one carries none.
+            "if": { "properties": { "allowed": { "const": false } } },
+            "then": { "required": ["refusal"] },
+            "else": { "not": { "required": ["refusal"] } },
         });
         printobserver_types::schemars::Schema::try_from(schema).unwrap_or_default()
     }

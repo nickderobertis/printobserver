@@ -22,7 +22,11 @@ import type {
   RejectionReason,
   SpoolCommandAnswer,
 } from "./contract.ts";
-import { GeneratedClient } from "./contract.ts";
+import {
+  GeneratedClient,
+  RECOVERY_REJECTION_FIELDS,
+  REJECTION_REASON_FIELDS,
+} from "./contract.ts";
 import { PrinterRefused, Refused, Rejected, Unreachable, Unreadable } from "./surface.ts";
 
 /** The status a rejected action is answered under. */
@@ -164,24 +168,38 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Whether one value is a refusal's shape: a variant's name, or one variant
- * carrying its fields.
+ * Whether one value is a refusal of one vocabulary: a variant's name, or one
+ * variant carrying its fields.
  *
- * The variant's name is not held to the names this client was generated with:
- * a supervisor newer than this client refuses for reasons it does not know,
- * and that refusal still reaches the caller as one rather than as an
- * unreadable answer.
+ * A variant the vocabulary's generated table names is held to it — named
+ * alone when it carries nothing, and carrying every field it requires when it
+ * carries any. A variant the table does not name is a newer supervisor's,
+ * whose reason this client does not know; it still reaches the caller as a
+ * refusal rather than as an unreadable answer.
  */
-function isRefusal(refused: unknown): boolean {
+function isRefusal(
+  refused: unknown,
+  known: Readonly<Record<string, ReadonlyArray<string> | null>>,
+): boolean {
   if (typeof refused === "string") {
-    return refused !== "";
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return refused !== "" && (!Object.hasOwn(known, refused) || known[refused] === null);
   }
   if (!isObject(refused)) {
     return false;
   }
-  const arms = Object.values(refused);
+  const arms = Object.entries(refused);
+  const [arm] = arms;
+  if (arms.length !== 1 || arm === undefined || !isObject(arm[1])) {
+    return false;
+  }
+  const [name, fields] = arm;
   // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-  return arms.length === 1 && isObject(arms[0]);
+  if (!Object.hasOwn(known, name)) {
+    return true;
+  }
+  const required = known[name];
+  return Array.isArray(required) && required.every((field) => field in fields);
 }
 
 /** A refusal's value asked for and range allowed, when it ruled on a value; `null` when its bounds are malformed. */
@@ -213,10 +231,15 @@ function rejection(status: number, said: string): Error {
     return new Unreadable(status, "the supervisor refused this action and answered no object");
   }
   // An action's answer carries its decision in its record; a recovery's and a
-  // spool command's carry it at the top.
+  // spool command's carry it at the top. A recovery's names its action beside
+  // its decision, and is refused in a recovery's own vocabulary.
   const decision = isObject(answer.record) ? answer.record.decision : answer.decision;
   const refused = isObject(decision) ? decision.rejected : undefined;
-  if (!isRefusal(refused)) {
+  const known =
+    !isObject(answer.record) && isObject(answer.action) && typeof answer.detail === "string"
+      ? RECOVERY_REJECTION_FIELDS
+      : REJECTION_REASON_FIELDS;
+  if (!isRefusal(refused, known)) {
     return new Unreadable(
       status,
       "the supervisor refused this action and answered a record whose decision is not a refusal",
@@ -227,8 +250,9 @@ function rejection(status: number, said: string): Error {
     return new Unreadable(status, "the refusal's bounds are not a value and a range");
   }
   return new Rejected(
-    // The shape is checked above; the variant is passed through as `isRefusal`
-    // says why, so the type is the contract's own name for a refusal.
+    // The shape and a known variant's fields are checked above; an unknown
+    // variant is passed through as `isRefusal` says why, so the type is the
+    // contract's own name for a refusal.
     refused as RejectionReason | RecoveryRejection,
     bounds.requested,
     bounds.allowed,
@@ -245,7 +269,7 @@ function machineRefusal(status: number, said: string): Error {
   }
   // A recovery the machine refused carries no action record, and arrives as
   // the supervisor's own words for it.
-  if (!("record" in answered)) {
+  if (!isObject(answered.record)) {
     if (typeof answered.detail !== "string") {
       return new Unreadable(status, "the supervisor answered a refusal saying nothing");
     }

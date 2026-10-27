@@ -233,15 +233,45 @@ def _fields(schema: dict[str, Any], known: set[str], skip: str = "") -> tuple[Fi
             doc=_doc(property_schema, known) if isinstance(property_schema, dict) else "",
             null_is_sent=isinstance(property_schema, dict)
             and property_schema.get(NULL_IS_SENT_MARKER) is True,
-            paired_with=str(property_schema.get(PAIRED_WITH_MARKER) or "")
-            if isinstance(property_schema, dict)
-            else "",
-            two_valued_fact=isinstance(property_schema, dict)
-            and property_schema.get(TWO_VALUED_FACT_MARKER) is True,
+            paired_with=_paired_with(name, property_schema, properties),
+            two_valued_fact=_two_valued_fact(name, property_schema),
         )
         for name, property_schema in sorted(properties.items())
         if name != skip and (isinstance(property_schema, dict) or property_schema is True)
     )
+
+
+def _paired_with(name: str, property_schema: object, properties: dict[str, Any]) -> str:
+    """The sibling property one property is held in step with, or nothing.
+
+    Raises:
+        ContractError: If the marker is there and names no other property of
+            the same object, which no reading could hold it in step with.
+    """
+    if not isinstance(property_schema, dict) or PAIRED_WITH_MARKER not in property_schema:
+        return ""
+    pairing = property_schema[PAIRED_WITH_MARKER]
+    if not isinstance(pairing, str) or pairing == name or pairing not in properties:
+        msg = f"`{name}` is marked {PAIRED_WITH_MARKER} {pairing!r}, which is no other property"
+        raise ContractError(msg)
+    return pairing
+
+
+def _two_valued_fact(name: str, property_schema: object) -> bool:
+    """Whether one property is marked a boolean both of whose values are real.
+
+    Raises:
+        ContractError: If the marker is there and is not `true` on a boolean,
+            which would either drop it unseen or mark what is no yes-or-no fact.
+    """
+    if not isinstance(property_schema, dict) or TWO_VALUED_FACT_MARKER not in property_schema:
+        return False
+    if property_schema[TWO_VALUED_FACT_MARKER] is not True or property_schema.get("type") != (
+        "boolean"
+    ):
+        msg = f"`{name}` is marked {TWO_VALUED_FACT_MARKER} but is not a boolean marked `true`"
+        raise ContractError(msg)
+    return True
 
 
 def _internal_tag(branches: list[Any]) -> str:

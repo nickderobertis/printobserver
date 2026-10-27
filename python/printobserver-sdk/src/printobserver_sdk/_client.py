@@ -27,6 +27,8 @@ from printobserver_sdk._surface import (
     UnreadableError,
 )
 from printobserver_sdk.contract import (
+    RECOVERY_REJECTION_FIELDS,
+    REJECTION_REASON_FIELDS,
     ActionAnswer,
     Actor,
     GeneratedClient,
@@ -176,11 +178,13 @@ def _rejection(status: int, said: str) -> Exception:
     # server's JSON untyped, and the match is the check this client makes of its
     # shape before naming it.
     answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer
+    known = REJECTION_REASON_FIELDS
     match document:
         case {"record": {"decision": {"rejected": refused}}}:
             answer = cast(ActionAnswer, document)
         case {"action": dict(), "detail": str(), "decision": {"rejected": refused}}:
             answer = cast(RecoveryAnswer, document)
+            known = RECOVERY_REJECTION_FIELDS
         case {"decision": {"rejected": refused}}:
             answer = cast(SpoolCommandAnswer, document)
         case _:
@@ -189,23 +193,11 @@ def _rejection(status: int, said: str) -> Exception:
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
-    # A refusal is a variant's name, or one variant carrying its fields. The
-    # name is not held to the names this client was generated with: a
-    # supervisor newer than this client refuses for reasons it does not know,
-    # and that refusal still reaches the caller as one rather than as an
-    # unreadable answer.
-    # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    is_named = isinstance(refused, str) and bool(refused)
-    is_carried = (
-        isinstance(refused, dict)
-        and len(refused) == 1
-        and all(isinstance(fields, dict) for fields in refused.values())
-    )
-    if not (is_named or is_carried):
+    if not _is_refusal(refused, known):
         return UnreadableError(status, f"the supervisor refused with no refusal: {refused!r}")
     # What `rejected` holds is the contracts' `RejectionReason` or their
     # `RecoveryRejection`, which the server serializes it from; the match bound
-    # it untyped, and the check above holds it to a refusal's shape.
+    # it untyped, and the check above holds a known variant to its fields.
     reason = cast(RejectionReason | RecoveryRejection, refused)
     requested: float | None = None
     allowed: Range | None = None
@@ -227,6 +219,33 @@ def _rejection(status: int, said: str) -> Exception:
                     f"the refusal's bounds are not a field, a value and a range: {malformed!r}",
                 )
     return RejectedError(reason, requested, allowed, answer)
+
+
+def _is_refusal(refused: object, known: dict[str, tuple[str, ...] | None]) -> bool:
+    """Whether one value is a refusal of one vocabulary.
+
+    A refusal is a variant's name, or one variant carrying its fields. A
+    variant the vocabulary's generated table names is held to it — named alone
+    when it carries nothing, and carrying every field it requires when it
+    carries any. A variant the table does not name is a newer supervisor's,
+    whose reason this client does not know; it still reaches the caller as a
+    refusal rather than as an unreadable answer.
+    """
+    match refused:
+        case str() as name if name:
+            # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+            return name not in known or known[name] is None
+        case {**arms} if len(arms) == 1:
+            ((name, fields),) = arms.items()
+            if not (isinstance(name, str) and isinstance(fields, dict)):
+                return False
+            # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+            if name not in known:
+                return True
+            required = known[name]
+            return required is not None and all(field in fields for field in required)
+        case _:
+            return False
 
 
 def _is_number(value: object) -> bool:

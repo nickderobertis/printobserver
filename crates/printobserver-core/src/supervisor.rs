@@ -626,11 +626,9 @@ impl Supervisor {
         self.printer.printed_files().await
     }
 
-    /// Read the filament each tool is fed by one file's own moves, up to a
-    /// byte position in it.
+    /// Read what one file printed up to a byte position in it.
     ///
     /// A read, for the same reason [`Supervisor::read_snapshot`] is.
-    /// Read what one file printed up to a byte position in it.
     pub(crate) async fn read_printed_extent(
         &self,
         file_name: FileName,
@@ -640,10 +638,16 @@ impl Supervisor {
     }
 
     /// Read where the print head is.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
     pub(crate) async fn read_position(&self) -> Result<AxisPosition, PrinterError> {
         self.printer.read_position().await
     }
 
+    /// Read the filament each tool is fed by one file's own moves, up to a
+    /// byte position in it.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
     pub(crate) async fn read_extruded_to(
         &self,
         file_name: FileName,

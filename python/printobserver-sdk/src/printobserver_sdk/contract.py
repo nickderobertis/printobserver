@@ -4016,6 +4016,80 @@ def payload_of(event: EventRecord, kind: str) -> object | None:
     return event["payload"]
 
 
+# Every arm of `RejectionReason`, and the fields it requires: `None` for an
+# arm carrying nothing, which travels as its own name.
+REJECTION_REASON_FIELDS: dict[str, tuple[str, ...] | None] = {
+    "out_of_bounds": (
+        "adjustable",
+        "allowed",
+        "requested",
+    ),
+    "actor_may_not_request": (
+        "action",
+        "actor_class",
+    ),
+    "no_active_print": None,
+    "invalid_from_state": ("state",),
+    "min_interval_not_elapsed": (
+        "interval_s",
+        "since_last_s",
+    ),
+    "unsupported_adjustable": ("adjustable",),
+    "insufficient_filament": (
+        "buffer_g",
+        "remaining_g",
+        "required_g",
+        "spool_id",
+        "spool_name",
+        "tool",
+    ),
+    "unverified_spool": (
+        "reason",
+        "spool_id",
+        "spool_name",
+        "tool",
+    ),
+    "analysis_unavailable": (
+        "file_name",
+        "waited_s",
+    ),
+    "print_already_ended": None,
+    "print_still_active": ("state",),
+    "intervention_still_active": ("intervention_id",),
+    "print_not_resumable": ("recovery_event_id",),
+    "spool_refused": (
+        "cause",
+        "message",
+    ),
+}
+
+
+# Every arm of `RecoveryRejection`, and the fields it requires: `None` for
+# an arm carrying nothing, which travels as its own name.
+RECOVERY_REJECTION_FIELDS: dict[str, tuple[str, ...] | None] = {
+    "actor_may_not_request": ("action",),
+    "print_running": ("state",),
+    "printer_unreachable": None,
+    "z_untrusted": None,
+    "insufficient_clearance": (
+        "margin_mm",
+        "nozzle_z_mm",
+        "tallest_mm",
+    ),
+    "out_of_bounds": (
+        "allowed",
+        "field",
+        "requested",
+    ),
+    "assertion_required": ("field",),
+    "recovery_not_configured": None,
+    "printer_cannot": (
+        "action",
+        "detail",
+    ),
+}
+
+
 class GeneratedClient(GeneratedSurface):
     """One method per operation the server declares.
 

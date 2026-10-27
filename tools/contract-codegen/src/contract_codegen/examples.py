@@ -118,7 +118,11 @@ def _fields(
     answer carried would be one the walk's own equality catches, and it can
     only catch it for a value that was there.
     """
-    return {entry.name: value_of(entry.type, contract, seen) for entry in fields}
+    value = {entry.name: value_of(entry.type, contract, seen) for entry in fields}
+    # A flag held in step with an optional sibling is false exactly when that
+    # sibling is sent, and every sibling is sent here.
+    value.update({entry.name: False for entry in fields if entry.paired_with})
+    return value
 
 
 def _declared(declaration: object, contract: Contract, seen: frozenset[str]) -> object:

@@ -9,7 +9,7 @@
 import { expect, test } from "bun:test";
 import { Client } from "../src/client.ts";
 import type { Actor } from "../src/contract.ts";
-import { PrinterRefused, Refused, Unreachable, Unreadable } from "../src/surface.ts";
+import { PrinterRefused, Refused, Rejected, Unreachable, Unreadable } from "../src/surface.ts";
 import { Host } from "./host.ts";
 
 const ACTOR: Actor = "operator";
@@ -140,10 +140,36 @@ test("a recovery refused with bounds no reader can read is unreadable", async ()
     { out_of_bounds: { requested: 150, allowed: { min: 0, max: 100 } } },
     null,
     { two: {}, arms: {} },
+    { print_running: {} },
+    "print_running",
+    { z_untrusted: {} },
   ]) {
     await using host = Host.answering(409, recovery({ rejected: refused }));
     const client = new Client({ server: host.address, actor: ACTOR });
 
     await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
   }
+});
+
+test("a refusal this client does not know still arrives as a refusal", async () => {
+  for (const refused of ["a_newer_reason", { a_newer_reason: { anything: 1 } }]) {
+    await using host = Host.answering(409, recovery({ rejected: refused }));
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    const raised = await client.recoverFan(50, "because").catch((error: unknown) => error);
+
+    if (!(raised instanceof Rejected)) {
+      throw new Error(`the refusal was not a Rejected: ${String(raised)}`);
+    }
+    // A reason no generated type names: read as the document it arrived as.
+    const reason: unknown = raised.reason;
+    expect(reason).toEqual(refused);
+  }
+});
+
+test("a machine refusal whose record is not an object and says nothing is unreadable", async () => {
+  await using host = Host.answering(502, { record: null });
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  await expect(client.pause(PRINT, "because")).rejects.toBeInstanceOf(Unreadable);
 });

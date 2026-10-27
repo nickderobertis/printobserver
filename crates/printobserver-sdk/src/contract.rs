@@ -86,6 +86,7 @@ pub enum AcknowledgementDisposition {
 /// Whether one recovery action is allowed now: `allowed`, and the refusal it
 /// would meet, present exactly when it is not.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ActionAllowanceAsSent")]
 pub struct ActionAllowance {
     /// One shape of the contracts, which say nothing more about it.
     pub action: RecoveryActionKind,
@@ -95,6 +96,37 @@ pub struct ActionAllowance {
     /// One shape of the contracts, which say nothing more about it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<RecoveryRejection>,
+}
+
+/// One `ActionAllowance` as it was sent, before its paired fields are held to
+/// each other.
+#[derive(Deserialize)]
+struct ActionAllowanceAsSent {
+    /// One shape of the contracts, which say nothing more about it.
+    action: RecoveryActionKind,
+    /// Whether it is allowed now.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    allowed: bool,
+    /// One shape of the contracts, which say nothing more about it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refusal: Option<RecoveryRejection>,
+}
+
+impl TryFrom<ActionAllowanceAsSent> for ActionAllowance {
+    type Error = String;
+
+    fn try_from(sent: ActionAllowanceAsSent) -> Result<Self, Self::Error> {
+        if sent.allowed == sent.refusal.is_some() {
+            return Err(
+                "`allowed` is false exactly when `refusal` is sent, and they disagree".to_owned(),
+            );
+        }
+        Ok(Self {
+            action: sent.action,
+            allowed: sent.allowed,
+            refusal: sent.refusal,
+        })
+    }
 }
 
 /// What one mutating request left behind it.

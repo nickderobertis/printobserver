@@ -8,6 +8,7 @@ about what a shape is by disagreeing about how to read it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -254,6 +255,39 @@ class Operation:
 
 #: The shape a recovery action answers with, carried out or refused.
 RECOVERY_ANSWER = "RecoveryAnswer"
+
+#: The two refusal vocabularies a client reads out of a refused answer: the
+#: print policy's, which an action's and a spool command's answer carry, and a
+#: recovery's own.
+REFUSALS = ("RejectionReason", "RecoveryRejection")
+
+
+def refusal_fields(contract: Contract, name: str) -> tuple[tuple[str, tuple[str, ...] | None], ...]:
+    """Each arm of one refusal vocabulary, and the fields it requires.
+
+    `None` is an arm carrying nothing, which travels as its own name; a tuple
+    is an arm that travels as an object under its name, and the fields that
+    object must carry. A client reading a refusal holds a known arm to this,
+    and reads no other table to do it.
+    """
+    declared = contract.by_name.get(name)
+    if not isinstance(declared, Union):
+        return ()
+    return tuple(
+        (
+            variant.tag,
+            None
+            if variant.unit
+            else tuple(sorted(entry.name for entry in variant.fields if entry.required)),
+        )
+        for variant in declared.variants
+    )
+
+
+def refusal_table_name(name: str) -> str:
+    """The constant a refusal vocabulary's field table is emitted as."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).upper() + "_FIELDS"
+
 
 #: The value every mutating request carries saying who is asking, which a
 #: client supplies from what it was constructed with rather than per call.

@@ -2564,18 +2564,18 @@ def test_retire_spool_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_status` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"actions": [{"action": "recover_lift", "allowed": true, "re'
-        'fusal": {"actor_may_not_request": {"action": "recover_lift"}'
-        '}}], "last_print": {"footprint": {"max_x": 1.5, "max_y": 1.5'
-        ', "min_x": 1.5, "min_y": 1.5}, "print_id": "0198f0a1-2b3c-7d'
-        '4e-8f90-123456789abc", "tallest_mm": 1.5}, "paused_print": {'
-        '"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "resumab'
-        'le": true}, "position": {"x": 1.5, "y": 1.5, "z": 1.5}, "sta'
-        'te": "operational", "temperatures": {"bed": {"actual_c": 1.5'
-        ', "target_c": 1.5}, "tools": [{"actual_c": 1.5, "target_c": '
-        '1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "x": 1.5, '
-        '"y": 1.5}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc"}}'
+        '{"actions": [{"action": "recover_lift", "allowed": false, "r'
+        'efusal": {"actor_may_not_request": {"action": "recover_lift"'
+        '}}}], "last_print": {"footprint": {"max_x": 1.5, "max_y": 1.'
+        '5, "min_x": 1.5, "min_y": 1.5}, "print_id": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc", "tallest_mm": 1.5}, "paused_print": '
+        '{"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "resuma'
+        'ble": true}, "position": {"x": 1.5, "y": 1.5, "z": 1.5}, "st'
+        'ate": "operational", "temperatures": {"bed": {"actual_c": 1.'
+        '5, "target_c": 1.5}, "tools": [{"actual_c": 1.5, "target_c":'
+        ' 1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "x": 1.5,'
+        ' "y": 1.5}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc"}}'
     )
 
     with Host(200, answer) as host:

@@ -328,6 +328,32 @@ mod tests {
         );
     }
 
+    /// An allowance is read as `call` reads every answer, and only when its
+    /// `allowed` and `refusal` agree: either contradiction is refused as it
+    /// is read, rather than handed on as a value no supervisor sends.
+    #[test]
+    fn an_allowance_whose_two_halves_disagree_is_not_read() {
+        use crate::contract::ActionAllowance;
+        for agreeing in [
+            r#"{"action":"recover_lift","allowed":true}"#,
+            r#"{"action":"recover_heat","allowed":false,"refusal":"z_untrusted"}"#,
+        ] {
+            let read = serde_json::from_str::<ActionAllowance>(agreeing);
+            assert!(read.is_ok(), "{agreeing}: {read:?}");
+        }
+        for contradiction in [
+            r#"{"action":"recover_lift","allowed":true,"refusal":"z_untrusted"}"#,
+            r#"{"action":"recover_heat","allowed":false}"#,
+        ] {
+            let error = serde_json::from_str::<ActionAllowance>(contradiction)
+                .expect_err("a contradictory allowance is not read");
+            assert!(
+                error.to_string().contains("they disagree"),
+                "{contradiction}: {error}"
+            );
+        }
+    }
+
     /// A refusal this client cannot read is said to be one rather than shown.
     #[test]
     fn a_refusal_this_client_cannot_read_is_said_to_be_one() {

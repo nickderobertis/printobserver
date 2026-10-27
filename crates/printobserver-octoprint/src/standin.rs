@@ -631,6 +631,13 @@ fn not_operational(connection: &str) -> bool {
     connection.starts_with("Closed") || connection.starts_with("Offline") || connection == "Error"
 }
 
+/// Whether a connection state is one `OctoPrint` sets no state flag for: a
+/// serial connection still being opened, which is neither operational nor
+/// closed.
+fn connecting(connection: &str) -> bool {
+    connection.starts_with("Connecting") || connection.starts_with("Detecting")
+}
+
 /// The status and body one REST request is answered with.
 fn answer(
     request: &Request,
@@ -806,7 +813,7 @@ fn printer_body(held: &Script) -> (u16, String) {
             "state": {
                 "text": held.connection,
                 "flags": {
-                    "operational": true,
+                    "operational": !connecting(&held.connection),
                     "printing": printing,
                     "paused": held.job.state == "Paused",
                     "cancelling": held.job.state == "Cancelling",

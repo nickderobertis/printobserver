@@ -2779,14 +2779,14 @@ reason = "These tests hold the published synchronous Python client's refusal rea
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "python/printobserver-sdk/src/printobserver_sdk/_client.py"
-site = "is_named = isinstance(refused, str) and bool(refused)"
-reason = "A refusal's shape is checked — a non-empty variant name, or exactly one variant carrying an object, with any bounds checked field by field — but its variant name is deliberately not held to the names this client was generated with: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
+site = "name not in known"
+reason = "A variant the generated `REJECTION_REASON_FIELDS` or `RECOVERY_REJECTION_FIELDS` table names is held to it — named alone when it carries nothing, carrying every field it requires otherwise, with any bounds checked field by field. A variant the table does not name is deliberately passed through: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
 
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "npm/printobserver-sdk/src/client.ts"
-site = "return arms.length === 1 && isObject(arms[0]);"
-reason = "A refusal's shape is checked — a non-empty variant name, or exactly one variant carrying an object, with any bounds checked field by field — but its variant name is deliberately not held to the names this client was generated with: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
+site = "!Object.hasOwn(known, "
+reason = "A variant the generated `REJECTION_REASON_FIELDS` or `RECOVERY_REJECTION_FIELDS` table names is held to it — named alone when it carries nothing, carrying every field it requires otherwise, with any bounds checked field by field. A variant the table does not name is deliberately passed through: a supervisor newer than the client refuses for reasons the client does not know, and that refusal must still reach the caller as a refusal rather than as an unreadable answer."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
@@ -2829,3 +2829,9 @@ rule = "changed_behavior_has_e2e"
 file = "tools/release-artifacts/src/release_artifacts/world.py"
 site = 'document["policy"] = {"recovery": {"operator": []}}'
 reason = "The journey is each client's live rejection walk — `test_every_action_is_refused_as_a_typed_rejection` in `python/printobserver-sdk/integration/test_live.py`, and its generated counterparts in the Rust and Node clients — which starts this refusing world's real supervisor and asks every recovery of it, asserting each is refused `actor_may_not_request`. Those walks are the integration tier's rather than this module's own suite, because they need the scripted OctoPrint up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "    allowed: bool,"
+reason = "Generated: `ActionAllowanceAsSent` is the private form an allowance is read through, which exists to hold the contract's `{action, allowed, refusal}` document to its pairing — `ActionAllowance`'s `TryFrom` refuses both contradictory pairs before any value of the public type is made. The schema marks `allowed` `x-paired-with`, and the Rust emitter writes this directive above every field so marked."

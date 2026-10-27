@@ -396,6 +396,20 @@ Declared by `printobserver-core`.
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Whether one recovery action is allowed now: `allowed`, and the refusal it would meet, present exactly when it is not.",
+  "else": {
+    "not": {
+      "required": [
+        "refusal"
+      ]
+    }
+  },
+  "if": {
+    "properties": {
+      "allowed": {
+        "const": false
+      }
+    }
+  },
   "properties": {
     "action": {
       "$ref": "#/$defs/RecoveryActionKind"
@@ -413,6 +427,11 @@ Declared by `printobserver-core`.
     "action",
     "allowed"
   ],
+  "then": {
+    "required": [
+      "refusal"
+    ]
+  },
   "title": "ActionAllowance",
   "type": "object"
 }
@@ -25050,6 +25069,20 @@ Declared by `printobserver-core`.
     "ActionAllowance": {
       "additionalProperties": false,
       "description": "Whether one recovery action is allowed now: `allowed`, and the refusal it would meet, present exactly when it is not.",
+      "else": {
+        "not": {
+          "required": [
+            "refusal"
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "allowed": {
+            "const": false
+          }
+        }
+      },
       "properties": {
         "action": {
           "$ref": "#/$defs/RecoveryActionKind"
@@ -25067,6 +25100,11 @@ Declared by `printobserver-core`.
         "action",
         "allowed"
       ],
+      "then": {
+        "required": [
+          "refusal"
+        ]
+      },
       "title": "ActionAllowance",
       "type": "object"
     },

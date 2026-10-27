@@ -249,6 +249,9 @@ def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> No
         {"out_of_bounds": {"requested": 150.0, "allowed": {"min": 0.0, "max": 100.0}}},
         None,
         {"two": {}, "arms": {}},
+        {"print_running": {}},
+        "print_running",
+        {"z_untrusted": {}},
     ):
         with Host(409, _recovery({"rejected": refused})) as host:
             client = Client(host.address, ACTOR)
@@ -274,3 +277,17 @@ def test_a_refusal_whose_answer_is_not_an_object_is_unreadable() -> None:
                     equal(unreadable.status, status, describing=f"{answer!r}")
                 else:
                     truth(False, describing=f"{answer!r} at {status} to be unreadable")
+
+
+def test_a_refusal_this_client_does_not_know_still_arrives_as_a_refusal() -> None:
+    """A newer supervisor's reason is handed on as it came, named or carrying fields."""
+    for refused in ("a_newer_reason", {"a_newer_reason": {"anything": 1}}):
+        with Host(409, _recovery({"rejected": refused})) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except RejectedError as rejected:
+                equal(rejected.reason, refused, describing=f"{refused!r}")
+            else:
+                truth(False, describing=f"{refused!r} to be refused as a rejection")

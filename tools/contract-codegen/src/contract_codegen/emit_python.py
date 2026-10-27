@@ -20,6 +20,7 @@ from contract_codegen.model import (
     ENVELOPE,
     KIND_FIELD,
     PAYLOAD_FIELD,
+    REFUSALS,
     Alias,
     AnyValue,
     Contract,
@@ -37,6 +38,8 @@ from contract_codegen.model import (
     TypeExpr,
     Union,
     Variant,
+    refusal_fields,
+    refusal_table_name,
 )
 from contract_codegen.naming import (
     NAME_DIRECTIVE,
@@ -498,6 +501,42 @@ def _contract_version() -> list[str]:
     ]
 
 
+def _refusal_tables(contract: Contract) -> list[str]:
+    """Each refusal vocabulary's arms, and the fields each requires.
+
+    The client holds a refusal of a known arm to its table before handing it
+    on as the contract's type; an arm the table does not name is a newer
+    server's, and is handed on as it came.
+    """
+    lines: list[str] = []
+    for name in REFUSALS:
+        arms = refusal_fields(contract, name)
+        if not arms:
+            continue
+        lines += [
+            *comment(
+                f"Every arm of `{name}`, and the fields it requires: `None` for an arm "
+                "carrying nothing, which travels as its own name.",
+                "",
+            ),
+            f"{refusal_table_name(name)}: dict[str, tuple[str, ...] | None] = {{",
+            *(
+                f'    "{tag}": '
+                + (
+                    "None"
+                    if fields is None
+                    else "(" + "".join(f'"{f}", ' for f in fields).rstrip() + ")"
+                )
+                + ","
+                for tag, fields in arms
+            ),
+            "}",
+            "",
+            "",
+        ]
+    return lines
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
     typing_names = ["Literal", "NotRequired", "TypeAlias", "TypedDict", "cast"]
@@ -529,6 +568,7 @@ def emit(contract: Contract) -> str:
         lines.append("")
 
     lines.extend(_kind_table(contract))
+    lines.extend(_refusal_tables(contract))
 
     lines.append("class GeneratedClient(GeneratedSurface):")
     lines.extend(

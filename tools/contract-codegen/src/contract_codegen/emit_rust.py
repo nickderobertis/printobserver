@@ -237,6 +237,8 @@ def _declaration(declaration: Declaration) -> list[str]:
             for variant in variants:
                 lines.extend(_variant(variant, "    "))
             lines.append("}")
+        case Struct(name, _, fields, _, _) if any(entry.paired_with for entry in fields):
+            lines.extend(_paired_struct(name, fields))
         case Struct(name, _, fields, _, _):
             lines.append(DERIVES)
             lines.append(f"pub struct {name} {{")
@@ -254,6 +256,75 @@ def _declaration(declaration: Declaration) -> list[str]:
         case _:  # pragma: no cover - the model declares no fifth kind
             msg = f"{declaration!r} is not a declaration Rust is generated for"
             raise TypeError(msg)
+    return lines
+
+
+def _paired_struct(name: str, fields: tuple[Field, ...]) -> list[str]:
+    """An object one of whose booleans is held in step with an optional sibling.
+
+    The marker means one thing: the boolean is false exactly when the sibling
+    it names is sent. The object is read through its own form as sent, and a
+    document in which the two disagree is refused as it is read rather than
+    handed on as a value no server sends.
+
+    Raises:
+        ValueError: If a marked field is not a boolean, or names a sibling
+            that is not an optional field of the same object.
+    """
+    by_name = {entry.name: entry for entry in fields}
+    pairs: list[tuple[str, str]] = []
+    for entry in fields:
+        if not entry.paired_with:
+            continue
+        partner = by_name.get(entry.paired_with)
+        if entry.type != Scalar("boolean") or partner is None or partner.required:
+            msg = f"`{name}.{entry.name}` is paired with no optional sibling it could be held to"
+            raise ValueError(msg)
+        pairs.append((entry.name, partner.name))
+    sent = f"{name}AsSent"
+    lines = [DERIVES, f'#[serde(try_from = "{sent}")]', f"pub struct {name} {{"]
+    for entry in fields:
+        lines.extend(_field(entry, "    "))
+    lines += [
+        "}",
+        "",
+        *doc_lines(
+            f"One `{name}` as it was sent, before its paired fields are held to each other."
+        ),
+        "#[derive(Deserialize)]",
+        f"struct {sent} {{",
+    ]
+    for entry in fields:
+        lines.extend(_field(entry, "    ", public=False))
+    lines += [
+        "}",
+        "",
+        f"impl TryFrom<{sent}> for {name} {{",
+        "    type Error = String;",
+        "",
+        f"    fn try_from(sent: {sent}) -> Result<Self, Self::Error> {{",
+    ]
+    for flag, partner in pairs:
+        flag_name, partner_name = rust_identifier(flag), rust_identifier(partner)
+        lines += [
+            f"        if sent.{flag_name} == sent.{partner_name}.is_some() {{",
+            "            return Err(",
+            f'                "`{flag}` is false exactly when `{partner}` is sent, '
+            'and they disagree"',
+            "                    .to_owned(),",
+            "            );",
+            "        }",
+        ]
+    lines += [
+        "        Ok(Self {",
+        *(
+            f"            {rust_identifier(entry.name)}: sent.{rust_identifier(entry.name)},"
+            for entry in fields
+        ),
+        "        })",
+        "    }",
+        "}",
+    ]
     return lines
 
 

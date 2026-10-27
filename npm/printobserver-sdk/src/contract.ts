@@ -2313,6 +2313,50 @@ export function payloadOf<K extends keyof EventPayloads>(
 }
 
 /**
+ * Every arm of `RejectionReason`, and the fields it requires: `null` for an
+ * arm carrying nothing, which travels as its own name.
+ */
+export const REJECTION_REASON_FIELDS: Readonly<Record<string, ReadonlyArray<string> | null>> = {
+  out_of_bounds: ["adjustable", "allowed", "requested"],
+  actor_may_not_request: ["action", "actor_class"],
+  no_active_print: null,
+  invalid_from_state: ["state"],
+  min_interval_not_elapsed: ["interval_s", "since_last_s"],
+  unsupported_adjustable: ["adjustable"],
+  insufficient_filament: [
+    "buffer_g",
+    "remaining_g",
+    "required_g",
+    "spool_id",
+    "spool_name",
+    "tool",
+  ],
+  unverified_spool: ["reason", "spool_id", "spool_name", "tool"],
+  analysis_unavailable: ["file_name", "waited_s"],
+  print_already_ended: null,
+  print_still_active: ["state"],
+  intervention_still_active: ["intervention_id"],
+  print_not_resumable: ["recovery_event_id"],
+  spool_refused: ["cause", "message"],
+};
+
+/**
+ * Every arm of `RecoveryRejection`, and the fields it requires: `null` for
+ * an arm carrying nothing, which travels as its own name.
+ */
+export const RECOVERY_REJECTION_FIELDS: Readonly<Record<string, ReadonlyArray<string> | null>> = {
+  actor_may_not_request: ["action"],
+  print_running: ["state"],
+  printer_unreachable: null,
+  z_untrusted: null,
+  insufficient_clearance: ["margin_mm", "nozzle_z_mm", "tallest_mm"],
+  out_of_bounds: ["allowed", "field", "requested"],
+  assertion_required: ["field"],
+  recovery_not_configured: null,
+  printer_cannot: ["action", "detail"],
+};
+
+/**
  * One method per operation the server declares.
  *
  * Every method here is generated from the checked-in description of the
