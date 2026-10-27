@@ -57,7 +57,12 @@ def _provisioned_over(state: Path, program: Path) -> None:
     (state / "venv" / program).write_text("an installed program\n", encoding="utf-8")
     module = _virtual_printer_module(state)
     module.parent.mkdir(parents=True)
-    module.write_bytes(b"# the release's own module\n" + octoprint_env.HEATER_DEFECT)
+    module.write_bytes(
+        b"# the release's own module\n"
+        + octoprint_env.HEATER_DEFECT
+        + b"\n    # noinspection PyUnusedLocal\n"
+        + octoprint_env.MODE_DEFECT
+    )
     (state / "instance").mkdir(parents=True)
     (state / "instance" / "users.yaml").write_text(
         yaml.safe_dump({octoprint_env.ACCOUNT: {"apikey": "a-provisioned-key"}}),
@@ -125,7 +130,8 @@ def test_an_install_over_an_unrepaired_release_repairs_it_without_touching_its_l
     said = capsys.readouterr()
     equal(code, 0, describing=f"installing over an unrepaired release: {said.err}")
     contains(said.err, "repaired the virtual printer", describing="what the install said")
-    contains(module.read_bytes(), octoprint_env.HEATER_REPAIR, describing="the module")
+    for _, _, repair in octoprint_env.VIRTUAL_PRINTER_REPAIRS:
+        contains(module.read_bytes(), repair, describing="the module")
     equal(cached.read_bytes(), published, describing="the cache's copy of the module")
     equal(module.stat().st_nlink, 1, describing="the links to the repaired module")
 
@@ -193,6 +199,24 @@ def test_a_virtual_printer_carrying_neither_the_defect_nor_its_repair_is_refused
     said = capsys.readouterr()
     truth(code != 0, describing="an install over an unrecognised heater simulation failing")
     contains(said.err, "carries neither the heater defect", describing="what the install said")
+    equal(module.read_bytes(), rewritten, describing="the module the install refused")
+
+
+def test_a_virtual_printer_whose_positioning_modes_changed_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release that rewrote how `G90` and `G91` are taken is reported, not patched blind."""
+    state = tmp_path / "state"
+    _provisioned_over(state, _host_program())
+    module = _virtual_printer_module(state)
+    rewritten = b"# a release that rewrote the positioning modes\n" + octoprint_env.HEATER_REPAIR
+    module.write_bytes(rewritten)
+
+    code = octoprint_env.main(["install", "--state-dir", str(state)])
+
+    said = capsys.readouterr()
+    truth(code != 0, describing="an install over unrecognised positioning modes failing")
+    contains(said.err, "carries neither the positioning-mode defect", describing="what it said")
     equal(module.read_bytes(), rewritten, describing="the module the install refused")
 
 

@@ -55,6 +55,26 @@ INDUCED_RESEND = "!!DEBUG:trigger_resend_checksum"
 MARKER_TARGET = 1.0
 HOLDING_TARGET = 0.0
 
+#: A relative jog of Z queued behind a move slow enough to still be running
+#: when the jog's closing `G90` arrives: 100 mm at F600 holds the virtual
+#: printer's move queue for about a second, a tenth of its real duration. The
+#: position is asked for once `M400` has waited every queued move out, because
+#: `M114` is answered the moment it arrives.
+QUEUED_BEHIND = [
+    "G90",
+    "G28",
+    "G1 Z20 F600",
+    "G1 X100 F600",
+    "G91",
+    "G0 Z-5 F200",
+    "G90",
+    "M400",
+    "M114",
+]
+
+#: Where that jog leaves Z: 5 mm below the 20 it started from, never -5.
+JOGGED_Z = 15.0
+
 #: How long the machine is given to reach a state it was asked for: a cancel
 #: waits out the dwell in flight, which the hold print makes one second long.
 SETTLE_S = 120.0
@@ -267,6 +287,56 @@ def test_a_print_driven_past_a_hundred_lines_meets_no_injected_fault(
         describing=f"the resend induced with `{INDUCED_RESEND}` to be logged as {RESEND_REQUEST!r}",
     )
     equal(printer_state(url, key), "Printing", describing="the printer state afterwards")
+
+
+def test_a_relative_jog_queued_behind_a_move_stays_relative(
+    brought_up: dict[str, Any],
+) -> None:
+    """A `G91` jog closed by `G90` moves Z by what it asked, however long the queue.
+
+    The virtual printer carries out moves on a thread of its own and takes a
+    positioning mode the moment it arrives, so a jog's `G90` reached the
+    move queued before it whenever that move had yet to run — and a 5 mm jog
+    down from Z 20 left Z at -5. The install repairs that; this queues the jog
+    behind a slow move, which makes the defect certain, and reads where the
+    machine reports Z. The hold print is restarted afterwards, as the bring-up
+    left it.
+    """
+    url = str(brought_up["url"])
+    key = key_from_record(brought_up)
+    serial = STATE_DIR / "instance" / "logs" / "serial.log"
+
+    equal(post(url, "/api/job", key, {"command": "cancel"}), 204, describing="the cancel")
+    settled(lambda: printer_state(url, key), "Operational", describing="the printer state")
+    before = len(serial.read_text(encoding="utf-8", errors="replace"))
+    equal(
+        post(url, "/api/printer/command", key, {"commands": QUEUED_BEHIND}),
+        204,
+        describing="the queued jog",
+    )
+    deadline = time.monotonic() + SETTLE_S
+    reported = _reported_z(serial, before)
+    while reported is None and time.monotonic() < deadline:
+        time.sleep(0.5)
+        reported = _reported_z(serial, before)
+
+    restart = {"command": "select", "print": True}
+    equal(post(url, "/api/files/local/hold.gcode", key, restart), 204, describing="the restart")
+    settled(lambda: printer_state(url, key), "Printing", describing="the printer state")
+    truth(reported is not None, describing="the machine reporting Z after the jog")
+    equal(reported, JOGGED_Z, describing="where the jog left Z")
+
+
+def _reported_z(serial: Path, after: int) -> float | None:
+    """The Z the first position reply the serial log shows past `after` bytes states."""
+    for line in serial.read_text(encoding="utf-8", errors="replace")[after:].splitlines():
+        reply = line.partition("Recv: ok X:")[2]
+        if not reply:
+            continue
+        for word in reply.split():
+            if word.startswith("Z:"):
+                return float(word.removeprefix("Z:"))
+    return None
 
 
 def answered(url: str, key: str) -> None:

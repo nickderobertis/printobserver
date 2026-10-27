@@ -572,12 +572,19 @@ impl Supervisor {
     pub async fn note_push(&self, push: PrinterPush) -> Result<(), CoreError> {
         match push {
             PrinterPush::Reset => {
-                self.watch_state().pushes.reset = true;
                 // A reset forgets where every axis is.
                 self.distrust_z("the printer pushed a reset, and a reset forgets where Z is");
+                // Which print was running is read before the close-out is told
+                // of the reset: told first, it can close that print while the
+                // read is still waiting on the store, and the reset would then
+                // name no print. A close-out that reads the machine idle first
+                // waits `RESET_GRACE` for this flag, so setting it a moment
+                // later still reaches it.
+                let running = self.running_print().await;
+                self.watch_state().pushes.reset = true;
                 // A reset is recorded whatever the store answers about which
                 // print was running: the push is not sent again.
-                let (during_print, detail) = match self.running_print().await {
+                let (during_print, detail) = match running {
                     Ok(Some(print)) => (
                         Some(print.id),
                         format!("the printer pushed a reset during print {}", print.id),

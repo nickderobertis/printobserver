@@ -111,12 +111,22 @@ pub fn walk(instance: &Scripted) {
     // start — confirmed by the job snapshot naming the file that is running.
     block_on(printer.start(FileName::new(HOLD_FILE).expect("a file name")))
         .expect("the print starts");
+    // The adapter reads `OctoPrint`'s `Starting` as printing, which it is to a
+    // caller; but a pause asked of a job still starting is one `OctoPrint`
+    // drops, so the walk also waits for the instance's own word `Printing`.
     wait::until("the started file to be printing", REACHED, || {
         let job = block_on(printer.job()).map_err(|error| error.to_string())?;
-        if job.state == PrinterState::Printing && job.file_name.as_deref() == Some(HOLD_FILE) {
+        let said = raw::get(instance, "/api/job")["state"].clone();
+        if job.state == PrinterState::Printing
+            && job.file_name.as_deref() == Some(HOLD_FILE)
+            && said == "Printing"
+        {
             Ok(())
         } else {
-            Err(format!("{:?} printing {:?}", job.state, job.file_name))
+            Err(format!(
+                "{:?} ({said}) printing {:?}",
+                job.state, job.file_name
+            ))
         }
     });
 

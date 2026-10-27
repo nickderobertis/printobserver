@@ -82,6 +82,38 @@ HEATER_REPAIR = (
     b"                    factor = remaining\n"
 )
 
+# The same module queues every move for a thread of its own to carry out, and
+# switches between absolute and relative positioning the moment `G90` or `G91`
+# arrives. So `G91`, `G0 Z-5`, `G90` — what a relative jog sends — moves Z to -5
+# rather than 5 below where it was whenever the move is carried out after the
+# `G90` that follows it, which a loaded host makes likely. Firmware applies a
+# mode to the moves after it and to none before, so the install has each mode
+# change wait for the moves already queued first.
+MODE_DEFECT = (
+    b"    def _gcode_G90(self, data: str) -> None:\n"
+    b"        self._relative = False\n"
+    b"\n"
+    b"    # noinspection PyUnusedLocal\n"
+    b"    def _gcode_G91(self, data: str) -> None:\n"
+    b"        self._relative = True\n"
+)
+MODE_REPAIR = (
+    b"    def _gcode_G90(self, data: str) -> None:\n"
+    b"        self.buffered.join()\n"
+    b"        self._relative = False\n"
+    b"\n"
+    b"    # noinspection PyUnusedLocal\n"
+    b"    def _gcode_G91(self, data: str) -> None:\n"
+    b"        self.buffered.join()\n"
+    b"        self._relative = True\n"
+)
+
+# Each defect the install repairs in the virtual printer, named for a reader.
+VIRTUAL_PRINTER_REPAIRS: tuple[tuple[str, bytes, bytes], ...] = (
+    ("heater", HEATER_DEFECT, HEATER_REPAIR),
+    ("positioning-mode", MODE_DEFECT, MODE_REPAIR),
+)
+
 # The account the provisioned API key belongs to. OctoPrint's global API key is
 # deprecated and stops working in 1.13, so the key is a user key.
 ACCOUNT = "printobserver"
@@ -483,7 +515,11 @@ def _install_octoprint(instance: Instance) -> None:
 
 
 def _repair_virtual_printer(instance: Instance) -> None:
-    """Replace the virtual printer's heater simulation with one that cannot raise.
+    """Repair each defect `VIRTUAL_PRINTER_REPAIRS` names in the virtual printer.
+
+    Its heater simulation can raise, and its positioning-mode change can reach
+    a move queued before it; each is repaired once, and a module already
+    carrying a repair keeps it.
 
     The repaired module is written beside the installed one and renamed over
     it, never edited in place. The environment is installed by copy, so an edit
@@ -493,7 +529,7 @@ def _repair_virtual_printer(instance: Instance) -> None:
 
     Raises:
         RuntimeError: If the module is not where the pinned release keeps it,
-            or carries neither the defect nor its repair.
+            or carries neither one of the defects nor its repair.
     """
     found = [
         path
@@ -507,19 +543,26 @@ def _repair_virtual_printer(instance: Instance) -> None:
         )
         raise RuntimeError(message)
     module = found[0]
-    source = module.read_bytes()
-    if HEATER_REPAIR in source:
+    original = module.read_bytes()
+    source = original
+    repaired_names: list[str] = []
+    for name, defect, repair in VIRTUAL_PRINTER_REPAIRS:
+        if repair in source:
+            continue
+        if source.count(defect) != 1:
+            message = (
+                f"{module} carries neither the {name} defect {OCTOPRINT_REQUIREMENT} ships "
+                f"nor its repair; re-read the virtual printer before changing the pin"
+            )
+            raise RuntimeError(message)
+        source = source.replace(defect, repair)
+        repaired_names.append(name)
+    if source == original:
         return
-    if source.count(HEATER_DEFECT) != 1:
-        message = (
-            f"{module} carries neither the heater defect {OCTOPRINT_REQUIREMENT} ships "
-            f"nor its repair; re-read `_simulateTemps` before changing the pin"
-        )
-        raise RuntimeError(message)
     repaired = module.with_name(module.name + ".repaired")
-    repaired.write_bytes(source.replace(HEATER_DEFECT, HEATER_REPAIR))
+    repaired.write_bytes(source)
     repaired.replace(module)
-    note(f"repaired the virtual printer's heater simulation in {module}")
+    note(f"repaired the virtual printer ({' and '.join(repaired_names)}) in {module}")
 
 
 def managed_config(connection: Connection) -> dict[str, Any]:
