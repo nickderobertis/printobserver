@@ -385,6 +385,18 @@ impl World {
         }
     }
 
+    /// Tell a stood-in machine to refuse everything it is asked to do while it
+    /// goes on answering reads, or to stop. Answers whether this world has one.
+    pub fn machine_refuses_actions(&self, refusing: bool) -> bool {
+        match &self.printer {
+            Printer::StoodIn(machine) => {
+                machine.refusing_actions(refusing);
+                true
+            }
+            Printer::Scripted { .. } => false,
+        }
+    }
+
     /// Tell a stood-in machine to drop every request unanswered, as one
     /// switched off does, or to stop.
     ///

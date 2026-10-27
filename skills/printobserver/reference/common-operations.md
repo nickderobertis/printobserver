@@ -1025,6 +1025,7 @@ running on; while one runs it is refused `print_running`.
 $ printobserver recover-lift --mm 5 --actor operator --reason "free the nozzle from the part"
 action.action: recover_lift
 action.mm: 5.0
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1043,7 +1044,6 @@ events.1.payload.reason: free the nozzle from the part
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
 
@@ -1054,6 +1054,7 @@ Turn every heater off.
 ```console
 $ printobserver recover-cool --actor operator --reason "the part is free"
 action.action: recover_cool
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1070,7 +1071,6 @@ events.1.payload.reason: the part is free
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
 
@@ -1082,6 +1082,7 @@ Run the part fan to cool the part.
 $ printobserver recover-fan --percent 100 --actor operator --reason "cool the part before taking it off"
 action.action: recover_fan
 action.percent: 100.0
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1100,7 +1101,6 @@ events.1.payload.reason: cool the part before taking it off
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
 
@@ -1117,6 +1117,7 @@ action.action: recover_heat
 action.clearance_asserted: true
 action.target_c: 180.0
 action.tool: 0
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1139,7 +1140,6 @@ events.1.payload.reason: soften the blob on the nozzle
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
 
@@ -1151,6 +1151,7 @@ Move the head out of the way.
 $ printobserver recover-park --clearance-asserted true --actor operator --reason "reach the part"
 action.action: recover_park
 action.clearance_asserted: true
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1169,7 +1170,6 @@ events.1.payload.reason: reach the part
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
 
@@ -1181,6 +1181,7 @@ Home X and Y.
 $ printobserver recover-home-xy --clearance-asserted true --actor operator --reason "find X and Y again"
 action.action: recover_home_xy
 action.clearance_asserted: true
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1199,7 +1200,6 @@ events.1.payload.reason: find X and Y again
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
 
@@ -1212,6 +1212,7 @@ Home Z once the bed is clear, which is what lets Z be trusted again; without
 $ printobserver recover-home-z --bed-clear-asserted true --actor operator --reason "the part is off the bed"
 action.action: recover_home_z
 action.bed_clear_asserted: true
+decision.rejected.print_running.state: printing
 detail: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 events.0.id: ID
 events.0.kind: recovery_requested
@@ -1230,6 +1231,5 @@ events.1.payload.reason: the part is off the bed
 events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
-rejection.print_running.state: printing
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```

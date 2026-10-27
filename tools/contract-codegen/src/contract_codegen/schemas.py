@@ -50,6 +50,10 @@ SCHEMAS_DIR = "schemas"
 #: Where the shapes this server answers, and its operation list, are checked in.
 SERVER_DIR = "schemas/printobserver-server"
 
+#: The member a property's schema carries naming the field it is held in step
+#: with by the declaring type's own reading.
+PAIRED_WITH_MARKER = "x-paired-with"
+
 #: The member a payload's schema carries naming the event kind it is under.
 EVENT_KIND_MARKER = "x-event-kind"
 NULL_IS_SENT_MARKER = "x-null-is-sent"
@@ -225,6 +229,9 @@ def _fields(schema: dict[str, Any], known: set[str], skip: str = "") -> tuple[Fi
             doc=_doc(property_schema, known) if isinstance(property_schema, dict) else "",
             null_is_sent=isinstance(property_schema, dict)
             and property_schema.get(NULL_IS_SENT_MARKER) is True,
+            paired_with=str(property_schema.get(PAIRED_WITH_MARKER) or "")
+            if isinstance(property_schema, dict)
+            else "",
         )
         for name, property_schema in sorted(properties.items())
         if name != skip and (isinstance(property_schema, dict) or property_schema is True)

@@ -1557,12 +1557,15 @@ export type RecoveryActionKind =
 /**
  * What a recovery action answers, carried out or refused.
  *
- * A refusal is the same shape and deliberately so: `rejection` carries the
- * reason, and the two events are what the request wrote.
+ * A refusal is the same shape and deliberately so: `decision` is either
+ * `executed`, carrying what the printer made of it, or `rejected`, carrying
+ * the reason, and the two events are what the request wrote.
  */
 export interface RecoveryAnswer {
   /** What was asked for. */
   action: RecoveryAction;
+  /** What became of it. */
+  decision: RecoveryDecision;
   /**
    * What became of it, in a sentence for a person: why it was refused and
    * what would let it go ahead, or what it did.
@@ -1573,11 +1576,13 @@ export interface RecoveryAnswer {
    * `recovery_rejected` beside it.
    */
   events: Array<EventRecord>;
-  /** What the printer made of it, when it reached the printer. */
-  outcome?: ExecutionOutcome | null;
-  /** Why it was refused, when it was. */
-  rejection?: RecoveryRejection | null;
 }
+
+/**
+ * What became of a recovery request: carried out with the printer's outcome,
+ * or refused — one or the other, never both and never neither.
+ */
+export type RecoveryDecision = { executed: ExecutionOutcome } | { rejected: RecoveryRejection };
 
 /** A recovery action reached the printer, and what the printer made of it. */
 export interface RecoveryExecutedPayload {

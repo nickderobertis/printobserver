@@ -265,7 +265,7 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
 /// action this invocation named, carrying its reason, with no print.
 fn the_recovery_was_carried_out(one: &Driven, said: &BTreeMap<String, String>) {
     let action = one.command.name.replace('-', "_");
-    assert_eq!(at(said, "outcome"), "succeeded", "{said:#?}");
+    assert_eq!(at(said, "decision.executed"), "succeeded", "{said:#?}");
     assert_eq!(at(said, "action.action"), action, "{said:#?}");
     assert_eq!(at(said, "events.0.kind"), "recovery_requested", "{said:#?}");
     assert_eq!(at(said, "events.1.kind"), "recovery_executed", "{said:#?}");

@@ -33,9 +33,7 @@ from printobserver_sdk.contract import (
     Range,
     RecoveryAnswer,
     RecoveryRejection,
-    RecoveryRejectionOutOfBoundsPayload,
     RejectionReason,
-    RejectionReasonOutOfBoundsPayload,
     SpoolCommandAnswer,
 )
 
@@ -171,39 +169,53 @@ def _said(said: str) -> str:
 def _rejection(status: int, said: str) -> Exception:
     """The policy's own refusal, as the answer to it carries it."""
     document = _document(status, said)
-    # An action's answer carries its decision in its record; a spool command's
-    # carries it at the top. Each `cast` below names the type `operations.json`
-    # declares for the refusal the match has just told apart: `_document` hands
-    # back the server's JSON untyped, and the match is the check this client
-    # makes of its shape before naming it.
+    # An action's answer carries its decision in its record; a recovery's names
+    # its action beside its decision, and a spool command's carries its decision
+    # at the top. Each `cast` below names the type `operations.json` declares for
+    # the refusal the match has just told apart: `_document` hands back the
+    # server's JSON untyped, and the match is the check this client makes of its
+    # shape before naming it.
     answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer
     match document:
         case {"record": {"decision": {"rejected": refused}}}:
             answer = cast(ActionAnswer, document)
+        case {"action": dict(), "detail": str(), "decision": {"rejected": refused}}:
+            answer = cast(RecoveryAnswer, document)
         case {"decision": {"rejected": refused}}:
             answer = cast(SpoolCommandAnswer, document)
-        # A recovery's answer carries its own refusal at the top.
-        case {"rejection": refused}:
-            answer = cast(RecoveryAnswer, document)
         case _:
             return UnreadableError(
                 status,
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
-    # What `rejected` holds is the contracts' `RejectionReason`, and what
-    # `rejection` holds their `RecoveryRejection`, which the server serializes
-    # each from; the match bound it untyped.
+    # A refusal is a variant's name, or one variant carrying its fields.
+    is_named = isinstance(refused, str) and bool(refused)
+    is_carried = (
+        isinstance(refused, dict)
+        and len(refused) == 1
+        and all(isinstance(fields, dict) for fields in refused.values())
+    )
+    if not (is_named or is_carried):
+        return UnreadableError(status, f"the supervisor refused with no refusal: {refused!r}")
+    # What `rejected` holds is the contracts' `RejectionReason` or their
+    # `RecoveryRejection`, which the server serializes it from; the match bound
+    # it untyped, and the check above holds it to a refusal's shape.
     reason = cast(RejectionReason | RecoveryRejection, refused)
     requested: float | None = None
     allowed: Range | None = None
-    if isinstance(reason, dict) and "out_of_bounds" in reason:
-        bounds = cast(
-            RejectionReasonOutOfBoundsPayload | RecoveryRejectionOutOfBoundsPayload,
-            reason["out_of_bounds"],
-        )
-        requested = bounds["requested"]
-        allowed = bounds["allowed"]
+    if isinstance(refused, dict) and "out_of_bounds" in refused:
+        match refused["out_of_bounds"]:
+            case {
+                "requested": int() | float() as asked,
+                "allowed": {"min": int() | float(), "max": int() | float()} as bounds,
+            }:
+                requested = float(asked)
+                allowed = cast(Range, bounds)
+            case malformed:
+                return UnreadableError(
+                    status, f"the refusal's bounds are not a value and a range: {malformed!r}"
+                )
     return RejectedError(reason, requested, allowed, answer)
 
 

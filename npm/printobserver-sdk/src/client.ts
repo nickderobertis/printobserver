@@ -158,43 +158,64 @@ function refusalText(said: string): string {
   return "it said nothing this client can read";
 }
 
+/** Whether one value is a refusal's shape: a variant's name, or one variant carrying its fields. */
+function isRefusal(refused: unknown): boolean {
+  if (typeof refused === "string") {
+    return refused !== "";
+  }
+  if (typeof refused !== "object" || refused === null) {
+    return false;
+  }
+  const arms = Object.values(refused);
+  return arms.length === 1 && typeof arms[0] === "object" && arms[0] !== null;
+}
+
+/** A refusal's value asked for and range allowed, when it ruled on a value; `null` when its bounds are malformed. */
+function boundsOf(refused: unknown): { requested?: number; allowed?: Range } | null {
+  if (typeof refused !== "object" || refused === null || !("out_of_bounds" in refused)) {
+    return {};
+  }
+  const bounds: unknown = refused.out_of_bounds;
+  if (typeof bounds !== "object" || bounds === null) {
+    return null;
+  }
+  const { requested, allowed } = bounds as { requested?: unknown; allowed?: unknown };
+  if (typeof requested !== "number" || typeof allowed !== "object" || allowed === null) {
+    return null;
+  }
+  const { min, max } = allowed as { min?: unknown; max?: unknown };
+  if (typeof min !== "number" || typeof max !== "number") {
+    return null;
+  }
+  return { requested, allowed: { min, max } };
+}
+
 /** The policy's own refusal, as the answer to it carries it. */
 function rejection(status: number, said: string): Error {
-  const answered = document<ActionAnswer | SpoolCommandAnswer | RecoveryAnswer>(status, said);
-  // A recovery's answer carries its own refusal at the top.
-  if ("rejection" in answered && answered.rejection) {
-    const refused: RecoveryRejection = answered.rejection;
-    if (typeof refused === "object" && "out_of_bounds" in refused) {
-      return new Rejected(
-        refused,
-        refused.out_of_bounds.requested,
-        refused.out_of_bounds.allowed,
-        answered,
-      );
-    }
-    return new Rejected(refused, undefined, undefined, answered);
-  }
-  if (!("record" in answered) && !("decision" in answered)) {
-    return new Unreadable(status, "the supervisor refused this recovery and answered no refusal");
-  }
-  const answer: ActionAnswer | SpoolCommandAnswer = answered;
-  // An action's answer carries its decision in its record; a spool command's
-  // carries it at the top.
-  const decision = "record" in answer ? answer.record.decision : answer.decision;
-  if (typeof decision !== "object" || !("rejected" in decision)) {
+  const answer = document<ActionAnswer | SpoolCommandAnswer | RecoveryAnswer>(status, said);
+  // An action's answer carries its decision in its record; a recovery's and a
+  // spool command's carry it at the top.
+  const decision: unknown = "record" in answer ? answer.record.decision : answer.decision;
+  const refused: unknown =
+    typeof decision === "object" && decision !== null && "rejected" in decision
+      ? decision.rejected
+      : undefined;
+  if (!isRefusal(refused)) {
     return new Unreadable(
       status,
       "the supervisor refused this action and answered a record whose decision is not a refusal",
     );
   }
-  const reason: RejectionReason = decision.rejected;
-  let requested: number | undefined;
-  let allowed: Range | undefined;
-  if (typeof reason === "object" && "out_of_bounds" in reason) {
-    requested = reason.out_of_bounds.requested;
-    allowed = reason.out_of_bounds.allowed;
+  const bounds = boundsOf(refused);
+  if (bounds === null) {
+    return new Unreadable(status, "the refusal's bounds are not a value and a range");
   }
-  return new Rejected(reason, requested, allowed, answer);
+  return new Rejected(
+    refused as RejectionReason | RecoveryRejection,
+    bounds.requested,
+    bounds.allowed,
+    answer,
+  );
 }
 
 /** The machine's own refusal of an action the policy accepted. */
@@ -203,6 +224,9 @@ function machineRefusal(status: number, said: string): Error {
   // A recovery the machine refused carries no action record, and arrives as
   // the supervisor's own words for it.
   if (!("record" in answered)) {
+    if (typeof answered.detail !== "string") {
+      return new Unreadable(status, "the supervisor answered a refusal saying nothing");
+    }
     return new Refused(status, answered.detail);
   }
   const answer: ActionAnswer = answered;

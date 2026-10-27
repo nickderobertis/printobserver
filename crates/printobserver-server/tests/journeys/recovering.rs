@@ -441,7 +441,7 @@ fn every_action() -> Vec<(&'static str, Value)> {
 
 /// The one refusal an answer carries, by its name.
 fn refused_as(answer: &Value) -> String {
-    match &answer["rejection"] {
+    match &answer["decision"]["rejected"] {
         Value::String(named) => named.clone(),
         Value::Object(named) => named.keys().next().cloned().unwrap_or_default(),
         other => panic!("the answer carries no refusal: {other:#}"),
@@ -495,7 +495,7 @@ async fn every_action_is_refused_under_a_running_print_and_an_offline_printer() 
     world.reads("cancelling").await;
     let (_, answer) = world.ask("recover_lift", json!({ "mm": 5.0 })).await;
     assert_eq!(
-        answer["rejection"],
+        answer["decision"]["rejected"],
         json!({ "print_running": { "state": "cancelling" } })
     );
     every_action_refused(&world, "print_running").await;
@@ -543,7 +543,7 @@ async fn a_value_outside_its_bound_is_refused_and_reaches_nothing() {
             StatusCode::CONFLICT,
             "{action} {fields}: {answer:#}"
         );
-        let bounds = &answer["rejection"]["out_of_bounds"];
+        let bounds = &answer["decision"]["rejected"]["out_of_bounds"];
         assert_eq!(bounds["field"], field, "{answer:#}");
         assert_eq!(
             bounds["allowed"],
@@ -560,7 +560,7 @@ async fn a_value_outside_its_bound_is_refused_and_reaches_nothing() {
     let (status, answer) = world.ask("recover_lift", json!({ "mm": 20.0 })).await;
     assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
     assert_eq!(
-        answer["rejection"]["out_of_bounds"],
+        answer["decision"]["rejected"]["out_of_bounds"],
         json!({ "field": "mm", "requested": 20.0, "allowed": { "min": 0.0, "max": 10.0 } })
     );
     assert_eq!(world.asked_of_the_machine(), before);
@@ -584,7 +584,7 @@ async fn homing_z_without_the_bed_asserted_clear_is_refused() {
 
     assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
     assert_eq!(
-        answer["rejection"],
+        answer["decision"]["rejected"],
         json!({ "assertion_required": { "field": "bed_clear_asserted" } })
     );
     assert!(
@@ -625,7 +625,7 @@ async fn the_agent_is_granted_nothing_and_its_word_is_never_clearance() {
             .await;
         assert_eq!(status, StatusCode::CONFLICT, "{action}: {answer:#}");
         assert_eq!(
-            answer["rejection"],
+            answer["decision"]["rejected"],
             json!({ "actor_may_not_request": { "action": action } })
         );
         assert_eq!(world.asked_of_the_machine(), before, "{action}");
@@ -663,7 +663,7 @@ async fn the_agent_is_granted_nothing_and_its_word_is_never_clearance() {
         .await;
     assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
     assert_eq!(
-        answer["rejection"],
+        answer["decision"]["rejected"],
         json!({ "insufficient_clearance": {
             "nozzle_z_mm": 0.0, "tallest_mm": 0.0, "margin_mm": 5.0,
         } })
@@ -686,7 +686,7 @@ async fn untrusted(world: &Recovering, after: &str) {
     let before = world.asked_of_the_machine();
     let (status, answer) = world.ask("recover_park", json!({})).await;
     assert_eq!(status, StatusCode::CONFLICT, "{after}: {answer:#}");
-    assert_eq!(answer["rejection"], "z_untrusted", "{after}");
+    assert_eq!(answer["decision"]["rejected"], "z_untrusted", "{after}");
     assert_eq!(world.asked_of_the_machine(), before, "{after}");
 }
 
@@ -822,7 +822,7 @@ async fn a_move_the_printer_cannot_make_is_refused_as_such() {
         let (status, answer) = world.ask(action, fields).await;
         assert_eq!(status, StatusCode::CONFLICT, "{action}: {answer:#}");
         assert_eq!(
-            answer["rejection"]["printer_cannot"]["action"], action,
+            answer["decision"]["rejected"]["printer_cannot"]["action"], action,
             "{answer:#}"
         );
         assert_eq!(world.asked_of_the_machine(), before, "{action}");
@@ -841,7 +841,7 @@ async fn a_move_the_printer_cannot_make_is_refused_as_such() {
     let before = reading.asked_of_the_machine();
     let (status, answer) = reading.ask("recover_park", json!({})).await;
     assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
-    let cannot = &answer["rejection"]["printer_cannot"];
+    let cannot = &answer["decision"]["rejected"]["printer_cannot"];
     assert_eq!(cannot["action"], "recover_park");
     assert!(
         cannot["detail"]
@@ -898,7 +898,7 @@ async fn the_recovery_read_answers_each_allowance_and_a_cool_turns_every_heater_
 
     let (status, answer) = world.ask("recover_cool", json!({})).await;
     assert_eq!(status, StatusCode::OK, "{answer:#}");
-    assert_eq!(answer["outcome"], "succeeded");
+    assert_eq!(answer["decision"]["executed"], "succeeded");
     assert_eq!(world.octoprint.reported_targets(), (0.0, 0.0));
     let kinds: Vec<&str> = answer["events"]
         .as_array()
@@ -914,5 +914,125 @@ async fn the_recovery_read_answers_each_allowance_and_a_cool_turns_every_heater_
             .iter()
             .all(|event| event["print_id"].is_null()),
         "a recovery event named a print"
+    );
+}
+
+/// A recovery the printer itself refuses is answered as that — `502`, the
+/// printer's own words, and recorded as executed with a failed outcome —
+/// rather than as a refusal of the policy's.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recovery_the_printer_refuses_is_recorded_as_failed_at_the_printer() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.reads("operational").await;
+    world.octoprint.refuses_commands(true);
+
+    let (status, answer) = world.ask("recover_fan", json!({ "percent": 50.0 })).await;
+
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{answer:#}");
+    assert!(
+        answer["decision"]["executed"]["failed"]["reason"]
+            .as_str()
+            .is_some_and(|said| said.contains("Printer is not operational")),
+        "{answer:#}"
+    );
+    assert!(
+        answer["detail"]
+            .as_str()
+            .is_some_and(|said| said.contains("which refused it")),
+        "{answer:#}"
+    );
+    assert_eq!(
+        world.recorded().await,
+        vec![
+            ("recovery_requested".to_owned(), "recover_fan".to_owned()),
+            ("recovery_executed".to_owned(), "recover_fan".to_owned()),
+        ]
+    );
+}
+
+/// What the last print laid down that cannot be read is clearance that cannot
+/// be measured: a move over the part is refused as one the printer cannot
+/// make, and reaches nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_part_whose_file_cannot_be_read_refuses_a_move_over_it() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.connected().await;
+    // A print the watch reads past its first byte, whose file the printer
+    // then cannot answer for.
+    world
+        .octoprint
+        .reports("Printing", JobScript::printing(FILE, 816, 400, 60));
+    world.until("print_started", 1).await;
+    world.octoprint.reports("Operational", JobScript::idle());
+    world.until("print_ended", 1).await;
+    world.home_z().await;
+    let before = world.asked_of_the_machine();
+
+    let (status, answer) = world.ask("recover_park", json!({})).await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+    let cannot = &answer["decision"]["rejected"]["printer_cannot"];
+    assert_eq!(cannot["action"], "recover_park", "{answer:#}");
+    assert!(
+        cannot["detail"]
+            .as_str()
+            .is_some_and(|said| said.contains("laid down could not be read")),
+        "{answer:#}"
+    );
+    assert_eq!(world.asked_of_the_machine(), before);
+    assert_eq!(world.status().await["last_print"], Value::Null);
+}
+
+/// A print a recovery moved while it was paused stays not resumable after the
+/// server starts again: its resume is refused naming that recovery, and the
+/// machine is asked for nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_print_a_recovery_moved_stays_not_resumable_across_a_restart() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.octoprint.reports(
+        "Paused",
+        JobScript {
+            state: "Paused".to_owned(),
+            ..JobScript::printing(FILE, 816, 400, 60)
+        },
+    );
+    world.until("print_started", 1).await;
+    world.reads("paused").await;
+    let (status, cooled) = world.ask("recover_cool", json!({})).await;
+    assert_eq!(status, StatusCode::OK, "{cooled:#}");
+    let moved = cooled["events"][1]["id"].clone();
+    let print_id = world.status().await["paused_print"]["print_id"]
+        .as_str()
+        .expect("the paused print is named")
+        .to_owned();
+
+    let world = world.restarted(with_recovery(|_| {})).await;
+    world.reads("paused").await;
+    assert_eq!(
+        world.status().await["paused_print"],
+        json!({ "print_id": print_id, "resumable": false })
+    );
+    let jobs = world.octoprint.job_commands();
+    let resumed: Value = world
+        .client
+        .post(format!(
+            "{}/prints/{print_id}/actions/resume",
+            world.server.base_url()
+        ))
+        .json(&json!({ "actor": "operator", "reason": "carry on printing" }))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("a JSON answer");
+    assert_eq!(
+        resumed["record"]["decision"]["rejected"],
+        json!({ "print_not_resumable": { "recovery_event_id": moved } })
+    );
+    assert_eq!(
+        world.octoprint.job_commands(),
+        jobs,
+        "the resume reached the machine"
     );
 }

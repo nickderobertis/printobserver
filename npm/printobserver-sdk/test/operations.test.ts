@@ -1698,7 +1698,7 @@ test("recover_status sends what it declares and answers what the server sent", a
 
 test("recover_lift sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1718,7 +1718,7 @@ test("recover_lift sends what it declares and answers what the server sent", asy
 
 test("recover_lift surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1770,7 +1770,7 @@ test("recover_lift makes no request when the reason is empty", async () => {
 
 test("recover_cool sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1790,7 +1790,7 @@ test("recover_cool sends what it declares and answers what the server sent", asy
 
 test("recover_cool surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1842,7 +1842,7 @@ test("recover_cool makes no request when the reason is empty", async () => {
 
 test("recover_fan sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1862,7 +1862,7 @@ test("recover_fan sends what it declares and answers what the server sent", asyn
 
 test("recover_fan surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1914,7 +1914,7 @@ test("recover_fan makes no request when the reason is empty", async () => {
 
 test("recover_heat sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1934,7 +1934,7 @@ test("recover_heat sends what it declares and answers what the server sent", asy
 
 test("recover_heat surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -1986,7 +1986,7 @@ test("recover_heat makes no request when the reason is empty", async () => {
 
 test("recover_park sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -2006,7 +2006,7 @@ test("recover_park sends what it declares and answers what the server sent", asy
 
 test("recover_park surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -2058,7 +2058,7 @@ test("recover_park makes no request when the reason is empty", async () => {
 
 test("recover_home_xy sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -2078,7 +2078,7 @@ test("recover_home_xy sends what it declares and answers what the server sent", 
 
 test("recover_home_xy surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -2130,7 +2130,7 @@ test("recover_home_xy makes no request when the reason is empty", async () => {
 
 test("recover_home_z sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -2150,7 +2150,7 @@ test("recover_home_z sends what it declares and answers what the server sent", a
 
 test("recover_home_z surfaces the policy's own refusal", async () => {
   const refusal = JSON.parse(
-    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "decision": {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',
   );
   await using host = Host.answering(409, refusal);
   const client = new Client({ server: host.address, actor: ACTOR });

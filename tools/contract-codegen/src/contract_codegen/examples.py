@@ -206,15 +206,13 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
                     },
                 },
             }
+        case {"action": _, "detail": _, "decision": _}:
+            # A recovery's answer names its action and carries its own decision.
+            bounds = {"field": "mm", "requested": NUMBER, "allowed": {"min": 0.5, "max": 1.25}}
+            return {**answered, "decision": {"rejected": {"out_of_bounds": bounds}}}
         case {"decision": _}:
             refusal = {"cause": {"cause": "unknown_spool", "spool_id": TEXT}, "message": TEXT}
             return {**answered, "decision": {"rejected": {"spool_refused": refusal}}}
-        case {"action": _, "detail": _}:
-            # A recovery's answer carries its refusal at the top, and reached no
-            # printer, so it carries no outcome.
-            refused = {key: value for key, value in answered.items() if key != "outcome"}
-            bounds = {"field": "mm", "requested": NUMBER, "allowed": {"min": 0.5, "max": 1.25}}
-            return {**refused, "rejection": {"out_of_bounds": bounds}}
     msg = f"`{operation.name}` answers no record and no decision for a refusal to be taken on"
     raise ExampleError(msg)
 
@@ -230,7 +228,7 @@ def is_ledger_refusal(rejection: object) -> bool:
 
 def is_recovery_refusal(rejection: object) -> bool:
     """Whether one refusal document is a recovery's rather than the policy's."""
-    return isinstance(rejection, dict) and "rejection" in rejection
+    return isinstance(rejection, dict) and "action" in rejection and "detail" in rejection
 
 
 def argument_of(shape: TypeExpr, contract: Contract) -> object:

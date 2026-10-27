@@ -462,6 +462,13 @@ const DECLARED_FIELDS: &[StatedType] = &[
         ],
     ),
     ("RecoveryActionKind", &[]),
+    (
+        "RecoveryDecision",
+        &[
+            ("executed", "ExecutionOutcome", true),
+            ("rejected", "RecoveryRejection", true),
+        ],
+    ),
     ("RecoveryField", &[]),
     (
         "RecoveryPosition",

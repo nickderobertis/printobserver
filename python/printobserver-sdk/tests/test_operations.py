@@ -2593,18 +2593,18 @@ def test_recover_status_sends_what_it_declares_and_answers_what_was_sent() -> No
 def test_recover_lift_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_lift` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -2630,19 +2630,19 @@ def test_recover_lift_sends_what_it_declares_and_answers_what_was_sent() -> None
 def test_recover_lift_surfaces_the_policys_own_refusal() -> None:
     """`recover_lift` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:
@@ -2689,18 +2689,18 @@ def test_recover_lift_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_cool_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_cool` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -2725,19 +2725,19 @@ def test_recover_cool_sends_what_it_declares_and_answers_what_was_sent() -> None
 def test_recover_cool_surfaces_the_policys_own_refusal() -> None:
     """`recover_cool` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:
@@ -2784,18 +2784,18 @@ def test_recover_cool_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_fan_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_fan` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -2821,19 +2821,19 @@ def test_recover_fan_sends_what_it_declares_and_answers_what_was_sent() -> None:
 def test_recover_fan_surfaces_the_policys_own_refusal() -> None:
     """`recover_fan` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:
@@ -2880,18 +2880,18 @@ def test_recover_fan_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_heat_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_heat` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -2917,19 +2917,19 @@ def test_recover_heat_sends_what_it_declares_and_answers_what_was_sent() -> None
 def test_recover_heat_surfaces_the_policys_own_refusal() -> None:
     """`recover_heat` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:
@@ -2976,18 +2976,18 @@ def test_recover_heat_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_park_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_park` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -3013,19 +3013,19 @@ def test_recover_park_sends_what_it_declares_and_answers_what_was_sent() -> None
 def test_recover_park_surfaces_the_policys_own_refusal() -> None:
     """`recover_park` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:
@@ -3072,18 +3072,18 @@ def test_recover_park_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_home_xy_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_home_xy` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -3109,19 +3109,19 @@ def test_recover_home_xy_sends_what_it_declares_and_answers_what_was_sent() -> N
 def test_recover_home_xy_surfaces_the_policys_own_refusal() -> None:
     """`recover_home_xy` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:
@@ -3168,18 +3168,18 @@ def test_recover_home_xy_makes_no_request_when_the_reason_is_empty() -> None:
 def test_recover_home_z_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`recover_home_z` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "outcome": "succeeded", "rejection": '
-        '{"actor_may_not_request": {"action": "recover_lift"}}}'
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
     )
 
     with Host(200, answer) as host:
@@ -3205,19 +3205,19 @@ def test_recover_home_z_sends_what_it_declares_and_answers_what_was_sent() -> No
 def test_recover_home_z_surfaces_the_policys_own_refusal() -> None:
     """`recover_home_z` surfaces the policy's own refusal, typed."""
     refusal = json.loads(
-        '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": '
-        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f'
-        '0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc"}, "kind": "action_executed", "payload'
-        '": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "in'
-        'tervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "pr'
-        'int_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "019'
-        '8f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allo'
-        'wed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested":'
-        " 1.5}}}"
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
     )
 
     with Host(409, refusal) as host:

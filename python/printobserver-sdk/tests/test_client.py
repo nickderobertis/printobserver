@@ -213,3 +213,45 @@ def test_a_surface_on_its_own_makes_no_request() -> None:
     except NotImplementedError:
         return
     truth(False, describing="a surface to make no request")
+
+
+#: A recovery's answer, carrying whatever decision a test gives it.
+def _recovery(decision: object) -> dict[str, object]:
+    """A recovery answer around one decision."""
+    return {
+        "action": {"action": "recover_fan", "percent": 50.0},
+        "decision": decision,
+        "detail": "recover_fan reached the printer, which refused it: the fan is stuck",
+        "events": [],
+    }
+
+
+def test_a_recovery_the_machine_refused_carries_the_supervisors_words() -> None:
+    """A recovery has no action record; the supervisor's sentence is the answer."""
+    with Host(502, _recovery({"executed": {"failed": {"reason": "the fan is stuck"}}})) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_fan(50.0, "because")
+        except RefusedError as refused:
+            equal(refused.status, 502)
+            contains(refused.detail, "the fan is stuck", describing="what the printer said")
+        else:
+            truth(False, describing="a recovery the machine refused to arrive as one")
+
+
+def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> None:
+    """A refusal whose bounds are not a value and a range is not handed on as one."""
+    for refused in (
+        {"out_of_bounds": {"field": "percent", "requested": "lots", "allowed": {}}},
+        {"out_of_bounds": "everything"},
+        None,
+        {"two": {}, "arms": {}},
+    ):
+        with Host(409, _recovery({"rejected": refused})) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{refused!r}")
+            else:
+                truth(False, describing=f"{refused!r} to be refused as unreadable")

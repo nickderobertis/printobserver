@@ -8,8 +8,8 @@
 
 use printobserver_core::records::{
     ActionAllowance, BedTemperature, LastPrint, PausedPrint, RecoveryAction, RecoveryActionKind,
-    RecoveryField, RecoveryPosition, RecoveryRejection, RecoveryStatus, RecoveryTemperatures,
-    ToolTemperature, ZHome, ZTrust,
+    RecoveryDecision, RecoveryField, RecoveryPosition, RecoveryRejection, RecoveryStatus,
+    RecoveryTemperatures, ToolTemperature, ZHome, ZTrust,
 };
 use printobserver_core::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
@@ -68,6 +68,7 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<PrintSegmentKey>("PrintSegmentKey"),
         TypeContract::of::<RecoveryAction>("RecoveryAction"),
         TypeContract::of::<RecoveryActionKind>("RecoveryActionKind"),
+        TypeContract::of::<RecoveryDecision>("RecoveryDecision"),
         TypeContract::of::<RecoveryField>("RecoveryField"),
         TypeContract::of::<RecoveryPosition>("RecoveryPosition"),
         TypeContract::of::<RecoveryRejection>("RecoveryRejection"),

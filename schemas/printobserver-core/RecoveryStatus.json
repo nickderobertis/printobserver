@@ -9,7 +9,8 @@
         },
         "allowed": {
           "description": "Whether it is allowed now.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-paired-with": "refusal"
         },
         "refusal": {
           "$ref": "#/$defs/RecoveryRejection"

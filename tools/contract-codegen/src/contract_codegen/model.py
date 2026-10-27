@@ -75,6 +75,9 @@ class Field:
     # An optional field whose null is sent and means something its absence
     # does not, so a client that re-serializes it keeps the two apart.
     null_is_sent: bool = False
+    # The field this one is held in step with by the declaring type's own
+    # reading, which a generated struct of two independent fields cannot be.
+    paired_with: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -2233,23 +2233,45 @@ class RecoveryAnswer(TypedDict):
 
     What a recovery action answers, carried out or refused.
 
-    A refusal is the same shape and deliberately so: `rejection` carries
-    the
-    reason, and the two events are what the request wrote.
+    A refusal is the same shape and deliberately so: `decision` is either
+    `executed`, carrying what the printer made of it, or `rejected`,
+    carrying
+    the reason, and the two events are what the request wrote.
     """
 
     # What was asked for.
     action: RecoveryAction
+    # What became of it.
+    decision: RecoveryDecision
     # What became of it, in a sentence for a person: why it was refused and
     # what would let it go ahead, or what it did.
     detail: str
     # The `recovery_requested` event, and the `recovery_executed` or
     # `recovery_rejected` beside it.
     events: list[EventRecord]
-    # What the printer made of it, when it reached the printer.
-    outcome: NotRequired[ExecutionOutcome | None]
-    # Why it was refused, when it was.
-    rejection: NotRequired[RecoveryRejection | None]
+
+
+class RecoveryDecisionExecuted(TypedDict):
+    """The `executed` arm of `RecoveryDecision`.
+
+    It reached the printer, and this is what the printer made of it.
+    """
+
+    executed: ExecutionOutcome
+
+
+class RecoveryDecisionRejected(TypedDict):
+    """The `rejected` arm of `RecoveryDecision`.
+
+    It was refused, and reached nothing.
+    """
+
+    rejected: RecoveryRejection
+
+
+# What became of a recovery request: carried out with the printer's outcome,
+# or refused — one or the other, never both and never neither.
+RecoveryDecision: TypeAlias = RecoveryDecisionExecuted | RecoveryDecisionRejected
 
 
 class RecoveryExecutedPayload(TypedDict):

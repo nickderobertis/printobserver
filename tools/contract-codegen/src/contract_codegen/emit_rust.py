@@ -89,6 +89,10 @@ def doc_lines(text: str, indent: str = "") -> list[str]:
 #: The directive above a generated list the schema bounds as never empty.
 NON_EMPTY_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
 
+#: The directive written above a field the schema marks as held in step with
+#: another, which two independent generated fields cannot be.
+PAIRED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
 
 PRESENT = "present"
 """The deserializer of a field whose null is sent: whatever was sent, as sent."""
@@ -145,6 +149,11 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
         # A list the schema says is never empty is a `Vec` here, which can be:
         # the generator has no non-empty type yet, and suppressions.toml says so.
         lines.append(f"{indent}{NON_EMPTY_DIRECTIVE}")
+    if entry.paired_with:
+        # Two fields the declaring type's own reading holds in step are two
+        # independent fields here; the client deserializes what the server
+        # sent, and the server's reading is what refuses a mismatched pair.
+        lines.append(f"{indent}{PAIRED_DIRECTIVE}")
     if not entry.required and entry.null_is_sent:
         # Absent, null and a value are three answers here, so the outer option
         # is whether it was sent and the inner whether it was null.

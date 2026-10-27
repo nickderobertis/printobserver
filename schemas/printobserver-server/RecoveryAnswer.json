@@ -411,6 +411,37 @@
         }
       ]
     },
+    "RecoveryDecision": {
+      "description": "What became of a recovery request: carried out with the printer's outcome,\nor refused — one or the other, never both and never neither.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "It reached the printer, and this is what the printer made of it.",
+          "properties": {
+            "executed": {
+              "$ref": "#/$defs/ExecutionOutcome"
+            }
+          },
+          "required": [
+            "executed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It was refused, and reached nothing.",
+          "properties": {
+            "rejected": {
+              "$ref": "#/$defs/RecoveryRejection"
+            }
+          },
+          "required": [
+            "rejected"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "RecoveryField": {
       "description": "One field of a recovery action a bound is held to.",
       "oneOf": [
@@ -641,11 +672,15 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "What a recovery action answers, carried out or refused.\n\nA refusal is the same shape and deliberately so: `rejection` carries the\nreason, and the two events are what the request wrote.",
+  "description": "What a recovery action answers, carried out or refused.\n\nA refusal is the same shape and deliberately so: `decision` is either\n`executed`, carrying what the printer made of it, or `rejected`, carrying\nthe reason, and the two events are what the request wrote.",
   "properties": {
     "action": {
       "$ref": "#/$defs/RecoveryAction",
       "description": "What was asked for."
+    },
+    "decision": {
+      "$ref": "#/$defs/RecoveryDecision",
+      "description": "What became of it."
     },
     "detail": {
       "description": "What became of it, in a sentence for a person: why it was refused and\nwhat would let it go ahead, or what it did.",
@@ -657,32 +692,11 @@
         "$ref": "#/$defs/EventRecord"
       },
       "type": "array"
-    },
-    "outcome": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ExecutionOutcome"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "What the printer made of it, when it reached the printer."
-    },
-    "rejection": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/RecoveryRejection"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Why it was refused, when it was."
     }
   },
   "required": [
     "action",
+    "decision",
     "detail",
     "events"
   ],

@@ -106,7 +106,10 @@ fn ask(world: &World, command: &str, arguments: &[&str]) -> (bool, Value) {
 fn carried_out(world: &World, command: &str, arguments: &[&str]) -> Value {
     let (ok, answer) = ask(world, command, arguments);
     assert!(ok, "`{command}` was not carried out: {answer:#}");
-    assert_eq!(answer["outcome"], "succeeded", "{command}: {answer:#}");
+    assert_eq!(
+        answer["decision"]["executed"], "succeeded",
+        "{command}: {answer:#}"
+    );
     answer
 }
 
@@ -132,7 +135,7 @@ fn refused(
     let (ok, answer) = ask(world, command, arguments);
     assert!(!ok, "`{command}` was carried out: {answer:#}");
     assert_eq!(
-        refusal_of(&answer["rejection"]).as_deref(),
+        refusal_of(&answer["decision"]["rejected"]).as_deref(),
         Some(expected),
         "{command}: {answer:#}"
     );
@@ -574,7 +577,7 @@ fn once_z_is_homed(world: &World) {
             &trusted,
         );
         assert_eq!(
-            answer["rejection"]["insufficient_clearance"],
+            answer["decision"]["rejected"]["insufficient_clearance"],
             json!({ "nozzle_z_mm": 0.0, "tallest_mm": PART_TALLEST_MM, "margin_mm": 5.0 })
         );
     }

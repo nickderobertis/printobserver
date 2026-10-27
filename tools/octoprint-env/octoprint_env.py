@@ -1126,6 +1126,7 @@ def at_the_terminal(instance: Instance, line: str | None) -> Typed:
         body=json.dumps(asked).encode("utf-8"),
         content_type="application/json",
     )
+    # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     if status != 204:
         raise StartupError("terminal-refused", f"{path} refused {asked} with {status}: {answer}")
     return Typed(sent=line if line is not None else "connect")

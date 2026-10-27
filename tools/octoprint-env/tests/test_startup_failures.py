@@ -135,7 +135,7 @@ def test_an_upload_to_no_running_instance_is_reported_by_name(
 
 def test_a_line_or_a_reconnect_for_no_running_instance_is_refused_by_name(
     state_dir: Callable[[str], str],
-) -> None:
+) -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker] See suppressions.toml.
     """A line typed at, or a reconnect asked of, an instance nothing started is refused."""
     empty = state_dir("terminal")
     for asked in (("terminal", "--line", "M117 hello"), ("connect",), ("terminal",)):

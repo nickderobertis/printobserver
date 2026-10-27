@@ -95,3 +95,41 @@ test("what is asked for after the question mark is escaped where it must be", as
 
   expect(host.received().target).toBe(`/v1/prints/${PRINT}/history?limit=20`);
 });
+
+/** A recovery's answer, carrying whatever decision a test gives it. */
+function recovery(decision: unknown): unknown {
+  return {
+    action: { action: "recover_fan", percent: 50 },
+    decision,
+    detail: "recover_fan reached the printer, which refused it: the fan is stuck",
+    events: [],
+  };
+}
+
+test("a recovery the machine refused carries the supervisor's words", async () => {
+  await using host = Host.answering(
+    502,
+    recovery({ executed: { failed: { reason: "the fan is stuck" } } }),
+  );
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const refused = await client.recoverFan(50, "because").catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Refused);
+  expect((refused as Refused).status).toBe(502);
+  expect((refused as Refused).detail).toContain("the fan is stuck");
+});
+
+test("a recovery refused with bounds no reader can read is unreadable", async () => {
+  for (const refused of [
+    { out_of_bounds: { field: "percent", requested: "lots", allowed: {} } },
+    { out_of_bounds: "everything" },
+    null,
+    { two: {}, arms: {} },
+  ]) {
+    await using host = Host.answering(409, recovery({ rejected: refused }));
+    const client = new Client({ server: host.address, actor: ACTOR });
+
+    await expect(client.recoverFan(50, "because")).rejects.toBeInstanceOf(Unreadable);
+  }
+});

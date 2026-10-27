@@ -120,11 +120,24 @@ impl Default for Reporting {
     }
 }
 
+/// What this machine refuses of what it is asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Refusing {
+    /// Nothing.
+    #[default]
+    Nothing,
+    /// Everything.
+    Everything,
+    /// Everything it is asked to do, while it answers what it is asked to
+    /// read.
+    Actions,
+}
+
 /// How this machine answers what it is asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Answering {
-    /// Whether it refuses everything.
-    refusing: bool,
+    /// What it refuses.
+    refusing: Refusing,
     /// Whether it answers success and changes nothing.
     deaf: bool,
     /// Whether it drops every request unanswered, as a machine that is off.
@@ -172,7 +185,21 @@ impl Machine {
     /// have it, and what the caller is owed is the record and the machine's own
     /// answer rather than silence.
     pub fn refusing(&self, refusing: bool) {
-        self.answering.lock().expect("how it answers").refusing = refusing;
+        self.answering.lock().expect("how it answers").refusing = if refusing {
+            Refusing::Everything
+        } else {
+            Refusing::Nothing
+        };
+    }
+
+    /// Tell it to refuse everything it is asked to do while it goes on
+    /// answering what it is asked to read, or to stop.
+    pub fn refusing_actions(&self, refusing: bool) {
+        self.answering.lock().expect("how it answers").refusing = if refusing {
+            Refusing::Actions
+        } else {
+            Refusing::Nothing
+        };
     }
 
     /// Tell it to answer success and change nothing, or to stop.
@@ -260,7 +287,14 @@ fn answer(mut stream: TcpStream, reported: &Mutex<Reporting>, answering: &Mutex<
     if how.unreachable {
         return;
     }
-    if how.refusing {
+    if how.refusing == Refusing::Everything {
+        let _ = stream.write_all(
+            b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\
+              Content-Length: 2\r\nConnection: close\r\n\r\n{}",
+        );
+        return;
+    }
+    if method == "POST" && how.refusing == Refusing::Actions {
         let _ = stream.write_all(
             b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\
               Content-Length: 2\r\nConnection: close\r\n\r\n{}",

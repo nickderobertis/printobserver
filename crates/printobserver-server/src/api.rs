@@ -661,27 +661,20 @@ async fn recover(
         Err(error) => return refusal(core_status(&error), error),
     };
     let config = state.supervisor.config().recovery;
-    let (status, rejection, outcome) = match &issued.decision {
-        RecoveryDecision::Executed(outcome @ ExecutionOutcome::Succeeded) => {
-            (StatusCode::OK, None, Some(outcome.clone()))
-        }
+    let status = match &issued.decision {
+        RecoveryDecision::Executed(ExecutionOutcome::Succeeded) => StatusCode::OK,
         // The printer was asked and refused: a request that was made rather
         // than one that never happened, answered with the printer's words.
-        RecoveryDecision::Executed(outcome @ ExecutionOutcome::Failed { .. }) => {
-            (StatusCode::BAD_GATEWAY, None, Some(outcome.clone()))
-        }
+        RecoveryDecision::Executed(ExecutionOutcome::Failed { .. }) => StatusCode::BAD_GATEWAY,
         // The refusal is the answer, as a print action's is.
-        RecoveryDecision::Rejected(rejection) => {
-            (StatusCode::CONFLICT, Some(rejection.clone()), None)
-        }
+        RecoveryDecision::Rejected(_) => StatusCode::CONFLICT,
     };
     answer(
         status,
         &RecoveryAnswer {
             detail: recovery_detail(&action, &issued.decision, config.as_ref()),
             action,
-            rejection,
-            outcome,
+            decision: issued.decision,
             events: vec![issued.requested, issued.settled],
         },
     )

@@ -90,6 +90,7 @@ pub struct ActionAllowance {
     /// One shape of the contracts, which say nothing more about it.
     pub action: RecoveryActionKind,
     /// Whether it is allowed now.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     pub allowed: bool,
     /// One shape of the contracts, which say nothing more about it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2037,24 +2038,33 @@ pub enum RecoveryActionKind {
 
 /// What a recovery action answers, carried out or refused.
 ///
-/// A refusal is the same shape and deliberately so: `rejection` carries the
-/// reason, and the two events are what the request wrote.
+/// A refusal is the same shape and deliberately so: `decision` is either
+/// `executed`, carrying what the printer made of it, or `rejected`, carrying
+/// the reason, and the two events are what the request wrote.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecoveryAnswer {
     /// What was asked for.
     pub action: RecoveryAction,
+    /// What became of it.
+    pub decision: RecoveryDecision,
     /// What became of it, in a sentence for a person: why it was refused and
     /// what would let it go ahead, or what it did.
     pub detail: String,
     /// The `recovery_requested` event, and the `recovery_executed` or
     /// `recovery_rejected` beside it.
     pub events: Vec<EventRecord>,
-    /// What the printer made of it, when it reached the printer.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub outcome: Option<ExecutionOutcome>,
-    /// Why it was refused, when it was.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rejection: Option<RecoveryRejection>,
+}
+
+/// What became of a recovery request: carried out with the printer's outcome,
+/// or refused — one or the other, never both and never neither.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RecoveryDecision {
+    /// It reached the printer, and this is what the printer made of it.
+    #[serde(rename = "executed")]
+    Executed(ExecutionOutcome),
+    /// It was refused, and reached nothing.
+    #[serde(rename = "rejected")]
+    Rejected(RecoveryRejection),
 }
 
 /// A recovery action reached the printer, and what the printer made of it.

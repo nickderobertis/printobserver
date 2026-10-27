@@ -383,7 +383,7 @@ pub async fn walk(instance: &Scripted) {
     .await;
     assert_eq!(status, reqwest::StatusCode::CONFLICT, "{answer:#}");
     assert_eq!(
-        answer["rejection"],
+        answer["decision"]["rejected"],
         json!({ "actor_may_not_request": { "action": "recover_heat" } })
     );
     until(

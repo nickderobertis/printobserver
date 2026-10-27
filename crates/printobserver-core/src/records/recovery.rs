@@ -570,6 +570,7 @@ impl JsonSchema for ActionAllowance {
                 "allowed": {
                     "type": "boolean",
                     "description": "Whether it is allowed now.",
+                    "x-paired-with": "refusal",
                 },
                 "refusal": refusal,
             },
@@ -608,8 +609,14 @@ pub struct RecoveryStatus {
 }
 
 /// What became of a recovery request: carried out with the printer's outcome,
-/// or refused.
-#[derive(Debug, Clone, PartialEq)]
+/// or refused — one or the other, never both and never neither.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum RecoveryDecision {
     /// It reached the printer, and this is what the printer made of it.
     Executed(ExecutionOutcome),
@@ -841,5 +848,20 @@ impl Sample for RecoveryStatus {
             z_home: None,
             actions: Vec::new(),
         }
+    }
+}
+
+impl Sample for RecoveryDecision {
+    fn sample_full() -> Self {
+        Self::Rejected(RecoveryRejection::sample_full())
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Executed(ExecutionOutcome::Succeeded),
+            Self::Executed(ExecutionOutcome::Failed {
+                reason: "the printer refused the request with 409: Printer is busy".to_owned(),
+            }),
+        ]
     }
 }

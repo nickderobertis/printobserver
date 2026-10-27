@@ -10,12 +10,11 @@
 
 use std::path::PathBuf;
 
-use printobserver_core::ExecutionOutcome;
 use printobserver_core::store::ImageLookup;
 use printobserver_core::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, ImageRecord, Intervention,
     JobManifest, ManifestNarrowing, PendingCharge, PolicyDecision, Preflight, PrintOutcome,
-    PrintRecord, RecoveryAction, RecoveryActionKind, RecoveryRejection, SpoolCommand, SpoolId,
+    PrintRecord, RecoveryAction, RecoveryActionKind, RecoveryDecision, SpoolCommand, SpoolId,
     SpoolRecord, SpoolTrust,
 };
 use printobserver_core::{DetectorHealth, PrintContext};
@@ -395,20 +394,17 @@ pub fn recovery_of(
 
 /// What a recovery action answers, carried out or refused.
 ///
-/// A refusal is the same shape and deliberately so: `rejection` carries the
-/// reason, and the two events are what the request wrote.
+/// A refusal is the same shape and deliberately so: `decision` is either
+/// `executed`, carrying what the printer made of it, or `rejected`, carrying
+/// the reason, and the two events are what the request wrote.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct RecoveryAnswer {
     /// What was asked for.
     pub action: RecoveryAction,
-    /// Why it was refused, when it was.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rejection: Option<RecoveryRejection>,
-    /// What the printer made of it, when it reached the printer.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub outcome: Option<ExecutionOutcome>,
+    /// What became of it.
+    pub decision: RecoveryDecision,
     /// What became of it, in a sentence for a person: why it was refused and
     /// what would let it go ahead, or what it did.
     pub detail: String,

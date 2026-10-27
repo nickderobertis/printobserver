@@ -2739,3 +2739,33 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-server/src/config.rs"
 site = "pub z_home_sweeps_bed: Option<bool>,"
 reason = "The operator states this fact of the machine as yes or no under `recovery.z_home_sweeps_bed`; it is read as written so that a section leaving it out is refused naming the key, and both answers are machines that exist."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub allowed: bool,"
+reason = "Generated from `ActionAllowance`, whose wire form the recovery contract fixes as `{action, allowed: true}` or `{action, allowed: false, refusal}`. Core's own reading refuses a mismatched pair, and the schema marks `allowed` as held in step with `refusal`; the generator has no boolean-tagged union in any of the three clients, so its Rust emitter writes this directive above every field the schema marks so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "PAIRED_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated Rust field the schema marks `x-paired-with`, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "`terminal` types one line, which the printer's own serial log then shows sent."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suites that already drive that script's other commands, `upload` among them; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "A line typed at, or a reconnect asked of, an instance nothing started is refused."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suites that already drive that script's other commands, `upload` among them; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tools/octoprint-env/octoprint_env.py"
+site = "if status != 204:"
+reason = "The one branch of `terminal` and `connect` no journey drives is a running instance refusing the line or the reconnect. Making the shared instance refuse one means taking its printer offline in the middle of the integration tier every other suite of that tier acts on, so the branch is held to the same failure class, next action and wording the refusal of an absent instance is driven through in `test_startup_failures.py`, and it reports the instance's own status and words."

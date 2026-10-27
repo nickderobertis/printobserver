@@ -125,9 +125,10 @@ impl Client {
 
 /// The policy's own refusal, as the answer to it carries it.
 fn rejection(body: &str, status: u16) -> ClientError {
-    // A recovery's answer carries its own refusal at the top.
+    // A recovery's answer names its action and carries its own decision.
     if let Ok(document) = serde_json::from_str::<serde_json::Value>(body)
-        && document.get("rejection").is_some()
+        && document.get("action").is_some()
+        && document.get("decision").is_some()
     {
         return match serde_json::from_value::<RecoveryAnswer>(document) {
             Ok(answer) => RecoveryRejected::of(answer).map_or_else(
@@ -275,6 +276,56 @@ mod tests {
             "/v1/x?limit=20"
         );
         assert_eq!(escaped("a b&c"), "a%20b%26c");
+    }
+
+    /// A recovery's answer, around one decision.
+    fn recovery(decision: &str) -> String {
+        format!(
+            r#"{{"action":{{"action":"recover_fan","percent":50.0}},"decision":{decision},"detail":"recover_fan reached the printer, which refused it: the fan is stuck","events":[]}}"#
+        )
+    }
+
+    /// A recovery the machine refused carries the supervisor's own sentence.
+    #[test]
+    fn a_recovery_the_machine_refused_carries_the_supervisors_words() {
+        let refused = super::machine_refusal(
+            &recovery(r#"{"executed":{"failed":{"reason":"the fan is stuck"}}}"#),
+            502,
+        );
+        let super::ClientError::Refused { status, detail } = refused else {
+            panic!("the recovery's refusal arrived as {refused:?}");
+        };
+        assert_eq!(status, 502);
+        assert!(detail.contains("the fan is stuck"), "{detail}");
+    }
+
+    /// A recovery refused is a typed refusal carrying its bounds, and one
+    /// whose decision is no refusal at all is said to be unreadable.
+    #[test]
+    fn a_recovery_refusal_is_typed_and_one_that_is_none_is_unreadable() {
+        let refused = super::rejection(
+            &recovery(
+                r#"{"rejected":{"out_of_bounds":{"field":"percent","requested":150.0,"allowed":{"min":0.0,"max":100.0}}}}"#,
+            ),
+            409,
+        );
+        let super::ClientError::RecoveryRejected(rejected) = refused else {
+            panic!("the recovery's refusal arrived as {refused:?}");
+        };
+        assert_eq!(rejected.requested, Some(150.0));
+        let carried = super::rejection(&recovery(r#"{"executed":"succeeded"}"#), 409);
+        assert!(
+            matches!(carried, super::ClientError::Unreadable { status: 409, .. }),
+            "{carried:?}"
+        );
+        let malformed = super::rejection(&recovery(r#"{"rejected":{"out_of_bounds":7}}"#), 409);
+        assert!(
+            matches!(
+                malformed,
+                super::ClientError::Unreadable { status: 409, .. }
+            ),
+            "{malformed:?}"
+        );
     }
 
     /// A refusal this client cannot read is said to be one rather than shown.

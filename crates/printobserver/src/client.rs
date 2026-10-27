@@ -156,7 +156,8 @@ pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> 
 fn rejection_note(document: &Value) -> String {
     // A recovery's answer carries its own refusal, and says in a sentence why
     // and what would let it go ahead.
-    if document.get("rejection").is_some()
+    if document.get("action").is_some()
+        && document.pointer("/decision/rejected").is_some()
         && let Some(detail) = document.get("detail").and_then(Value::as_str)
     {
         return format!("the supervisor refused this recovery: {detail}");

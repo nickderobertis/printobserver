@@ -8,8 +8,8 @@
 //! allowed can ask again for something inside it.
 
 use crate::contract::{
-    ActionAnswer, PolicyDecision, Range, RecoveryAnswer, RecoveryRejection, RejectionReason,
-    SpoolCommandAnswer,
+    ActionAnswer, PolicyDecision, Range, RecoveryAnswer, RecoveryDecision, RecoveryRejection,
+    RejectionReason, SpoolCommandAnswer,
 };
 
 /// The whole answer a refusal arrived in: an action's, whose record carries
@@ -108,7 +108,9 @@ impl RecoveryRejected {
     /// The refusal one recovery answer carries, when it was refused.
     #[must_use]
     pub fn of(answer: RecoveryAnswer) -> Option<Self> {
-        let rejection = answer.rejection.clone()?;
+        let RecoveryDecision::Rejected(rejection) = answer.decision.clone() else {
+            return None;
+        };
         let (requested, allowed) = match &rejection {
             RecoveryRejection::OutOfBounds {
                 requested, allowed, ..

@@ -358,3 +358,43 @@ pub fn no_mutating_command_runs_without_a_reason(world: &World) {
         );
     }
 }
+
+/// A recovery the machine itself refuses is answered as the machine's
+/// refusal — the `refused` exit, the supervisor's own sentence on standard
+/// error, and the answer whose decision is the printer's failure.
+pub fn a_recovery_the_machine_refuses_is_answered_as_that(world: &World) {
+    world.wants(Reports::Operational);
+    if !world.machine_refuses_actions(true) {
+        return;
+    }
+    let ran = running::command(
+        world,
+        &[
+            "recover-cool",
+            "--actor",
+            "operator",
+            "--reason",
+            "a recovery the machine will not take",
+            "--json",
+        ],
+    );
+    world.machine_refuses_actions(false);
+
+    assert_eq!(
+        ran.code,
+        Some(i32::from(Exit::Refused.status())),
+        "a recovery the machine refused was not answered as that: {}",
+        ran.said()
+    );
+    assert!(
+        ran.err.contains("reached the printer, which refused it")
+            && ran.err.contains("Look at the printer"),
+        "a recovery the machine refused was answered without saying so: {}",
+        ran.said()
+    );
+    assert!(
+        ran.out.contains("\"failed\""),
+        "a recovery the machine refused was answered without its decision: {}",
+        ran.out
+    );
+}

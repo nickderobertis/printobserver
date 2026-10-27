@@ -510,7 +510,7 @@ executed while a print is paused makes that print's `resume` refused
 `RecoveryRejection` — `actor_may_not_request`, `print_running`,
 `printer_unreachable`, `z_untrusted`, `insufficient_clearance`,
 `out_of_bounds`, `assertion_required`, `recovery_not_configured` or
-`printer_cannot` — answered `409` in `rejection`, with `detail` saying what
+`printer_cannot` — answered `409` as the answer's `decision.rejected`, with `detail` saying what
 would let it go ahead. Each request writes `recovery_requested` and then
 `recovery_executed` or `recovery_rejected`, with no print. A body carrying a
 field no action declares, raw G-code included, or no reason, is refused `400`
