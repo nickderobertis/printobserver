@@ -2899,3 +2899,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "python/printobserver-sdk/tests/test_client.py"
 site = 'client.retire_spool(spool, "because")'
 reason = "These tests hold the published synchronous Python client's reading of a spool command's refusal to a host answering declared and undeclared refusal causes, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "from repo_checks.expect import equal, truth"
+reason = "The generated live walk's assertion vocabulary, imported as every suite of this repository imports it, written by `tools/contract-codegen`'s emitter together with this directive. The walk runs only under the project's `test-integration` target, which runs on every change whatever it affects, so the project's edge onto the repository's checks selects no run the target would not already have: the same ground as this file's entries for its two walks."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = '"from repo_checks.expect import equal, truth",'
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python live walk's assertion import, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."

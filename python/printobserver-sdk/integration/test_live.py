@@ -29,6 +29,8 @@ import pytest
 from live import PATIENCE_SECONDS, Proxy, same
 from printobserver_sdk import Client, RejectedError
 from printobserver_sdk.contract import JobManifest
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
 from repo_checks.expect import equal, truth
 from supervisor_world import Standing, Supervisor
 
