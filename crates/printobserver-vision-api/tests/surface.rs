@@ -67,6 +67,11 @@ fn vision_port_declares_exactly_the_stated_methods() {
             &[("detection", "Detection")],
             "BoxFuture<'_,Result<(),VisionError>>",
         ),
+        method(
+            "judge_frame",
+            &[("image", "FetchedImage")],
+            "BoxFuture<'_,Result<FetchedImage,FrameFault>>",
+        ),
     ];
     assert_eq!(trait_methods(&source, "VisionPort"), expected);
 }

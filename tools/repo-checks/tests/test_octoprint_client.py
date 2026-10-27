@@ -82,8 +82,12 @@ def test_a_tree_whose_adapter_constructs_nothing_is_refused(
         "crates/printobserver-octoprint/src/lib.rs",
         "//! Owns: nothing yet.\n//!\n//! May depend on: nothing.\n",
     )
-    for name in ("client.rs", "config.rs", "convert.rs", "http.rs", "wire.rs"):
-        broken.remove(f"crates/printobserver-octoprint/src/{name}")
+    # Every module beside the crate root, whatever the adapter has grown: a
+    # module left behind would still construct a request and hide the defect.
+    source = broken.root / "crates/printobserver-octoprint/src"
+    for module in sorted(source.glob("*.rs")):
+        if module.name != "lib.rs":
+            broken.remove(module.relative_to(broken.root).as_posix())
     for name in (
         "tests/journeys",
         "tests/live",

@@ -6,7 +6,8 @@ use core::time::Duration;
 
 use printobserver_types::{RawBytes, Timestamp};
 use printobserver_vision_api::{
-    BoxFuture, Detection, FetchedImage, NormalizedAlert, VisionError, VisionPort, WebAddress,
+    BoxFuture, Detection, FetchedImage, FrameFault, NormalizedAlert, VisionError, VisionPort,
+    WebAddress,
 };
 
 use crate::{fetch, normalize};
@@ -24,16 +25,19 @@ pub const DEFAULT_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 /// the printer.
 pub const DEFAULT_MAX_IMAGE_BYTES: i64 = 8 * 1024 * 1024;
 
-/// The two bounds a snapshot fetch runs under.
+/// The two bounds a snapshot fetch runs under, and the bound a frame is
+/// judged blank by.
 ///
-/// Both have defaults here rather than only at a call site, so that a reader
+/// Each has a default here rather than only at a call site, so that a reader
 /// can see what they are; [`ObicoVision::new`] takes them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ObicoVisionConfig {
     /// How long to wait for the whole response.
     pub fetch_timeout: Duration,
     /// The most bytes to read of it.
     pub max_image_bytes: i64,
+    /// The grey-level spread at or below which a frame is blank.
+    pub blank_frame_max_stddev: crate::frame::BlankFrameBound,
 }
 
 impl Default for ObicoVisionConfig {
@@ -41,6 +45,7 @@ impl Default for ObicoVisionConfig {
         Self {
             fetch_timeout: DEFAULT_FETCH_TIMEOUT,
             max_image_bytes: DEFAULT_MAX_IMAGE_BYTES,
+            blank_frame_max_stddev: crate::frame::BlankFrameBound::DEFAULT,
         }
     }
 }
@@ -309,6 +314,11 @@ impl VisionPort for ObicoVision {
             self.acknowledge_anywhere(detection.provider_printer_id)
                 .await
         })
+    }
+
+    fn judge_frame(&self, image: FetchedImage) -> BoxFuture<'_, Result<FetchedImage, FrameFault>> {
+        let judged = crate::frame::judge(image, self.config.blank_frame_max_stddev);
+        Box::pin(async move { judged })
     }
 }
 

@@ -99,6 +99,8 @@ from when you want one line about where things stand.
 
 ```console
 $ printobserver status --print-id PRINT_ID
+detector.since: null
+detector.status: unchecked
 interventions: []
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -147,6 +149,8 @@ context.bounds.allowed.flowrate.max: 1.1
 context.bounds.allowed.flowrate.min: 0.9
 context.bounds.allowed.tool_target:0.max: 260.0
 context.bounds.allowed.tool_target:0.min: 0.0
+context.detector.since: null
+context.detector.status: unchecked
 context.interventions: []
 context.job.completion.out_of_range: false
 context.job.completion.value: 0.42
@@ -595,7 +599,7 @@ $ printobserver look --print-id PRINT_ID --wait-s 1
 detector_paused: false
 event.id: ID
 event.image.id: ID
-event.image.sha256: d0531542555342942653ef333e89b8f8dfd3600bedde9fddbb51e03af10f28ff
+event.image.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 event.kind: camera_look
 event.payload.delivered: []
 event.payload.waited_s: 1
@@ -603,8 +607,8 @@ event.print_id: PRINT_ID
 event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
-frame.sha256: d0531542555342942653ef333e89b8f8dfd3600bedde9fddbb51e03af10f28ff
-image_path: STATE_DIR/images/d0/d0531542555342942653ef333e89b8f8dfd3600bedde9fddbb51e03af10f28ff
+frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
 job.completion.value: 0.42
 job.estimated_print_time_s: 3600

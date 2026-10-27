@@ -468,7 +468,7 @@ fn extension_value_of(bytes: &[u8]) -> Option<&[u8]> {
 }
 
 /// Open a connection to the instance, within the configured timeout.
-fn connect(endpoint: &Endpoint, timeout: Duration) -> Result<TcpStream, Transport> {
+pub(crate) fn connect(endpoint: &Endpoint, timeout: Duration) -> Result<TcpStream, Transport> {
     let address = (endpoint.host(), endpoint.port())
         .to_socket_addrs()
         .map_err(|error| Transport::Unreachable(format!("resolving {endpoint}: {error}")))?

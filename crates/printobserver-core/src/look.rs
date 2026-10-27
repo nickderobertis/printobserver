@@ -19,10 +19,21 @@
 //!
 //! # Every frame is kept
 //!
-//! A look is written down as a [`CameraLookPayload`] event before the camera is
-//! asked for anything, and the frame is that event's image, so a print's whole
-//! record of what it looked like is in its history rather than in whatever
-//! scratch directory asked.
+//! A look is written down as a [`CameraLookPayload`] event, and the frame is
+//! that event's image, so a print's whole record of what it looked like is in
+//! its history rather than in whatever scratch directory asked.
+//!
+//! # A frame that shows nothing is not handed over as one
+//!
+//! Each frame is judged before it is kept
+//! ([`VisionPort::judge_frame`](printobserver_vision_api::VisionPort::judge_frame)):
+//! one that does not decode whole, or decodes near-uniform grey, is fetched
+//! again, up to [`FRAME_ATTEMPTS`] in all. The first good one is the look's
+//! frame. When every one is bad the look is written down as a
+//! [`CameraDegradedPayload`] in its place, carrying no frame, so nothing the
+//! camera could not show is handed to the agent as a picture of the print. A
+//! camera that will not answer at all is a port failure recorded against the
+//! look, as it always was.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -35,8 +46,9 @@ use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
 
 use crate::error::CoreError;
 use crate::inbox::Arrival;
-use crate::kinds::{CameraLookPayload, PortFailureSite};
+use crate::kinds::{CameraDegradedPayload, CameraLookPayload, FrameCause, PortFailureSite};
 use crate::supervisor::Supervisor;
+use printobserver_vision_api::{FetchedImage, FrameFault};
 
 /// One fresh look at a print.
 ///
@@ -128,7 +140,19 @@ impl Supervisor {
         waited: Duration,
         arrived: Vec<Arrival>,
     ) -> Result<Look, CoreError> {
-        let written = self.write_look_down(print_id, waited, &arrived).await;
+        let url = self
+            .config()
+            .camera_snapshot_url
+            .as_ref()
+            .map(|url| url.as_str().to_owned());
+        let fetched = match &url {
+            Some(url) => Some(self.fetch_frame(url).await),
+            None => None,
+        };
+        let written = match &fetched {
+            Some(Frame::Degraded(degraded)) => self.write_degraded_down(print_id, degraded).await,
+            _ => self.write_look_down(print_id, waited, &arrived).await,
+        };
         let (print, mut event) = match written {
             Ok(written) => written,
             Err(error) => {
@@ -137,12 +161,9 @@ impl Supervisor {
             }
         };
         let arrived: Vec<EventRecord> = arrived.into_iter().map(|each| each.event).collect();
-        let frame = match &self.config().camera_snapshot_url {
-            Some(url) => {
-                self.take_frame(print.id, &event, url.as_str().to_owned())
-                    .await
-            }
-            None => None,
+        let frame = match (fetched, url) {
+            (Some(fetched), Some(url)) => self.keep_frame(print.id, &event, url, fetched).await,
+            _ => None,
         };
         let image_path = match &frame {
             Some(reference) => self.image_path(reference).await,
@@ -178,6 +199,25 @@ impl Supervisor {
         })
     }
 
+    /// Write one degraded look down in its print's history, in place of the
+    /// look.
+    async fn write_degraded_down(
+        &self,
+        print_id: PrintId,
+        degraded: &CameraDegradedPayload,
+    ) -> Result<(crate::records::PrintRecord, EventRecord), CoreError> {
+        let print = self
+            .stores()
+            .prints
+            .print(print_id)
+            .await?
+            .ok_or(CoreError::NoSuchPrint { print_id })?;
+        let event = self
+            .append_system_event(print.id, EventBody::of(degraded)?)
+            .await?;
+        Ok((print, event))
+    }
+
     /// Write one look down in its print's history, naming what it delivered.
     async fn write_look_down(
         &self,
@@ -201,26 +241,55 @@ impl Supervisor {
         Ok((print, event))
     }
 
-    /// Fetch one frame from the camera and store it as a look's image,
-    /// recording either failure against the look.
-    pub(crate) async fn take_frame(
+    /// Fetch frames from the camera until one is good, up to
+    /// [`FRAME_ATTEMPTS`] of them.
+    pub(crate) async fn fetch_frame(&self, url: &str) -> Frame {
+        let mut faults: Vec<FrameFault> = Vec::new();
+        while faults.len() < FRAME_ATTEMPTS as usize {
+            let fetched = match self.vision().fetch_image(url.to_owned()).await {
+                Ok(fetched) => fetched,
+                Err(error) => return Frame::Failed(error.to_string()),
+            };
+            match self.vision().judge_frame(fetched).await {
+                Ok(good) => return Frame::Good(good),
+                Err(fault) => faults.push(fault),
+            }
+        }
+        let cause = match faults.last() {
+            Some(FrameFault::Undecodable { .. }) => FrameCause::Undecodable,
+            _ => FrameCause::Blank,
+        };
+        let detail = faults
+            .iter()
+            .enumerate()
+            .map(|(index, fault)| format!("frame {}: {fault}", index + 1))
+            .collect::<Vec<_>>()
+            .join("; ");
+        Frame::Degraded(CameraDegradedPayload {
+            attempts: FRAME_ATTEMPTS,
+            cause,
+            detail,
+        })
+    }
+
+    /// Keep what one fetch gave as an event's image: a good frame stored,
+    /// a camera that would not answer recorded against the event, and a
+    /// degraded one kept as nothing.
+    pub(crate) async fn keep_frame(
         &self,
         print_id: PrintId,
         event: &EventRecord,
         url: String,
+        fetched: Frame,
     ) -> Option<ImageRef> {
-        let fetched = match self.vision().fetch_image(url.clone()).await {
-            Ok(fetched) => fetched,
-            Err(error) => {
-                self.record_port_failure(
-                    print_id,
-                    event.id,
-                    PortFailureSite::CameraLook,
-                    error.to_string(),
-                )
-                .await;
+        let image = match fetched {
+            Frame::Good(image) => image,
+            Frame::Failed(detail) => {
+                self.record_port_failure(print_id, event.id, PortFailureSite::CameraLook, detail)
+                    .await;
                 return None;
             }
+            Frame::Degraded(_) => return None,
         };
         match self
             .stores()
@@ -229,8 +298,8 @@ impl Supervisor {
                 print_id,
                 event.id,
                 Some(url),
-                fetched.content_type,
-                fetched.bytes,
+                image.content_type,
+                image.bytes,
             )
             .await
         {
@@ -250,4 +319,19 @@ impl Supervisor {
             }
         }
     }
+}
+
+/// How many frames one look or observation fetches before it records the
+/// camera degraded: the first, and two more.
+pub const FRAME_ATTEMPTS: u32 = 3;
+
+/// What fetching a frame came to.
+#[derive(Debug)]
+pub(crate) enum Frame {
+    /// A good frame.
+    Good(FetchedImage),
+    /// The camera would not answer, in its own words.
+    Failed(String),
+    /// Every frame fetched was bad.
+    Degraded(CameraDegradedPayload),
 }

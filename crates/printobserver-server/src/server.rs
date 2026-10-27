@@ -24,7 +24,7 @@ use axum::Router;
 use axum::routing::post;
 use printobserver_core::store::Stores;
 use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
-use printobserver_obico::{ObicoVision, ObicoVisionConfig};
+use printobserver_obico::{DetectorHealthCheck, ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_oneharness::{
     AgentCommand, AssessmentSchema, EnvAssignment, HarnessSignIn, OneharnessSupervisor,
@@ -435,11 +435,14 @@ impl Server {
         let printer = Arc::new(OctoPrintPrinter::new(config.octoprint.clone()));
         probe(printer.as_ref()).await?;
         let vision = Arc::new(
-            ObicoVision::new(ObicoVisionConfig::default())
-                .map_err(|error| StartError::State {
-                    detail: error.to_string(),
-                })?
-                .with_api(config.obico_api.clone()),
+            ObicoVision::new(ObicoVisionConfig {
+                blank_frame_max_stddev: config.blank_frame_max_stddev,
+                ..ObicoVisionConfig::default()
+            })
+            .map_err(|error| StartError::State {
+                detail: error.to_string(),
+            })?
+            .with_api(config.obico_api.clone()),
         );
         let agent = Arc::new(agent_for(&config)?);
         let mut running = Self::start_with(
@@ -488,14 +491,8 @@ impl Server {
             .map_err(|error| StartError::Reconciliation {
                 detail: error.to_string(),
             })?;
-        let mut core_config = CoreConfig::new(config.safety.clone(), context_command());
-        core_config
-            .camera_snapshot_url
-            .clone_from(&config.camera_snapshot_url);
-        core_config.observation_interval = config.observation_interval;
-        core_config.spools = config.spools;
         let supervisor = Supervisor::new(
-            core_config,
+            core_config_of(&config),
             Arc::clone(&ports.printer),
             ports.stores.clone(),
             Arc::clone(&ports.vision) as Arc<dyn printobserver_vision_api::VisionPort>,
@@ -529,6 +526,11 @@ impl Server {
         );
         let completions = ingress.completions();
         let observing = crate::observation::start(&supervisor);
+        let watching = crate::watch::start(
+            &supervisor,
+            Arc::clone(&ports.printer),
+            detector_check(&config)?,
+        );
         // Every events read waits on this, and every write that stores an
         // event raises it once committed — whichever of this server's parts
         // made the write.
@@ -569,8 +571,37 @@ impl Server {
             stop: Some(stop),
             serving,
             observing,
+            watching,
         })
     }
+}
+
+/// What supervision is configured with, from the server's own configuration.
+fn core_config_of(config: &ServerConfig) -> CoreConfig {
+    let mut core_config = CoreConfig::new(config.safety.clone(), context_command());
+    core_config
+        .camera_snapshot_url
+        .clone_from(&config.camera_snapshot_url);
+    core_config.observation_interval = config.observation_interval;
+    core_config.printer_poll = config.printer_poll;
+    core_config.unattended_window = config.unattended_window;
+    core_config.spools = config.spools;
+    core_config
+}
+
+/// The failure detector's health check, when its address is configured.
+fn detector_check(
+    config: &ServerConfig,
+) -> Result<Option<Arc<dyn printobserver_core::DetectorProbe>>, StartError> {
+    config
+        .obico_ml_api_url
+        .as_ref()
+        .map(|url| {
+            DetectorHealthCheck::new(url)
+                .map(|check| Arc::new(check) as Arc<dyn printobserver_core::DetectorProbe>)
+                .map_err(|detail| StartError::State { detail })
+        })
+        .transpose()
 }
 
 /// Ask the machine whether the address and the key are the ones it answers to.
@@ -835,6 +866,9 @@ pub struct Running {
     serving: JoinHandle<()>,
     /// The task giving every active print its periodic observation.
     observing: JoinHandle<()>,
+    /// The printer watch's tasks: its reads, its push reader and its detector
+    /// check.
+    watching: crate::watch::Watching,
 }
 
 impl core::fmt::Debug for Running {
@@ -915,6 +949,7 @@ impl Running {
             let _ = stop.send(());
         }
         self.observing.abort();
+        self.watching.abort();
         let _ = (&mut self.serving).await;
     }
 

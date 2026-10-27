@@ -17,8 +17,8 @@ use printobserver_types::EventRecord;
 
 use crate::fakes::StoreMethod;
 use crate::shelf::{
-    FILE, SIZE, TOTAL_MM, assert_close, assert_ledger_explains, charges_to, ends, every, grams,
-    loaded_spool, running_at, spool_now, spool_world, start, tally_failure, tally_success,
+    FILE, SIZE, TOTAL_MM, assert_close, assert_ledger_explains, charges_to, ends, every, finishes,
+    grams, loaded_spool, running_at, spool_now, spool_world, start, tally_failure, tally_success,
 };
 use crate::world::World;
 
@@ -70,7 +70,7 @@ fn unseen_prints_are_accounted_once_and_seen_ones_never() {
     // A print this system ran and settled is not one it never saw.
     start(&world);
     running_at(&world, SIZE);
-    ends(&world, PrinterState::Operational);
+    finishes(&world);
     tally_success(&world, world.clock.now());
     assert!(
         account(&world).is_empty(),
@@ -151,7 +151,7 @@ fn a_tally_that_went_down_is_rebaselined_and_accounted_or_marked() {
         if settled_in_window {
             start(&world);
             running_at(&world, SIZE);
-            ends(&world, PrinterState::Operational);
+            finishes(&world);
         }
         tally(&world, 1, 0, true);
         account(&world);

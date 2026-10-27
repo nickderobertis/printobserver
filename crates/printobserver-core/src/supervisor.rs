@@ -66,6 +66,7 @@ use crate::inbox::Inboxes;
 use crate::kinds::{ActionExecutedPayload, ActionRequestedPayload};
 use crate::turn_access::{NoAccess, OpenedTurn, TurnAuthority};
 use crate::turn_lock::TurnLocks;
+use crate::watch::WatchState;
 
 /// What became of one request that reached [`Supervisor::issue_decided_action`].
 #[derive(Debug, Clone, PartialEq)]
@@ -159,6 +160,8 @@ pub struct Supervisor {
     /// Where each supervision turn's runs take their credentials from, once
     /// the composition root has installed it.
     turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
+    /// What the printer watch holds between its reads.
+    pub(crate) watch: Mutex<WatchState>,
 }
 
 /// When the agent last changed the machine on one print, as this supervisor
@@ -226,6 +229,7 @@ impl Supervisor {
             inboxes: Inboxes::default(),
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
+            watch: Mutex::new(WatchState::default()),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()

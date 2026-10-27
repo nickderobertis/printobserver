@@ -358,6 +358,34 @@ pub fn ends_on(world: &World, core: &Arc<Supervisor>, state: PrinterState) {
     block_on(core.list_and_adopt_prints()).expect("the listing reads");
 }
 
+/// Have the printer report the job finished: back at operational, its file
+/// read to its size and its completion at 1.0, as `OctoPrint` reports a print
+/// it ran to the end — and read it.
+///
+/// # Panics
+///
+/// Panics when the listing fails.
+pub fn finishes(world: &World) {
+    finishes_on(world, &world.core);
+}
+
+/// Have the printer report the job finished, and read it through one
+/// supervisor.
+///
+/// # Panics
+///
+/// Panics when the listing fails.
+pub fn finishes_on(world: &World, core: &Arc<Supervisor>) {
+    world.clock.advance(60);
+    world.printer.reports_state(PrinterState::Operational);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Operational);
+    world.printer.reports_position(Some(SIZE), Some(SIZE));
+    world.printer.reports_completion(Some(1.0));
+    block_on(core.list_and_adopt_prints()).expect("the listing reads");
+}
+
 /// Record on the file's tally that one more print of it completed, now.
 pub fn tally_success(world: &World, at: Timestamp) {
     let mut held = world.printer.file(FILE);
@@ -441,7 +469,7 @@ pub fn after_an_uncharged_print(world: &World) -> PrintId {
         .active
         .expect("adopted");
     running_at(world, SIZE);
-    ends(world, PrinterState::Operational);
+    finishes(world);
     world.printer.holds_file(facts(Some(TOTAL_MM)));
     earlier
 }

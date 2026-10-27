@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-148 types. The set is every type any crate declares under
+159 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -6063,6 +6063,59 @@ Declared by `printobserver-core`.
 }
 ```
 
+### CameraDegradedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "FrameCause": {
+      "description": "Why a camera frame was not one to hand the agent.",
+      "oneOf": [
+        {
+          "const": "blank",
+          "description": "It decoded, but is near-uniform grey: its grey-level spread is below\nthe configured blank-frame bound.",
+          "type": "string"
+        },
+        {
+          "const": "undecodable",
+          "description": "It is not a whole image: a strict decode refused it.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The camera gave no usable frame for a look or a periodic observation,\nhowever many times it was asked.\n\nWritten in place of the look or the observation it was for, so that no\nframe the camera could not give is handed to the agent as one it did.",
+  "properties": {
+    "attempts": {
+      "description": "How many frames were fetched, every one of them bad.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cause": {
+      "$ref": "#/$defs/FrameCause",
+      "description": "Why the last of them was bad."
+    },
+    "detail": {
+      "description": "What was wrong with each, in words.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "attempts",
+    "cause",
+    "detail"
+  ],
+  "title": "CameraDegradedPayload",
+  "type": "object",
+  "x-event-kind": "camera_degraded"
+}
+```
+
 ### CameraLookPayload
 
 Declared by `printobserver-core`.
@@ -6684,6 +6737,67 @@ Declared by `printobserver-server`.
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "DetectorHealth"
+    },
     "EffectiveBounds": {
       "additionalProperties": false,
       "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
@@ -6703,6 +6817,21 @@ Declared by `printobserver-server`.
         "allowed"
       ],
       "type": "object"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
     },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
@@ -6995,6 +7124,25 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobManifest": {
       "additionalProperties": false,
       "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
@@ -7060,11 +7208,15 @@ Declared by `printobserver-server`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -7168,6 +7320,14 @@ Declared by `printobserver-server`.
         "bounds": {
           "$ref": "#/$defs/EffectiveBounds",
           "description": "The limits in force, so that the agent can see them before it asks."
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorHealth",
+          "default": {
+            "since": null,
+            "status": "unchecked"
+          },
+          "description": "The failure detector's health, and since when it has been so."
         },
         "interventions": {
           "description": "The interventions still active.",
@@ -7599,6 +7759,153 @@ Declared by `printobserver-vision-api`.
 }
 ```
 
+### DetectorHealth
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+      "properties": {
+        "since": {
+          "description": "Nothing: an unchecked detector has no instant it became so.",
+          "type": "null"
+        },
+        "status": {
+          "const": "unchecked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "It answered its health check, from `since` on.",
+      "properties": {
+        "since": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "status": {
+          "const": "available",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "It did not answer its health check, from `since` on.",
+      "properties": {
+        "since": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "status": {
+          "const": "unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "DetectorHealth"
+}
+```
+
+### DetectorHealthChangedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "DetectorStatus": {
+      "description": "What a check of the failure detector's own health found.",
+      "oneOf": [
+        {
+          "const": "available",
+          "description": "It answered its health check.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "It did not: refused, reset, answered otherwise, or not in time.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The failure detector's own health changed.\n\nThe printer's rather than any print's, so it is written with no print.",
+  "properties": {
+    "detail": {
+      "description": "What it was answered, in words.",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/DetectorStatus",
+      "description": "What the check found."
+    }
+  },
+  "required": [
+    "status",
+    "detail"
+  ],
+  "title": "DetectorHealthChangedPayload",
+  "type": "object",
+  "x-event-kind": "detector_health_changed"
+}
+```
+
+### DetectorStatus
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a check of the failure detector's own health found.",
+  "oneOf": [
+    {
+      "const": "available",
+      "description": "It answered its health check.",
+      "type": "string"
+    },
+    {
+      "const": "unavailable",
+      "description": "It did not: refused, reset, answered otherwise, or not in time.",
+      "type": "string"
+    }
+  ],
+  "title": "DetectorStatus"
+}
+```
+
 ### DoubtedSpool
 
 Declared by `printobserver-core`.
@@ -7910,6 +8217,30 @@ Declared by `printobserver-server`.
   ],
   "title": "ErrorAnswer",
   "type": "object"
+}
+```
+
+### ErrorSource
+
+Declared by `printobserver-printer-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whose error a job's error is.",
+  "oneOf": [
+    {
+      "const": "printer",
+      "description": "The printer's own message: its firmware stopped the job.",
+      "type": "string"
+    },
+    {
+      "const": "host",
+      "description": "The host's: it lost the line to the printer, or failed in itself.",
+      "type": "string"
+    }
+  ],
+  "title": "ErrorSource"
 }
 ```
 
@@ -9250,6 +9581,60 @@ Declared by `printobserver-core`.
 }
 ```
 
+### FrameCause
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a camera frame was not one to hand the agent.",
+  "oneOf": [
+    {
+      "const": "blank",
+      "description": "It decoded, but is near-uniform grey: its grey-level spread is below\nthe configured blank-frame bound.",
+      "type": "string"
+    },
+    {
+      "const": "undecodable",
+      "description": "It is not a whole image: a strict decode refused it.",
+      "type": "string"
+    }
+  ],
+  "title": "FrameCause"
+}
+```
+
+### HeatedTool
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One tool heater whose target was above zero.",
+  "properties": {
+    "target_c": {
+      "description": "Its target, in degrees Celsius.",
+      "format": "double",
+      "type": "number"
+    },
+    "tool": {
+      "description": "The tool's number.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool",
+    "target_c"
+  ],
+  "title": "HeatedTool",
+  "type": "object"
+}
+```
+
 ### HeaterSnapshot
 
 Declared by `printobserver-printer-api`.
@@ -10212,6 +10597,51 @@ Declared by `printobserver-core`.
 }
 ```
 
+### JobError
+
+Declared by `printobserver-printer-api`.
+
+```json
+{
+  "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A job's error, and whose it is.",
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/ErrorSource",
+      "description": "Whose it is."
+    },
+    "text": {
+      "description": "The error, as the source reported it.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "source"
+  ],
+  "title": "JobError",
+  "type": "object"
+}
+```
+
 ### JobManifest
 
 Declared by `printobserver-core`.
@@ -10300,6 +10730,40 @@ Declared by `printobserver-printer-api`.
 ```json
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "PrinterState": {
       "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
       "oneOf": [
@@ -10412,11 +10876,15 @@ Declared by `printobserver-printer-api`.
       "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
     },
     "error": {
-      "description": "The error the source reports, when it reports one.",
-      "type": [
-        "string",
-        "null"
-      ]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The error the source reports, when it reports one, and whose it is."
     },
     "estimated_print_time_s": {
       "description": "The whole print's estimated duration, in whole seconds.",
@@ -10537,6 +11005,21 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
       "format": "uuid",
@@ -10686,6 +11169,25 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -10702,11 +11204,15 @@ Declared by `printobserver-core`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -12669,6 +13175,21 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "HeaterSnapshot": {
       "additionalProperties": false,
       "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
@@ -12709,6 +13230,25 @@ Declared by `printobserver-core`.
       },
       "type": "object"
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -12725,11 +13265,15 @@ Declared by `printobserver-core`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -18035,6 +18579,67 @@ Declared by `printobserver-core`.
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "DetectorHealth"
+    },
     "EffectiveBounds": {
       "additionalProperties": false,
       "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
@@ -18054,6 +18659,21 @@ Declared by `printobserver-core`.
         "allowed"
       ],
       "type": "object"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
     },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
@@ -18346,6 +18966,25 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobManifest": {
       "additionalProperties": false,
       "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
@@ -18411,11 +19050,15 @@ Declared by `printobserver-core`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -18821,6 +19464,14 @@ Declared by `printobserver-core`.
     "bounds": {
       "$ref": "#/$defs/EffectiveBounds",
       "description": "The limits in force, so that the agent can see them before it asks."
+    },
+    "detector": {
+      "$ref": "#/$defs/DetectorHealth",
+      "default": {
+        "since": null,
+        "status": "unchecked"
+      },
+      "description": "The failure detector's health, and since when it has been so."
     },
     "interventions": {
       "description": "The interventions still active.",
@@ -20116,6 +20767,135 @@ Declared by `printobserver-core`.
   "title": "PrintUntrackedPayload",
   "type": "object",
   "x-event-kind": "print_untracked"
+}
+```
+
+### PrinterConnectionChangedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer's connection changed into or out of `offline` or `error`: a\nserial disconnect, a reconnect, a printer error.\n\nThe printer's rather than any print's, so it is written with no print.",
+  "properties": {
+    "detail": {
+      "description": "What the watch read, in words.",
+      "type": "string"
+    },
+    "from": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state the previous read found."
+    },
+    "to": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "The state this read found."
+    }
+  },
+  "required": [
+    "from",
+    "to",
+    "detail"
+  ],
+  "title": "PrinterConnectionChangedPayload",
+  "type": "object",
+  "x-event-kind": "printer_connection_changed"
+}
+```
+
+### PrinterResetPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer reset: its firmware restarted, and whatever it held is gone.\n\nRecorded on each reset the printer pushed, one while idle included, which\nchanges nothing a read of its state reports. The printer's rather than any\nprint's, so it is written with no print; `during_print` names the print it\nhappened during, when one was running.",
+  "properties": {
+    "detail": {
+      "description": "What the watch knew of it, in words.",
+      "type": "string"
+    },
+    "during_print": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The print that was running when it reset, `null` when none was."
+    }
+  },
+  "required": [
+    "detail"
+  ],
+  "title": "PrinterResetPayload",
+  "type": "object",
+  "x-event-kind": "printer_reset"
 }
 ```
 
@@ -28884,6 +29664,82 @@ Declared by `printobserver-server`.
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "DetectorHealth"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "HeaterSnapshot": {
       "additionalProperties": false,
       "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
@@ -29066,6 +29922,25 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -29082,11 +29957,15 @@ Declared by `printobserver-server`.
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -29534,6 +30413,10 @@ Declared by `printobserver-server`.
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What a status read answers.",
   "properties": {
+    "detector": {
+      "$ref": "#/$defs/DetectorHealth",
+      "description": "The failure detector's health, and since when it has been so."
+    },
     "interventions": {
       "description": "The bounded interventions still in force.",
       "items": {
@@ -29581,7 +30464,8 @@ Declared by `printobserver-server`.
   },
   "required": [
     "print",
-    "interventions"
+    "interventions",
+    "detector"
   ],
   "title": "StatusAnswer",
   "type": "object"
@@ -30325,6 +31209,14 @@ Declared by `printobserver-supervisor-api`.
             "null"
           ]
         },
+        "noticed": {
+          "default": null,
+          "description": "What the printer watch noticed that prompted this turn \u2014 how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering \u2014 in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "printer_state": {
           "anyOf": [
             {
@@ -30370,6 +31262,7 @@ Declared by `printobserver-supervisor-api`.
         "arrived_while_busy": [],
         "detector_paused_the_print": null,
         "detector_warned": null,
+        "noticed": null,
         "printer_state": null
       },
       "description": "What the supervisor knew about the moment the turn began."
@@ -30597,6 +31490,14 @@ Declared by `printobserver-supervisor-api`.
         "null"
       ]
     },
+    "noticed": {
+      "default": null,
+      "description": "What the printer watch noticed that prompted this turn \u2014 how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering \u2014 in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "printer_state": {
       "anyOf": [
         {
@@ -30722,6 +31623,90 @@ Declared by `printobserver-core`.
   ],
   "title": "UnanalysedSpool",
   "type": "object"
+}
+```
+
+### UnattendedPrinterActivityPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "HeatedTool": {
+      "additionalProperties": false,
+      "description": "One tool heater whose target was above zero.",
+      "properties": {
+        "target_c": {
+          "description": "Its target, in degrees Celsius.",
+          "format": "double",
+          "type": "number"
+        },
+        "tool": {
+          "description": "The tool's number.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tool",
+        "target_c"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer heated or moved with no job running, soon after a print ended\n`interrupted` or `failed`.\n\nA transition rather than a reading: written once when such activity begins,\nand again only when what it reports changes. The printer's rather than any\nprint's, so it is written with no print; `last_print_id` names the print it\ncame after.",
+  "properties": {
+    "bed_target_c": {
+      "default": null,
+      "description": "The bed's target, when it is above zero; `null` otherwise.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "detail": {
+      "description": "What the watch read, in words.",
+      "type": "string"
+    },
+    "last_print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print that ended before it."
+    },
+    "moved": {
+      "default": null,
+      "description": "Whether the print head moved since the last position read, `null` when\nno position could be read.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "tools": {
+      "description": "Every tool whose target is above zero.",
+      "items": {
+        "$ref": "#/$defs/HeatedTool"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "last_print_id",
+    "tools",
+    "detail"
+  ],
+  "title": "UnattendedPrinterActivityPayload",
+  "type": "object",
+  "x-event-kind": "unattended_printer_activity"
 }
 ```
 

@@ -94,6 +94,58 @@ pub struct PrinterSnapshot {
     pub observed_at: Timestamp,
 }
 
+/// Whose error a job's error is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum ErrorSource {
+    /// The printer's own message: its firmware stopped the job.
+    Printer,
+    /// The host's: it lost the line to the printer, or failed in itself.
+    Host,
+}
+
+impl Sample for ErrorSource {
+    fn sample_full() -> Self {
+        Self::Printer
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Host]
+    }
+}
+
+/// A job's error, and whose it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct JobError {
+    /// The error, as the source reported it.
+    pub text: String,
+    /// Whose it is.
+    pub source: ErrorSource,
+}
+
+impl Sample for JobError {
+    fn sample_full() -> Self {
+        Self {
+            text: "Thermal Runaway, system stopped!".to_owned(),
+            source: ErrorSource::Printer,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            text: "SerialTimeoutException: ".to_owned(),
+            source: ErrorSource::Host,
+        }]
+    }
+}
+
 /// The job a printer reports it is running.
 ///
 /// Every field but `state` is optional: an absent one means the source did not
@@ -131,9 +183,9 @@ pub struct JobSnapshot {
     pub print_time_left_s: Option<i64>,
     /// The state the source reports the job to be in.
     pub state: PrinterState,
-    /// The error the source reports, when it reports one.
+    /// The error the source reports, when it reports one, and whose it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub error: Option<JobError>,
     /// How far into the file the printer has read, in bytes, when the source
     /// reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -250,7 +302,7 @@ impl Sample for JobSnapshot {
             print_time_s: Some(3024),
             print_time_left_s: Some(4176),
             state: PrinterState::Printing,
-            error: Some("none".to_owned()),
+            error: Some(JobError::sample_full()),
             file_position_bytes: Some(1_761_607),
             filament: vec![ToolFilament::sample_full()],
         }

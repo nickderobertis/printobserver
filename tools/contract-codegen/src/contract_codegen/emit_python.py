@@ -48,7 +48,7 @@ from contract_codegen.naming import (
 from contract_codegen.walk import ABSENT, EventStep, LiveStep
 
 #: What each scalar of the contracts is in Python.
-SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool"}
+SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool", "null": "None"}
 
 
 def type_name(shape: TypeExpr) -> str:
@@ -114,6 +114,31 @@ def _fields(fields: tuple[Field, ...], indent: str) -> list[str]:
         lines.append(f"{indent}{entry.name}: {_annotation(entry)}")
     if not lines:
         lines.append(f"{indent}pass")
+    return lines
+
+
+def _functional(name: str, doc: str, fields: tuple[Field, ...]) -> list[str]:
+    """One object a property of which Python reserves, as a functional `TypedDict`.
+
+    A class body cannot declare a property spelled `from`, so the object is
+    declared by the call form, which takes each name as a string. The call is
+    evaluated at import, unlike a class body's annotations under the module's
+    postponed evaluation, so each annotation is written as a string too and
+    may name a type declared below it.
+    """
+    lines = [*comment(f"`{name}`, as the contracts declare it.", "")]
+    described = comment(doc, "")
+    if described:
+        lines.append("#")
+        lines.extend(described)
+    lines.append(f"{name} = TypedDict(")
+    lines.append(f'    "{name}",')
+    lines.append("    {")
+    for entry in fields:
+        lines.extend(comment(entry.doc, "        "))
+        lines.append(f'        "{entry.name}": "{_annotation(entry)}",')
+    lines.append("    },")
+    lines.append(")")
     return lines
 
 
@@ -201,6 +226,10 @@ def _declaration(declaration: Declaration) -> list[str]:
             lines.append(f"# {name}, as the contracts declare it.")
             lines.append(_union_alias(name, variants))
             return lines
+        case Struct(name, doc, fields, _, _) if not all(
+            python_identifier(entry.name) for entry in fields
+        ):
+            return _functional(name, doc, fields)
         case Struct(name, doc, fields, _, _):
             lines = [f"class {name}(TypedDict):"]
             lines.extend(docstring(f"`{name}`, as the contracts declare it.", doc, "    "))

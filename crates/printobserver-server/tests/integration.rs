@@ -39,6 +39,8 @@
 
 #[path = "support/http_host.rs"]
 mod http_host;
+#[path = "support/minted.rs"]
+mod minted;
 
 #[path = "instance/composition.rs"]
 mod composition;
@@ -51,6 +53,8 @@ mod scripted;
 #[path = "instance/waiting.rs"]
 mod waiting;
 
+#[path = "live/stops.rs"]
+mod stops;
 #[path = "live/loop.rs"]
 mod whole_loop;
 
@@ -68,4 +72,5 @@ fn the_whole_loop_is_proven_against_a_real_octoprint_and_a_real_harness() {
         .build()
         .expect("a runtime");
     runtime.block_on(whole_loop::walk(&instance));
+    runtime.block_on(stops::walk(&instance));
 }

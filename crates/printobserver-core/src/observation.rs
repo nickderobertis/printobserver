@@ -40,6 +40,9 @@
 //! the event carries them; a read that failed is then recorded against the
 //! event as a port failure, as the loop records one, and the camera is asked
 //! for its frame only once the event is there to record a refusal against.
+//! A camera that gives only bad frames ([`crate::look`]) is recorded as a
+//! `camera_degraded` after the observation, and that is the event the turn is
+//! given, so the agent is told there is no frame rather than handed one.
 
 use printobserver_printer_api::{JobSnapshot, PrinterError, PrinterSnapshot};
 use printobserver_types::{EventBody, PrintId};
@@ -48,6 +51,7 @@ use crate::error::CoreError;
 use crate::events::{PendingTurn, TERMINAL_STATES};
 use crate::inbox::Arrival;
 use crate::kinds::{PeriodicObservationPayload, PortFailureSite};
+use crate::look::Frame;
 use crate::records::PrintRecord;
 use crate::supervisor::Supervisor;
 
@@ -171,9 +175,21 @@ impl Supervisor {
             .await;
         }
         if let Some(url) = &self.config().camera_snapshot_url {
-            event.image = self
-                .take_frame(print.id, &event, url.as_str().to_owned())
-                .await;
+            let url = url.as_str().to_owned();
+            match self.fetch_frame(&url).await {
+                Frame::Degraded(degraded) => {
+                    // The observation keeps the telemetry it read; the turn is
+                    // given the camera's failure in place of a frame.
+                    let degraded = self
+                        .append_system_event(print.id, EventBody::of(&degraded)?)
+                        .await?;
+                    return Ok(Arrival {
+                        event: degraded,
+                        detection: None,
+                    });
+                }
+                fetched => event.image = self.keep_frame(print.id, &event, url, fetched).await,
+            }
         }
         Ok(Arrival {
             event,

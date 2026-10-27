@@ -131,6 +131,25 @@ fn the_file_reads_a_printer_does_not_implement_are_refused_with_501() {
     );
 }
 
+/// A printer overriding neither the push channel nor the command answers each
+/// with the port's own refusal: status 501, naming the method.
+#[test]
+fn the_push_channel_and_the_command_a_printer_does_not_implement_are_refused_with_501() {
+    let port: Arc<dyn PrinterPort> = Arc::new(TrivialPrinter);
+    let refused = |method: &str| PrinterError::Refused {
+        status: 501,
+        detail: format!("{method} is not supported by this printer"),
+    };
+    assert_eq!(
+        block_on(port.push_events()).err(),
+        Some(refused("push_events"))
+    );
+    assert_eq!(
+        block_on(port.send_command(printobserver_printer_api::PrinterCommand::ReportPosition)),
+        Err(refused("send_command"))
+    );
+}
+
 /// The same trait object is shareable across threads, which is what core needs.
 #[test]
 fn the_trait_object_is_shareable_across_threads() {

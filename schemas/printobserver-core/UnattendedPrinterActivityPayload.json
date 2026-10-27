@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "HeatedTool": {
+      "additionalProperties": false,
+      "description": "One tool heater whose target was above zero.",
+      "properties": {
+        "target_c": {
+          "description": "Its target, in degrees Celsius.",
+          "format": "double",
+          "type": "number"
+        },
+        "tool": {
+          "description": "The tool's number.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tool",
+        "target_c"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer heated or moved with no job running, soon after a print ended\n`interrupted` or `failed`.\n\nA transition rather than a reading: written once when such activity begins,\nand again only when what it reports changes. The printer's rather than any\nprint's, so it is written with no print; `last_print_id` names the print it\ncame after.",
+  "properties": {
+    "bed_target_c": {
+      "default": null,
+      "description": "The bed's target, when it is above zero; `null` otherwise.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "detail": {
+      "description": "What the watch read, in words.",
+      "type": "string"
+    },
+    "last_print_id": {
+      "$ref": "#/$defs/PrintId",
+      "description": "The print that ended before it."
+    },
+    "moved": {
+      "default": null,
+      "description": "Whether the print head moved since the last position read, `null` when\nno position could be read.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "tools": {
+      "description": "Every tool whose target is above zero.",
+      "items": {
+        "$ref": "#/$defs/HeatedTool"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "last_print_id",
+    "tools",
+    "detail"
+  ],
+  "title": "UnattendedPrinterActivityPayload",
+  "type": "object",
+  "x-event-kind": "unattended_printer_activity"
+}

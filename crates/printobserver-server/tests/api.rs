@@ -15,6 +15,8 @@ mod failing_store;
 mod held_events;
 #[path = "support/http_host.rs"]
 mod http_host;
+#[path = "support/minted.rs"]
+mod minted;
 #[path = "support/printer.rs"]
 mod printer;
 #[path = "support/probes.rs"]
@@ -32,6 +34,10 @@ mod binding;
 mod coherent_ledger;
 #[path = "journeys/configuration.rs"]
 mod configuration;
+#[path = "journeys/degrading.rs"]
+mod degrading;
+#[path = "journeys/detecting.rs"]
+mod detecting;
 #[path = "journeys/failing.rs"]
 mod failing;
 #[path = "journeys/finding.rs"]
@@ -68,3 +74,5 @@ mod skilled;
 mod spooling;
 #[path = "journeys/surface.rs"]
 mod surface;
+#[path = "journeys/watching.rs"]
+mod watching;

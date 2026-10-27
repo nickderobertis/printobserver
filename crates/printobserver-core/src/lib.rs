@@ -76,6 +76,7 @@ pub mod turn_access;
 pub mod turn_lock;
 pub mod unobserved;
 pub mod upgrade;
+pub mod watch;
 
 pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule};
 pub use actions::{ActionOutcome, reported_value};
@@ -98,14 +99,16 @@ pub use filament::{
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload,
+    CameraDegradedPayload, CameraLookPayload, ChargePendedPayload, DetectorHealthChangedPayload,
+    DetectorStatus, FilamentChangeSignalledPayload, FilamentConsumedPayload,
+    FileTallyRebaselinedPayload, FrameCause, HeatedTool, InterventionExpiredPayload,
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
     PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintEndedPayload,
-    PrintStartedPayload, PrintUntrackedPayload, RebaselineDisposition, SignalPosition,
-    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
-    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
-    UnaccountedPrintPayload, agent_source, operator_source, system_source,
+    PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    PrinterResetPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 pub use look::Look;
 pub use observation::Observed;
@@ -132,3 +135,7 @@ pub use store::{
 pub use supervisor::{Issued, Supervisor};
 pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};
+pub use watch::{
+    DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth, DetectorHealthStatus,
+    DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN, PositionProbe, Watched,
+};

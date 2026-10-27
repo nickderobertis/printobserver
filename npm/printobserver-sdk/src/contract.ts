@@ -241,6 +241,22 @@ export interface AgentAssessmentPayload {
 }
 
 /**
+ * The camera gave no usable frame for a look or a periodic observation,
+ * however many times it was asked.
+ *
+ * Written in place of the look or the observation it was for, so that no
+ * frame the camera could not give is handed to the agent as one it did.
+ */
+export interface CameraDegradedPayload {
+  /** How many frames were fetched, every one of them bad. */
+  attempts: number;
+  /** Why the last of them was bad. */
+  cause: FrameCause;
+  /** What was wrong with each, in words. */
+  detail: string;
+}
+
+/**
  * Somebody took a fresh look at the print.
  *
  * Written down before the camera is asked for a frame, so that a frame the
@@ -347,6 +363,30 @@ export interface ContextAnswer {
 }
 
 /**
+ * The failure detector's health, and since when it has been so: `since` is
+ * `null` exactly while the status is `unchecked`.
+ */
+export type DetectorHealth =
+  | { status: "unchecked"; since: null }
+  | { status: "available"; since: Timestamp }
+  | { status: "unavailable"; since: Timestamp };
+
+/**
+ * The failure detector's own health changed.
+ *
+ * The printer's rather than any print's, so it is written with no print.
+ */
+export interface DetectorHealthChangedPayload {
+  /** What it was answered, in words. */
+  detail: string;
+  /** What the check found. */
+  status: DetectorStatus;
+}
+
+/** What a check of the failure detector's own health found. */
+export type DetectorStatus = "available" | "unavailable";
+
+/**
  * The envelope intersected with the print's manifest.
  *
  * This is what context reports, so that the agent can see its own limits
@@ -364,6 +404,9 @@ export interface ErrorAnswer {
   /** One line saying why, in the words of whatever refused it. */
   error: string;
 }
+
+/** Whose error a job's error is. */
+export type ErrorSource = "printer" | "host";
 
 /** A lowercase hyphenated version 7 UUID identifying one event. */
 export type EventId = string;
@@ -523,6 +566,17 @@ export interface FileTallyRebaselinedPayload {
   origin: string;
 }
 
+/** Why a camera frame was not one to hand the agent. */
+export type FrameCause = "blank" | "undecodable";
+
+/** One tool heater whose target was above zero. */
+export interface HeatedTool {
+  /** Its target, in degrees Celsius. */
+  target_c: number;
+  /** The tool's number. */
+  tool: number;
+}
+
 /**
  * One heater, as a source reported it.
  *
@@ -654,6 +708,14 @@ export type InterventionOutcome =
   | { restore_failed: { reason: string } }
   | { superseded: { by: InterventionId } };
 
+/** A job's error, and whose it is. */
+export interface JobError {
+  /** Whose it is. */
+  source: ErrorSource;
+  /** The error, as the source reported it. */
+  text: string;
+}
+
 /**
  * What a sliced job declares about itself and about what may be adjusted.
  *
@@ -690,8 +752,8 @@ export interface JobSnapshot {
    * Normalized to a fraction here regardless of how the source expresses it.
    */
   completion?: Reported | null;
-  /** The error the source reports, when it reports one. */
-  error?: string | null;
+  /** The error the source reports, when it reports one, and whose it is. */
+  error?: JobError | null;
   /** The whole print's estimated duration, in whole seconds. */
   estimated_print_time_s?: number | null;
   /**
@@ -1152,6 +1214,8 @@ export type PrintAction =
 export interface PrintContext {
   /** The limits in force, so that the agent can see them before it asks. */
   bounds: EffectiveBounds;
+  /** The failure detector's health, and since when it has been so. */
+  detector?: DetectorHealth;
   /** The interventions still active. */
   interventions: Array<Intervention>;
   /** The job, when a snapshot could be taken. */
@@ -1286,6 +1350,36 @@ export interface PrintStartedPayload {
 export interface PrintUntrackedPayload {
   /** Why the print carries no charge. */
   reason: string;
+}
+
+/**
+ * The printer's connection changed into or out of `offline` or `error`: a
+ * serial disconnect, a reconnect, a printer error.
+ *
+ * The printer's rather than any print's, so it is written with no print.
+ */
+export interface PrinterConnectionChangedPayload {
+  /** What the watch read, in words. */
+  detail: string;
+  /** The state the previous read found. */
+  from: PrinterState;
+  /** The state this read found. */
+  to: PrinterState;
+}
+
+/**
+ * The printer reset: its firmware restarted, and whatever it held is gone.
+ *
+ * Recorded on each reset the printer pushed, one while idle included, which
+ * changes nothing a read of its state reports. The printer's rather than any
+ * print's, so it is written with no print; `during_print` names the print it
+ * happened during, when one was running.
+ */
+export interface PrinterResetPayload {
+  /** What the watch knew of it, in words. */
+  detail: string;
+  /** The print that was running when it reset, `null` when none was. */
+  during_print?: PrintId | null;
 }
 
 /** A printer, as a source reported it at one instant. */
@@ -1709,6 +1803,8 @@ export interface StartupReconciliationPayload {
 
 /** What a status read answers. */
 export interface StatusAnswer {
+  /** The failure detector's health, and since when it has been so. */
+  detector: DetectorHealth;
   /** The bounded interventions still in force. */
   interventions: Array<Intervention>;
   /** The job, when a snapshot could be taken. */
@@ -1794,6 +1890,33 @@ export interface UnaccountedPrintPayload {
   success: boolean;
 }
 
+/**
+ * The printer heated or moved with no job running, soon after a print ended
+ * `interrupted` or `failed`.
+ *
+ * A transition rather than a reading: written once when such activity
+ * begins,
+ * and again only when what it reports changes. The printer's rather than any
+ * print's, so it is written with no print; `last_print_id` names the print
+ * it
+ * came after.
+ */
+export interface UnattendedPrinterActivityPayload {
+  /** The bed's target, when it is above zero; `null` otherwise. */
+  bed_target_c?: number | null;
+  /** What the watch read, in words. */
+  detail: string;
+  /** The print that ended before it. */
+  last_print_id: PrintId;
+  /**
+   * Whether the print head moved since the last position read, `null` when
+   * no position could be read.
+   */
+  moved?: boolean | null;
+  /** Every tool whose target is above zero. */
+  tools: Array<HeatedTool>;
+}
+
 /** One reason a spool's figure is in doubt, and since when. */
 export interface UnverifiedMark {
   /** Why the figure is in doubt. */
@@ -1820,8 +1943,10 @@ export interface EventPayloads {
   action_rejected: ActionRejectedPayload;
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
+  camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
   charge_pended: ChargePendedPayload;
+  detector_health_changed: DetectorHealthChangedPayload;
   filament_change_signalled: FilamentChangeSignalledPayload;
   filament_consumed: FilamentConsumedPayload;
   file_tally_rebaselined: FileTallyRebaselinedPayload;
@@ -1836,6 +1961,8 @@ export interface EventPayloads {
   print_ended: PrintEndedPayload;
   print_started: PrintStartedPayload;
   print_untracked: PrintUntrackedPayload;
+  printer_connection_changed: PrinterConnectionChangedPayload;
+  printer_reset: PrinterResetPayload;
   spool_adjusted: SpoolAdjustedPayload;
   spool_command_rejected: SpoolCommandRejectedPayload;
   spool_loaded: SpoolLoadedPayload;
@@ -1847,6 +1974,7 @@ export interface EventPayloads {
   supervision_session_closed: SupervisionSessionClosedPayload;
   supervision_session_opened: SupervisionSessionOpenedPayload;
   unaccounted_print: UnaccountedPrintPayload;
+  unattended_printer_activity: UnattendedPrinterActivityPayload;
 }
 
 /** Every kind the server declares a payload type for, in name order. */
@@ -1855,8 +1983,10 @@ export const EVENT_KINDS = [
   "action_rejected",
   "action_requested",
   "agent_assessment",
+  "camera_degraded",
   "camera_look",
   "charge_pended",
+  "detector_health_changed",
   "filament_change_signalled",
   "filament_consumed",
   "file_tally_rebaselined",
@@ -1871,6 +2001,8 @@ export const EVENT_KINDS = [
   "print_ended",
   "print_started",
   "print_untracked",
+  "printer_connection_changed",
+  "printer_reset",
   "spool_adjusted",
   "spool_command_rejected",
   "spool_loaded",
@@ -1882,6 +2014,7 @@ export const EVENT_KINDS = [
   "supervision_session_closed",
   "supervision_session_opened",
   "unaccounted_print",
+  "unattended_printer_activity",
 ] as const satisfies ReadonlyArray<keyof EventPayloads>;
 
 /**

@@ -13,7 +13,9 @@ use printobserver_printer_api::{
     COMPLETION_RANGE, HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE,
     HeaterSnapshot, JobSnapshot, PrinterSnapshot,
 };
-use printobserver_printer_api::{FileFacts, FilePrint, PrinterState, ToolFilament};
+use printobserver_printer_api::{
+    ErrorSource, FileFacts, FilePrint, JobError, PrinterState, ToolFilament,
+};
 use printobserver_types::{FileName, Reported, Timestamp};
 use serde::Deserialize;
 
@@ -476,7 +478,12 @@ impl JobPayload {
             print_time_s: progress.print_time,
             print_time_left_s: progress.print_time_left,
             state: job_state_of(self.state.as_deref()),
-            error: self.error,
+            error: self.error.as_deref().and_then(|text| {
+                error_source_of(text).map(|source| JobError {
+                    text: text.to_owned(),
+                    source,
+                })
+            }),
             // A position before the file's first byte is no position at all.
             file_position_bytes: progress.filepos.filter(|position| *position >= 0),
             filament: job.filament.as_ref().map(filament_of).unwrap_or_default(),
@@ -514,6 +521,80 @@ fn connection_of(state: &StatePayload) -> PrinterState {
         PrinterState::Operational
     } else {
         PrinterState::Unknown(state.text.clone().unwrap_or_default())
+    }
+}
+
+/// Whose error one job's error text is: the printer's own message, or the
+/// name of an exception the host raised — an identifier, dotted or not, with
+/// something before its closing `Exception` or `Error` and followed by its
+/// colon, such as
+/// `SerialTimeoutException: `. Nothing for no text at all.
+///
+/// `OctoPrint` reports a stop that went offline with the same state whether
+/// the printer's firmware stopped it or the host lost the line, and this is
+/// the one trace in a read of which it was.
+#[must_use]
+pub fn error_source_of(error: &str) -> Option<ErrorSource> {
+    let text = error.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(if is_exception_name(text) {
+        ErrorSource::Host
+    } else {
+        ErrorSource::Printer
+    })
+}
+
+/// Whether text begins with an exception name and its colon.
+fn is_exception_name(text: &str) -> bool {
+    let Some((name, _)) = text.split_once(':') else {
+        return false;
+    };
+    let starts = name
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_');
+    starts
+        && name
+            .chars()
+            .all(|each| each.is_ascii_alphanumeric() || each == '_' || each == '.')
+        && ["Exception", "Error"].iter().any(|suffix| {
+            name.strip_suffix(suffix)
+                .is_some_and(|before| !before.is_empty())
+        })
+}
+
+/// What `GET /api/connection` answers, as far as this adapter reads it.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ConnectionPayload {
+    /// The connection as it is now.
+    current: ConnectionCurrent,
+}
+
+/// The connection as it is now.
+#[derive(Debug, Deserialize)]
+struct ConnectionCurrent {
+    /// `OctoPrint`'s own word for the printer's state.
+    #[serde(default)]
+    state: Option<String>,
+}
+
+impl ConnectionPayload {
+    /// A snapshot of a printer this connection says is offline or in error,
+    /// carrying nothing but that state; nothing for any other state.
+    pub(crate) fn disconnected(&self, observed_at: Timestamp) -> Option<PrinterSnapshot> {
+        let connection = job_state_of(self.current.state.as_deref());
+        matches!(connection, PrinterState::Offline | PrinterState::Error).then(|| PrinterSnapshot {
+            connection,
+            tools: Vec::new(),
+            bed: None,
+            chamber: None,
+            feedrate_factor: None,
+            flowrate_factor: None,
+            fan_percent: None,
+            observed_at,
+        })
     }
 }
 

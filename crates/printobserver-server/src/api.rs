@@ -818,6 +818,7 @@ async fn status(
             job: context.job,
             session,
             interventions: context.interventions,
+            detector: context.detector,
         },
     )
 }

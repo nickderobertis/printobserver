@@ -46,6 +46,7 @@ SCALARS = {
     "number": "f64",
     "integer": "i64",
     "boolean": "bool",
+    "null": "()",
 }
 
 #: What every generated shape derives. `Eq` is not among them: the contracts

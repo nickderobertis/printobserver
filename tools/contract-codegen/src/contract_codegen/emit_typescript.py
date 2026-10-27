@@ -49,7 +49,13 @@ from contract_codegen.naming import (
 from contract_codegen.walk import ABSENT, EventStep, LiveStep
 
 #: What each scalar of the contracts is in TypeScript.
-SCALARS = {"string": "string", "number": "number", "integer": "number", "boolean": "boolean"}
+SCALARS = {
+    "string": "string",
+    "number": "number",
+    "integer": "number",
+    "boolean": "boolean",
+    "null": "null",
+}
 
 
 def type_name(shape: TypeExpr) -> str:

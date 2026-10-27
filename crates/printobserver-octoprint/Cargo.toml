@@ -8,6 +8,13 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# `standin` compiles a scripted `OctoPrint` — REST reads and the push socket —
+# for other crates' journeys to drive the real adapter against: this is the one
+# crate that may spell an `OctoPrint` path, so the stand-in is spelt here.
+# Nothing but a test enables it.
+[features]
+standin = []
+
 [dependencies]
 log = "0.4"
 printobserver-printer-api = { workspace = true }
@@ -18,6 +25,13 @@ serde_json = "1"
 [dev-dependencies]
 quote = "1"
 syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits"] }
+
+# The journeys that need no printer drive the push socket against the scripted
+# `OctoPrint` the `standin` feature compiles; the graph's own targets pass it.
+[[test]]
+name = "octoprint"
+path = "tests/octoprint.rs"
+required-features = ["standin"]
 
 [lints]
 workspace = true

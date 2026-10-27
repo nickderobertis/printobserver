@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a camera frame was not one to hand the agent.",
+  "oneOf": [
+    {
+      "const": "blank",
+      "description": "It decoded, but is near-uniform grey: its grey-level spread is below\nthe configured blank-frame bound.",
+      "type": "string"
+    },
+    {
+      "const": "undecodable",
+      "description": "It is not a whole image: a strict decode refused it.",
+      "type": "string"
+    }
+  ],
+  "title": "FrameCause"
+}

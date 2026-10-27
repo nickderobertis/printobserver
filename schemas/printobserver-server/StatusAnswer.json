@@ -13,6 +13,82 @@
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "DetectorHealth"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
     "HeaterSnapshot": {
       "additionalProperties": false,
       "description": "One heater, as a source reported it.\n\nEvery field is optional, because a source that reports no heater at all\nreports none of these; each is a plausibility-ranged reported value in\ndegrees Celsius.",
@@ -195,6 +271,25 @@
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobSnapshot": {
       "additionalProperties": false,
       "description": "The job a printer reports it is running.\n\nEvery field but `state` is optional: an absent one means the source did not\nreport it.",
@@ -211,11 +306,15 @@
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -663,6 +762,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What a status read answers.",
   "properties": {
+    "detector": {
+      "$ref": "#/$defs/DetectorHealth",
+      "description": "The failure detector's health, and since when it has been so."
+    },
     "interventions": {
       "description": "The bounded interventions still in force.",
       "items": {
@@ -710,7 +813,8 @@
   },
   "required": [
     "print",
-    "interventions"
+    "interventions",
+    "detector"
   ],
   "title": "StatusAnswer",
   "type": "object"

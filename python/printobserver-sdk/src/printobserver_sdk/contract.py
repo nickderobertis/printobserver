@@ -288,6 +288,24 @@ class AgentAssessmentPayload(TypedDict):
     session_name: str
 
 
+class CameraDegradedPayload(TypedDict):
+    """`CameraDegradedPayload`, as the contracts declare it.
+
+    The camera gave no usable frame for a look or a periodic observation,
+    however many times it was asked.
+
+    Written in place of the look or the observation it was for, so that no
+    frame the camera could not give is handed to the agent as one it did.
+    """
+
+    # How many frames were fetched, every one of them bad.
+    attempts: int
+    # Why the last of them was bad.
+    cause: FrameCause
+    # What was wrong with each, in words.
+    detail: str
+
+
 class CameraLookPayload(TypedDict):
     """`CameraLookPayload`, as the contracts declare it.
 
@@ -435,6 +453,65 @@ class ContextAnswer(TypedDict):
     image_path: NotRequired[str | None]
 
 
+class DetectorHealthUnchecked(TypedDict):
+    """The `unchecked` arm of `DetectorHealth`.
+
+    Nothing checks it: no detector health address is configured, or no
+    check has been made yet.
+    """
+
+    status: Literal["unchecked"]
+    # Nothing: an unchecked detector has no instant it became so.
+    since: None
+
+
+class DetectorHealthAvailable(TypedDict):
+    """The `available` arm of `DetectorHealth`.
+
+    It answered its health check, from `since` on.
+    """
+
+    status: Literal["available"]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
+
+
+class DetectorHealthUnavailable(TypedDict):
+    """The `unavailable` arm of `DetectorHealth`.
+
+    It did not answer its health check, from `since` on.
+    """
+
+    status: Literal["unavailable"]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
+
+
+# The failure detector's health, and since when it has been so: `since` is
+# `null` exactly while the status is `unchecked`.
+DetectorHealth: TypeAlias = (
+    DetectorHealthUnchecked | DetectorHealthAvailable | DetectorHealthUnavailable
+)
+
+
+class DetectorHealthChangedPayload(TypedDict):
+    """`DetectorHealthChangedPayload`, as the contracts declare it.
+
+    The failure detector's own health changed.
+
+    The printer's rather than any print's, so it is written with no print.
+    """
+
+    # What it was answered, in words.
+    detail: str
+    # What the check found.
+    status: DetectorStatus
+
+
+# What a check of the failure detector's own health found.
+DetectorStatus: TypeAlias = Literal["available", "unavailable"]
+
+
 class EffectiveBounds(TypedDict):
     """`EffectiveBounds`, as the contracts declare it.
 
@@ -458,6 +535,10 @@ class ErrorAnswer(TypedDict):
 
     # One line saying why, in the words of whatever refused it.
     error: str
+
+
+# Whose error a job's error is.
+ErrorSource: TypeAlias = Literal["printer", "host"]
 
 
 # A lowercase hyphenated version 7 UUID identifying one event.
@@ -645,6 +726,22 @@ class FileTallyRebaselinedPayload(TypedDict):
     old_successes: int
     # Where it lives, in the printer's own vocabulary.
     origin: str
+
+
+# Why a camera frame was not one to hand the agent.
+FrameCause: TypeAlias = Literal["blank", "undecodable"]
+
+
+class HeatedTool(TypedDict):
+    """`HeatedTool`, as the contracts declare it.
+
+    One tool heater whose target was above zero.
+    """
+
+    # Its target, in degrees Celsius.
+    target_c: float
+    # The tool's number.
+    tool: int
 
 
 class HeaterSnapshot(TypedDict):
@@ -842,6 +939,18 @@ InterventionOutcome: TypeAlias = (
 )
 
 
+class JobError(TypedDict):
+    """`JobError`, as the contracts declare it.
+
+    A job's error, and whose it is.
+    """
+
+    # Whose it is.
+    source: ErrorSource
+    # The error, as the source reported it.
+    text: str
+
+
 class JobManifest(TypedDict):
     """`JobManifest`, as the contracts declare it.
 
@@ -884,8 +993,8 @@ class JobSnapshot(TypedDict):
     # Normalized to a fraction here regardless of how the source expresses
     # it.
     completion: NotRequired[Reported | None]
-    # The error the source reports, when it reports one.
-    error: NotRequired[str | None]
+    # The error the source reports, when it reports one, and whose it is.
+    error: NotRequired[JobError | None]
     # The whole print's estimated duration, in whole seconds.
     estimated_print_time_s: NotRequired[int | None]
     # The filament the source's analysis of the file says each tool uses;
@@ -1653,6 +1762,8 @@ class PrintContext(TypedDict):
 
     # The limits in force, so that the agent can see them before it asks.
     bounds: EffectiveBounds
+    # The failure detector's health, and since when it has been so.
+    detector: NotRequired[DetectorHealth]
     # The interventions still active.
     interventions: list[Intervention]
     # The job, when a snapshot could be taken.
@@ -1801,6 +1912,46 @@ class PrintUntrackedPayload(TypedDict):
 
     # Why the print carries no charge.
     reason: str
+
+
+# `PrinterConnectionChangedPayload`, as the contracts declare it.
+#
+# The printer's connection changed into or out of `offline` or `error`: a
+# serial disconnect, a reconnect, a printer error.
+#
+# The printer's rather than any print's, so it is written with no print.
+PrinterConnectionChangedPayload = TypedDict(
+    "PrinterConnectionChangedPayload",
+    {
+        # What the watch read, in words.
+        "detail": "str",
+        # The state the previous read found.
+        "from": "PrinterState",
+        # The state this read found.
+        "to": "PrinterState",
+    },
+)
+
+
+class PrinterResetPayload(TypedDict):
+    """`PrinterResetPayload`, as the contracts declare it.
+
+    The printer reset: its firmware restarted, and whatever it held is
+    gone.
+
+    Recorded on each reset the printer pushed, one while idle included,
+    which
+    changes nothing a read of its state reports. The printer's rather than
+    any
+    print's, so it is written with no print; `during_print` names the
+    print it
+    happened during, when one was running.
+    """
+
+    # What the watch knew of it, in words.
+    detail: str
+    # The print that was running when it reset, `null` when none was.
+    during_print: NotRequired[PrintId | None]
 
 
 class PrinterSnapshot(TypedDict):
@@ -2786,6 +2937,8 @@ class StatusAnswer(TypedDict):
     What a status read answers.
     """
 
+    # The failure detector's health, and since when it has been so.
+    detector: DetectorHealth
     # The bounded interventions still in force.
     interventions: list[Intervention]
     # The job, when a snapshot could be taken.
@@ -2894,6 +3047,35 @@ class UnaccountedPrintPayload(TypedDict):
     success: bool
 
 
+class UnattendedPrinterActivityPayload(TypedDict):
+    """`UnattendedPrinterActivityPayload`, as the contracts declare it.
+
+    The printer heated or moved with no job running, soon after a print
+    ended
+    `interrupted` or `failed`.
+
+    A transition rather than a reading: written once when such activity
+    begins,
+    and again only when what it reports changes. The printer's rather than
+    any
+    print's, so it is written with no print; `last_print_id` names the
+    print it
+    came after.
+    """
+
+    # The bed's target, when it is above zero; `null` otherwise.
+    bed_target_c: NotRequired[float | None]
+    # What the watch read, in words.
+    detail: str
+    # The print that ended before it.
+    last_print_id: PrintId
+    # Whether the print head moved since the last position read, `null` when
+    # no position could be read.
+    moved: NotRequired[bool | None]
+    # Every tool whose target is above zero.
+    tools: list[HeatedTool]
+
+
 class UnverifiedMark(TypedDict):
     """`UnverifiedMark`, as the contracts declare it.
 
@@ -2992,8 +3174,10 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "action_rejected": ActionRejectedPayload,
     "action_requested": ActionRequestedPayload,
     "agent_assessment": AgentAssessmentPayload,
+    "camera_degraded": CameraDegradedPayload,
     "camera_look": CameraLookPayload,
     "charge_pended": ChargePendedPayload,
+    "detector_health_changed": DetectorHealthChangedPayload,
     "filament_change_signalled": FilamentChangeSignalledPayload,
     "filament_consumed": FilamentConsumedPayload,
     "file_tally_rebaselined": FileTallyRebaselinedPayload,
@@ -3008,6 +3192,8 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "print_ended": PrintEndedPayload,
     "print_started": PrintStartedPayload,
     "print_untracked": PrintUntrackedPayload,
+    "printer_connection_changed": PrinterConnectionChangedPayload,
+    "printer_reset": PrinterResetPayload,
     "spool_adjusted": SpoolAdjustedPayload,
     "spool_command_rejected": SpoolCommandRejectedPayload,
     "spool_loaded": SpoolLoadedPayload,
@@ -3019,6 +3205,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "supervision_session_closed": SupervisionSessionClosedPayload,
     "supervision_session_opened": SupervisionSessionOpenedPayload,
     "unaccounted_print": UnaccountedPrintPayload,
+    "unattended_printer_activity": UnattendedPrinterActivityPayload,
 }
 
 
@@ -3047,6 +3234,12 @@ def payload_of(
 
 
 @overload
+def payload_of(
+    event: EventRecord, kind: Literal["camera_degraded"]
+) -> CameraDegradedPayload | None: ...
+
+
+@overload
 def payload_of(event: EventRecord, kind: Literal["camera_look"]) -> CameraLookPayload | None: ...
 
 
@@ -3054,6 +3247,12 @@ def payload_of(event: EventRecord, kind: Literal["camera_look"]) -> CameraLookPa
 def payload_of(
     event: EventRecord, kind: Literal["charge_pended"]
 ) -> ChargePendedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["detector_health_changed"]
+) -> DetectorHealthChangedPayload | None: ...
 
 
 @overload
@@ -3138,6 +3337,18 @@ def payload_of(
 
 @overload
 def payload_of(
+    event: EventRecord, kind: Literal["printer_connection_changed"]
+) -> PrinterConnectionChangedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["printer_reset"]
+) -> PrinterResetPayload | None: ...
+
+
+@overload
+def payload_of(
     event: EventRecord, kind: Literal["spool_adjusted"]
 ) -> SpoolAdjustedPayload | None: ...
 
@@ -3198,6 +3409,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["unaccounted_print"]
 ) -> UnaccountedPrintPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["unattended_printer_activity"]
+) -> UnattendedPrinterActivityPayload | None: ...
 
 
 @overload

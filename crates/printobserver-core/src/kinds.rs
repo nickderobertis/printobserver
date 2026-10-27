@@ -12,9 +12,12 @@
 //! of: the supervisor itself, a person, and the supervising agent.
 //!
 //! The printer timeline — every print's start and end, every charge against a
-//! spool and every change to the spool ledger — is the sixteen kinds
-//! [`TIMELINE_KINDS`] lists. A spool event is written with no print unless it
-//! happened during one, in which case it carries that print's.
+//! spool, every change to the spool ledger, and every change the printer watch
+//! finds in the machine itself — is the twenty kinds [`TIMELINE_KINDS`] lists.
+//! A spool event is written with no print unless it happened during one, in
+//! which case it carries that print's; the four the printer watch writes are
+//! the printer's rather than any print's, and are written with no print at
+//! all, naming in their payload the print they happened during or after.
 
 use crate::records::{
     AcknowledgementDisposition, ActionId, Actor, ChargeKey, ChargeMethod, ChargedFilament,
@@ -27,7 +30,7 @@ use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventId, EventKind, EventPayload, EventSource, Timestamp};
+use printobserver_types::{EventId, EventKind, EventPayload, EventSource, PrintId, Timestamp};
 
 /// The source name of an event the supervisor raised itself.
 pub const SYSTEM_SOURCE: &str = "system";
@@ -306,6 +309,72 @@ impl Sample for PeriodicObservationPayload {
     }
 }
 
+/// Why a camera frame was not one to hand the agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum FrameCause {
+    /// It decoded, but is near-uniform grey: its grey-level spread is below
+    /// the configured blank-frame bound.
+    Blank,
+    /// It is not a whole image: a strict decode refused it.
+    Undecodable,
+}
+
+impl Sample for FrameCause {
+    fn sample_full() -> Self {
+        Self::Blank
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Undecodable]
+    }
+}
+
+/// The camera gave no usable frame for a look or a periodic observation,
+/// however many times it was asked.
+///
+/// Written in place of the look or the observation it was for, so that no
+/// frame the camera could not give is handed to the agent as one it did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct CameraDegradedPayload {
+    /// How many frames were fetched, every one of them bad.
+    pub attempts: u32,
+    /// Why the last of them was bad.
+    pub cause: FrameCause,
+    /// What was wrong with each, in words.
+    pub detail: String,
+}
+
+impl EventPayload for CameraDegradedPayload {
+    const KIND: &'static str = "camera_degraded";
+}
+
+impl Sample for CameraDegradedPayload {
+    fn sample_full() -> Self {
+        Self {
+            attempts: 3,
+            cause: FrameCause::Blank,
+            detail: "every frame was near-uniform grey (grey-level spread 2.1 below 36.5)"
+                .to_owned(),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            cause: FrameCause::Undecodable,
+            detail: "every frame failed a strict decode: the image ends early".to_owned(),
+            ..Self::sample_full()
+        }]
+    }
+}
+
 /// Where a port failed while an event was being handled.
 ///
 /// A closed set of exactly the sites at which a failure has nowhere else to be
@@ -377,8 +446,9 @@ impl Sample for PortFailurePayload {
 }
 
 /// Every kind of the printer timeline: prints starting and ending, what they
-/// took from a spool, and every change to the spool ledger.
-pub const TIMELINE_KINDS: [&str; 16] = [
+/// took from a spool, every change to the spool ledger, and every change the
+/// printer watch finds in the machine.
+pub const TIMELINE_KINDS: [&str; 20] = [
     PrintStartedPayload::KIND,
     PrintEndedPayload::KIND,
     FilamentConsumedPayload::KIND,
@@ -395,6 +465,10 @@ pub const TIMELINE_KINDS: [&str; 16] = [
     ChargePendedPayload::KIND,
     PrintUntrackedPayload::KIND,
     FileTallyRebaselinedPayload::KIND,
+    PrinterConnectionChangedPayload::KIND,
+    PrinterResetPayload::KIND,
+    UnattendedPrinterActivityPayload::KIND,
+    DetectorHealthChangedPayload::KIND,
 ];
 
 /// A fixed spool identifier the timeline's samples share.
@@ -1081,6 +1155,211 @@ impl Sample for FileTallyRebaselinedPayload {
         vec![Self {
             disposition: RebaselineDisposition::Accounted,
             ..Self::sample_full()
+        }]
+    }
+}
+
+/// The printer's connection changed into or out of `offline` or `error`: a
+/// serial disconnect, a reconnect, a printer error.
+///
+/// The printer's rather than any print's, so it is written with no print.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PrinterConnectionChangedPayload {
+    /// The state the previous read found.
+    pub from: PrinterState,
+    /// The state this read found.
+    pub to: PrinterState,
+    /// What the watch read, in words.
+    pub detail: String,
+}
+
+impl EventPayload for PrinterConnectionChangedPayload {
+    const KIND: &'static str = "printer_connection_changed";
+}
+
+impl Sample for PrinterConnectionChangedPayload {
+    fn sample_full() -> Self {
+        Self {
+            from: PrinterState::Printing,
+            to: PrinterState::Offline,
+            detail: "the printer reports Offline after error: SerialTimeoutException: ".to_owned(),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            from: PrinterState::Offline,
+            to: PrinterState::Operational,
+            detail: "the printer reports Operational".to_owned(),
+        }]
+    }
+}
+
+/// The printer reset: its firmware restarted, and whatever it held is gone.
+///
+/// Recorded on each reset the printer pushed, one while idle included, which
+/// changes nothing a read of its state reports. The printer's rather than any
+/// print's, so it is written with no print; `during_print` names the print it
+/// happened during, when one was running.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PrinterResetPayload {
+    /// The print that was running when it reset, `null` when none was.
+    #[serde(default)]
+    pub during_print: Option<PrintId>,
+    /// What the watch knew of it, in words.
+    pub detail: String,
+}
+
+impl EventPayload for PrinterResetPayload {
+    const KIND: &'static str = "printer_reset";
+}
+
+impl Sample for PrinterResetPayload {
+    fn sample_full() -> Self {
+        Self {
+            during_print: Some(PrintId::sample_full()),
+            detail: "the printer pushed a reset".to_owned(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            during_print: None,
+            detail: "the printer pushed a reset".to_owned(),
+        }
+    }
+}
+
+/// One tool heater whose target was above zero.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct HeatedTool {
+    /// The tool's number.
+    pub tool: i64,
+    /// Its target, in degrees Celsius.
+    pub target_c: f64,
+}
+
+impl Sample for HeatedTool {
+    fn sample_full() -> Self {
+        Self {
+            tool: 0,
+            target_c: 215.0,
+        }
+    }
+}
+
+/// The printer heated or moved with no job running, soon after a print ended
+/// `interrupted` or `failed`.
+///
+/// A transition rather than a reading: written once when such activity begins,
+/// and again only when what it reports changes. The printer's rather than any
+/// print's, so it is written with no print; `last_print_id` names the print it
+/// came after.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct UnattendedPrinterActivityPayload {
+    /// The print that ended before it.
+    pub last_print_id: PrintId,
+    /// Every tool whose target is above zero.
+    pub tools: Vec<HeatedTool>,
+    /// The bed's target, when it is above zero; `null` otherwise.
+    #[serde(default)]
+    pub bed_target_c: Option<f64>,
+    /// Whether the print head moved since the last position read, `null` when
+    /// no position could be read.
+    #[serde(default)]
+    pub moved: Option<bool>,
+    /// What the watch read, in words.
+    pub detail: String,
+}
+
+impl EventPayload for UnattendedPrinterActivityPayload {
+    const KIND: &'static str = "unattended_printer_activity";
+}
+
+impl Sample for UnattendedPrinterActivityPayload {
+    fn sample_full() -> Self {
+        Self {
+            last_print_id: PrintId::sample_full(),
+            tools: vec![HeatedTool::sample_full()],
+            bed_target_c: Some(60.0),
+            moved: Some(true),
+            detail: "tool 0 is heating to 215 °C with no job running".to_owned(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            last_print_id: PrintId::sample_full(),
+            tools: Vec::new(),
+            bed_target_c: None,
+            moved: None,
+            detail: "the print head moved with no job running".to_owned(),
+        }
+    }
+}
+
+/// What a check of the failure detector's own health found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum DetectorStatus {
+    /// It answered its health check.
+    Available,
+    /// It did not: refused, reset, answered otherwise, or not in time.
+    Unavailable,
+}
+
+impl Sample for DetectorStatus {
+    fn sample_full() -> Self {
+        Self::Unavailable
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self::Available]
+    }
+}
+
+/// The failure detector's own health changed.
+///
+/// The printer's rather than any print's, so it is written with no print.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct DetectorHealthChangedPayload {
+    /// What the check found.
+    pub status: DetectorStatus,
+    /// What it was answered, in words.
+    pub detail: String,
+}
+
+impl EventPayload for DetectorHealthChangedPayload {
+    const KIND: &'static str = "detector_health_changed";
+}
+
+impl Sample for DetectorHealthChangedPayload {
+    fn sample_full() -> Self {
+        Self {
+            status: DetectorStatus::Unavailable,
+            detail: "the detector's health check answered 503".to_owned(),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            status: DetectorStatus::Available,
+            detail: "the detector's health check answered 200".to_owned(),
         }]
     }
 }

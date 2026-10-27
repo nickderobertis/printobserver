@@ -12,7 +12,13 @@
 //!
 //! Reading is `GET /api/printer` and `GET /api/job`, and for the files the
 //! instance holds `GET /api/files/local/<name>` and
-//! `GET /api/files?recursive=true`. Acting is `POST` to
+//! `GET /api/files?recursive=true`. A printer that is not operational —
+//! closed, offline, offline after an error — is refused by `GET /api/printer`
+//! with `409`; that refusal is read against `GET /api/connection`, and a
+//! connection that says the printer is offline or in error is answered as a
+//! snapshot in that state rather than as a conflict, because it is the state
+//! the printer is in rather than a request it could not take. The push socket
+//! is [`crate::push`]'s, and the one command sent as a line is `M114`. Acting is `POST` to
 //! `/api/job`, `/api/printer/printhead`, `/api/printer/tool`,
 //! `/api/printer/bed` and — for the fan alone — `/api/printer/command`. Every
 //! acting endpoint answers `204 No Content` on success, so what happened is read
@@ -48,7 +54,8 @@ use core::ops::ControlFlow;
 
 use printobserver_printer_api::{Adjustable, FileFacts, ToolFilament};
 use printobserver_printer_api::{
-    BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
+    BoxFuture, BoxStream, JobSnapshot, PrinterCommand, PrinterError, PrinterPort, PrinterPush,
+    PrinterSnapshot,
 };
 use printobserver_types::{FileName, Timestamp};
 use serde_json::json;
@@ -60,13 +67,17 @@ use crate::convert::{
 use crate::gcode::ExtrudedTo;
 use crate::http::{self, Method, Response, Sink, Transport};
 use crate::wire::{
-    DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload, TOOL_PREFIX,
+    ConnectionPayload, DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload,
+    TOOL_PREFIX,
 };
 
 /// Reading the printer.
 const PRINTER_PATH: &str = "/api/printer?history=false";
 /// Reading the job.
 const JOB_PATH: &str = "/api/job";
+/// Reading the serial connection, which is where a printer that is not
+/// operational says what it is instead.
+const CONNECTION_PATH: &str = "/api/connection";
 /// Acting on the job: starting, pausing, resuming and cancelling.
 const JOB_COMMAND_PATH: &str = "/api/job";
 /// Acting on the print head, which is where the feedrate factor lives.
@@ -141,10 +152,38 @@ impl OctoPrintPrinter {
     }
 
     /// Read the printer, as this adapter's own snapshot.
+    ///
+    /// A `409` is read against the serial connection: a printer that is
+    /// offline or in error is answered as a snapshot of that state, and any
+    /// other conflict as the conflict it was.
     fn read_printer(&self) -> Result<PrinterSnapshot, PrinterError> {
-        let body = self.request(Method::Get, PRINTER_PATH, None)?;
+        let body = match self.request(Method::Get, PRINTER_PATH, None) {
+            Ok(body) => body,
+            Err(conflict @ PrinterError::StateConflict { .. }) => {
+                return self.read_disconnected().ok_or(conflict);
+            }
+            Err(error) => return Err(error),
+        };
         let payload: PrinterPayload = decode(&body, PRINTER_PATH)?;
         Ok(payload.snapshot(Timestamp::now()))
+    }
+
+    /// The snapshot of a printer the serial connection says is offline or in
+    /// error, when it says so.
+    fn read_disconnected(&self) -> Option<PrinterSnapshot> {
+        let body = self.request(Method::Get, CONNECTION_PATH, None).ok()?;
+        let payload: ConnectionPayload = decode(&body, CONNECTION_PATH).ok()?;
+        payload.disconnected(Timestamp::now())
+    }
+
+    /// Send one command of the closed vocabulary, as the line it renders to.
+    fn command_line(&self, command: PrinterCommand) -> Result<(), PrinterError> {
+        self.request(
+            Method::Post,
+            COMMAND_PATH,
+            Some(json!({ "commands": [line_of(command)] })),
+        )
+        .map(|_| ())
     }
 
     /// Read the job, as this adapter's own snapshot.
@@ -263,6 +302,13 @@ impl OctoPrintPrinter {
             Some(json!({ "command": FAN_SET_COMMAND, "parameters": parameters })),
         )
         .map(|_| ())
+    }
+}
+
+/// The one line each command renders to.
+const fn line_of(command: PrinterCommand) -> &'static str {
+    match command {
+        PrinterCommand::ReportPosition => "M114",
     }
 }
 
@@ -446,5 +492,16 @@ impl PrinterPort for OctoPrintPrinter {
         position_bytes: i64,
     ) -> BoxFuture<'_, Result<Vec<ToolFilament>, PrinterError>> {
         Box::pin(async move { self.read_extruded_to(&file_name, position_bytes) })
+    }
+
+    fn push_events(&self) -> BoxFuture<'_, Result<BoxStream<'static, PrinterPush>, PrinterError>> {
+        Box::pin(async move {
+            crate::push::open(&self.config)
+                .map(|stream| Box::pin(stream) as BoxStream<'static, PrinterPush>)
+        })
+    }
+
+    fn send_command(&self, command: PrinterCommand) -> BoxFuture<'_, Result<(), PrinterError>> {
+        Box::pin(async move { self.command_line(command) })
     }
 }

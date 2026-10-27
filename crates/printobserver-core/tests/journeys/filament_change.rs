@@ -25,9 +25,9 @@ use printobserver_vision_api::{NormalizedAlert, PrinterSignal};
 use crate::fakes::{PrinterMethod, StoreMethod};
 use crate::shelf::{
     FILE, SIZE, TOTAL_MM, adjust_command, after_an_uncharged_print, assert_close,
-    assert_ledger_explains, charges_to, command, command_on, ends, ends_on, every, every_of, grams,
-    load, load_command, loaded_spool, on_tool, paused_at, register, request_start, running_at,
-    running_at_on, spool_now, spool_of, spool_world_with, start,
+    assert_ledger_explains, charges_to, command, command_on, ends, ends_on, every, every_of,
+    finishes, grams, load, load_command, loaded_spool, on_tool, paused_at, register, request_start,
+    running_at, running_at_on, spool_now, spool_of, spool_world_with, start,
 };
 use crate::world::World;
 
@@ -110,7 +110,7 @@ impl Change {
     /// The print completes and is closed out.
     fn completes(&self) {
         running_at(&self.world, SIZE);
-        ends(&self.world, PrinterState::Operational);
+        finishes(&self.world);
     }
 }
 

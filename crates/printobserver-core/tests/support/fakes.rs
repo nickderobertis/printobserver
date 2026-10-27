@@ -122,11 +122,15 @@ pub enum PrinterMethod {
     PrintedFiles,
     /// `extruded_to`.
     ExtrudedTo,
+    /// `push_events`.
+    PushEvents,
+    /// `send_command`.
+    SendCommand,
 }
 
 impl PrinterMethod {
     /// Every method the printer port declares.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::Snapshot,
         Self::Job,
         Self::Start,
@@ -141,6 +145,8 @@ impl PrinterMethod {
         Self::FileFacts,
         Self::PrintedFiles,
         Self::ExtrudedTo,
+        Self::PushEvents,
+        Self::SendCommand,
     ];
 
     /// The method's own name, as the trait spells it.
@@ -161,6 +167,8 @@ impl PrinterMethod {
             Self::FileFacts => "file_facts",
             Self::PrintedFiles => "printed_files",
             Self::ExtrudedTo => "extruded_to",
+            Self::PushEvents => "push_events",
+            Self::SendCommand => "send_command",
         }
     }
 }
@@ -241,6 +249,16 @@ impl FakePrinter {
     pub fn reports_completion(&self, completion: Option<f64>) {
         self.job.lock().expect("the printer holds").completion = completion.map(|value| {
             printobserver_types::Reported::new(value, printobserver_printer_api::COMPLETION_RANGE)
+        });
+    }
+
+    /// Report the job's error text and whose its adapter says it is, or
+    /// none.
+    pub fn reports_error(&self, error: Option<(&str, printobserver_printer_api::ErrorSource)>) {
+        let mut job = self.job.lock().expect("the printer holds");
+        job.error = error.map(|(text, source)| printobserver_printer_api::JobError {
+            text: text.to_owned(),
+            source,
         });
     }
 

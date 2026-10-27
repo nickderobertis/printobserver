@@ -137,6 +137,7 @@ pub fn walk(instance: &Scripted) {
     confirm_the_tool_target(instance, &printer);
     confirm_the_bed_target(instance, &printer);
     pin_the_fan(&proxy, &printer);
+    pin_the_position_report(&proxy, &printer);
     refuse_the_fan_where_there_is_none(instance);
 
     // cancel — confirmed by the job snapshot.
@@ -217,6 +218,16 @@ fn confirm_the_bed_target(instance: &Scripted, printer: &impl PrinterPort) {
         }
     });
     block_on(printer.set_bed_target_c(0.0)).expect("the bed is turned back off");
+}
+
+/// The position report, as the one line this crate renders it to.
+fn pin_the_position_report(proxy: &Proxy, printer: &impl PrinterPort) {
+    proxy.forget();
+    block_on(printer.send_command(printobserver_printer_api::PrinterCommand::ReportPosition))
+        .expect("the position report is accepted");
+    let request = only(proxy, "the position report");
+    assert_eq!(request.path, "/api/printer/command");
+    assert_eq!(request.json(), serde_json::json!({ "commands": ["M114"] }));
 }
 
 /// The fan, at two distinct percentages, as a command from this crate's own set.

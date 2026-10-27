@@ -277,6 +277,21 @@ pub struct AgentAssessmentPayload {
     pub session_name: String,
 }
 
+/// The camera gave no usable frame for a look or a periodic observation,
+/// however many times it was asked.
+///
+/// Written in place of the look or the observation it was for, so that no
+/// frame the camera could not give is handed to the agent as one it did.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CameraDegradedPayload {
+    /// How many frames were fetched, every one of them bad.
+    pub attempts: i64,
+    /// Why the last of them was bad.
+    pub cause: FrameCause,
+    /// What was wrong with each, in words.
+    pub detail: String,
+}
+
 /// Somebody took a fresh look at the print.
 ///
 /// Written down before the camera is asked for a frame, so that a frame the
@@ -420,6 +435,54 @@ pub struct ContextAnswer {
     pub image_path: Option<String>,
 }
 
+/// The failure detector's health, and since when it has been so: `since` is
+/// `null` exactly while the status is `unchecked`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum DetectorHealth {
+    /// Nothing checks it: no detector health address is configured, or no
+    /// check has been made yet.
+    #[serde(rename = "unchecked")]
+    Unchecked {
+        /// Nothing: an unchecked detector has no instant it became so.
+        since: (),
+    },
+    /// It answered its health check, from `since` on.
+    #[serde(rename = "available")]
+    Available {
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
+    },
+    /// It did not answer its health check, from `since` on.
+    #[serde(rename = "unavailable")]
+    Unavailable {
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
+    },
+}
+
+/// The failure detector's own health changed.
+///
+/// The printer's rather than any print's, so it is written with no print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DetectorHealthChangedPayload {
+    /// What it was answered, in words.
+    pub detail: String,
+    /// What the check found.
+    pub status: DetectorStatus,
+}
+
+/// What a check of the failure detector's own health found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DetectorStatus {
+    /// It answered its health check.
+    #[serde(rename = "available")]
+    Available,
+    /// It did not: refused, reset, answered otherwise, or not in time.
+    #[serde(rename = "unavailable")]
+    Unavailable,
+}
+
 /// The envelope intersected with the print's manifest.
 ///
 /// This is what context reports, so that the agent can see its own limits
@@ -437,6 +500,17 @@ pub struct EffectiveBounds {
 pub struct ErrorAnswer {
     /// One line saying why, in the words of whatever refused it.
     pub error: String,
+}
+
+/// Whose error a job's error is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ErrorSource {
+    /// The printer's own message: its firmware stopped the job.
+    #[serde(rename = "printer")]
+    Printer,
+    /// The host's: it lost the line to the printer, or failed in itself.
+    #[serde(rename = "host")]
+    Host,
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one event.
@@ -608,6 +682,27 @@ pub struct FileTallyRebaselinedPayload {
     pub origin: String,
 }
 
+/// Why a camera frame was not one to hand the agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FrameCause {
+    /// It decoded, but is near-uniform grey: its grey-level spread is below
+    /// the configured blank-frame bound.
+    #[serde(rename = "blank")]
+    Blank,
+    /// It is not a whole image: a strict decode refused it.
+    #[serde(rename = "undecodable")]
+    Undecodable,
+}
+
+/// One tool heater whose target was above zero.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HeatedTool {
+    /// Its target, in degrees Celsius.
+    pub target_c: f64,
+    /// The tool's number.
+    pub tool: i64,
+}
+
 /// One heater, as a source reported it.
 ///
 /// Every field is optional, because a source that reports no heater at all
@@ -761,6 +856,15 @@ pub enum InterventionOutcome {
     },
 }
 
+/// A job's error, and whose it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JobError {
+    /// Whose it is.
+    pub source: ErrorSource,
+    /// The error, as the source reported it.
+    pub text: String,
+}
+
 /// What a sliced job declares about itself and about what may be adjusted.
 ///
 /// An adjustable the manifest does not name takes the envelope's own range; a
@@ -795,9 +899,9 @@ pub struct JobSnapshot {
     /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion: Option<Reported>,
-    /// The error the source reports, when it reports one.
+    /// The error the source reports, when it reports one, and whose it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub error: Option<JobError>,
     /// The whole print's estimated duration, in whole seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimated_print_time_s: Option<i64>,
@@ -1484,6 +1588,9 @@ pub enum PrintAction {
 pub struct PrintContext {
     /// The limits in force, so that the agent can see them before it asks.
     pub bounds: EffectiveBounds,
+    /// The failure detector's health, and since when it has been so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detector: Option<DetectorHealth>,
     /// The interventions still active.
     pub interventions: Vec<Intervention>,
     /// The job, when a snapshot could be taken.
@@ -1642,6 +1749,35 @@ pub struct PrintStartedPayload {
 pub struct PrintUntrackedPayload {
     /// Why the print carries no charge.
     pub reason: String,
+}
+
+/// The printer's connection changed into or out of `offline` or `error`: a
+/// serial disconnect, a reconnect, a printer error.
+///
+/// The printer's rather than any print's, so it is written with no print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrinterConnectionChangedPayload {
+    /// What the watch read, in words.
+    pub detail: String,
+    /// The state the previous read found.
+    pub from: PrinterState,
+    /// The state this read found.
+    pub to: PrinterState,
+}
+
+/// The printer reset: its firmware restarted, and whatever it held is gone.
+///
+/// Recorded on each reset the printer pushed, one while idle included, which
+/// changes nothing a read of its state reports. The printer's rather than any
+/// print's, so it is written with no print; `during_print` names the print it
+/// happened during, when one was running.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrinterResetPayload {
+    /// What the watch knew of it, in words.
+    pub detail: String,
+    /// The print that was running when it reset, `null` when none was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub during_print: Option<PrintId>,
 }
 
 /// A printer, as a source reported it at one instant.
@@ -2361,6 +2497,8 @@ pub struct StartupReconciliationPayload {
 /// What a status read answers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatusAnswer {
+    /// The failure detector's health, and since when it has been so.
+    pub detector: DetectorHealth,
     /// The bounded interventions still in force.
     pub interventions: Vec<Intervention>,
     /// The job, when a snapshot could be taken.
@@ -2456,6 +2594,32 @@ pub struct UnaccountedPrintPayload {
     pub success: bool,
 }
 
+/// The printer heated or moved with no job running, soon after a print ended
+/// `interrupted` or `failed`.
+///
+/// A transition rather than a reading: written once when such activity
+/// begins,
+/// and again only when what it reports changes. The printer's rather than any
+/// print's, so it is written with no print; `last_print_id` names the print
+/// it
+/// came after.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnattendedPrinterActivityPayload {
+    /// The bed's target, when it is above zero; `null` otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_target_c: Option<f64>,
+    /// What the watch read, in words.
+    pub detail: String,
+    /// The print that ended before it.
+    pub last_print_id: PrintId,
+    /// Whether the print head moved since the last position read, `null` when
+    /// no position could be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moved: Option<bool>,
+    /// Every tool whose target is above zero.
+    pub tools: Vec<HeatedTool>,
+}
+
 /// One reason a spool's figure is in doubt, and since when.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnverifiedMark {
@@ -2540,12 +2704,20 @@ impl EventPayloadKind for AgentAssessmentPayload {
     const KIND: &'static str = "agent_assessment";
 }
 
+impl EventPayloadKind for CameraDegradedPayload {
+    const KIND: &'static str = "camera_degraded";
+}
+
 impl EventPayloadKind for CameraLookPayload {
     const KIND: &'static str = "camera_look";
 }
 
 impl EventPayloadKind for ChargePendedPayload {
     const KIND: &'static str = "charge_pended";
+}
+
+impl EventPayloadKind for DetectorHealthChangedPayload {
+    const KIND: &'static str = "detector_health_changed";
 }
 
 impl EventPayloadKind for FilamentChangeSignalledPayload {
@@ -2604,6 +2776,14 @@ impl EventPayloadKind for PrintUntrackedPayload {
     const KIND: &'static str = "print_untracked";
 }
 
+impl EventPayloadKind for PrinterConnectionChangedPayload {
+    const KIND: &'static str = "printer_connection_changed";
+}
+
+impl EventPayloadKind for PrinterResetPayload {
+    const KIND: &'static str = "printer_reset";
+}
+
 impl EventPayloadKind for SpoolAdjustedPayload {
     const KIND: &'static str = "spool_adjusted";
 }
@@ -2648,14 +2828,20 @@ impl EventPayloadKind for UnaccountedPrintPayload {
     const KIND: &'static str = "unaccounted_print";
 }
 
+impl EventPayloadKind for UnattendedPrinterActivityPayload {
+    const KIND: &'static str = "unattended_printer_activity";
+}
+
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 31] = [
+pub const EVENT_KINDS: [&str; 36] = [
     "action_executed",
     "action_rejected",
     "action_requested",
     "agent_assessment",
+    "camera_degraded",
     "camera_look",
     "charge_pended",
+    "detector_health_changed",
     "filament_change_signalled",
     "filament_consumed",
     "file_tally_rebaselined",
@@ -2670,6 +2856,8 @@ pub const EVENT_KINDS: [&str; 31] = [
     "print_ended",
     "print_started",
     "print_untracked",
+    "printer_connection_changed",
+    "printer_reset",
     "spool_adjusted",
     "spool_command_rejected",
     "spool_loaded",
@@ -2681,6 +2869,7 @@ pub const EVENT_KINDS: [&str; 31] = [
     "supervision_session_closed",
     "supervision_session_opened",
     "unaccounted_print",
+    "unattended_printer_activity",
 ];
 
 impl EventRecord {

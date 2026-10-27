@@ -24,14 +24,16 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraLookPayload, ChargePendedPayload, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, InterventionExpiredPayload, Look,
-    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
-    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext, PrintEndedPayload,
-    PrintStartedPayload, PrintUntrackedPayload, RebaselineDisposition, SignalPosition,
-    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
-    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
-    UnaccountedPrintPayload, agent_source, operator_source, system_source,
+    CameraDegradedPayload, CameraLookPayload, ChargePendedPayload, DetectorHealth,
+    DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
+    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
+    InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
+    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
+    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    PrinterResetPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -108,6 +110,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<PortFailurePayload>("PortFailurePayload"),
         kind_of::<CameraLookPayload>("CameraLookPayload"),
         kind_of::<PeriodicObservationPayload>("PeriodicObservationPayload"),
+        kind_of::<CameraDegradedPayload>("CameraDegradedPayload"),
         kind_of::<PrintStartedPayload>("PrintStartedPayload"),
         kind_of::<PrintEndedPayload>("PrintEndedPayload"),
         kind_of::<FilamentConsumedPayload>("FilamentConsumedPayload"),
@@ -124,6 +127,10 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<ChargePendedPayload>("ChargePendedPayload"),
         kind_of::<PrintUntrackedPayload>("PrintUntrackedPayload"),
         kind_of::<FileTallyRebaselinedPayload>("FileTallyRebaselinedPayload"),
+        kind_of::<PrinterConnectionChangedPayload>("PrinterConnectionChangedPayload"),
+        kind_of::<PrinterResetPayload>("PrinterResetPayload"),
+        kind_of::<UnattendedPrinterActivityPayload>("UnattendedPrinterActivityPayload"),
+        kind_of::<DetectorHealthChangedPayload>("DetectorHealthChangedPayload"),
     ]
 }
 
@@ -148,6 +155,16 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((
         "SignalPosition.json".to_owned(),
         schema_of::<SignalPosition>(),
+    ));
+    entries.push(("FrameCause.json".to_owned(), schema_of::<FrameCause>()));
+    entries.push(("HeatedTool.json".to_owned(), schema_of::<HeatedTool>()));
+    entries.push((
+        "DetectorStatus.json".to_owned(),
+        schema_of::<DetectorStatus>(),
+    ));
+    entries.push((
+        "DetectorHealth.json".to_owned(),
+        schema_of::<DetectorHealth>(),
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));
@@ -194,6 +211,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("PortFailurePayload", "port_failure"),
             ("CameraLookPayload", "camera_look"),
             ("PeriodicObservationPayload", "periodic_observation"),
+            ("CameraDegradedPayload", "camera_degraded"),
             ("PrintStartedPayload", "print_started"),
             ("PrintEndedPayload", "print_ended"),
             ("FilamentConsumedPayload", "filament_consumed"),
@@ -213,6 +231,16 @@ fn each_kind_is_written_under_its_own_name() {
             ("ChargePendedPayload", "charge_pended"),
             ("PrintUntrackedPayload", "print_untracked"),
             ("FileTallyRebaselinedPayload", "file_tally_rebaselined"),
+            (
+                "PrinterConnectionChangedPayload",
+                "printer_connection_changed"
+            ),
+            ("PrinterResetPayload", "printer_reset"),
+            (
+                "UnattendedPrinterActivityPayload",
+                "unattended_printer_activity"
+            ),
+            ("DetectorHealthChangedPayload", "detector_health_changed"),
         ]
     );
     for declared in declared_kinds() {
@@ -231,11 +259,11 @@ fn each_kind_is_written_under_its_own_name() {
     }
 }
 
-/// The printer timeline is exactly the sixteen kinds the ledger declares, in
-/// the order the contract lists them, each written under its payload's own
-/// kind.
+/// The printer timeline is exactly the twenty kinds the ledger and the printer
+/// watch declare, in the order the contract lists them, each written under its
+/// payload's own kind.
 #[test]
-fn the_timeline_is_exactly_the_ledgers_sixteen_kinds() {
+fn the_timeline_is_exactly_the_ledgers_and_the_watchs_twenty_kinds() {
     let ledger: Vec<&str> = declared_kinds()
         .iter()
         .skip_while(|declared| declared.name != "PrintStartedPayload")
@@ -261,6 +289,10 @@ fn the_timeline_is_exactly_the_ledgers_sixteen_kinds() {
             "charge_pended",
             "print_untracked",
             "file_tally_rebaselined",
+            "printer_connection_changed",
+            "printer_reset",
+            "unattended_printer_activity",
+            "detector_health_changed",
         ]
     );
 }
@@ -329,6 +361,7 @@ fn the_print_context_carries_exactly_the_stated_fields() {
         wire_fields(&context.schema()),
         vec![
             field("bounds", "EffectiveBounds", true),
+            field("detector", "DetectorHealth", false),
             field("interventions", "array:Intervention", true),
             field("job", "JobSnapshot", false),
             field("latest_image", "ImageRef", false),
@@ -430,4 +463,44 @@ fn the_history_query_carries_exactly_the_stated_fields() {
         field("until", "Timestamp", false),
     ];
     assert_eq!(wire_fields(&schema_of::<HistoryQuery>()), expected);
+}
+
+/// The detector's health is three states on the wire, as the status and
+/// context reads answer it: `since` is `null` exactly when the status is
+/// `unchecked`. Each state round-trips to that object and back, and an object
+/// pairing them any other way is refused rather than read.
+#[test]
+fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
+    use printobserver_types::serde_json::{self, json};
+    let since = printobserver_types::Timestamp::sample_full();
+    let at = serde_json::to_value(since).expect("an instant renders");
+    for (health, wire) in [
+        (
+            DetectorHealth::Unchecked,
+            json!({ "status": "unchecked", "since": null }),
+        ),
+        (
+            DetectorHealth::Available { since },
+            json!({ "status": "available", "since": at }),
+        ),
+        (
+            DetectorHealth::Unavailable { since },
+            json!({ "status": "unavailable", "since": at }),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(health).expect("it renders"), wire);
+        let read: DetectorHealth = serde_json::from_value(wire).expect("it reads back");
+        assert_eq!(read, health);
+    }
+    for refused in [
+        json!({ "status": "unchecked", "since": at }),
+        json!({ "status": "available", "since": null }),
+        json!({ "status": "unavailable" }),
+        json!({ "status": "unchecked" }),
+    ] {
+        assert!(
+            serde_json::from_value::<DetectorHealth>(refused.clone()).is_err(),
+            "{refused} was read"
+        );
+    }
 }

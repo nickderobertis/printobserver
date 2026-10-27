@@ -64,6 +64,11 @@ type StatedField = (&'static str, &'static str, bool);
 /// all, and its wire form is asserted where the accessors are.
 const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
     ("Adjustable", &[]),
+    ("ErrorSource", &[]),
+    (
+        "JobError",
+        &[("source", "ErrorSource", true), ("text", "string", true)],
+    ),
     (
         "FileFacts",
         &[
@@ -92,7 +97,7 @@ const DECLARED_FIELDS: &[(&str, &[StatedField])] = &[
         "JobSnapshot",
         &[
             ("completion", "Reported", false),
-            ("error", "string", false),
+            ("error", "JobError", false),
             ("estimated_print_time_s", "integer", false),
             ("filament", "array:ToolFilament", false),
             ("file_name", "string", false),

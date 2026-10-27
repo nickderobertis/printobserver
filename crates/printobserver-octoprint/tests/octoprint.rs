@@ -38,6 +38,8 @@ mod failing;
 mod files;
 #[path = "journeys/gcode.rs"]
 mod gcode;
+#[path = "journeys/pushing.rs"]
+mod pushing;
 #[path = "journeys/reading.rs"]
 mod reading;
 #[path = "journeys/redaction.rs"]

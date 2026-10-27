@@ -1,5 +1,5 @@
-//! A print store whose read of the open prints can be made to fail, and then
-//! to recover, under a running server.
+//! A print store whose read of the open prints, or of one print, can be made
+//! to fail, and then to recover, under a running server.
 //!
 //! Everything else is the durable store's own answer: this stands between the
 //! server and that store, passing every call through, so that a journey can
@@ -24,6 +24,8 @@ pub struct RefusingPrints {
     inner: Arc<dyn PrintStore>,
     /// Whether the read of the open prints fails.
     refusing: AtomicBool,
+    /// Whether the read of one print by its identifier fails.
+    refusing_lookups: AtomicBool,
 }
 
 impl RefusingPrints {
@@ -33,7 +35,14 @@ impl RefusingPrints {
         Arc::new(Self {
             inner,
             refusing: AtomicBool::new(false),
+            refusing_lookups: AtomicBool::new(false),
         })
+    }
+
+    /// Fail the read of one print by its identifier from now on, or stop
+    /// failing it.
+    pub fn refusing_lookups(&self, refusing: bool) {
+        self.refusing_lookups.store(refusing, Ordering::SeqCst);
     }
 
     /// Fail the read of the open prints from now on, or stop failing it.
@@ -52,6 +61,13 @@ impl PrintStore for RefusingPrints {
     }
 
     fn print(&self, print_id: PrintId) -> BoxFuture<'_, Result<Option<PrintRecord>, StoreError>> {
+        if self.refusing_lookups.load(Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(StoreError::Io {
+                    detail: DETAIL.to_owned(),
+                })
+            });
+        }
         self.inner.print(print_id)
     }
 

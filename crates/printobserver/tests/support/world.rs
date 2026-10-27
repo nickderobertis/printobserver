@@ -57,7 +57,12 @@ const IMAGE_BYTES: &[u8] = b"not a photograph, but the bytes of one";
 
 /// The frame this world's camera answers a look with: other bytes than the
 /// stored image's, so a frame is never mistaken for it.
-pub const FRAME_BYTES: &[u8] = b"not a camera frame either, but the bytes of one";
+///
+/// A recorded frame of a real print, because a frame is judged before it is
+/// kept: bytes that are no picture are recorded as the camera degraded.
+pub const FRAME_BYTES: &[u8] = include_bytes!(
+    "../../../../tests/real-prints/filament-stall-air-print/01-last-frame-extruding-p76.jpg"
+);
 
 /// Where on the camera's host a frame is answered.
 pub const FRAME_PATH: &str = "/api/frame.jpeg";

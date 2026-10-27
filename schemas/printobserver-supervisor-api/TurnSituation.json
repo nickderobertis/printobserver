@@ -205,6 +205,14 @@
         "null"
       ]
     },
+    "noticed": {
+      "default": null,
+      "description": "What the printer watch noticed that prompted this turn — how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering — in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "printer_state": {
       "anyOf": [
         {

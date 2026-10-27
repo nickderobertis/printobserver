@@ -39,7 +39,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use printobserver_printer_api::{FileFacts, JobSnapshot, PrinterState, ToolFilament};
+use printobserver_printer_api::{ErrorSource, FileFacts, JobSnapshot, PrinterState, ToolFilament};
 use printobserver_types::{
     EventBody, EventKind, EventPayload, EventSource, FileName, PrintId, Timestamp,
 };
@@ -63,6 +63,7 @@ use crate::store::{
     SpoolChange, SpoolMutation,
 };
 use crate::supervisor::Supervisor;
+use crate::watch::PushFacts;
 
 /// Below this many millimetres a length is nothing, and no charge is written
 /// for it: a zero-length charge would be a record of nothing having happened.
@@ -387,14 +388,14 @@ struct Ending<'a> {
     job: Option<&'a JobSnapshot>,
     /// The print's file, when it is known as a name a file API takes.
     file_name: Option<&'a FileName>,
-    /// The last position recorded.
-    position: Option<&'a FilePosition>,
     /// The file's size, when it is known.
     size_bytes: Option<i64>,
     /// What the file's tally says of a print since this one was opened.
     tally: Tally,
     /// Who cancelled it, as far as this system knows.
     cancelled_by: Canceller,
+    /// What the printer pushed during the stop.
+    pushes: PushFacts,
 }
 
 /// How a print's closing charge is worked out, by the outcome it ended with.
@@ -434,9 +435,12 @@ enum Watch {
 /// What a file's tally says of a print since one was opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tally {
-    /// A successful print of the file was recorded since.
+    /// A successful print of the file was recorded since, and this
+    /// supervisor did not observe the stop: the one way a print is completed
+    /// without a job read showing the finish.
     CompletedSince,
-    /// Nothing the tally says shows this print completed.
+    /// Nothing the tally says shows this print completed, or the stop was
+    /// observed and its job reads decide it.
     NoCompletion,
 }
 
@@ -452,27 +456,66 @@ enum Canceller {
 impl Ending<'_> {
     /// The outcome these say the print ended with.
     fn outcome(&self) -> PrintOutcome {
-        let reached_the_end = self.position.is_some_and(|position| {
-            let size = position.size_bytes.or(self.size_bytes);
-            size.is_some_and(|size| size > 0 && position.bytes >= size)
-        });
-        let reported_complete = self.job.is_some_and(|job| {
-            self.file_name
-                .is_none_or(|file| job.file_name.as_deref() == Some(file.as_str()))
-                && job
-                    .completion
-                    .is_some_and(|completion| completion.value() >= 1.0)
-        });
-        if reached_the_end || reported_complete || self.tally == Tally::CompletedSince {
+        if self.read_finished() || self.tally == Tally::CompletedSince {
             return PrintOutcome::Completed;
         }
-        if self.cancelled_by == Canceller::Here || *self.state == PrinterState::Cancelling {
+        if self.cancelled_by == Canceller::Here {
             return PrintOutcome::Cancelled;
         }
         match self.state {
-            PrinterState::Error | PrinterState::Offline => PrintOutcome::Failed,
+            PrinterState::Error | PrinterState::Offline => {
+                if self.printer_errored() {
+                    PrintOutcome::Failed
+                } else {
+                    PrintOutcome::Interrupted
+                }
+            }
+            _ if self.pushes.reset => PrintOutcome::Interrupted,
             _ => PrintOutcome::Cancelled,
         }
+    }
+
+    /// Whether the job read at the stop shows the print finished: one read of
+    /// the print's own file reporting both completion 100.0 and a file
+    /// position equal to the file's size.
+    ///
+    /// Neither alone is a finish. A position at the end is where a print
+    /// stands while its last moves still run, and a completion of 100.0 is
+    /// a rounding of a print short of its end; only the two in one read are
+    /// what `OctoPrint` reports of a print it finished.
+    fn read_finished(&self) -> bool {
+        self.job.is_some_and(|job| {
+            let same_file = self
+                .file_name
+                .is_none_or(|file| job.file_name.as_deref() == Some(file.as_str()));
+            let complete = job
+                .completion
+                .is_some_and(|completion| completion.value() >= 1.0);
+            let size = job.size_bytes.or(self.size_bytes).filter(|size| *size > 0);
+            let at_the_end = job
+                .file_position_bytes
+                .zip(size)
+                .is_some_and(|(bytes, size)| bytes == size);
+            same_file && complete && at_the_end
+        })
+    }
+
+    /// Whether a stop that went offline or into `error` was the printer's own
+    /// error.
+    ///
+    /// The push channel says so outright: the printer pushes an error of its
+    /// own for exactly that stop, and for no serial drop or reset. Only when
+    /// the channel was down during the stop is the job's error read instead,
+    /// by whose its adapter says it is.
+    fn printer_errored(&self) -> bool {
+        if self.pushes.firmware_error {
+            return true;
+        }
+        self.pushes.gap
+            && self
+                .job
+                .and_then(|job| job.error.as_ref())
+                .is_some_and(|report| report.source == ErrorSource::Printer)
     }
 }
 
@@ -670,6 +713,7 @@ impl Supervisor {
         started_by: Option<ActionId>,
         preflight: Option<Preflight>,
     ) -> Result<(), CoreError> {
+        self.forget_pushes();
         let loaded = self
             .stores()
             .filament
@@ -893,12 +937,19 @@ impl Supervisor {
         // A print completes after it was opened, whoever opened it; the job's
         // own start, as a read puts it, can lie before that, and a success
         // recorded between the two is an earlier print's.
+        //
+        // That record is read only for a stop this supervisor did not observe
+        // — it was not running when the print ended, so no job read of the
+        // finish was made. A stop it watched is completed by its job reads
+        // alone.
         let began = print.opened_at;
-        let tally = if analysis
-            .facts
-            .as_ref()
-            .and_then(|facts| facts.last_print.as_ref())
-            .is_some_and(|last| last.success && last.at >= began)
+        let unobserved = !self.was_seen_running(print.id);
+        let tally = if unobserved
+            && analysis
+                .facts
+                .as_ref()
+                .and_then(|facts| facts.last_print.as_ref())
+                .is_some_and(|last| last.success && last.at >= began)
         {
             Tally::CompletedSince
         } else {
@@ -909,16 +960,22 @@ impl Supervisor {
         } else {
             Canceller::NotHere
         };
-        let outcome = Ending {
-            state,
-            job,
-            file_name: file_name.as_ref(),
-            position: position.as_ref(),
-            size_bytes: analysis.size_bytes(),
-            tally,
-            cancelled_by,
+        let ending = |pushes| {
+            Ending {
+                state,
+                job,
+                file_name: file_name.as_ref(),
+                size_bytes: analysis.size_bytes(),
+                tally,
+                cancelled_by,
+                pushes,
+            }
+            .outcome()
+        };
+        let mut outcome = ending(self.push_facts());
+        if outcome == PrintOutcome::Cancelled && cancelled_by == Canceller::NotHere {
+            outcome = ending(self.pushes_after_a_reset_could_arrive().await);
         }
-        .outcome();
         let rule = charge_rule(outcome);
         let totals = match (rule, &file_name, &position) {
             (ChargeRule::SlicerEstimate, _, _) => {
@@ -1028,16 +1085,22 @@ impl Supervisor {
             .file_name
             .as_deref()
             .and_then(|name| FileName::new(name).ok());
-        let outcome = Ending {
-            state,
-            job: closing_job,
-            file_name: named.as_ref(),
-            position: None,
-            size_bytes: None,
-            tally: Tally::NoCompletion,
-            cancelled_by: Canceller::NotHere,
+        let ending = |pushes| {
+            Ending {
+                state,
+                job: closing_job,
+                file_name: named.as_ref(),
+                size_bytes: None,
+                tally: Tally::NoCompletion,
+                cancelled_by: Canceller::NotHere,
+                pushes,
+            }
+            .outcome()
+        };
+        let mut outcome = ending(self.push_facts());
+        if outcome == PrintOutcome::Cancelled {
+            outcome = ending(self.pushes_after_a_reset_could_arrive().await);
         }
-        .outcome();
         // The `print_untracked` goes first, once: a close-out replayed after
         // it — the settlement refused, or committed with its answer lost —
         // finds it written and writes no second, and one replayed after the

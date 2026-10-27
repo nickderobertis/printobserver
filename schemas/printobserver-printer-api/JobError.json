@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A job's error, and whose it is.",
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/ErrorSource",
+      "description": "Whose it is."
+    },
+    "text": {
+      "description": "The error, as the source reported it.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "source"
+  ],
+  "title": "JobError",
+  "type": "object"
+}

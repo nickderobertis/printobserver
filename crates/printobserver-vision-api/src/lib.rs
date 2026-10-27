@@ -294,6 +294,33 @@ pub struct FetchedImage {
     pub content_type: String,
 }
 
+/// Why a retrieved frame is not one to hand anybody as a picture of the
+/// print.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FrameFault {
+    /// It decoded, and it is near-uniform: a camera showing nothing.
+    Blank {
+        /// What was measured, in words.
+        detail: String,
+    },
+    /// It is not a whole image: a strict decode refused it.
+    Undecodable {
+        /// Why the decode refused it, in words.
+        detail: String,
+    },
+}
+
+impl core::fmt::Display for FrameFault {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Blank { detail } => write!(formatter, "the frame is blank: {detail}"),
+            Self::Undecodable { detail } => {
+                write!(formatter, "the frame does not decode: {detail}")
+            }
+        }
+    }
+}
+
 /// Why a body could not be read, or an image could not be retrieved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VisionError {
@@ -384,4 +411,13 @@ pub trait VisionPort: Send + Sync {
     /// with may stay silent about that print for the rest of it; this is what
     /// re-arms it once the print has been adjusted and resumed.
     fn clear_detection(&self, detection: Detection) -> BoxFuture<'_, Result<(), VisionError>>;
+
+    /// Judge one retrieved frame as a picture of the print, answering it back
+    /// when it is one and why not otherwise.
+    ///
+    /// An implementation that does not judge frames answers every one back,
+    /// which is what one that does not override this does.
+    fn judge_frame(&self, image: FetchedImage) -> BoxFuture<'_, Result<FetchedImage, FrameFault>> {
+        Box::pin(async move { Ok(image) })
+    }
 }

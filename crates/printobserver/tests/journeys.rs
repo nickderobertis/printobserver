@@ -193,6 +193,48 @@ fn a_configuration_granting_the_agent_close_print_is_refused_at_start() {
     );
 }
 
+/// `printobserver server` refuses each of the printer watch's own settings
+/// out of the range it admits, naming the field, and serves nothing: a poll
+/// under five seconds or over five minutes, an unattended window under a
+/// minute or over a day, a blank-frame bound under one or over 128 grey
+/// levels, and a detector address that is no web address.
+#[test]
+fn the_watchs_settings_out_of_range_are_refused_at_start_by_name() {
+    use printobserver_types::serde_json::{Value, json};
+    /// One edit of the configuration document.
+    type Edit = fn(&mut Value);
+    let refusals: [(&str, &str, Edit); 7] = [
+        ("supervisor", "printer_poll_s", |document| {
+            document["supervisor"]["printer_poll_s"] = json!(4);
+        }),
+        ("supervisor", "printer_poll_s", |document| {
+            document["supervisor"]["printer_poll_s"] = json!(301);
+        }),
+        ("supervisor", "unattended_window_s", |document| {
+            document["supervisor"]["unattended_window_s"] = json!(59);
+        }),
+        ("supervisor", "unattended_window_s", |document| {
+            document["supervisor"]["unattended_window_s"] = json!(86_401);
+        }),
+        ("vision", "blank_frame_max_stddev", |document| {
+            document["vision"] = json!({ "blank_frame_max_stddev": 0.5 });
+        }),
+        ("vision", "blank_frame_max_stddev", |document| {
+            document["vision"] = json!({ "blank_frame_max_stddev": 128.5 });
+        }),
+        ("obico", "ml_api_url", |document| {
+            document["obico"] = json!({ "ml_api_url": "ftp://127.0.0.1:3333" });
+        }),
+    ];
+    for (table, field, edit) in refusals {
+        let said = starting::refused_start(edit);
+        assert!(
+            said.contains(&format!("{table}.{field}")),
+            "the refusal does not name `{table}.{field}`: {said}"
+        );
+    }
+}
+
 /// `printobserver server` says when it started without accounting the prints
 /// the printer counted while nothing watched, because the printer's file list
 /// could not be read — and serves.

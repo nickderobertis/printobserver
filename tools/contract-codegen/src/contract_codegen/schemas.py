@@ -108,8 +108,12 @@ def _doc(schema: dict[str, Any], known: set[str]) -> str:
 
 
 def _scalar(named: str) -> Scalar:
-    """One JSON type as the model spells it."""
-    if named not in {"string", "number", "integer", "boolean"}:
+    """One JSON type as the model spells it.
+
+    `null` is among them for the one place a property is nothing but that: an
+    arm of a union whose property is `null` exactly in that arm.
+    """
+    if named not in {"string", "number", "integer", "boolean", "null"}:
         msg = f"`{named}` is not a scalar a client can be generated for"
         raise ContractError(msg)
     return Scalar(named)

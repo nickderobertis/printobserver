@@ -78,9 +78,11 @@ pub(crate) async fn look_at_the_job(world: &World) -> Value {
     listing
 }
 
-/// The machine finishes the job it is running: it reports itself idle, and the
-/// file's tally counts one more completed print.
+/// The machine finishes the job it is running: it reports itself idle with the
+/// file read to its end at completion 1.0, and the file's tally counts one more
+/// completed print.
 pub(crate) fn finishes(world: &World) {
+    world.printer.reports_finished();
     world.printer.counts_print(FILE, true, Timestamp::now());
     world.printer.in_state(PrinterState::Operational);
 }

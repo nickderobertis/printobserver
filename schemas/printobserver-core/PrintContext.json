@@ -13,6 +13,67 @@
       "title": "Adjustable",
       "type": "string"
     },
+    "DetectorHealth": {
+      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "properties": {
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It answered its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "It did not answer its health check, from `since` on.",
+          "properties": {
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "DetectorHealth"
+    },
     "EffectiveBounds": {
       "additionalProperties": false,
       "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
@@ -32,6 +93,21 @@
         "allowed"
       ],
       "type": "object"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
     },
     "EventId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one event.",
@@ -324,6 +400,25 @@
         }
       ]
     },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
     "JobManifest": {
       "additionalProperties": false,
       "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
@@ -389,11 +484,15 @@
           "description": "How far through the print is, as a fraction from zero to one.\n\nNormalized to a fraction here regardless of how the source expresses it."
         },
         "error": {
-          "description": "The error the source reports, when it reports one.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error the source reports, when it reports one, and whose it is."
         },
         "estimated_print_time_s": {
           "description": "The whole print's estimated duration, in whole seconds.",
@@ -799,6 +898,14 @@
     "bounds": {
       "$ref": "#/$defs/EffectiveBounds",
       "description": "The limits in force, so that the agent can see them before it asks."
+    },
+    "detector": {
+      "$ref": "#/$defs/DetectorHealth",
+      "default": {
+        "since": null,
+        "status": "unchecked"
+      },
+      "description": "The failure detector's health, and since when it has been so."
     },
     "interventions": {
       "description": "The interventions still active.",

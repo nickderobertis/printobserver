@@ -53,6 +53,15 @@
 //! because an interval of nothing is a turn started the moment the last one
 //! returns.
 //!
+//! # The printer watch
+//!
+//! `supervisor.printer_poll_s` is how often the printer watch reads the machine
+//! — from 5 to 300 seconds, fifteen when left out — whether or not a print is
+//! active, and `supervisor.unattended_window_s` how long after a print ends
+//! `interrupted` or `failed` the printer heating or moving on its own is
+//! recorded — from 60 to 86400 seconds, an hour when left out. A value outside
+//! either range is refused naming its key.
+//!
 //! # The camera and `Obico`'s own API
 //!
 //! Both are optional. `camera.snapshot_url` is where a look fetches a fresh
@@ -62,6 +71,11 @@
 //! to `Obico`, which re-arms its detection. Each address must be an `http` or
 //! `https` URL, and the token is held in a type whose debug form never shows
 //! it, so no refusal or log line this program writes can carry it.
+//! `obico.ml_api_url` is the failure detector's own service, whose
+//! unauthenticated health check is asked during every print; without it the
+//! detector's health reads `unchecked`. `vision.blank_frame_max_stddev` is the
+//! grey-level spread at or below which a frame is blank — from 1 to 128, 36.5
+//! when left out.
 //!
 //! # The spool check
 //!
@@ -77,7 +91,9 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use printobserver_core::{ActionKind, ActorClass, PreflightMode, SafetyEnvelope, SpoolPolicy};
-use printobserver_obico::{AccessToken, ObicoApi};
+use printobserver_obico::{
+    AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
+};
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
 use printobserver_types::schemars::JsonSchema;
@@ -96,6 +112,21 @@ pub const DEFAULT_INGRESS_ANSWER_BOUND_MS: u64 = 1_000;
 /// configuration names no interval: the core's own default.
 pub const DEFAULT_OBSERVATION_INTERVAL_S: u64 =
     printobserver_core::DEFAULT_OBSERVATION_INTERVAL.as_secs();
+
+/// How often the printer watch reads the machine, in seconds, when the
+/// configuration names no poll: the core's own default.
+pub const DEFAULT_PRINTER_POLL_S: u64 = printobserver_core::DEFAULT_PRINTER_POLL.as_secs();
+
+/// The least and the most seconds `supervisor.printer_poll_s` admits.
+pub const PRINTER_POLL_RANGE_S: (u64, u64) = (5, 300);
+
+/// How long after an unfinished ending activity is recorded, in seconds, when
+/// the configuration names no window: the core's own default.
+pub const DEFAULT_UNATTENDED_WINDOW_S: u64 =
+    printobserver_core::DEFAULT_UNATTENDED_WINDOW.as_secs();
+
+/// The least and the most seconds `supervisor.unattended_window_s` admits.
+pub const UNATTENDED_WINDOW_RANGE_S: (u64, u64) = (60, 86_400);
 
 /// The timeout `Obico`'s own webhook notification plugin posts under.
 ///
@@ -153,6 +184,11 @@ pub enum ConfigField {
     PromptTemplatePath,
     /// How often every active print is observed, in seconds.
     ObservationIntervalS,
+    /// How often the printer watch reads the machine, in seconds.
+    PrinterPollS,
+    /// How long after an unfinished ending the printer acting on its own is
+    /// recorded, in seconds.
+    UnattendedWindowS,
     /// How long the ingress may take to answer, in milliseconds.
     IngressAnswerBoundMs,
     /// The shared secret the ingress requires of every post.
@@ -169,6 +205,10 @@ pub enum ConfigField {
     ObicoUrl,
     /// The bearer token `Obico`'s API is reached with.
     ObicoAccessToken,
+    /// Where the failure detector's own service answers its health check.
+    ObicoMlApiUrl,
+    /// The grey-level spread at or below which a camera frame is blank.
+    VisionBlankFrameMaxStddev,
     /// What a start does when the spool check finds a problem.
     SpoolsPreflight,
     /// The margin asked beyond a print's requirement, as a percentage of it.
@@ -181,7 +221,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 26] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -193,6 +233,8 @@ impl ConfigField {
         Self::SkillPath,
         Self::PromptTemplatePath,
         Self::ObservationIntervalS,
+        Self::PrinterPollS,
+        Self::UnattendedWindowS,
         Self::IngressAnswerBoundMs,
         Self::IngressSharedSecret,
         Self::ApiCredential,
@@ -200,6 +242,8 @@ impl ConfigField {
         Self::CameraSnapshotUrl,
         Self::ObicoUrl,
         Self::ObicoAccessToken,
+        Self::ObicoMlApiUrl,
+        Self::VisionBlankFrameMaxStddev,
         Self::SpoolsPreflight,
         Self::SpoolsBufferPercent,
         Self::SpoolsBufferMinG,
@@ -221,6 +265,8 @@ impl ConfigField {
             Self::SkillPath => "supervisor.skill_path",
             Self::PromptTemplatePath => "supervisor.prompt_template_path",
             Self::ObservationIntervalS => "supervisor.observation_interval_s",
+            Self::PrinterPollS => "supervisor.printer_poll_s",
+            Self::UnattendedWindowS => "supervisor.unattended_window_s",
             Self::IngressAnswerBoundMs => "ingress.answer_bound_ms",
             Self::IngressSharedSecret => "ingress.shared_secret",
             Self::ApiCredential => "api.credential",
@@ -228,6 +274,8 @@ impl ConfigField {
             Self::CameraSnapshotUrl => "camera.snapshot_url",
             Self::ObicoUrl => "obico.url",
             Self::ObicoAccessToken => "obico.access_token",
+            Self::ObicoMlApiUrl => "obico.ml_api_url",
+            Self::VisionBlankFrameMaxStddev => "vision.blank_frame_max_stddev",
             Self::SpoolsPreflight => "spools.preflight",
             Self::SpoolsBufferPercent => "spools.buffer_percent",
             Self::SpoolsBufferMinG => "spools.buffer_min_g",
@@ -384,6 +432,25 @@ pub struct SupervisorSection {
     /// agent a turn on it, in seconds. Left out, two minutes.
     #[serde(default = "default_observation_interval_s")]
     pub observation_interval_s: u64,
+    /// How often the printer watch reads the machine, whether or not a print
+    /// is active, in seconds: from 5 to 300. Left out, fifteen seconds.
+    #[serde(default = "default_printer_poll_s")]
+    pub printer_poll_s: u64,
+    /// How long after a print ends `interrupted` or `failed` the printer
+    /// heating or moving on its own is recorded, in seconds: from 60 to
+    /// 86400. Left out, an hour.
+    #[serde(default = "default_unattended_window_s")]
+    pub unattended_window_s: u64,
+}
+
+/// The printer poll a configuration naming none takes.
+const fn default_printer_poll_s() -> u64 {
+    DEFAULT_PRINTER_POLL_S
+}
+
+/// The unattended window a configuration naming none takes.
+const fn default_unattended_window_s() -> u64 {
+    DEFAULT_UNATTENDED_WINDOW_S
 }
 
 /// The observation interval a configuration naming none takes.
@@ -399,6 +466,8 @@ impl Default for SupervisorSection {
             skill_path: None,
             prompt_template_path: None,
             observation_interval_s: DEFAULT_OBSERVATION_INTERVAL_S,
+            printer_poll_s: DEFAULT_PRINTER_POLL_S,
+            unattended_window_s: DEFAULT_UNATTENDED_WINDOW_S,
         }
     }
 }
@@ -492,6 +561,27 @@ pub struct ObicoSection {
     /// and the supervisor resumed is not acknowledged to `Obico`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    /// The failure detector's own service — `Obico`'s `ml_api` — as an `http`
+    /// or `https` address, whose unauthenticated `/hc/` is asked during every
+    /// print whether detection is up. Left out, nothing checks it and its
+    /// health reads `unchecked`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ml_api_url: Option<String>,
+}
+
+/// How a camera frame is judged, as written down.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct VisionSection {
+    /// The grey-level standard deviation at or below which a frame is blank
+    /// and is fetched again: from 1 to 128. Left out, 36.5.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blank_frame_max_stddev: Option<f64>,
 }
 
 impl core::fmt::Debug for ObicoSection {
@@ -503,6 +593,7 @@ impl core::fmt::Debug for ObicoSection {
                 "access_token",
                 &self.access_token.as_ref().map(|_| REDACTED),
             )
+            .field("ml_api_url", &self.ml_api_url)
             .finish()
     }
 }
@@ -577,6 +668,9 @@ pub struct ConfigFile {
     /// Where `Obico`'s own API answers.
     #[serde(default)]
     pub obico: ObicoSection,
+    /// How a camera frame is judged.
+    #[serde(default)]
+    pub vision: VisionSection,
     /// How spools are checked before a print.
     #[serde(default)]
     pub spools: SpoolsSection,
@@ -879,6 +973,16 @@ pub struct ServerConfig {
     pub prompt_template_path: Option<PathBuf>,
     /// How often every active print is given a periodic observation.
     pub observation_interval: core::time::Duration,
+    /// How often the printer watch reads the machine.
+    pub printer_poll: core::time::Duration,
+    /// How long after an unfinished ending the printer acting on its own is
+    /// recorded.
+    pub unattended_window: core::time::Duration,
+    /// The grey-level spread at or below which a camera frame is blank.
+    pub blank_frame_max_stddev: BlankFrameBound,
+    /// Where the failure detector's own service answers its health check,
+    /// when configured.
+    pub obico_ml_api_url: Option<WebAddress>,
     /// How long the ingress may take to answer.
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
@@ -955,6 +1059,23 @@ impl ServerConfig {
             file.supervisor.prompt_template_path.as_deref(),
         )?;
         let observation_interval = observation_interval(file.supervisor.observation_interval_s)?;
+        let printer_poll = seconds_within(
+            ConfigField::PrinterPollS,
+            file.supervisor.printer_poll_s,
+            PRINTER_POLL_RANGE_S,
+        )?;
+        let unattended_window = seconds_within(
+            ConfigField::UnattendedWindowS,
+            file.supervisor.unattended_window_s,
+            UNATTENDED_WINDOW_RANGE_S,
+        )?;
+        let blank_frame_max_stddev = blank_frame_bound(file.vision.blank_frame_max_stddev)?;
+        let obico_ml_api_url = file
+            .obico
+            .ml_api_url
+            .as_deref()
+            .map(|url| web_address(ConfigField::ObicoMlApiUrl, url))
+            .transpose()?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
         let ingress_shared_secret = SharedSecret::new(&required(
             ConfigField::IngressSharedSecret,
@@ -995,6 +1116,10 @@ impl ServerConfig {
             skill_path,
             prompt_template_path,
             observation_interval,
+            printer_poll,
+            unattended_window,
+            blank_frame_max_stddev,
+            obico_ml_api_url,
             ingress_answer_bound,
             ingress_shared_secret,
             api_credential,
@@ -1372,6 +1497,37 @@ fn observation_interval(seconds: u64) -> Result<core::time::Duration, ConfigErro
         ));
     }
     Ok(core::time::Duration::from_secs(seconds))
+}
+
+/// A number of seconds, refused outside the range its field admits.
+fn seconds_within(
+    field: ConfigField,
+    seconds: u64,
+    range: (u64, u64),
+) -> Result<core::time::Duration, ConfigError> {
+    let (least, most) = range;
+    if !(least..=most).contains(&seconds) {
+        return Err(ConfigError::about(
+            field,
+            format!("{seconds} seconds is outside the {least} to {most} seconds it admits"),
+        ));
+    }
+    Ok(core::time::Duration::from_secs(seconds))
+}
+
+/// The blank-frame bound, refused outside the range it admits.
+fn blank_frame_bound(written: Option<f64>) -> Result<BlankFrameBound, ConfigError> {
+    written.map_or(Ok(BlankFrameBound::DEFAULT), |bound| {
+        BlankFrameBound::new(bound).map_err(|refused| {
+            ConfigError::about(
+                ConfigField::VisionBlankFrameMaxStddev,
+                format!(
+                    "{refused} is outside the {MIN_BLANK_FRAME_MAX_STDDEV} to \
+                     {MAX_BLANK_FRAME_MAX_STDDEV} grey levels it admits"
+                ),
+            )
+        })
+    })
 }
 
 /// The answer bound, refused when it is not one this program admits.

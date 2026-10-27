@@ -122,6 +122,12 @@ fn unacceptable(
             "supervisor.observation_interval_s",
             toml::Value::Integer(0),
         ),
+        ConfigField::ObicoUrl
+        | ConfigField::ObicoAccessToken
+        | ConfigField::PrinterPollS
+        | ConfigField::UnattendedWindowS
+        | ConfigField::ObicoMlApiUrl
+        | ConfigField::VisionBlankFrameMaxStddev => unacceptable_watch(field, &mut document),
         ConfigField::IngressAnswerBoundMs => set(
             &mut document,
             "ingress.answer_bound_ms",
@@ -157,24 +163,64 @@ fn unacceptable(
                 toml::Value::String("file:///var/lib/camera/frame.jpg".to_owned()),
             )])),
         ),
-        // Given with its token, as it must be, and not a web address.
-        ConfigField::ObicoUrl => set(
-            &mut document,
-            "obico",
-            obico(Some("ftp://127.0.0.1:3334"), Some(OBICO_TOKEN)),
-        ),
-        // The address alone: the token it needs is missing.
-        ConfigField::ObicoAccessToken => set(
-            &mut document,
-            "obico",
-            obico(Some("http://127.0.0.1:3334"), None),
-        ),
         ConfigField::SpoolsPreflight
         | ConfigField::SpoolsBufferPercent
         | ConfigField::SpoolsBufferMinG
         | ConfigField::SpoolsAnalysisWaitSeconds => unacceptable_spools(field, &mut document),
     }
     document
+}
+
+/// `Obico`'s and the printer watch's fields, each made unacceptable: an
+/// address with its token that is no web address and one missing its token, a
+/// poll and a window outside the range each admits, a detector address that is
+/// no web address, and a blank-frame bound below the one grey level it admits.
+fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
+    match field {
+        // Given with its token, as it must be, and not a web address.
+        ConfigField::ObicoUrl => set(
+            document,
+            "obico",
+            obico(Some("ftp://127.0.0.1:3334"), Some(OBICO_TOKEN)),
+        ),
+        // The address alone: the token it needs is missing.
+        ConfigField::ObicoAccessToken => set(
+            document,
+            "obico",
+            obico(Some("http://127.0.0.1:3334"), None),
+        ),
+        // A poll faster than the five seconds the watch admits.
+        ConfigField::PrinterPollS => set(
+            document,
+            "supervisor.printer_poll_s",
+            toml::Value::Integer(4),
+        ),
+        // A window longer than the day it admits.
+        ConfigField::UnattendedWindowS => set(
+            document,
+            "supervisor.unattended_window_s",
+            toml::Value::Integer(86_401),
+        ),
+        // Optional: an address that is not a web address at all.
+        ConfigField::ObicoMlApiUrl => set(
+            document,
+            "obico",
+            toml::Value::Table(toml::Table::from_iter([(
+                "ml_api_url".to_owned(),
+                toml::Value::String("ftp://127.0.0.1:3333".to_owned()),
+            )])),
+        ),
+        // A bound below the one grey level it admits.
+        ConfigField::VisionBlankFrameMaxStddev => set(
+            document,
+            "vision",
+            toml::Value::Table(toml::Table::from_iter([(
+                "blank_frame_max_stddev".to_owned(),
+                toml::Value::Float(0.5),
+            )])),
+        ),
+        _ => unreachable!("{field} is not one of the watch's fields"),
+    }
 }
 
 /// The `[spools]` key one field is, made unacceptable: a mode outside the

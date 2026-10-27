@@ -33,7 +33,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, Literal, NewType, TypedDict
 
 from answers import from_labelled, labelled, machine
 from real_prints import (
@@ -102,6 +102,27 @@ BED_C = 60.0
 PAUSED_NOZZLE_C = 184.17
 # An idle printer waiting for a print, heaters off.
 IDLE_C = 24.0
+
+
+class UncheckedDetector(TypedDict):
+    """`DetectorHealth`'s `unchecked` arm, which carries no instant.
+
+    The composed answers carrying it are held to the published schema, which
+    is what keeps this copy of the arm from drifting.
+    """
+
+    status: Literal["unchecked"]
+    since: None
+
+
+def _unchecked_detector() -> UncheckedDetector:
+    """No detector health check configured.
+
+    The server answers this when `obico.ml_api_url` is unset: every case here
+    has the detector's alerts but no health route to read.
+    """
+    return {"status": "unchecked", "since": None}
+
 
 # How long a look says it waited, which a fixed answer cannot take from the
 # command it answers.
@@ -632,6 +653,7 @@ class _Composer:
             "detector_warned": self.scenario.detector_warned,
             "detector_paused_the_print": self.scenario.detector_paused_the_print,
             "arrived_while_busy": [],
+            "noticed": None,
         }
 
     def earlier_events(self, event: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -667,6 +689,7 @@ class _Composer:
         image = self.image(self.scenario.event_image)
         context: dict[str, Any] = {
             "bounds": {"allowed": self.bounds()},
+            "detector": _unchecked_detector(),
             "interventions": [],
             "job": _job(reading, self.file_name),
             "latest_image": {"id": image.id, "sha256": image.sha256},
@@ -913,6 +936,7 @@ def _answers(
         "prints": [{"active": composer.print_id, "prints": [composer.print_record()]}],
         "status": [
             {
+                "detector": _unchecked_detector(),
                 "interventions": [],
                 "job": {
                     **context["context"].get("job", _job(first, composer.file_name)),

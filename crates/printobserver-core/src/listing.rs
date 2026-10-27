@@ -435,6 +435,7 @@ impl Supervisor {
         observed: &ObservedJob,
     ) -> Result<(), CoreError> {
         self.note_seen_running(print.id);
+        self.note_job_running();
         self.record_position_from(print, &observed.job, observed.observed_at)
             .await?;
         Ok(())

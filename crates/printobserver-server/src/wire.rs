@@ -10,13 +10,13 @@
 
 use std::path::PathBuf;
 
-use printobserver_core::PrintContext;
 use printobserver_core::store::ImageLookup;
 use printobserver_core::{
     AcknowledgementDisposition, ActionKind, ActionRecord, Actor, ImageRecord, Intervention,
     JobManifest, ManifestNarrowing, PendingCharge, PolicyDecision, Preflight, PrintOutcome,
     PrintRecord, SpoolCommand, SpoolId, SpoolRecord, SpoolTrust,
 };
+use printobserver_core::{DetectorHealth, PrintContext};
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
@@ -484,6 +484,8 @@ pub struct StatusAnswer {
     pub session: Option<SupervisionSession>,
     /// The bounded interventions still in force.
     pub interventions: Vec<Intervention>,
+    /// The failure detector's health, and since when it has been so.
+    pub detector: DetectorHealth,
 }
 
 /// What a context read answers.

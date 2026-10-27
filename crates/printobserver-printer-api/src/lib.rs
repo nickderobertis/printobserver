@@ -25,6 +25,20 @@
 //! [`PrinterPort::file_facts`] and [`PrinterPort::extruded_to`] — take. Every value a method takes is already
 //! bounded by the time it arrives: policy has ruled on it before it gets here.
 //!
+//! [`PrinterPort::send_command`] is no exception to that: what it takes is a
+//! [`PrinterCommand`], a closed vocabulary each adapter renders to its own
+//! line, so the set of lines that can reach a machine through it is the set of
+//! variants declared here and nothing a caller writes.
+//!
+//! # What the printer pushes
+//!
+//! [`PrinterPort::push_events`] opens the printer's own push channel and
+//! answers what it pushes ([`push`]): a reset, an error it reported, and each
+//! line of its terminal. Those are the facts a poll of the printer's state
+//! cannot see — a reset while idle changes nothing a read reports — and the
+//! stream ends when the channel drops, so a reader knows when it is reading
+//! nothing.
+//!
 //! # Why the methods answer a boxed future
 //!
 //! Every method is asynchronous, and the trait is dyn-compatible and shareable
@@ -35,6 +49,7 @@
 
 pub mod adjustable;
 pub mod file;
+pub mod push;
 pub mod ranges;
 pub mod snapshot;
 pub mod state;
@@ -46,12 +61,13 @@ use printobserver_types::FileName;
 
 pub use adjustable::{Adjustable, AdjustableError};
 pub use file::{FileFacts, FilePrint, ToolFilament};
+pub use push::{BoxStream, PrinterCommand, PrinterErrorReason, PrinterPush, Stream};
 pub use ranges::{
     COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
     HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, RANGED_FIELDS,
     RangedField,
 };
-pub use snapshot::{HeaterSnapshot, JobSnapshot, PrinterSnapshot};
+pub use snapshot::{ErrorSource, HeaterSnapshot, JobError, JobSnapshot, PrinterSnapshot};
 pub use state::PrinterState;
 
 /// A future this port's methods answer with, in the one shape a trait object
@@ -204,9 +220,30 @@ pub trait PrinterPort: Send + Sync {
         let _ = (file_name, position_bytes);
         Box::pin(async { Err(not_supported("extruded_to")) })
     }
+
+    /// Open the printer's push channel, answering what it pushes from now on.
+    ///
+    /// The stream ends when the channel drops; opening it again is how a
+    /// reader reconnects. A printer that cannot push is refused with status
+    /// 501, which is what an implementation that does not override this
+    /// answers.
+    fn push_events(&self) -> BoxFuture<'_, Result<BoxStream<'static, PrinterPush>, PrinterError>> {
+        Box::pin(async { Err(not_supported("push_events")) })
+    }
+
+    /// Send one command of the closed vocabulary [`PrinterCommand`] names,
+    /// rendered by the implementation to its own line.
+    ///
+    /// What the printer answers arrives, when it answers anything, on the push
+    /// channel. A printer that cannot take one is refused with status 501,
+    /// which is what an implementation that does not override this answers.
+    fn send_command(&self, command: PrinterCommand) -> BoxFuture<'_, Result<(), PrinterError>> {
+        let _ = command;
+        Box::pin(async { Err(not_supported("send_command")) })
+    }
 }
 
-/// What a printer that does not implement one of the file reads answers.
+/// What a printer that does not implement one of the optional methods answers.
 fn not_supported(method: &str) -> PrinterError {
     PrinterError::Refused {
         status: 501,
