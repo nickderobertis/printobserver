@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "Footprint": {
+      "additionalProperties": false,
+      "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+      "properties": {
+        "max_x": {
+          "description": "The largest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_y": {
+          "description": "The largest Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_x": {
+          "description": "The smallest X.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_y": {
+          "description": "The smallest Y.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_x",
+        "min_y",
+        "max_x",
+        "max_y"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a file printed up to a byte position in it: the highest Z any\nextruding move reached, and where in XY it laid material.",
+  "properties": {
+    "footprint": {
+      "$ref": "#/$defs/Footprint",
+      "description": "The XY rectangle of every extruding move."
+    },
+    "tallest_mm": {
+      "description": "The highest Z an extruding move started or ended at, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "tallest_mm",
+    "footprint"
+  ],
+  "title": "PrintedExtent",
+  "type": "object"
+}

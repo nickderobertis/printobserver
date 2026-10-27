@@ -93,7 +93,7 @@ test("a surface on its own makes no request", () => {
 function reaching(surface: GeneratedSurface): Promise<unknown> {
   class Reaching extends GeneratedSurface {
     ask(): Promise<unknown> {
-      return this.call("GET", "/v1/anything", [], undefined);
+      return this.call("GET", "/v1/anything", [], undefined, "PrintsAnswer");
     }
   }
   return Object.assign(new Reaching(surface.actor)).ask();

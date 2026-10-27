@@ -112,16 +112,18 @@ struct Script {
     connection: String,
     /// The job.
     job: JobScript,
-    /// Tool 0's target.
-    tool_target: f64,
+    /// Each tool's target, tool 0 first: as many tools as the printer reports.
+    tool_targets: Vec<f64>,
     /// The bed's target.
     bed_target: f64,
     /// Where the head is.
     position: [f64; 3],
     /// Whether an `M114` is answered on the push socket.
     answers_position: bool,
-    /// Whether the command endpoint refuses every line.
-    refuses_commands: bool,
+    /// Which endpoints fail every request they are sent.
+    failing: Failing,
+    /// The status the bed endpoint refuses every target with, when it does.
+    bed_refusal: Option<u16>,
     /// How the push socket's upgrade is answered.
     upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
@@ -129,6 +131,8 @@ struct Script {
     commands: Vec<(String, bool)>,
     /// Every job command received.
     job_commands: Vec<String>,
+    /// Every print-head request received, as its body.
+    printhead: Vec<Value>,
     /// Every request received, as its method and path.
     requests: Vec<String>,
     /// The key it admits.
@@ -148,6 +152,17 @@ struct Script {
     /// The file whose last print the instance records as a success, its size
     /// and when that print ended, in seconds since the epoch.
     succeeded: Option<(String, i64, f64)>,
+}
+
+/// The endpoints a script has made fail every request they are sent.
+#[derive(Debug, Default)]
+struct Failing {
+    /// The command endpoint, refusing every line.
+    commands: bool,
+    /// The print-head endpoint, refusing every move and home.
+    printhead: bool,
+    /// The printer's state, failing every read of it at the instance.
+    printer_reads: bool,
 }
 
 /// A scripted `OctoPrint` on a loopback socket.
@@ -186,14 +201,16 @@ impl ScriptedOctoPrint {
         let script = Arc::new(Mutex::new(Script {
             connection: "Operational".to_owned(),
             job: JobScript::idle(),
-            tool_target: 0.0,
+            tool_targets: vec![0.0],
             bed_target: 0.0,
             position: [0.0; 3],
             answers_position: true,
-            refuses_commands: false,
+            failing: Failing::default(),
+            bed_refusal: None,
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
+            printhead: Vec::new(),
             requests: Vec::new(),
             api_key: minted("octoprint-key"),
             session: minted("octoprint-session"),
@@ -285,11 +302,42 @@ impl ScriptedOctoPrint {
             .count()
     }
 
-    /// Report these heater targets from now on.
+    /// Report these heater targets from now on: `tool_c` for every tool.
     pub fn targets(&self, tool_c: f64, bed_c: f64) {
         let mut held = self.held();
-        held.tool_target = tool_c;
+        held.tool_targets.fill(tool_c);
         held.bed_target = bed_c;
+    }
+
+    /// Report this many tools from now on, each targeting `tool_c`: none is a
+    /// printer whose read names no tool at all.
+    pub fn has_tools(&self, count: usize, tool_c: f64) {
+        self.held().tool_targets = vec![tool_c; count];
+    }
+
+    /// Refuse every bed target from now on, as a printer whose bed heater is
+    /// faulted does, or take them again.
+    pub fn refuses_bed_targets(&self, refuses: bool) {
+        self.held().bed_refusal = refuses.then_some(409);
+    }
+
+    /// Answer every bed target with `status` from now on: `501` is an
+    /// instance that implements no bed target at all.
+    pub fn answers_bed_targets_with(&self, status: u16) {
+        self.held().bed_refusal = Some(status);
+    }
+
+    /// Fail every read of the printer's state from now on with a `500`, as an
+    /// instance whose own printer plugin has crashed does, or answer them
+    /// again.
+    pub fn fails_printer_reads(&self, fails: bool) {
+        self.held().failing.printer_reads = fails;
+    }
+
+    /// Refuse every print-head move and home from now on, as a machine whose
+    /// endstop fails does, or take them again.
+    pub fn refuses_printhead(&self, refuses: bool) {
+        self.held().failing.printhead = refuses;
     }
 
     /// Put the head here.
@@ -300,7 +348,7 @@ impl ScriptedOctoPrint {
     /// Refuse every line sent through the command endpoint from now on, or
     /// take them again.
     pub fn refuses_commands(&self, refuses: bool) {
-        self.held().refuses_commands = refuses;
+        self.held().failing.commands = refuses;
     }
 
     /// Answer `M114` on the push socket, or not.
@@ -415,6 +463,58 @@ impl ScriptedOctoPrint {
     #[must_use]
     pub fn job_commands(&self) -> Vec<String> {
         self.held().job_commands.clone()
+    }
+
+    /// Every print-head request received — each move and home — as its body.
+    #[must_use]
+    pub fn printhead_requests(&self) -> Vec<Value> {
+        self.held().printhead.clone()
+    }
+
+    /// Where the head is now.
+    #[must_use]
+    pub fn head(&self) -> [f64; 3] {
+        self.held().position
+    }
+
+    /// Tool 0's and the bed's targets now: tool 0's is zero when it reports
+    /// no tool.
+    #[must_use]
+    pub fn reported_targets(&self) -> (f64, f64) {
+        let held = self.held();
+        (
+            held.tool_targets.first().copied().unwrap_or_default(),
+            held.bed_target,
+        )
+    }
+
+    /// How many tool-target requests it has received, whichever tools each
+    /// named: a request for a tool it does not report changes nothing a read
+    /// shows, and is still a request.
+    #[must_use]
+    pub fn tool_target_requests(&self) -> usize {
+        self.held()
+            .requests
+            .iter()
+            .filter(|request| request.as_str() == "POST /api/printer/tool")
+            .count()
+    }
+
+    /// How many reads of the job it has received: the read a watch takes the
+    /// printer's state from.
+    #[must_use]
+    pub fn job_reads(&self) -> usize {
+        self.held()
+            .requests
+            .iter()
+            .filter(|request| request.as_str() == "GET /api/job")
+            .count()
+    }
+
+    /// Every tool's target now, tool 0 first.
+    #[must_use]
+    pub fn tool_targets(&self) -> Vec<f64> {
+        self.held().tool_targets.clone()
     }
 
     /// Every request received, as `METHOD path`.
@@ -572,6 +672,13 @@ fn not_operational(connection: &str) -> bool {
     connection.starts_with("Closed") || connection.starts_with("Offline") || connection == "Error"
 }
 
+/// Whether a connection state is one `OctoPrint` sets no state flag for: a
+/// serial connection still being opened, which is neither operational nor
+/// closed.
+fn connecting(connection: &str) -> bool {
+    connection.starts_with("Connecting") || connection.starts_with("Detecting")
+}
+
 /// The status and body one REST request is answered with.
 fn answer(
     request: &Request,
@@ -594,6 +701,9 @@ fn answer(
             200,
             json!({ "current": { "state": held.connection, "port": "VIRTUAL" } }).to_string(),
         ),
+        ("GET", path) if path.starts_with("/api/printer") && held.failing.printer_reads => {
+            (500, r#"{"error":"Internal server error"}"#.to_owned())
+        }
         ("GET", path) if path.starts_with("/api/printer") => printer_body(&held),
         ("GET", "/api/job") => (200, job_body(&held.job).to_string()),
         ("POST", "/api/job") => {
@@ -607,40 +717,41 @@ fn answer(
             held.job_commands.push(command);
             (204, String::new())
         }
-        ("POST", "/api/printer/command") if held.refuses_commands => {
+        ("POST", "/api/printer/command") if held.failing.commands => {
             (409, r#"{"error":"Printer is not operational"}"#.to_owned())
         }
-        ("POST", "/api/printer/command") => {
-            let printing = held.job.state == "Printing";
-            let lines: Vec<String> = body["commands"]
-                .as_array()
-                .map(|lines| {
-                    lines
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default();
-            let answer = lines.iter().any(|line| line == "M114") && held.answers_position;
-            let [x, y, z] = held.position;
-            let reply = held.position_reply.clone().unwrap_or_else(|| {
-                format!("Recv: X:{x:.2} Y:{y:.2} Z:{z:.2} E:0.00 Count X:0 Y:0 Z:0")
-            });
-            for line in lines {
-                held.commands.push((line, printing));
-            }
-            drop(held);
-            if answer {
-                broadcast_to(sockets, &current_with(&["Send: M114", &reply]));
+        ("POST", "/api/printer/command") => commanded(held, sockets, &body),
+        // A move or a home, which a printing job refuses, as `OctoPrint`
+        // does.
+        ("POST", "/api/printer/printhead") if body["command"] == "feedrate" => {
+            held.printhead.push(body);
+            (204, String::new())
+        }
+        ("POST", "/api/printer/printhead") if held.failing.printhead => (
+            400,
+            r#"{"error":"Homing failed: endstop not hit"}"#.to_owned(),
+        ),
+        ("POST", "/api/printer/printhead") if held.job.state == "Printing" => (
+            409,
+            r#"{"error":"Printer is currently printing"}"#.to_owned(),
+        ),
+        ("POST", "/api/printer/printhead") => moved(&mut held, body),
+        ("POST", "/api/printer/tool") => {
+            // A tool the printer does not report is taken and changes
+            // nothing, as `OctoPrint` takes it.
+            let targets = held.tool_targets.len();
+            for (tool, slot) in (0..targets).zip(held.tool_targets.iter_mut()) {
+                if let Some(target) = body["targets"][format!("tool{tool}")].as_f64() {
+                    *slot = target;
+                }
             }
             (204, String::new())
         }
-        ("POST", "/api/printer/tool") => {
-            if let Some(target) = body["targets"]["tool0"].as_f64() {
-                held.tool_target = target;
-            }
-            (204, String::new())
+        ("POST", "/api/printer/bed") if held.bed_refusal == Some(501) => {
+            (501, r#"{"error":"Not implemented"}"#.to_owned())
+        }
+        ("POST", "/api/printer/bed") if held.bed_refusal.is_some() => {
+            (409, r#"{"error":"Bed heater is faulted"}"#.to_owned())
         }
         ("POST", "/api/printer/bed") => {
             if let Some(target) = body["target"].as_f64() {
@@ -676,6 +787,70 @@ fn answer(
     }
 }
 
+/// Lines sent through the command endpoint, each recorded with whether a job
+/// was printing, and an `M114` answered on the push socket.
+fn commanded(
+    mut held: MutexGuard<'_, Script>,
+    sockets: &Mutex<Vec<TcpStream>>,
+    body: &Value,
+) -> (u16, String) {
+    let printing = held.job.state == "Printing";
+    let lines: Vec<String> = body["commands"]
+        .as_array()
+        .map(|lines| {
+            lines
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let answer = lines.iter().any(|line| line == "M114") && held.answers_position;
+    let [x, y, z] = held.position;
+    let reply = held
+        .position_reply
+        .clone()
+        .unwrap_or_else(|| format!("Recv: X:{x:.2} Y:{y:.2} Z:{z:.2} E:0.00 Count X:0 Y:0 Z:0"));
+    for line in lines {
+        held.commands.push((line, printing));
+    }
+    drop(held);
+    if answer {
+        broadcast_to(sockets, &current_with(&["Send: M114", &reply]));
+    }
+    (204, String::new())
+}
+
+/// One move or home of the print head: a jog moves Z from where it is and X
+/// and Y to a place when it says so, and a home puts the axes it names at zero.
+fn moved(held: &mut Script, body: Value) -> (u16, String) {
+    let mut at = held.position;
+    match body["command"].as_str() {
+        Some("jog") => {
+            let absolute = body["absolute"].as_bool().unwrap_or(false);
+            for (index, axis) in ["x", "y", "z"].iter().enumerate() {
+                if let Some(value) = body[*axis].as_f64() {
+                    at[index] = if absolute { value } else { at[index] + value };
+                }
+            }
+        }
+        Some("home") => {
+            for (index, axis) in ["x", "y", "z"].iter().enumerate() {
+                let named = body["axes"]
+                    .as_array()
+                    .is_some_and(|axes| axes.iter().any(|named| named == axis));
+                if named {
+                    at[index] = 0.0;
+                }
+            }
+        }
+        _ => return (400, r#"{"error":"Unknown command"}"#.to_owned()),
+    }
+    held.position = at;
+    held.printhead.push(body);
+    (204, String::new())
+}
+
 /// What `GET /api/printer` answers for what the stand-in holds: `409` for a
 /// printer that is not operational, as `OctoPrint` answers it.
 fn printer_body(held: &Script) -> (u16, String) {
@@ -689,7 +864,7 @@ fn printer_body(held: &Script) -> (u16, String) {
             "state": {
                 "text": held.connection,
                 "flags": {
-                    "operational": true,
+                    "operational": !connecting(&held.connection),
                     "printing": printing,
                     "paused": held.job.state == "Paused",
                     "cancelling": held.job.state == "Cancelling",
@@ -697,13 +872,26 @@ fn printer_body(held: &Script) -> (u16, String) {
                     "closedOrError": false,
                 },
             },
-            "temperature": {
-                "tool0": { "actual": 25.0, "target": held.tool_target, "offset": 0 },
-                "bed": { "actual": 25.0, "target": held.bed_target, "offset": 0 },
-            },
+            "temperature": temperature_body(held),
         })
         .to_string(),
     )
+}
+
+/// What `GET /api/printer` answers for the heaters: each tool, then the bed.
+fn temperature_body(held: &Script) -> Value {
+    let mut heaters = serde_json::Map::new();
+    for (tool, target) in held.tool_targets.iter().enumerate() {
+        heaters.insert(
+            format!("tool{tool}"),
+            json!({ "actual": 25.0, "target": target, "offset": 0 }),
+        );
+    }
+    heaters.insert(
+        "bed".to_owned(),
+        json!({ "actual": 25.0, "target": held.bed_target, "offset": 0 }),
+    );
+    Value::Object(heaters)
 }
 
 /// What `GET /api/job` answers for one job.

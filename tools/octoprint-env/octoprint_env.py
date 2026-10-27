@@ -49,7 +49,7 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any, TypedDict
+from typing import IO, Any, NamedTuple, TypedDict
 
 import yaml
 
@@ -80,6 +80,49 @@ HEATER_REPAIR = (
     b"                    factor = 10\n"
     b"                else:\n"
     b"                    factor = remaining\n"
+)
+
+# The same module queues every move for a thread of its own to carry out, and
+# switches between absolute and relative positioning the moment `G90` or `G91`
+# arrives. So `G91`, `G0 Z-5`, `G90` — what a relative jog sends — moves Z to -5
+# rather than 5 below where it was whenever the move is carried out after the
+# `G90` that follows it, which a loaded host makes likely. Firmware applies a
+# mode to the moves after it and to none before, so the install has each mode
+# change wait for the moves already queued first.
+MODE_DEFECT = (
+    b"    def _gcode_G90(self, data: str) -> None:\n"
+    b"        self._relative = False\n"
+    b"\n"
+    b"    # noinspection PyUnusedLocal\n"
+    b"    def _gcode_G91(self, data: str) -> None:\n"
+    b"        self._relative = True\n"
+)
+MODE_REPAIR = (
+    b"    def _gcode_G90(self, data: str) -> None:\n"
+    b"        self.buffered.join()\n"
+    b"        self._relative = False\n"
+    b"\n"
+    b"    # noinspection PyUnusedLocal\n"
+    b"    def _gcode_G91(self, data: str) -> None:\n"
+    b"        self.buffered.join()\n"
+    b"        self._relative = True\n"
+)
+
+
+class VirtualPrinterRepair(NamedTuple):
+    """One defect the install repairs in the virtual printer."""
+
+    #: What it is called in what the install says.
+    name: str
+    #: The source the pinned release ships.
+    defect: bytes
+    #: The source the install writes in its place.
+    repair: bytes
+
+
+VIRTUAL_PRINTER_REPAIRS = (
+    VirtualPrinterRepair("heater", HEATER_DEFECT, HEATER_REPAIR),
+    VirtualPrinterRepair("positioning-mode", MODE_DEFECT, MODE_REPAIR),
 )
 
 # The account the provisioned API key belongs to. OctoPrint's global API key is
@@ -246,6 +289,11 @@ FAILURE_CLASSES: dict[str, str] = {
         "make the directory the message names writable by this user, or name another "
         "with `--into`, and run `retain` again before the bring-down: the instance's "
         "logs are still where it wrote them until then"
+    ),
+    "terminal-refused": (
+        "run `up` first and name the line with `--line`: `terminal` types one line at an "
+        "instance that is already answering, and `connect` reconnects its printer; the "
+        "instance's own answer says why it refused either"
     ),
     "upload-refused": (
         "run `up` first and name the file with `--file`: `upload` puts a file on an "
@@ -478,7 +526,11 @@ def _install_octoprint(instance: Instance) -> None:
 
 
 def _repair_virtual_printer(instance: Instance) -> None:
-    """Replace the virtual printer's heater simulation with one that cannot raise.
+    """Repair each defect `VIRTUAL_PRINTER_REPAIRS` names in the virtual printer.
+
+    Its heater simulation can raise, and its positioning-mode change can reach
+    a move queued before it; each is repaired once, and a module already
+    carrying a repair keeps it.
 
     The repaired module is written beside the installed one and renamed over
     it, never edited in place. The environment is installed by copy, so an edit
@@ -488,7 +540,7 @@ def _repair_virtual_printer(instance: Instance) -> None:
 
     Raises:
         RuntimeError: If the module is not where the pinned release keeps it,
-            or carries neither the defect nor its repair.
+            or carries neither one of the defects nor its repair.
     """
     found = [
         path
@@ -502,19 +554,26 @@ def _repair_virtual_printer(instance: Instance) -> None:
         )
         raise RuntimeError(message)
     module = found[0]
-    source = module.read_bytes()
-    if HEATER_REPAIR in source:
+    original = module.read_bytes()
+    source = original
+    repaired_names: list[str] = []
+    for name, defect, repair in VIRTUAL_PRINTER_REPAIRS:
+        if repair in source:
+            continue
+        if source.count(defect) != 1:
+            message = (
+                f"{module} carries neither the {name} defect {OCTOPRINT_REQUIREMENT} ships "
+                f"nor its repair; re-read the virtual printer before changing the pin"
+            )
+            raise RuntimeError(message)
+        source = source.replace(defect, repair)
+        repaired_names.append(name)
+    if source == original:
         return
-    if source.count(HEATER_DEFECT) != 1:
-        message = (
-            f"{module} carries neither the heater defect {OCTOPRINT_REQUIREMENT} ships "
-            f"nor its repair; re-read `_simulateTemps` before changing the pin"
-        )
-        raise RuntimeError(message)
     repaired = module.with_name(module.name + ".repaired")
-    repaired.write_bytes(source.replace(HEATER_DEFECT, HEATER_REPAIR))
+    repaired.write_bytes(source)
     repaired.replace(module)
-    note(f"repaired the virtual printer's heater simulation in {module}")
+    note(f"repaired the virtual printer ({' and '.join(repaired_names)}) in {module}")
 
 
 def managed_config(connection: Connection) -> dict[str, Any]:
@@ -1085,6 +1144,50 @@ def upload(instance: Instance, gcode: Path, as_name: str | None) -> Uploaded:
     return Uploaded(file_name=name, origin="local")
 
 
+class Typed(TypedDict):
+    """What `terminal` and `connect` answer: what was asked of the instance."""
+
+    sent: str
+
+
+def at_the_terminal(instance: Instance, line: str | None) -> Typed:
+    """Type one line at the running instance's terminal, or reconnect its printer.
+
+    With no line it reconnects. What a journey needs to cause what the virtual
+    printer only does when told to — a serial drop, a fatal error, a reset — and
+    to bring a printer that went offline back. One request, answered by the
+    instance. The `printobserver` crate's integration journey
+    `every_recovery_command_is_proven_after_an_interrupted_print` drives both
+    against the real virtual printer: it drops the serial connection with a
+    line, and reconnects with `connect` until the printer reads operational.
+
+    Raises:
+        StartupError: If no instance is running, or it refused the request.
+    """
+    record = _already_running(instance)
+    if record is None:
+        raise StartupError(
+            "terminal-refused", f"no instance under {instance.state_dir} is answering its API"
+        )
+    path, asked = (
+        ("/api/printer/command", {"commands": [line]})
+        if line is not None
+        else ("/api/connection", {"command": "connect", "autoconnect": True})
+    )
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+    status, answer = call(
+        record_url(record),
+        api_key(instance),
+        path,
+        method="POST",
+        body=json.dumps(asked).encode("utf-8"),
+        content_type="application/json",
+    )
+    if status != 204:
+        raise StartupError("terminal-refused", f"{path} refused {asked} with {status}: {answer}")
+    return Typed(sent=line if line is not None else "connect")
+
+
 def stop(instance: Instance) -> dict[str, Any]:
     """Stop whatever this state directory started, leaving no process behind."""
     if not instance.record.is_file():
@@ -1505,7 +1608,13 @@ def argument_parser() -> argparse.ArgumentParser:
     """The command surface, whose defaults every recipe and caller shares."""
     parser = argparse.ArgumentParser(prog="octoprint-env", description=__doc__)
     parser.add_argument(
-        "command", choices=("install", "up", "down", "upload", "diagnostics", "retain")
+        "command",
+        choices=("install", "up", "down", "upload", "terminal", "connect", "diagnostics", "retain"),
+    )
+    parser.add_argument(
+        "--line",
+        default=None,
+        help="the one line `terminal` types at the running instance's terminal",
     )
     parser.add_argument(
         "--supervisor-status",
@@ -1612,6 +1721,14 @@ def main(argv: list[str] | None = None) -> int:
                 # printed is only where to find it.
                 print(retained_line(retain(instance, Path(arguments.into))))
                 return 0
+            case "terminal":
+                if not arguments.line:
+                    raise StartupError(
+                        "terminal-refused", "`terminal` needs the line, named with `--line`"
+                    )
+                answer = at_the_terminal(instance, arguments.line)
+            case "connect":
+                answer = at_the_terminal(instance, None)
             case "upload":
                 if not arguments.file:
                     raise StartupError(

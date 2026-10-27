@@ -17,10 +17,13 @@ import type {
   ActionAnswer,
   Actor,
   Range,
+  RecoveryAnswer,
+  RecoveryRejection,
   RejectionReason,
   SpoolCommandAnswer,
 } from "./contract.ts";
 import { GeneratedClient } from "./contract.ts";
+import { conforms } from "./shapes.ts";
 import { PrinterRefused, Refused, Rejected, Unreachable, Unreadable } from "./surface.ts";
 
 /** The status a rejected action is answered under. */
@@ -78,6 +81,7 @@ export class Client extends GeneratedClient {
     target: string,
     asked: Array<[string, string]>,
     sending: Record<string, unknown> | undefined,
+    answer: string,
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: MEDIA_TYPE };
     if (sending !== undefined) {
@@ -100,7 +104,12 @@ export class Client extends GeneratedClient {
     const said = await answered.text();
 
     if (answered.status === SUCCESS_STATUS) {
-      return document<T>(answered.status, said);
+      const parsed: unknown = document<unknown>(answered.status, said);
+      if (!conforms(parsed, answer)) {
+        throw new Unreadable(answered.status, `the supervisor answered no ${answer}`);
+      }
+      // Held above to the type the contracts declare for this answer.
+      return parsed as T;
     }
     if (answered.status === REJECTED_STATUS) {
       throw rejection(answered.status, said);
@@ -156,33 +165,104 @@ function refusalText(said: string): string {
   return "it said nothing this client can read";
 }
 
-/** The policy's own refusal, as the answer to it carries it. */
+/** Whether one parsed value is a JSON object, whose members can then be read. */
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The answer type a refused document declares itself as by its members: an
+ * action's answer carries its record, a recovery's names its action beside its
+ * decision, and a spool command's carries its decision at the top.
+ */
+function answerType(document: unknown): string {
+  if (isObject(document) && "record" in document) {
+    return "ActionAnswer";
+  }
+  if (isObject(document) && "action" in document) {
+    return "RecoveryAnswer";
+  }
+  return "SpoolCommandAnswer";
+}
+
+/** A refusal's value asked for and range allowed, when it ruled on a value. */
+function boundsOf(refused: unknown): { requested?: number; allowed?: Range } {
+  const bounds = isObject(refused) ? refused.out_of_bounds : undefined;
+  if (!isObject(bounds) || typeof bounds.requested !== "number" || !isObject(bounds.allowed)) {
+    return {};
+  }
+  const { min, max } = bounds.allowed;
+  if (typeof min !== "number" || typeof max !== "number") {
+    return {};
+  }
+  return { requested: bounds.requested, allowed: { min, max } };
+}
+
+/**
+ * The policy's own refusal, as the answer to it carries it.
+ *
+ * The whole answer is held to the type the contracts declare for it — every
+ * member, every closed set of names and arms, every nested shape — before any
+ * of it is handed on as that type.
+ */
 function rejection(status: number, said: string): Error {
-  const answer = document<ActionAnswer | SpoolCommandAnswer>(status, said);
-  // An action's answer carries its decision in its record; a spool command's
-  // carries it at the top.
-  const decision = "record" in answer ? answer.record.decision : answer.decision;
-  if (typeof decision !== "object" || !("rejected" in decision)) {
+  const answer: unknown = document<unknown>(status, said);
+  const declared = answerType(answer);
+  if (!isObject(answer) || !conforms(answer, declared)) {
+    return new Unreadable(status, `the supervisor refused this and answered no ${declared}`);
+  }
+  const decision = isObject(answer.record) ? answer.record.decision : answer.decision;
+  const refused = isObject(decision) ? decision.rejected : undefined;
+  if (refused === undefined) {
     return new Unreadable(
       status,
       "the supervisor refused this action and answered a record whose decision is not a refusal",
     );
   }
-  const reason: RejectionReason = decision.rejected;
-  let requested: number | undefined;
-  let allowed: Range | undefined;
-  if (typeof reason === "object" && "out_of_bounds" in reason) {
-    requested = reason.out_of_bounds.requested;
-    allowed = reason.out_of_bounds.allowed;
-  }
-  return new Rejected(reason, requested, allowed, answer);
+  const bounds = boundsOf(refused);
+  return new Rejected(
+    // Held above to the refusal vocabulary its answer type declares.
+    refused as RejectionReason | RecoveryRejection,
+    bounds.requested,
+    bounds.allowed,
+    // Held above to the answer type it declares itself as.
+    answer as unknown as ActionAnswer | SpoolCommandAnswer | RecoveryAnswer,
+  );
 }
 
-/** The machine's own refusal of an action the policy accepted. */
+/**
+ * The machine's own refusal of an action the policy accepted.
+ *
+ * A recovery the machine refused carries no action record, and arrives as the
+ * supervisor's own words for it: a recovery answer whose decision was carried
+ * out and failed at the printer. Either answer is held to the type the
+ * contracts declare for it before any of it is handed on.
+ */
 function machineRefusal(status: number, said: string): Error {
-  const answer = document<ActionAnswer>(status, said);
+  const answered: unknown = document<unknown>(status, said);
+  const declared = answerType(answered);
+  if (declared === "SpoolCommandAnswer" || !isObject(answered) || !conforms(answered, declared)) {
+    return new Unreadable(
+      status,
+      "the supervisor answered a refusal carrying neither a record nor words",
+    );
+  }
+  if (declared === "RecoveryAnswer") {
+    const { decision, detail } = answered;
+    const executed = isObject(decision) ? decision.executed : undefined;
+    if (!isObject(executed) || !isObject(executed.failed) || typeof detail !== "string") {
+      return new Unreadable(
+        status,
+        "the supervisor answered a machine refusal of a recovery that did not fail",
+      );
+    }
+    return new Refused(status, detail);
+  }
   return new PrinterRefused(
-    answer.printer_refusal ?? "it said nothing this client can read",
-    answer,
+    typeof answered.printer_refusal === "string"
+      ? answered.printer_refusal
+      : "it said nothing this client can read",
+    // Held above to the answer type it declares itself as.
+    answered as unknown as ActionAnswer,
   );
 }

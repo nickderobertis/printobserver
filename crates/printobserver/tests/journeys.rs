@@ -193,6 +193,107 @@ fn a_configuration_granting_the_agent_close_print_is_refused_at_start() {
     );
 }
 
+/// The recovery facts of a machine the tier stands in, every key stated.
+fn recovery_facts() -> printobserver_types::serde_json::Value {
+    printobserver_types::serde_json::json!({
+        "away_from_bed": "z_plus",
+        "max_z_mm": 200.0,
+        "max_lift_mm": 50.0,
+        "clearance_margin_mm": 5.0,
+        "park_xy": [10.0, 200.0],
+        "z_home_xy": [100.0, 100.0],
+        "z_home_sweeps_bed": false,
+    })
+}
+
+/// `printobserver server` refuses a configuration granting the agent
+/// `recover_home_z`, or letting the agent's word count as clearance, naming
+/// the key, and serves nothing: only a person at the machine can say the bed
+/// is clear or the nozzle is.
+#[test]
+fn a_configuration_granting_the_agent_a_z_home_or_its_own_clearance_is_refused_at_start() {
+    use printobserver_types::serde_json::json;
+    for (grants, key, named) in [
+        (
+            json!({ "agent": ["recover_lift", "recover_home_z"] }),
+            "policy.recovery.agent",
+            "recover_home_z",
+        ),
+        (
+            json!({ "asserting": ["operator", "agent"] }),
+            "policy.recovery.asserting",
+            "assert clearance",
+        ),
+        (
+            json!({ "asserting": ["operator", "a-robot"] }),
+            "policy.recovery.asserting",
+            "\"a-robot\" is not an actor whose word can count",
+        ),
+    ] {
+        let said = starting::refused_start(|document| {
+            document["recovery"] = recovery_facts();
+            document["policy"] = json!({ "recovery": grants });
+        });
+        assert!(
+            said.contains(key) && said.contains(named),
+            "the refusal does not name `{key}` and what it grants: {said}"
+        );
+    }
+}
+
+/// `printobserver server` refuses each recovery fact out of the range its key
+/// admits, naming the key, and serves nothing.
+#[test]
+fn a_recovery_fact_out_of_range_is_refused_at_start_by_name() {
+    use printobserver_types::serde_json::json;
+    for (key, value) in [
+        ("max_z_mm", json!(-10.0)),
+        ("max_lift_mm", json!(0.0)),
+        ("max_lift_mm", json!(250.0)),
+        ("clearance_margin_mm", json!(-1.0)),
+        ("park_xy", json!([10.0])),
+        ("z_home_xy", json!([-1.0, 5.0])),
+        ("away_from_bed", json!("up")),
+    ] {
+        let said = starting::refused_start(|document| {
+            let mut facts = recovery_facts();
+            facts[key] = value.clone();
+            document["recovery"] = facts;
+        });
+        assert!(
+            said.contains(&format!("recovery.{key}")),
+            "the refusal of `{key}` = {value} does not name `recovery.{key}`: {said}"
+        );
+    }
+}
+
+/// `printobserver server` refuses a `[recovery]` table leaving out any fact
+/// the machine has no default for, naming the key, and serves nothing: a
+/// direction, a height, a park and a Z home are the machine's to state.
+#[test]
+fn a_recovery_fact_left_out_is_refused_at_start_by_name() {
+    for key in [
+        "away_from_bed",
+        "max_z_mm",
+        "park_xy",
+        "z_home_xy",
+        "z_home_sweeps_bed",
+    ] {
+        let said = starting::refused_start(|document| {
+            let mut facts = recovery_facts();
+            facts
+                .as_object_mut()
+                .expect("the recovery facts are a table")
+                .remove(key);
+            document["recovery"] = facts;
+        });
+        assert!(
+            said.contains(&format!("recovery.{key}")),
+            "the refusal of a `[recovery]` without `{key}` does not name it: {said}"
+        );
+    }
+}
+
 /// `printobserver server` refuses each of the printer watch's own settings
 /// out of the range it admits, naming the field, and serves nothing: a poll
 /// under five seconds or over five minutes, an unattended window under a

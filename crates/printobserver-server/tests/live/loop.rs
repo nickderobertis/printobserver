@@ -820,10 +820,10 @@ async fn every_change_refuses_a_request_with_no_reason(
                 operation.name
             );
             assert!(
-                proxy.bodies().is_empty(),
+                asked_by_an_action(proxy).is_empty(),
                 "`{}` carried a request with {described} to the machine: {:?}",
                 operation.name,
-                proxy.bodies()
+                asked_by_an_action(proxy)
             );
             assert_eq!(
                 stored(world, print_id).await,
@@ -857,6 +857,7 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
     }
     let mut body = match operation.effect {
         Effect::Command(_) => ledger_body(operation.name),
+        Effect::Recovery(_) => recovery_body(operation.name),
         _ => live(operation.name).accepted,
     };
     let object = body.as_object_mut().expect("the body is an object");
@@ -867,6 +868,25 @@ fn reasonless(operation: &Operation, reason: Option<&str>) -> Value {
         None => {
             object.remove("reason");
         }
+    }
+    body
+}
+
+/// A body one recovery action takes: the operator asking, and whatever else
+/// the action needs.
+fn recovery_body(name: &str) -> Value {
+    let mut body = json!({ "reason": "the live walk is asking a recovery", "actor": "operator" });
+    let object = body.as_object_mut().expect("the body is an object");
+    let fields = match name {
+        "recover_lift" => json!({ "mm": 5.0 }),
+        "recover_fan" => json!({ "percent": 50.0 }),
+        "recover_heat" => json!({ "tool": 0, "target_c": 150.0, "clearance_asserted": true }),
+        "recover_park" | "recover_home_xy" => json!({ "clearance_asserted": true }),
+        "recover_home_z" => json!({ "bed_clear_asserted": true }),
+        _ => json!({}),
+    };
+    if let Value::Object(fields) = fields {
+        object.extend(fields);
     }
     body
 }
@@ -929,10 +949,10 @@ async fn every_mutating_operation_is_rejected_in_its_own_kind(
                 operation.name
             );
             assert!(
-                proxy.bodies().is_empty(),
+                asked_by_an_action(proxy).is_empty(),
                 "`{}` was refused and the machine was asked {:?}",
                 operation.name,
-                proxy.bodies()
+                asked_by_an_action(proxy)
             );
             assert_eq!(
                 stored(world, print_id).await,
@@ -969,10 +989,10 @@ async fn every_mutating_operation_is_rejected_in_its_own_kind(
             );
         }
         assert!(
-            proxy.bodies().is_empty(),
+            asked_by_an_action(proxy).is_empty(),
             "`{}` was rejected and the machine was asked {:?}",
             operation.name,
-            proxy.bodies()
+            asked_by_an_action(proxy)
         );
         assert_eq!(
             status(world, print_id).await["printer"]["connection"],
@@ -1225,9 +1245,9 @@ async fn a_close_is_refused(world: &Composed, proxy: &Proxy, print_id: PrintId, 
         "`{close}` was rejected for something else: {answer}"
     );
     assert!(
-        proxy.bodies().is_empty(),
+        asked_by_an_action(proxy).is_empty(),
         "`{close}` was rejected and the machine was asked {:?}",
-        proxy.bodies()
+        asked_by_an_action(proxy)
     );
     nothing_moved_but_the_record_of_the_rejection(
         world,
@@ -1533,4 +1553,13 @@ fn digest_at(path: &std::path::Path) -> String {
             let _ = write!(rendered, "{byte:02x}");
             rendered
         })
+}
+
+/// Every request body the machine received but the push channel's own
+/// passive login. A server behind the recording proxy is refused its push
+/// socket's upgrade and keeps asking for one, each time logging in first —
+/// on its own schedule, whatever it was asked — so an assertion that an action
+/// sent the machine nothing reads every request that action could have sent.
+fn asked_by_an_action(proxy: &Proxy) -> Vec<String> {
+    proxy.bodies_but_to(printobserver_octoprint::push::LOGIN_PATH)
 }

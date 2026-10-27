@@ -69,6 +69,7 @@ pub mod look;
 pub mod observation;
 pub mod preflight;
 pub mod records;
+pub mod recovery;
 pub mod spools;
 pub mod store;
 pub mod supervisor;
@@ -105,9 +106,10 @@ pub use kinds::{
     OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
     PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintEndedPayload,
     PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
-    PrinterResetPayload, RebaselineDisposition, SignalPosition, SpoolAdjustedPayload,
-    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
-    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
+    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
+    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
+    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 pub use look::Look;
@@ -124,6 +126,12 @@ pub use records::{
     SpoolRecord, SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UnverifiedMark, UnverifiedMarks,
     UnverifiedReason, UnverifiedReasonKind,
 };
+pub use records::{
+    ActionAllowance, AwayFromBed, BedTemperature, DEFAULT_CLEARANCE_MARGIN_MM, DEFAULT_MAX_LIFT_MM,
+    LastPrint, PausedPrint, RecoveryAction, RecoveryActionKind, RecoveryConfig, RecoveryDecision,
+    RecoveryField, RecoveryGrants, RecoveryPosition, RecoveryRejection, RecoveryStatus,
+    RecoveryTemperatures, ToolTemperature, ZHome, ZTrust,
+};
 pub use spools::SpoolCommandOutcome;
 pub use store::{
     ActionStore, AuditPage, Charge, ChargeIdentity, ChargeRecord, DEFAULT_HISTORY_WINDOW,
@@ -132,7 +140,7 @@ pub use store::{
     SpoolChange, SpoolMutation, SpoolWrite, StoreError, Stores, TimelineQuery, TimelineStore,
     resolve_history_limit,
 };
-pub use supervisor::{Issued, Supervisor};
+pub use supervisor::{Issued, RecoveryIssued, Supervisor};
 pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};
 pub use watch::{

@@ -1,4 +1,5 @@
-//! The filament a file's own G-code feeds each tool, up to a byte of it.
+//! The filament a file's own G-code feeds each tool, and where it printed, up
+//! to a byte of it.
 //!
 //! `OctoPrint` measures no extrusion. It knows the slicer's analysed length and,
 //! while a job runs, how many bytes of the file it has sent, so the filament a
@@ -25,6 +26,22 @@
 //! Feeding is counted **net**: a retraction subtracts and the unretraction that
 //! follows adds it back, so the figure is the filament that left the spool.
 //!
+//! # Where it printed
+//!
+//! Beside the feed, the reader tracks where the head is in X, Y and Z, so that
+//! what a file printed up to a position has a height and a footprint
+//! ([`PrintedExtent`]). `G90`/`G91` make the axes absolute or relative, `G92`
+//! declares where the named axes are without moving them, and `G28` homes the
+//! axes it names — every axis when it names none — to zero. A `G0`–`G3` that
+//! feeds filament while it travels in X or Y laid material along its segment,
+//! so the higher of its two ends counts towards the height and both ends
+//! towards the footprint; a feed with no XY travel — an unretraction, a prime —
+//! laid nothing along a path. An arc's curve can reach past both of its
+//! ends, so a feeding `G2`/`G3` grows the footprint by its whole circle's
+//! bounds — the circle about the centre its `I` and `J` name, or, for the
+//! `R` form whose centre is one of two, every place within twice the radius
+//! of its start: never smaller than what it laid, and at most a circle larger.
+//!
 //! # What is deliberately not read
 //!
 //! Flow-factor commands (`M221`) are ignored: the figure is the filament the
@@ -42,7 +59,7 @@
 use core::ops::ControlFlow;
 use std::collections::BTreeMap;
 
-use printobserver_printer_api::ToolFilament;
+use printobserver_printer_api::{Footprint, PrintedExtent, ToolFilament};
 
 /// The longest line this reader holds; anything longer is no command it reads.
 ///
@@ -54,6 +71,17 @@ const LINE_LIMIT: usize = 4096;
 /// filament, far past any spool. A word beyond it is no position a file feeds
 /// to, and summing such words could reach infinity rather than a figure.
 const E_LIMIT: f64 = 1e7;
+
+/// The largest axis word read as a place, in millimetres: ten metres, far
+/// past any machine's travel. A word beyond it is no place a head can be.
+const AXIS_LIMIT: f64 = 1e4;
+
+/// The XY travel below which a move counts as no travel at all: a thousandth
+/// of a micron, far under any step a printer can make.
+const TRAVEL_MM: f64 = 1e-6;
+
+/// The three axes this reader tracks, in the order it holds them.
+const AXES: [char; 3] = ['X', 'Y', 'Z'];
 
 /// How a coordinate is read: as a place, or as a distance from the last one.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +108,10 @@ pub struct Extrusion {
     positions: BTreeMap<i64, f64>,
     /// Every tool's net feed, in millimetres.
     fed: BTreeMap<i64, f64>,
+    /// Where the head is in X, Y and Z, in millimetres.
+    at: [f64; 3],
+    /// What the extruding moves read so far laid down, when any did.
+    extent: Option<PrintedExtent>,
 }
 
 impl Extrusion {
@@ -97,10 +129,21 @@ impl Extrusion {
         };
         let number = code.parse::<u32>().ok();
         match (*letter, number) {
-            ('G', Some(0..=3)) => self.feed(&words[1..]),
+            ('G', Some(code @ 0..=3)) => {
+                let start = self.at;
+                let fed = self.feed(&words[1..]);
+                self.travel(&words[1..], fed);
+                if code >= 2 && fed > 0.0 {
+                    self.curve(&words[1..], start);
+                }
+            }
+            ('G', Some(28)) => self.home(&words[1..]),
             ('G', Some(90)) => self.axes = Positioning::Absolute,
             ('G', Some(91)) => self.axes = Positioning::Relative,
-            ('G', Some(92)) => self.reset(&words[1..]),
+            ('G', Some(92)) => {
+                self.reset(&words[1..]);
+                self.declare(&words[1..]);
+            }
             ('M', Some(82)) => self.extruder = Positioning::Absolute,
             ('M', Some(83)) => self.extruder = Positioning::Relative,
             ('T', Some(tool)) => self.tool = i64::from(tool),
@@ -121,10 +164,109 @@ impl Extrusion {
             .collect()
     }
 
-    /// One move's `E` word, when it has one.
-    fn feed(&mut self, words: &[(char, String)]) {
-        let Some(e) = number_of(words, 'E') else {
+    /// What the extruding moves read so far laid down, when any did.
+    #[must_use]
+    pub const fn extent(&self) -> Option<PrintedExtent> {
+        self.extent
+    }
+
+    /// One move's axis words: the head goes where they say, and a move that
+    /// fed filament while it travelled in X or Y counts towards the extent.
+    fn travel(&mut self, words: &[(char, String)], fed: f64) {
+        let start = self.at;
+        for (index, axis) in AXES.iter().enumerate() {
+            let Some(value) = axis_of(words, *axis) else {
+                continue;
+            };
+            let moved = match self.axes {
+                Positioning::Relative => self.at[index] + value,
+                Positioning::Absolute => value,
+            };
+            // A relative move summing past any travel is no place a head can
+            // be, and is read as though it were absent.
+            // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+            if moved.abs() <= AXIS_LIMIT {
+                self.at[index] = moved;
+            }
+        }
+        let travelled = (self.at[0] - start[0]).hypot(self.at[1] - start[1]) > TRAVEL_MM;
+        if fed <= 0.0 || !travelled {
             return;
+        }
+        // A segment that descends while it extrudes laid material at its
+        // start too, so the higher of its two ends counts.
+        let high = start[2].max(self.at[2]);
+        let footprint = self.extent.map_or(
+            Footprint {
+                min_x: start[0],
+                min_y: start[1],
+                max_x: start[0],
+                max_y: start[1],
+            },
+            |extent| grown(extent.footprint, start[0], start[1]),
+        );
+        self.extent = Some(PrintedExtent {
+            tallest_mm: self
+                .extent
+                .map_or(high, |extent| extent.tallest_mm.max(high)),
+            footprint: grown(footprint, self.at[0], self.at[1]),
+        });
+    }
+
+    /// A feeding arc from `start`: the footprint grows by the bounds of every
+    /// place its curve could have reached.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+    fn curve(&mut self, words: &[(char, String)], start: [f64; 3]) {
+        let Some(extent) = self.extent.as_mut() else {
+            return;
+        };
+        let offset = |letter| number_of(words, letter).filter(|value| value.is_finite());
+        let (centre, reach) = match (offset('I'), offset('J'), offset('R')) {
+            (None, None, Some(radius)) => ([start[0], start[1]], 2.0 * radius.abs()),
+            (i, j, _) if i.is_some() || j.is_some() => {
+                let (i, j) = (i.unwrap_or(0.0), j.unwrap_or(0.0));
+                ([start[0] + i, start[1] + j], i.hypot(j))
+            }
+            _ => return,
+        };
+        if reach > AXIS_LIMIT {
+            return;
+        }
+        extent.footprint = grown(
+            grown(extent.footprint, centre[0] - reach, centre[1] - reach),
+            centre[0] + reach,
+            centre[1] + reach,
+        );
+    }
+
+    /// `G28`: the axes it names go to zero, every axis when it names none.
+    fn home(&mut self, words: &[(char, String)]) {
+        let named: Vec<usize> = words
+            .iter()
+            .filter_map(|(letter, _)| AXES.iter().position(|axis| axis == letter))
+            .collect();
+        if named.is_empty() {
+            self.at = [0.0; 3];
+        }
+        for index in named {
+            self.at[index] = 0.0;
+        }
+    }
+
+    /// `G92`: each axis it names is where it says, without moving.
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+    fn declare(&mut self, words: &[(char, String)]) {
+        for (index, axis) in AXES.iter().enumerate() {
+            if let Some(value) = axis_of(words, *axis) {
+                self.at[index] = value;
+            }
+        }
+    }
+
+    /// One move's `E` word, when it has one, answering how far it fed.
+    fn feed(&mut self, words: &[(char, String)]) -> f64 {
+        let Some(e) = number_of(words, 'E') else {
+            return 0.0;
         };
         let position = self.positions.entry(self.tool).or_insert(0.0);
         let delta = if self.extruder == Positioning::Relative || self.axes == Positioning::Relative
@@ -135,6 +277,7 @@ impl Extrusion {
         };
         *position += delta;
         *self.fed.entry(self.tool).or_insert(0.0) += delta;
+        delta
     }
 
     /// `G92`: the selected tool's position is what it says, or zero.
@@ -159,6 +302,27 @@ fn number_of(words: &[(char, String)], letter: char) -> Option<f64> {
         .find(|(found, _)| *found == letter)
         .and_then(|(_, value)| value.parse::<f64>().ok())
         .filter(|value| value.abs() <= E_LIMIT)
+}
+
+/// The place one axis word carries, when the line has that word and it is a
+/// finite number within [`AXIS_LIMIT`].
+fn axis_of(words: &[(char, String)], letter: char) -> Option<f64> {
+    words
+        .iter()
+        .find(|(found, _)| *found == letter)
+        .and_then(|(_, value)| value.parse::<f64>().ok())
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+        .filter(|value| value.abs() <= AXIS_LIMIT)
+}
+
+/// A footprint grown to hold one more point.
+const fn grown(footprint: Footprint, x: f64, y: f64) -> Footprint {
+    Footprint {
+        min_x: footprint.min_x.min(x),
+        min_y: footprint.min_y.min(y),
+        max_x: footprint.max_x.max(x),
+        max_y: footprint.max_y.max(y),
+    }
 }
 
 /// One line's words, each a letter and the text after it, with its line
@@ -280,6 +444,12 @@ impl ExtrudedTo {
         self.extrusion.fed()
     }
 
+    /// What the file printed up to the position, when any move extruded.
+    #[must_use]
+    pub const fn extent(&self) -> Option<PrintedExtent> {
+        self.extrusion.extent()
+    }
+
     /// One byte: a newline completes the line, and a line past
     /// [`LINE_LIMIT`] stops being held and is marked to be skipped.
     fn push(&mut self, byte: u8) {
@@ -320,4 +490,15 @@ pub fn extruded_to(text: &[u8], position_bytes: i64) -> Vec<ToolFilament> {
         reader.end();
     }
     reader.fed()
+}
+
+/// What a whole text of G-code printed up to a position: the same reader the
+/// download is fed through, handed the text in one piece.
+#[must_use]
+pub fn printed_extent(text: &[u8], position_bytes: i64) -> Option<PrintedExtent> {
+    let mut reader = ExtrudedTo::new(position_bytes);
+    if reader.take(text).is_continue() {
+        reader.end();
+    }
+    reader.extent()
 }

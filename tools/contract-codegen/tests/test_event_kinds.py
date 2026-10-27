@@ -104,6 +104,7 @@ LOOK_ANSWER_FILE = f"{SCHEMAS_DIR}/printobserver-core/Look.json"
 #: log's own read and the spool ledger's — each with the field it lists them in.
 EVENT_LISTS_BESIDE_HISTORY = (
     (f"{SERVER_DIR}/EventsAnswer.json", "events"),
+    (f"{SERVER_DIR}/RecoveryAnswer.json", "events"),
     (f"{SERVER_DIR}/SpoolAnswer.json", "recent"),
     (f"{SERVER_DIR}/SpoolCommandAnswer.json", "events"),
     (f"{SERVER_DIR}/TimelineAnswer.json", "events"),

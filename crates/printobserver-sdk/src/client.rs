@@ -7,8 +7,11 @@
 
 use serde::de::DeserializeOwned;
 
-use crate::contract::{ActionAnswer, Actor, ErrorAnswer, SpoolCommandAnswer};
-use crate::error::{ClientError, RejectedAnswer, Rejection};
+use crate::contract::{
+    ActionAnswer, Actor, ErrorAnswer, ExecutionOutcome, RecoveryAnswer, RecoveryDecision,
+    SpoolCommandAnswer,
+};
+use crate::error::{ClientError, RecoveryRejected, RejectedAnswer, Rejection};
 use crate::transport::send;
 
 /// The status a rejected action is answered under.
@@ -125,6 +128,26 @@ impl Client {
 
 /// The policy's own refusal, as the answer to it carries it.
 fn rejection(body: &str, status: u16) -> ClientError {
+    // A recovery's answer names its action and carries its own decision.
+    if let Ok(document) = serde_json::from_str::<serde_json::Value>(body)
+        && document.get("action").is_some()
+        && document.get("decision").is_some()
+    {
+        return match serde_json::from_value::<RecoveryAnswer>(document) {
+            Ok(answer) => RecoveryRejected::of(answer).map_or_else(
+                || ClientError::Unreadable {
+                    status,
+                    detail: "the supervisor refused this recovery and answered no refusal"
+                        .to_owned(),
+                },
+                |rejected| ClientError::RecoveryRejected(Box::new(rejected)),
+            ),
+            Err(error) => ClientError::Unreadable {
+                status,
+                detail: error.to_string(),
+            },
+        };
+    }
     // An action's answer carries its decision in its record; a spool command's
     // carries it at the top.
     let answered = serde_json::from_str::<serde_json::Value>(body).and_then(|document| {
@@ -152,7 +175,26 @@ fn rejection(body: &str, status: u16) -> ClientError {
 }
 
 /// The machine's own refusal of an action the policy accepted.
+///
+/// A recovery the machine refused carries no action record, and arrives as the
+/// supervisor's own words for it — and only a recovery carried out and failed
+/// at the printer is one: any other decision under this status is no answer
+/// this client can read.
 fn machine_refusal(body: &str, status: u16) -> ClientError {
+    if let Ok(answer) = serde_json::from_str::<RecoveryAnswer>(body) {
+        return match answer.decision {
+            RecoveryDecision::Executed(ExecutionOutcome::Failed { .. }) => ClientError::Refused {
+                status,
+                detail: answer.detail,
+            },
+            _ => ClientError::Unreadable {
+                status,
+                detail: "the supervisor answered a machine refusal of a recovery that did not \
+                         fail at the printer"
+                    .to_owned(),
+            },
+        };
+    }
     match serde_json::from_str::<ActionAnswer>(body) {
         Ok(answer) => ClientError::PrinterRefused {
             detail: answer
@@ -247,6 +289,82 @@ mod tests {
             "/v1/x?limit=20"
         );
         assert_eq!(escaped("a b&c"), "a%20b%26c");
+    }
+
+    /// A recovery's answer, around one decision.
+    fn recovery(decision: &str) -> String {
+        format!(
+            r#"{{"action":{{"action":"recover_fan","percent":50.0}},"decision":{decision},"detail":"recover_fan reached the printer, which refused it: the fan is stuck","events":[]}}"#
+        )
+    }
+
+    /// A recovery the machine refused carries the supervisor's own sentence.
+    #[test]
+    fn a_recovery_the_machine_refused_carries_the_supervisors_words() {
+        let refused = super::machine_refusal(
+            &recovery(r#"{"executed":{"failed":{"reason":"the fan is stuck"}}}"#),
+            502,
+        );
+        let super::ClientError::Refused { status, detail } = refused else {
+            panic!("the recovery's refusal arrived as {refused:?}");
+        };
+        assert_eq!(status, 502);
+        assert!(detail.contains("the fan is stuck"), "{detail}");
+    }
+
+    /// A recovery refused is a typed refusal carrying its bounds, and one
+    /// whose decision is no refusal at all is said to be unreadable.
+    #[test]
+    fn a_recovery_refusal_is_typed_and_one_that_is_none_is_unreadable() {
+        let refused = super::rejection(
+            &recovery(
+                r#"{"rejected":{"out_of_bounds":{"field":"percent","requested":150.0,"allowed":{"min":0.0,"max":100.0}}}}"#,
+            ),
+            409,
+        );
+        let super::ClientError::RecoveryRejected(rejected) = refused else {
+            panic!("the recovery's refusal arrived as {refused:?}");
+        };
+        assert_eq!(rejected.requested, Some(150.0));
+        let carried = super::rejection(&recovery(r#"{"executed":"succeeded"}"#), 409);
+        assert!(
+            matches!(carried, super::ClientError::Unreadable { status: 409, .. }),
+            "{carried:?}"
+        );
+        let malformed = super::rejection(&recovery(r#"{"rejected":{"out_of_bounds":7}}"#), 409);
+        assert!(
+            matches!(
+                malformed,
+                super::ClientError::Unreadable { status: 409, .. }
+            ),
+            "{malformed:?}"
+        );
+    }
+
+    /// An allowance is read as `call` reads every answer, and only when its
+    /// `allowed` and `refusal` agree: either contradiction is refused as it
+    /// is read, rather than handed on as a value no supervisor sends.
+    #[test]
+    fn an_allowance_whose_two_halves_disagree_is_not_read() {
+        use crate::contract::ActionAllowance;
+        for agreeing in [
+            r#"{"action":"recover_lift","allowed":true}"#,
+            r#"{"action":"recover_heat","allowed":false,"refusal":"z_untrusted"}"#,
+        ] {
+            let read = serde_json::from_str::<ActionAllowance>(agreeing);
+            assert!(read.is_ok(), "{agreeing}: {read:?}");
+        }
+        for contradiction in [
+            r#"{"action":"recover_lift","allowed":true,"refusal":"z_untrusted"}"#,
+            r#"{"action":"recover_heat","allowed":false}"#,
+        ] {
+            let error = serde_json::from_str::<ActionAllowance>(contradiction)
+                .expect_err("a contradictory allowance is not read");
+            assert!(
+                error.to_string().contains("they disagree"),
+                "{contradiction}: {error}"
+            );
+        }
     }
 
     /// A refusal this client cannot read is said to be one rather than shown.

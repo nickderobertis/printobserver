@@ -116,3 +116,67 @@ impl Sample for FileFacts {
         }
     }
 }
+
+/// The XY rectangle every extruding move of a file lies inside, in
+/// millimetres.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct Footprint {
+    /// The smallest X.
+    pub min_x: f64,
+    /// The smallest Y.
+    pub min_y: f64,
+    /// The largest X.
+    pub max_x: f64,
+    /// The largest Y.
+    pub max_y: f64,
+}
+
+/// What a file printed up to a byte position in it: the highest Z any
+/// extruding move reached, and where in XY it laid material.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct PrintedExtent {
+    /// The highest Z an extruding move started or ended at, in millimetres.
+    pub tallest_mm: f64,
+    /// The XY rectangle of every extruding move.
+    pub footprint: Footprint,
+}
+
+impl Sample for Footprint {
+    fn sample_full() -> Self {
+        Self {
+            min_x: 90.0,
+            min_y: 90.0,
+            max_x: 110.0,
+            max_y: 110.0,
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 0.0,
+            max_y: 0.0,
+        }
+    }
+}
+
+impl Sample for PrintedExtent {
+    fn sample_full() -> Self {
+        Self {
+            tallest_mm: 6.0,
+            footprint: Footprint::sample_full(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            tallest_mm: 0.2,
+            footprint: Footprint::sample_minimal(),
+        }
+    }
+}

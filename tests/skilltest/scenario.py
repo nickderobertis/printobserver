@@ -1000,7 +1000,101 @@ def _answers(
     for adjustment in ADJUSTMENTS:
         answers[adjustment.command] = [_adjusted(composer, adjustment, adjustment.nominal)]
     answers.update(_spool_answers(composer))
+    answers.update(_recovery_answers(composer, first))
     return answers, replayed
+
+
+# What each recovery action's stub echoes as asked: its required fields, at a
+# value inside the bounds any configuration allows.
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
+RECOVERY_ASKED: dict[str, dict[str, Any]] = {
+    "recover_lift": {"mm": 10.0},
+    "recover_cool": {},
+    "recover_fan": {"percent": 100.0},
+    "recover_heat": {"tool": TOOL, "target_c": 200.0, "clearance_asserted": False},
+    "recover_park": {"clearance_asserted": False},
+    "recover_home_xy": {"clearance_asserted": False},
+    "recover_home_z": {"bed_clear_asserted": False},
+}
+
+# Where the case's printer homes Z, as its `[recovery]` section states it.
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
+Z_HOME = {"sweeps_bed": False, "x": 100.0, "y": 100.0}
+
+
+def recovery_commands() -> dict[str, str]:
+    """Each recovery action's command, keyed by the action it asks for."""
+    return {action: action.replace("_", "-") for action in RECOVERY_ASKED}
+
+
+# llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
+def _recovery_answers(composer: _Composer, first: Reading) -> dict[str, list[dict[str, Any]]]:
+    """The recovery vocabulary's answers while the turn's print runs, as the page shows them.
+
+    As with a close, the print a turn watches is still running on the
+    printer, so `recover-status` finds every action refused `print_running`
+    naming that state, and each action is answered that refusal beside the two
+    printer-scoped events the request wrote, in the server's own words. Z is
+    trusted from the print printobserver started; the head's position is not
+    read, as an adapter that cannot read it answers. Each document is held to
+    its generated schema.
+    """
+    actor = json.loads(composer.actor)
+    asked_at = _instant(composer.now)
+    running = first.state if first.state in ("printing", "cancelling") else "printing"
+    refusal = {"print_running": {"state": running}}
+    detail = (
+        f"the printer is {running.capitalize()}, and nothing may move it under a running "
+        "print; pause or cancel the print first"
+    )
+
+    def event(payload_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": _id(),
+            "kind": event_kind(payload_type),
+            "payload": conforming(payload, _schema_path(payload_type), payload_type),
+            "received_at": asked_at,
+            "source": "agent",
+        }
+
+    answers: dict[str, list[dict[str, Any]]] = {}
+    for action, command in recovery_commands().items():
+        asked = {
+            "action": {"action": action, **RECOVERY_ASKED[action]},
+            "actor": actor,
+            "reason": ECHOED_REASON,
+        }
+        answer = {
+            "action": asked["action"],
+            "decision": {"rejected": refusal},
+            "detail": detail,
+            "events": [
+                event("RecoveryRequestedPayload", asked),
+                event("RecoveryRejectedPayload", {**asked, "rejection": refusal}),
+            ],
+        }
+        answers[command] = [conforming(answer, _schema_path("RecoveryAnswer"), command)]
+    status = {
+        "actions": [
+            {"action": action, "allowed": False, "refusal": refusal} for action in RECOVERY_ASKED
+        ],
+        "last_print": None,
+        "paused_print": None,
+        "position": None,
+        "state": running,
+        "temperatures": {
+            "bed": {"actual_c": first.bed_actual, "target_c": first.bed_target},
+            "tools": [
+                {"actual_c": first.nozzle_actual, "target_c": first.nozzle_target, "tool": TOOL}
+            ],
+        },
+        "z_home": Z_HOME,
+        "z_trust": {"trusted_since": composer.opened_at},
+    }
+    answers["recover-status"] = [
+        conforming(status, _schema_path("RecoveryStatus"), "recover-status")
+    ]
+    return answers
 
 
 # llmlint: ignore[modern_domain_modeling] suppressions.toml has the reason.
@@ -1186,7 +1280,8 @@ def _stubs(
             specs.extend(_rendered(name, step.operation, step_pattern(step), [document]))
     for command in surface().operations:
         pattern = step_pattern(Step(command.name, {}))
-        exit_code = exits["rejected"] if command.name == "close-print" else exits["success"]
+        refused = {"close-print", *recovery_commands().values()}
+        exit_code = exits["rejected"] if command.name in refused else exits["success"]
         specs.extend(
             _rendered(command.name, command.name, pattern, answers[command.name], exit_code)
         )

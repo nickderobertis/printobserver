@@ -21,8 +21,9 @@
 //! contract rather than an omission: no method here admits a byte sequence at
 //! all, and the only string anywhere in the closure reachable from a method's
 //! parameters is the one [`FileName`] wraps, which only
-//! [`PrinterPort::start`] and the two reads of one file —
-//! [`PrinterPort::file_facts`] and [`PrinterPort::extruded_to`] — take. Every value a method takes is already
+//! [`PrinterPort::start`] and the three reads of one file —
+//! [`PrinterPort::file_facts`], [`PrinterPort::extruded_to`] and
+//! [`PrinterPort::printed_extent`] — take. Every value a method takes is already
 //! bounded by the time it arrives: policy has ruled on it before it gets here.
 //!
 //! [`PrinterPort::send_command`] is no exception to that: what it takes is a
@@ -60,8 +61,10 @@ use core::pin::Pin;
 use printobserver_types::FileName;
 
 pub use adjustable::{Adjustable, AdjustableError};
-pub use file::{FileFacts, FilePrint, ToolFilament};
-pub use push::{BoxStream, PrinterCommand, PrinterErrorReason, PrinterPush, Stream};
+pub use file::{FileFacts, FilePrint, Footprint, PrintedExtent, ToolFilament};
+pub use push::{
+    AxisPosition, BoxStream, HomeAxes, PrinterCommand, PrinterErrorReason, PrinterPush, Stream,
+};
 pub use ranges::{
     COMPLETION_RANGE, FAN_PERCENT_RANGE, FEEDRATE_FACTOR_RANGE, FLOWRATE_FACTOR_RANGE,
     HEATER_ACTUAL_C_RANGE, HEATER_OFFSET_C_RANGE, HEATER_TARGET_C_RANGE, RANGED_FIELDS,
@@ -219,6 +222,30 @@ pub trait PrinterPort: Send + Sync {
     ) -> BoxFuture<'_, Result<Vec<ToolFilament>, PrinterError>> {
         let _ = (file_name, position_bytes);
         Box::pin(async { Err(not_supported("extruded_to")) })
+    }
+
+    /// Read what one file printed from its start up to a byte position in it:
+    /// the highest Z an extruding move reached and the XY rectangle of every
+    /// extruding move. Nothing when no move up to the position extruded.
+    ///
+    /// A printer that cannot answer is refused with status 501, which is what
+    /// an implementation that does not override this answers.
+    fn printed_extent(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> BoxFuture<'_, Result<Option<PrintedExtent>, PrinterError>> {
+        let _ = (file_name, position_bytes);
+        Box::pin(async { Err(not_supported("printed_extent")) })
+    }
+
+    /// Read where the print head is now, as the printer reports it.
+    ///
+    /// A position says nothing about whether an axis was homed. A printer that
+    /// cannot answer is refused with status 501, which is what an
+    /// implementation that does not override this answers.
+    fn read_position(&self) -> BoxFuture<'_, Result<AxisPosition, PrinterError>> {
+        Box::pin(async { Err(not_supported("read_position")) })
     }
 
     /// Open the printer's push channel, answering what it pushes from now on.

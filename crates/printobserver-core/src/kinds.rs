@@ -13,17 +13,20 @@
 //!
 //! The printer timeline — every print's start and end, every charge against a
 //! spool, every change to the spool ledger, and every change the printer watch
-//! finds in the machine itself — is the twenty kinds [`TIMELINE_KINDS`] lists.
+//! finds in the machine itself, and every recovery asked of it — is the
+//! twenty-three kinds [`TIMELINE_KINDS`] lists.
 //! A spool event is written with no print unless it happened during one, in
 //! which case it carries that print's; the four the printer watch writes are
 //! the printer's rather than any print's, and are written with no print at
-//! all, naming in their payload the print they happened during or after.
+//! all, naming in their payload the print they happened during or after. The
+//! three a recovery writes are the printer's too, and are written with no
+//! print.
 
 use crate::records::{
     AcknowledgementDisposition, ActionId, Actor, ChargeKey, ChargeMethod, ChargedFilament,
     ClearedMark, FilePosition, InterventionId, InterventionOutcome, LoadedSpool, PendingCharge,
-    PendingTaken, PolicyDecision, Preflight, PrintAction, PrintOutcome, SpoolCommand, SpoolId,
-    SpoolRecord, UnverifiedReason,
+    PendingTaken, PolicyDecision, Preflight, PrintAction, PrintOutcome, RecoveryAction,
+    RecoveryRejection, SpoolCommand, SpoolId, SpoolRecord, UnverifiedReason,
 };
 use printobserver_printer_api::{Adjustable, JobSnapshot, PrinterSnapshot, PrinterState};
 use printobserver_supervisor_api::AgentAssessment;
@@ -448,7 +451,7 @@ impl Sample for PortFailurePayload {
 /// Every kind of the printer timeline: prints starting and ending, what they
 /// took from a spool, every change to the spool ledger, and every change the
 /// printer watch finds in the machine.
-pub const TIMELINE_KINDS: [&str; 20] = [
+pub const TIMELINE_KINDS: [&str; 23] = [
     PrintStartedPayload::KIND,
     PrintEndedPayload::KIND,
     FilamentConsumedPayload::KIND,
@@ -469,6 +472,9 @@ pub const TIMELINE_KINDS: [&str; 20] = [
     PrinterResetPayload::KIND,
     UnattendedPrinterActivityPayload::KIND,
     DetectorHealthChangedPayload::KIND,
+    RecoveryRequestedPayload::KIND,
+    RecoveryExecutedPayload::KIND,
+    RecoveryRejectedPayload::KIND,
 ];
 
 /// A fixed spool identifier the timeline's samples share.
@@ -1361,5 +1367,105 @@ impl Sample for DetectorHealthChangedPayload {
             status: DetectorStatus::Available,
             detail: "the detector's health check answered 200".to_owned(),
         }]
+    }
+}
+
+/// A recovery action was asked for.
+///
+/// The printer's rather than any print's, so it is written with no print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecoveryRequestedPayload {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Who asked.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+}
+
+impl EventPayload for RecoveryRequestedPayload {
+    const KIND: &'static str = "recovery_requested";
+}
+
+impl Sample for RecoveryRequestedPayload {
+    fn sample_full() -> Self {
+        Self {
+            action: RecoveryAction::sample_full(),
+            actor: Actor::Operator,
+            reason: "free the nozzle from the part".to_owned(),
+        }
+    }
+}
+
+/// A recovery action reached the printer, and what the printer made of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecoveryExecutedPayload {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Who asked.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+    /// What the printer made of it.
+    pub outcome: crate::records::ExecutionOutcome,
+}
+
+impl EventPayload for RecoveryExecutedPayload {
+    const KIND: &'static str = "recovery_executed";
+}
+
+impl Sample for RecoveryExecutedPayload {
+    fn sample_full() -> Self {
+        Self {
+            action: RecoveryAction::RecoverLift { mm: 10.0 },
+            actor: Actor::Operator,
+            reason: "free the nozzle from the part".to_owned(),
+            outcome: crate::records::ExecutionOutcome::Succeeded,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            outcome: crate::records::ExecutionOutcome::Failed {
+                reason: "the printer is unreachable: connection refused".to_owned(),
+            },
+            ..Self::sample_full()
+        }]
+    }
+}
+
+/// A recovery action was refused, and reached nothing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecoveryRejectedPayload {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Who asked.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+    /// Why it was refused.
+    pub rejection: RecoveryRejection,
+}
+
+impl EventPayload for RecoveryRejectedPayload {
+    const KIND: &'static str = "recovery_rejected";
+}
+
+impl Sample for RecoveryRejectedPayload {
+    fn sample_full() -> Self {
+        Self {
+            action: RecoveryAction::RecoverPark {
+                clearance_asserted: false,
+            },
+            actor: Actor::Operator,
+            reason: "move the head off the part".to_owned(),
+            rejection: RecoveryRejection::sample_full(),
+        }
     }
 }

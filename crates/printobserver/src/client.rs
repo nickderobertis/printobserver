@@ -154,6 +154,14 @@ pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> 
 /// commands that settle them. Asking again inside a range is not the next step
 /// for a spool that is short.
 fn rejection_note(document: &Value) -> String {
+    // A recovery's answer carries its own refusal, and says in a sentence why
+    // and what would let it go ahead.
+    if document.get("action").is_some()
+        && document.pointer("/decision/rejected").is_some()
+        && let Some(detail) = document.get("detail").and_then(Value::as_str)
+    {
+        return format!("the supervisor refused this recovery: {detail}");
+    }
     // A print action's answer carries its decision in its record; a spool
     // command's answer carries it at the top.
     let refusal = document
@@ -290,6 +298,12 @@ fn unauthenticated_note(call: &Call, config: &ClientConfig) -> String {
 
 /// The answer to an action the machine itself refused.
 fn machine_note(document: &Value) -> String {
+    // A recovery the machine refused says so in its own sentence.
+    if document.get("printer_refusal").is_none()
+        && let Some(detail) = document.get("detail").and_then(Value::as_str)
+    {
+        return format!("{detail}. Look at the printer, then ask again");
+    }
     format!(
         "the policy accepted this action and the machine refused it: {}. Look at the \
          printer, then ask again",

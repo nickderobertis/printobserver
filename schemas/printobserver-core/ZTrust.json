@@ -1,0 +1,41 @@
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether Z is trusted, and since when or why not.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Z is where printobserver last put it, from this instant on: a `home_z`\nit executed, or a print it started.",
+      "properties": {
+        "trusted_since": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "trusted_since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Z is not trusted, and why.",
+      "properties": {
+        "untrusted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "untrusted"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ZTrust"
+}

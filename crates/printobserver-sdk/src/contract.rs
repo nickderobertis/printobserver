@@ -19,7 +19,7 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 29] = [
+pub const OPERATION_NAMES: [&str; 37] = [
     "prints",
     "status",
     "context",
@@ -49,6 +49,14 @@ pub const OPERATION_NAMES: [&str; 29] = [
     "unload_spool",
     "adjust_spool",
     "retire_spool",
+    "recover_status",
+    "recover_lift",
+    "recover_cool",
+    "recover_fan",
+    "recover_heat",
+    "recover_park",
+    "recover_home_xy",
+    "recover_home_z",
 ];
 
 /// A field that was sent, null included, as what was sent.
@@ -58,6 +66,24 @@ where
     T: Deserialize<'de>,
 {
     T::deserialize(deserializer).map(Some)
+}
+
+/// One field of an answer as it was sent: left out, sent as null, or a value.
+#[derive(Default)]
+enum Sent<T> {
+    /// Left out.
+    #[default]
+    Absent,
+    /// Sent as null.
+    Null,
+    /// Sent as a value.
+    Value(T),
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Sent<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Option::<T>::deserialize(deserializer)?.map_or(Self::Null, Self::Value))
+    }
 }
 
 /// What an operator's acknowledgement of a failure event asks for next.
@@ -73,6 +99,59 @@ pub enum AcknowledgementDisposition {
     /// acknowledgement itself asks nothing of the machine.
     #[serde(rename = "stop")]
     Stop,
+}
+
+/// Whether one recovery action is allowed now: `allowed`, and the refusal it
+/// would meet, present exactly when it is not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ActionAllowanceAsSent")]
+pub struct ActionAllowance {
+    /// One shape of the contracts, which say nothing more about it.
+    pub action: RecoveryActionKind,
+    /// Whether it is allowed now.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    pub allowed: bool,
+    /// One shape of the contracts, which say nothing more about it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<RecoveryRejection>,
+}
+
+/// One `ActionAllowance` as it was sent, before its paired fields are held to
+/// each other.
+#[derive(Deserialize)]
+struct ActionAllowanceAsSent {
+    /// One shape of the contracts, which say nothing more about it.
+    action: RecoveryActionKind,
+    /// Whether it is allowed now.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    allowed: bool,
+    /// One shape of the contracts, which say nothing more about it.
+    #[serde(default)]
+    refusal: Sent<RecoveryRejection>,
+}
+
+impl TryFrom<ActionAllowanceAsSent> for ActionAllowance {
+    type Error = String;
+
+    fn try_from(sent: ActionAllowanceAsSent) -> Result<Self, Self::Error> {
+        let refusal = match sent.refusal {
+            Sent::Absent => None,
+            Sent::Value(value) => Some(value),
+            Sent::Null => {
+                return Err("`refusal` is sent as one or not at all, never as null".to_owned());
+            }
+        };
+        if sent.allowed == refusal.is_some() {
+            return Err(
+                "`allowed` is false exactly when `refusal` is sent, and they disagree".to_owned(),
+            );
+        }
+        Ok(Self {
+            action: sent.action,
+            allowed: sent.allowed,
+            refusal,
+        })
+    }
 }
 
 /// What one mutating request left behind it.
@@ -275,6 +354,16 @@ pub struct AgentAssessmentPayload {
     pub assessment: AgentAssessment,
     /// The session the turn ran in.
     pub session_name: String,
+}
+
+/// The bed heater, as a recovery read reports it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BedTemperature {
+    /// What it reads, in degrees Celsius, `null` when not reported.
+    pub actual_c: Option<f64>,
+    /// What it is driving towards, in degrees Celsius, `null` when not
+    /// reported.
+    pub target_c: Option<f64>,
 }
 
 /// The camera gave no usable frame for a look or a periodic observation,
@@ -682,6 +771,20 @@ pub struct FileTallyRebaselinedPayload {
     pub origin: String,
 }
 
+/// The XY rectangle every extruding move of a file lies inside, in
+/// millimetres.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Footprint {
+    /// The largest X.
+    pub max_x: f64,
+    /// The largest Y.
+    pub max_y: f64,
+    /// The smallest X.
+    pub min_x: f64,
+    /// The smallest Y.
+    pub min_y: f64,
+}
+
 /// Why a camera frame was not one to hand the agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FrameCause {
@@ -932,6 +1035,18 @@ pub struct JobSnapshot {
     pub state: PrinterState,
 }
 
+/// What the last print laid down, read from its own G-code up to the last
+/// file position recorded for it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LastPrint {
+    /// Where in X and Y it laid material.
+    pub footprint: Footprint,
+    /// The print.
+    pub print_id: PrintId,
+    /// The tallest part it laid down, in millimetres.
+    pub tallest_mm: f64,
+}
+
 /// One spool loaded on one tool, as a print started.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoadedSpool {
@@ -1095,6 +1210,20 @@ pub struct OperatorAcknowledgementPayload {
     pub acknowledged_event_id: EventId,
     /// What the operator asked for next.
     pub disposition: AcknowledgementDisposition,
+}
+
+/// The print paused under the printer, and whether resuming it is still safe.
+///
+/// A recovery action executed while it was paused moved the head, and
+/// `OctoPrint` restores no position on resume, so the rest of the layer would
+/// print at the wrong height: such a print is not resumable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PausedPrint {
+    /// The print.
+    pub print_id: PrintId,
+    /// Whether it may be resumed.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    pub resumable: bool,
 }
 
 /// Filament a tool fed after a filament change nobody has confirmed, held
@@ -1879,6 +2008,300 @@ pub enum RebaselineDisposition {
     Unverified,
 }
 
+/// The whole recovery vocabulary, and there is no other.
+///
+/// The two assertions are the operator's word for what printobserver cannot
+/// see: `clearance_asserted` that the nozzle is clear of the part, and
+/// `bed_clear_asserted` that homing Z will meet nothing on the bed. Each is
+/// false when left out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "action")]
+pub enum RecoveryAction {
+    /// Move the nozzle away from the bed by `mm`.
+    #[serde(rename = "recover_lift")]
+    RecoverLift {
+        /// How far, in millimetres: above zero and at most
+        /// `recovery.max_lift_mm`.
+        mm: f64,
+    },
+    /// Set every heater's target to zero.
+    #[serde(rename = "recover_cool")]
+    RecoverCool,
+    /// Set the part-cooling fan.
+    #[serde(rename = "recover_fan")]
+    RecoverFan {
+        /// The percentage, from 0 to 100.
+        percent: f64,
+    },
+    /// Heat one tool, within the safety envelope's range for it.
+    #[serde(rename = "recover_heat")]
+    RecoverHeat {
+        /// The operator's word that the nozzle is clear of the part.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clearance_asserted: Option<bool>,
+        /// The target, in degrees Celsius.
+        target_c: f64,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// Move the head to `recovery.park_xy`.
+    #[serde(rename = "recover_park")]
+    RecoverPark {
+        /// The operator's word that the nozzle is clear of the part.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clearance_asserted: Option<bool>,
+    },
+    /// Home X and Y.
+    #[serde(rename = "recover_home_xy")]
+    RecoverHomeXy {
+        /// The operator's word that the nozzle is clear of the part.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clearance_asserted: Option<bool>,
+    },
+    /// Home Z.
+    #[serde(rename = "recover_home_z")]
+    RecoverHomeZ {
+        /// The operator's word that homing Z will meet nothing on the bed.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bed_clear_asserted: Option<bool>,
+    },
+}
+
+/// One recovery action, named without its fields: what a grant names and what
+/// a refusal of an ungranted request names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RecoveryActionKind {
+    /// Move the nozzle away from the bed.
+    #[serde(rename = "recover_lift")]
+    RecoverLift,
+    /// Every heater's target to zero.
+    #[serde(rename = "recover_cool")]
+    RecoverCool,
+    /// Set the part-cooling fan.
+    #[serde(rename = "recover_fan")]
+    RecoverFan,
+    /// Heat one tool.
+    #[serde(rename = "recover_heat")]
+    RecoverHeat,
+    /// Move the head to the configured park place.
+    #[serde(rename = "recover_park")]
+    RecoverPark,
+    /// Home X and Y.
+    #[serde(rename = "recover_home_xy")]
+    RecoverHomeXy,
+    /// Home Z.
+    #[serde(rename = "recover_home_z")]
+    RecoverHomeZ,
+}
+
+/// What a recovery action answers, carried out or refused.
+///
+/// A refusal is the same shape and deliberately so: `decision` is either
+/// `executed`, carrying what the printer made of it, or `rejected`, carrying
+/// the reason, and the two events are what the request wrote.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryAnswer {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// What became of it.
+    pub decision: RecoveryDecision,
+    /// What became of it, in a sentence for a person: why it was refused and
+    /// what would let it go ahead, or what it did.
+    pub detail: String,
+    /// The `recovery_requested` event, and the `recovery_executed` or
+    /// `recovery_rejected` beside it.
+    pub events: Vec<EventRecord>,
+}
+
+/// What became of a recovery request: carried out with the printer's outcome,
+/// or refused — one or the other, never both and never neither.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RecoveryDecision {
+    /// It reached the printer, and this is what the printer made of it.
+    #[serde(rename = "executed")]
+    Executed(ExecutionOutcome),
+    /// It was refused, and reached nothing.
+    #[serde(rename = "rejected")]
+    Rejected(RecoveryRejection),
+}
+
+/// A recovery action reached the printer, and what the printer made of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryExecutedPayload {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Who asked.
+    pub actor: Actor,
+    /// What the printer made of it.
+    pub outcome: ExecutionOutcome,
+    /// Why.
+    pub reason: String,
+}
+
+/// One field of a recovery action a bound is held to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RecoveryField {
+    /// A lift's distance, in millimetres.
+    #[serde(rename = "mm")]
+    Mm,
+    /// The fan's percentage.
+    #[serde(rename = "percent")]
+    Percent,
+    /// A heat's tool.
+    #[serde(rename = "tool")]
+    Tool,
+    /// A heat's target, in degrees Celsius.
+    #[serde(rename = "target_c")]
+    TargetC,
+    /// The operator's word that the nozzle is clear of the part.
+    #[serde(rename = "clearance_asserted")]
+    ClearanceAsserted,
+    /// The operator's word that homing Z will meet nothing on the bed.
+    #[serde(rename = "bed_clear_asserted")]
+    BedClearAsserted,
+}
+
+/// Where the print head is, in millimetres, as the printer reported it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryPosition {
+    /// X.
+    pub x: f64,
+    /// Y.
+    pub y: f64,
+    /// Z.
+    pub z: f64,
+}
+
+/// A recovery action was refused, and reached nothing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryRejectedPayload {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Who asked.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+    /// Why it was refused.
+    pub rejection: RecoveryRejection,
+}
+
+/// Why a recovery request was refused, each a variant of its own so a
+/// consumer tells them apart by matching rather than by reading words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RecoveryRejection {
+    /// The asking actor's class is not granted this action.
+    #[serde(rename = "actor_may_not_request")]
+    ActorMayNotRequest {
+        /// The action asked for.
+        action: RecoveryActionKind,
+    },
+    /// A print is running, or being cancelled: nothing may move the printer
+    /// under it.
+    #[serde(rename = "print_running")]
+    PrintRunning {
+        /// The state the printer reported.
+        state: PrinterState,
+    },
+    /// The printer could not be read, or reports itself offline or in error.
+    #[serde(rename = "printer_unreachable")]
+    PrinterUnreachable,
+    /// Nothing printobserver did has told it where Z is, so no move that
+    /// depends on the nozzle's height above the part may be made.
+    #[serde(rename = "z_untrusted")]
+    ZUntrusted,
+    /// The nozzle is not far enough above the tallest part the last print
+    /// laid down.
+    #[serde(rename = "insufficient_clearance")]
+    InsufficientClearance {
+        /// The clearance asked above it, in millimetres.
+        margin_mm: f64,
+        /// Where the printer reports the nozzle, in millimetres.
+        nozzle_z_mm: f64,
+        /// The tallest part the last print laid down, in millimetres.
+        tallest_mm: f64,
+    },
+    /// A value the request carries is outside the range allowed for it.
+    #[serde(rename = "out_of_bounds")]
+    OutOfBounds {
+        /// The range allowed, inclusive.
+        allowed: Range,
+        /// The field.
+        field: RecoveryField,
+        /// The value asked for.
+        requested: f64,
+    },
+    /// This action needs an assertion the request did not make.
+    #[serde(rename = "assertion_required")]
+    AssertionRequired {
+        /// The assertion it needs.
+        field: RecoveryField,
+    },
+    /// The configuration states nothing of this printer's recovery facts, so
+    /// no recovery action can be checked.
+    #[serde(rename = "recovery_not_configured")]
+    RecoveryNotConfigured,
+    /// The printer cannot do what this action needs: a move its adapter does
+    /// not support, or a nozzle position it cannot read.
+    #[serde(rename = "printer_cannot")]
+    PrinterCannot {
+        /// The action asked for.
+        action: RecoveryActionKind,
+        /// What the printer cannot do, in words.
+        detail: String,
+    },
+}
+
+/// A recovery action was asked for.
+///
+/// The printer's rather than any print's, so it is written with no print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryRequestedPayload {
+    /// What was asked for.
+    pub action: RecoveryAction,
+    /// Who asked.
+    pub actor: Actor,
+    /// Why.
+    pub reason: String,
+}
+
+/// What a recovery read answers: everything a recovery is checked against,
+/// and what each action would meet now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryStatus {
+    /// Each action, and whether it is allowed now.
+    pub actions: Vec<ActionAllowance>,
+    /// What the last print laid down, `null` when there is no print with a
+    /// file to read or its file could not be read.
+    pub last_print: Option<LastPrint>,
+    /// The print paused under the printer, `null` when none is.
+    pub paused_print: Option<PausedPrint>,
+    /// Where the head is, read only while Z is trusted; `null` otherwise or
+    /// when it could not be read.
+    pub position: Option<RecoveryPosition>,
+    /// The state the printer reports; `offline` when it could not be read.
+    pub state: PrinterState,
+    /// Every heater.
+    pub temperatures: RecoveryTemperatures,
+    /// Where Z is homed and whether that sweeps the bed, `null` when
+    /// recovery is not configured.
+    pub z_home: Option<ZHome>,
+    /// Whether Z is trusted.
+    pub z_trust: ZTrust,
+}
+
+/// Every heater, as a recovery read reports it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecoveryTemperatures {
+    /// The bed, `null` when the printer reports none.
+    pub bed: Option<BedTemperature>,
+    /// Each tool.
+    pub tools: Vec<ToolTemperature>,
+}
+
 /// Why a request was refused.
 ///
 /// Each rejection is a distinct variant, so a consumer distinguishes them by
@@ -1984,6 +2407,14 @@ pub enum RejectionReason {
     InterventionStillActive {
         /// The intervention still standing.
         intervention_id: InterventionId,
+    },
+    /// A resume was refused because a recovery action was executed while the
+    /// print was paused: the head moved, and `OctoPrint` restores no position
+    /// on resume, so the rest of the layer would print at the wrong height.
+    #[serde(rename = "print_not_resumable")]
+    PrintNotResumable {
+        /// The `recovery_executed` event that made it so.
+        recovery_event_id: EventId,
     },
     /// A spool command could not be carried out.
     #[serde(rename = "spool_refused")]
@@ -2580,6 +3011,18 @@ pub struct ToolFilament {
     pub volume_cm3: Option<f64>,
 }
 
+/// One tool heater, as a recovery read reports it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolTemperature {
+    /// What it reads, in degrees Celsius, `null` when not reported.
+    pub actual_c: Option<f64>,
+    /// What it is driving towards, in degrees Celsius, `null` when not
+    /// reported.
+    pub target_c: Option<f64>,
+    /// The tool, in the printer's own numbering.
+    pub tool: i64,
+}
+
 /// A print this system never saw was found in the printer's own tally.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnaccountedPrintPayload {
@@ -2676,6 +3119,30 @@ pub enum UnverifiedReason {
         /// Where the file lives, in the printer's own vocabulary.
         origin: String,
     },
+}
+
+/// Where the machine homes Z, and whether doing so sweeps the bed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ZHome {
+    /// Whether homing Z brings a gantry down over the whole bed.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    pub sweeps_bed: bool,
+    /// Where in X Z is homed, in millimetres.
+    pub x: f64,
+    /// Where in Y Z is homed, in millimetres.
+    pub y: f64,
+}
+
+/// Whether Z is trusted, and since when or why not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ZTrust {
+    /// Z is where printobserver last put it, from this instant on: a `home_z`
+    /// it executed, or a print it started.
+    #[serde(rename = "trusted_since")]
+    TrustedSince(Timestamp),
+    /// Z is not trusted, and why.
+    #[serde(rename = "untrusted")]
+    Untrusted(String),
 }
 
 /// One payload type declared under a kind name, by the domain that owns it.
@@ -2784,6 +3251,18 @@ impl EventPayloadKind for PrinterResetPayload {
     const KIND: &'static str = "printer_reset";
 }
 
+impl EventPayloadKind for RecoveryExecutedPayload {
+    const KIND: &'static str = "recovery_executed";
+}
+
+impl EventPayloadKind for RecoveryRejectedPayload {
+    const KIND: &'static str = "recovery_rejected";
+}
+
+impl EventPayloadKind for RecoveryRequestedPayload {
+    const KIND: &'static str = "recovery_requested";
+}
+
 impl EventPayloadKind for SpoolAdjustedPayload {
     const KIND: &'static str = "spool_adjusted";
 }
@@ -2833,7 +3312,7 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 36] = [
+pub const EVENT_KINDS: [&str; 39] = [
     "action_executed",
     "action_rejected",
     "action_requested",
@@ -2858,6 +3337,9 @@ pub const EVENT_KINDS: [&str; 36] = [
     "print_untracked",
     "printer_connection_changed",
     "printer_reset",
+    "recovery_executed",
+    "recovery_rejected",
+    "recovery_requested",
     "spool_adjusted",
     "spool_command_rejected",
     "spool_loaded",
@@ -3602,6 +4084,204 @@ impl Client {
         let asked: Vec<(String, String)> = Vec::new();
         let mut sending = serde_json::Map::new();
         sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_status` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read.
+    pub fn recover_status(&self) -> Result<RecoveryStatus, ClientError> {
+        let target = String::from("/v1/printer/recovery");
+        let asked: Vec<(String, String)> = Vec::new();
+        let sending: Option<serde_json::Value> = None;
+        self.call("GET", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_lift` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_lift(&self, mm: f64, reason: &str) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_lift");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("mm".to_owned(), crate::as_value(&mm)?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_cool` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_cool(&self, reason: &str) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_cool");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_fan` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_fan(&self, percent: f64, reason: &str) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_fan");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("percent".to_owned(), crate::as_value(&percent)?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_heat` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_heat(
+        &self,
+        reason: &str,
+        target_c: f64,
+        tool: i64,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        clearance_asserted: Option<bool>,
+    ) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_heat");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        if let Some(value) = clearance_asserted {
+            sending.insert("clearance_asserted".to_owned(), crate::as_value(&value)?);
+        }
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        sending.insert("target_c".to_owned(), crate::as_value(&target_c)?);
+        sending.insert("tool".to_owned(), crate::as_value(&tool)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_park` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_park(
+        &self,
+        reason: &str,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        clearance_asserted: Option<bool>,
+    ) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_park");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        if let Some(value) = clearance_asserted {
+            sending.insert("clearance_asserted".to_owned(), crate::as_value(&value)?);
+        }
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_home_xy` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_home_xy(
+        &self,
+        reason: &str,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        clearance_asserted: Option<bool>,
+    ) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_home_xy");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        if let Some(value) = clearance_asserted {
+            sending.insert("clearance_asserted".to_owned(), crate::as_value(&value)?);
+        }
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recover_home_z` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recover_home_z(
+        &self,
+        reason: &str,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+        bed_clear_asserted: Option<bool>,
+    ) -> Result<RecoveryAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/recovery/recover_home_z");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        if let Some(value) = bed_clear_asserted {
+            sending.insert("bed_clear_asserted".to_owned(), crate::as_value(&value)?);
+        }
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));
         self.call("POST", &target, &asked, sending.as_ref())

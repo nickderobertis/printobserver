@@ -44,16 +44,17 @@ use std::time::Duration;
 
 use crate::records::{
     ActionId, ActionRecord, ActionRequest, ActorClass, ExecutionOutcome, PolicyDecision,
-    PrintAction,
+    PrintAction, RecoveryDecision, RecoveryRejection, ZTrust,
 };
 use printobserver_printer_api::{
-    FileFacts, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot, ToolFilament,
+    AxisPosition, FileFacts, JobSnapshot, PrintedExtent, PrinterCommand, PrinterError, PrinterPort,
+    PrinterSnapshot, ToolFilament,
 };
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_types::{EventPayload as _, EventRecord, FileName, PrintId, Timestamp};
 use printobserver_vision_api::VisionPort;
 
-use crate::store::{HistoryQuery, MAX_HISTORY_LIMIT, StoreError, Stores};
+use crate::store::{HistoryQuery, MAX_HISTORY_LIMIT, Stores};
 
 use crate::block_on::block_on;
 use crate::clock::{Clock, ClockReading};
@@ -63,7 +64,7 @@ use crate::detector::DetectorPauses;
 use crate::error::CoreError;
 use crate::expiry::Deadlines;
 use crate::inbox::Inboxes;
-use crate::kinds::{ActionExecutedPayload, ActionRequestedPayload};
+use crate::kinds::{ActionExecutedPayload, ActionRequestedPayload, RecoveryRequestedPayload};
 use crate::turn_access::{NoAccess, OpenedTurn, TurnAuthority};
 use crate::turn_lock::TurnLocks;
 use crate::watch::WatchState;
@@ -92,6 +93,106 @@ impl Issued {
             _ => None,
         }
     }
+}
+
+/// The status a printer port answers a method it does not implement with.
+const NOT_SUPPORTED: u16 = 501;
+
+/// What became of a recovery whose calls the printer answered so: carried
+/// out, or failed at the printer — or, when its first call is one the printer
+/// answers as not supported, which sent nothing, refused as one it cannot make.
+fn recovery_decision_of(
+    action: crate::records::RecoveryActionKind,
+    executed: Result<(), PrinterError>,
+    first: bool,
+) -> RecoveryDecision {
+    match executed {
+        Ok(()) => RecoveryDecision::Executed(ExecutionOutcome::Succeeded),
+        Err(PrinterError::Refused {
+            status: NOT_SUPPORTED,
+            detail,
+        }) if first => {
+            RecoveryDecision::Rejected(RecoveryRejection::PrinterCannot { action, detail })
+        }
+        failed @ Err(_) => RecoveryDecision::Executed(outcome_of(&failed)),
+    }
+}
+
+/// What the printer made of one request, as its record keeps it.
+fn outcome_of(executed: &Result<(), PrinterError>) -> ExecutionOutcome {
+    match executed {
+        Ok(()) => ExecutionOutcome::Succeeded,
+        Err(error) => ExecutionOutcome::Failed {
+            reason: error.to_string(),
+        },
+    }
+}
+
+/// One call a recovery makes at an action method of the printer port, which
+/// only [`Supervisor::issue_decided_action`] turns into one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum PortCall {
+    /// One tool's target, in degrees Celsius.
+    ToolTarget {
+        /// The tool.
+        tool: i64,
+        /// The target.
+        target_c: f64,
+    },
+    /// The bed's target, in degrees Celsius.
+    BedTarget {
+        /// The target.
+        target_c: f64,
+    },
+    /// The part-cooling fan, in percent.
+    Fan {
+        /// The percentage.
+        percent: f64,
+    },
+    /// One command of the port's closed vocabulary.
+    Command(PrinterCommand),
+}
+
+/// What reaches the chokepoint: a print action and the decision policy took
+/// on it, or a recovery and the calls it was decided to make.
+#[derive(Debug, Clone)]
+pub(crate) enum Decided {
+    /// A print action.
+    Action {
+        /// The request.
+        request: Box<ActionRequest>,
+        /// The decision taken on it.
+        decision: PolicyDecision,
+        /// The print it was asked of, when it was asked of one.
+        against: Option<PrintId>,
+    },
+    /// A recovery.
+    Recovery {
+        /// The request, as it is written down.
+        requested: Box<RecoveryRequestedPayload>,
+        /// The calls it makes, in order, or the refusal it met.
+        calls: Result<Vec<PortCall>, RecoveryRejection>,
+    },
+}
+
+/// What the chokepoint answers for what reached it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum IssuedAs {
+    /// A print action.
+    Action(Issued),
+    /// A recovery.
+    Recovery(RecoveryIssued),
+}
+
+/// What became of one recovery request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecoveryIssued {
+    /// What became of it.
+    pub decision: RecoveryDecision,
+    /// The `recovery_requested` event.
+    pub requested: EventRecord,
+    /// The `recovery_executed` or `recovery_rejected` event.
+    pub settled: EventRecord,
 }
 
 /// The supervision core: one printer, one store, one agent, one clock.
@@ -162,7 +263,19 @@ pub struct Supervisor {
     turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
     /// What the printer watch holds between its reads.
     pub(crate) watch: Mutex<WatchState>,
+    /// Whether Z is trusted, which this supervisor starts out not doing.
+    z_trust: Mutex<ZTrust>,
+    /// What the last print's G-code laid down, by the print and the file
+    /// position it was read to, so a recovery read does not read the file
+    /// again while neither has moved.
+    recovery_extents: Mutex<Option<RecoveryExtent>>,
+    /// The prints a recovery moved the printer under while they were paused,
+    /// and the `recovery_executed` event of the first that did.
+    moved_while_paused: Mutex<BTreeMap<PrintId, printobserver_types::EventId>>,
 }
+
+/// One print's G-code read to one file position, and what it laid down.
+type RecoveryExtent = ((PrintId, i64), Option<PrintedExtent>);
 
 /// When the agent last changed the machine on one print, as this supervisor
 /// measures it.
@@ -230,6 +343,11 @@ impl Supervisor {
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
             watch: Mutex::new(WatchState::default()),
+            z_trust: Mutex::new(ZTrust::Untrusted(
+                crate::recovery::UNTRUSTED_AT_START.to_owned(),
+            )),
+            recovery_extents: Mutex::new(None),
+            moved_while_paused: Mutex::new(BTreeMap::new()),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
@@ -250,6 +368,31 @@ impl Supervisor {
     /// from. The first installation stands; answers whether this one did.
     pub fn install_turn_authority(&self, authority: Arc<dyn TurnAuthority>) -> bool {
         self.turn_authority.set(authority).is_ok()
+    }
+
+    /// Whether Z is trusted, held for one read or write.
+    pub(crate) fn z_trust_held(&self) -> MutexGuard<'_, ZTrust> {
+        self.z_trust
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// What the last print's G-code was last read to lay down, held for one
+    /// read or write.
+    pub(crate) fn recovery_extents(&self) -> MutexGuard<'_, Option<RecoveryExtent>> {
+        self.recovery_extents
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The prints a recovery moved the printer under while they were paused,
+    /// held for one read or write.
+    pub(crate) fn moved_while_paused(
+        &self,
+    ) -> MutexGuard<'_, BTreeMap<PrintId, printobserver_types::EventId>> {
+        self.moved_while_paused
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The issuer for one turn about one print, opened now.
@@ -483,6 +626,24 @@ impl Supervisor {
         self.printer.printed_files().await
     }
 
+    /// Read what one file printed up to a byte position in it.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_printed_extent(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> Result<Option<PrintedExtent>, PrinterError> {
+        self.printer.printed_extent(file_name, position_bytes).await
+    }
+
+    /// Read where the print head is.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_position(&self) -> Result<AxisPosition, PrinterError> {
+        self.printer.read_position().await
+    }
+
     /// Read the filament each tool is fed by one file's own moves, up to a
     /// byte position in it.
     ///
@@ -516,10 +677,50 @@ impl Supervisor {
     /// request that never happened.
     pub(crate) async fn issue_decided_action(
         &self,
-        request: ActionRequest,
-        decision: PolicyDecision,
-        against: Option<PrintId>,
-    ) -> Result<Issued, StoreError> {
+        decided: Decided,
+    ) -> Result<IssuedAs, CoreError> {
+        let (request, decision, against) = match decided {
+            Decided::Action {
+                request,
+                decision,
+                against,
+            } => (*request, decision, against),
+            // The request is written down before anything reaches the machine.
+            Decided::Recovery { requested, calls } => {
+                let requested_event = self.write_recovery_request(&requested).await?;
+                let decision = match calls {
+                    Err(rejection) => RecoveryDecision::Rejected(rejection),
+                    Ok(calls) => {
+                        let (mut executed, mut first) = (Ok(()), true);
+                        for call in calls {
+                            executed = match call {
+                                PortCall::ToolTarget { tool, target_c } => {
+                                    self.printer.set_tool_target_c(tool, target_c).await
+                                }
+                                PortCall::BedTarget { target_c } => {
+                                    self.printer.set_bed_target_c(target_c).await
+                                }
+                                PortCall::Fan { percent } => {
+                                    self.printer.set_fan_percent(percent).await
+                                }
+                                PortCall::Command(command) => {
+                                    self.printer.send_command(command).await
+                                }
+                            };
+                            if executed.is_err() {
+                                break;
+                            }
+                            first = false;
+                        }
+                        recovery_decision_of(requested.action.kind(), executed, first)
+                    }
+                };
+                return self
+                    .recovery_settled(*requested, requested_event, decision)
+                    .await
+                    .map(IssuedAs::Recovery);
+            }
+        };
         // A close is asked of the record it names, which may have ended or may
         // not be the newest open one, so it is recorded against that record;
         // every other request binds where the store binds it.
@@ -537,10 +738,10 @@ impl Supervisor {
             }
         };
         if decision != PolicyDecision::Accepted {
-            return Ok(Issued {
+            return Ok(IssuedAs::Action(Issued {
                 record,
                 executed: None,
-            });
+            }));
         }
         let executed = match &request.action {
             PrintAction::Pause { .. } => self.printer.pause().await,
@@ -574,20 +775,40 @@ impl Supervisor {
             // its execution is recorded ([`crate::closing`]).
             PrintAction::AcknowledgeFailure { .. } | PrintAction::ClosePrint { .. } => Ok(()),
         };
-        let outcome = match &executed {
-            Ok(()) => ExecutionOutcome::Succeeded,
-            Err(error) => ExecutionOutcome::Failed {
-                reason: error.to_string(),
-            },
-        };
+        let outcome = outcome_of(&executed);
         let record = self
             .stores
             .actions
             .record_execution(record.id, outcome)
             .await?;
-        Ok(Issued {
+        Ok(IssuedAs::Action(Issued {
             record,
             executed: Some(executed),
-        })
+        }))
+    }
+
+    /// Issue one print action through the chokepoint, answering what became
+    /// of it.
+    pub(crate) async fn issue_action(
+        &self,
+        request: ActionRequest,
+        decision: PolicyDecision,
+        against: Option<PrintId>,
+    ) -> Result<Issued, CoreError> {
+        match self
+            .issue_decided_action(Decided::Action {
+                request: Box::new(request),
+                decision,
+                against,
+            })
+            .await?
+        {
+            IssuedAs::Action(issued) => Ok(issued),
+            // The chokepoint answers each request in its own kind, so this is
+            // a chokepoint that has come apart from its callers.
+            IssuedAs::Recovery(_) => Err(CoreError::Unrepresentable {
+                detail: "a print action was answered as a recovery".to_owned(),
+            }),
+        }
     }
 }

@@ -2,12 +2,15 @@
 //!
 //! Five of them, and each is a different thing for a caller to do next: the
 //! supervisor was not there, this client would not send the request, the
-//! supervisor said no in words, the policy refused the action, or the machine
-//! itself refused it. The fourth is the one with a shape rather than a
-//! sentence, because a caller that can read the range allowed can ask again
-//! for something inside it.
+//! supervisor said no in words, the policy refused the action — or the
+//! recovery — or the machine itself refused it. The fourth is the one with a
+//! shape rather than a sentence, because a caller that can read the range
+//! allowed can ask again for something inside it.
 
-use crate::contract::{ActionAnswer, PolicyDecision, Range, RejectionReason, SpoolCommandAnswer};
+use crate::contract::{
+    ActionAnswer, PolicyDecision, Range, RecoveryAnswer, RecoveryDecision, RecoveryRejection,
+    RejectionReason, SpoolCommandAnswer,
+};
 
 /// The whole answer a refusal arrived in: an action's, whose record carries
 /// the request and the decision, or a spool command's, carrying the decision
@@ -83,6 +86,56 @@ impl core::fmt::Display for Rejection {
     }
 }
 
+/// A recovery's own refusal, as a caller reads it.
+///
+/// [`RecoveryRejected::rejection`] is the refusal itself, matched rather than
+/// read; [`RecoveryRejected::requested`] and [`RecoveryRejected::allowed`] are
+/// the value that was asked for and the range that is allowed, where a bound
+/// refused it, and absent where something else did.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecoveryRejected {
+    /// Why the recovery was refused.
+    pub rejection: RecoveryRejection,
+    /// The value that was asked for, where a bound refused it.
+    pub requested: Option<f64>,
+    /// The range that is allowed, where a bound refused it.
+    pub allowed: Option<Range>,
+    /// The whole answer the refusal arrived in.
+    pub answer: RecoveryAnswer,
+}
+
+impl RecoveryRejected {
+    /// The refusal one recovery answer carries, when it was refused.
+    #[must_use]
+    pub fn of(answer: RecoveryAnswer) -> Option<Self> {
+        let RecoveryDecision::Rejected(rejection) = answer.decision.clone() else {
+            return None;
+        };
+        let (requested, allowed) = match &rejection {
+            RecoveryRejection::OutOfBounds {
+                requested, allowed, ..
+            } => (Some(*requested), Some(allowed.clone())),
+            _ => (None, None),
+        };
+        Some(Self {
+            rejection,
+            requested,
+            allowed,
+            answer,
+        })
+    }
+}
+
+impl core::fmt::Display for RecoveryRejected {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            formatter,
+            "the supervisor refused this recovery: {}",
+            self.answer.detail
+        )
+    }
+}
+
 /// Why a call did not answer what it asked for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientError {
@@ -127,6 +180,9 @@ pub enum ClientError {
     },
     /// The policy refused the action, and the refusal is the answer.
     Rejected(Box<Rejection>),
+    /// The supervisor refused a recovery action, and the refusal is the
+    /// answer.
+    RecoveryRejected(Box<RecoveryRejected>),
 }
 
 impl core::fmt::Display for ClientError {
@@ -159,6 +215,7 @@ impl core::fmt::Display for ClientError {
                  at the printer, then ask again"
             ),
             Self::Rejected(rejection) => write!(formatter, "{rejection}"),
+            Self::RecoveryRejected(rejection) => write!(formatter, "{rejection}"),
         }
     }
 }

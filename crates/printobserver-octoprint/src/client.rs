@@ -18,8 +18,10 @@
 //! connection that says the printer is offline or in error is answered as a
 //! snapshot in that state rather than as a conflict, because it is the state
 //! the printer is in rather than a request it could not take. The push socket
-//! is [`crate::push`]'s, and the one command sent as a line is `M114`. Acting is `POST` to
-//! `/api/job`, `/api/printer/printhead`, `/api/printer/tool`,
+//! is [`crate::push`]'s, and the one command sent as a line is `M114`, whose
+//! reply [`PrinterPort::read_position`] reads off a push socket of its own.
+//! Acting is `POST` to `/api/job`, `/api/printer/printhead` — the feedrate
+//! factor, and every move and home `PrinterCommand` names — `/api/printer/tool`,
 //! `/api/printer/bed` and — for the fan alone — `/api/printer/command`. Every
 //! acting endpoint answers `204 No Content` on success, so what happened is read
 //! from the status rather than from a body.
@@ -52,7 +54,9 @@
 use core::fmt::Write as _;
 use core::ops::ControlFlow;
 
-use printobserver_printer_api::{Adjustable, FileFacts, ToolFilament};
+use printobserver_printer_api::{
+    Adjustable, AxisPosition, FileFacts, HomeAxes, PrintedExtent, ToolFilament,
+};
 use printobserver_printer_api::{
     BoxFuture, BoxStream, JobSnapshot, PrinterCommand, PrinterError, PrinterPort, PrinterPush,
     PrinterSnapshot,
@@ -66,6 +70,7 @@ use crate::convert::{
 };
 use crate::gcode::ExtrudedTo;
 use crate::http::{self, Method, Response, Sink, Transport};
+use crate::push::Taken;
 use crate::wire::{
     ConnectionPayload, DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload,
     TOOL_PREFIX,
@@ -176,14 +181,64 @@ impl OctoPrintPrinter {
         payload.disconnected(Timestamp::now())
     }
 
-    /// Send one command of the closed vocabulary, as the line it renders to.
-    fn command_line(&self, command: PrinterCommand) -> Result<(), PrinterError> {
-        self.request(
-            Method::Post,
-            COMMAND_PATH,
-            Some(json!({ "commands": [line_of(command)] })),
-        )
-        .map(|_| ())
+    /// Send one command of the closed vocabulary, as the request it renders
+    /// to: a report as its terminal line, and every move and home through the
+    /// print head's own endpoint.
+    fn command(&self, command: PrinterCommand) -> Result<(), PrinterError> {
+        let (path, body) = match command {
+            PrinterCommand::ReportPosition => {
+                (COMMAND_PATH, json!({ "commands": [POSITION_REPORT] }))
+            }
+            PrinterCommand::MoveZ { mm } => (PRINTHEAD_PATH, json!({ "command": "jog", "z": mm })),
+            PrinterCommand::MoveXy { x_mm, y_mm } => (
+                PRINTHEAD_PATH,
+                json!({ "command": "jog", "x": x_mm, "y": y_mm, "absolute": true }),
+            ),
+            PrinterCommand::Home { axes } => (
+                PRINTHEAD_PATH,
+                json!({ "command": "home", "axes": match axes {
+                    HomeAxes::Xy => &["x", "y"][..],
+                    HomeAxes::Z => &["z"][..],
+                } }),
+            ),
+        };
+        self.request(Method::Post, path, Some(body)).map(|_| ())
+    }
+
+    /// Read where the head is: open the push socket, ask for a report, and
+    /// take the first position a terminal line after it states, asking again
+    /// each [`POSITION_ASK_EVERY`] — a socket only just authenticated may not
+    /// be carrying lines yet — until [`POSITION_WAIT`] has passed.
+    fn read_head(&self) -> Result<AxisPosition, PrinterError> {
+        let stream = crate::push::open(&self.config)?;
+        let started = std::time::Instant::now();
+        let mut asked: Option<std::time::Instant> = None;
+        while started.elapsed() < POSITION_WAIT {
+            if asked.is_none_or(|at| at.elapsed() >= POSITION_ASK_EVERY) {
+                self.command(PrinterCommand::ReportPosition)?;
+                asked = Some(std::time::Instant::now());
+            }
+            match stream.try_next() {
+                Taken::Push(PrinterPush::Log { line }) => {
+                    if let Some([x, y, z]) = crate::push::position_of(&line) {
+                        return Ok(AxisPosition { x, y, z });
+                    }
+                }
+                Taken::Push(_) => {}
+                Taken::Ended => {
+                    return Err(PrinterError::Unreachable {
+                        detail: "the push socket ended before the position was reported".to_owned(),
+                    });
+                }
+                Taken::Nothing => std::thread::sleep(std::time::Duration::from_millis(20)),
+            }
+        }
+        Err(PrinterError::Unreachable {
+            detail: format!(
+                "the printer reported no position within {}s of being asked",
+                POSITION_WAIT.as_secs()
+            ),
+        })
     }
 
     /// Read the job, as this adapter's own snapshot.
@@ -215,6 +270,26 @@ impl OctoPrintPrinter {
         file_name: &FileName,
         position_bytes: i64,
     ) -> Result<Vec<ToolFilament>, PrinterError> {
+        self.read_gcode_to(file_name, position_bytes)
+            .map(|reader| reader.fed())
+    }
+
+    /// Read what one file's G-code printed up to a byte.
+    fn read_printed_extent(
+        &self,
+        file_name: &FileName,
+        position_bytes: i64,
+    ) -> Result<Option<PrintedExtent>, PrinterError> {
+        self.read_gcode_to(file_name, position_bytes)
+            .map(|reader| reader.extent())
+    }
+
+    /// Stream one file's G-code through the reader, up to a byte.
+    fn read_gcode_to(
+        &self,
+        file_name: &FileName,
+        position_bytes: i64,
+    ) -> Result<ExtrudedTo, PrinterError> {
         let file = self.read_file(file_name)?;
         let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
@@ -247,8 +322,8 @@ impl OctoPrintPrinter {
             &mut reader,
         );
         match outcome {
-            Ok(None) => Ok(reader.0.fed()),
-            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| reader.0.fed()),
+            Ok(None) => Ok(reader.0),
+            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| reader.0),
             Err(transport) => {
                 let error = match transport {
                     Transport::Unreachable(detail) => PrinterError::Unreachable { detail },
@@ -277,6 +352,41 @@ impl OctoPrintPrinter {
     }
 
     /// Ask the job endpoint for one of the four things it does.
+    /// Pause the job, once the instance has begun to send it.
+    ///
+    /// A pause asked of a job `OctoPrint` is still starting is accepted and
+    /// then lost: its move to `Printing` overwrites `Pausing`, and the print
+    /// runs on. So while the instance's own job state is `Starting` this waits,
+    /// for as long as [`STARTING_WAIT`], and refuses rather than send a pause
+    /// that would be dropped. The read is only that guard: a job state that
+    /// cannot be read is no reason to withhold the pause, whose own answer
+    /// says whether the instance took it.
+    fn pause_job(&self) -> Result<(), PrinterError> {
+        let asked = std::time::Instant::now();
+        while self.job_is_starting() {
+            if asked.elapsed() >= STARTING_WAIT {
+                let error = PrinterError::StateConflict {
+                    detail: format!(
+                        "the job was still starting after {STARTING_WAIT:?}, and a pause asked \
+                         of a job still starting is one OctoPrint drops"
+                    ),
+                };
+                log::warn!("octoprint will not pause: {error}");
+                return Err(error);
+            }
+            std::thread::sleep(STARTING_ASK_EVERY);
+        }
+        self.job_command(json!({ "command": "pause", "action": "pause" }))
+    }
+
+    /// Whether the instance says the job is still starting; not, when it says
+    /// nothing this port can read.
+    fn job_is_starting(&self) -> bool {
+        self.request(Method::Get, JOB_PATH, None)
+            .and_then(|body| decode::<JobPayload>(&body, JOB_PATH))
+            .is_ok_and(|payload| payload.is_starting())
+    }
+
     fn job_command(&self, body: serde_json::Value) -> Result<(), PrinterError> {
         self.request(Method::Post, JOB_COMMAND_PATH, Some(body))
             .map(|_| ())
@@ -305,12 +415,20 @@ impl OctoPrintPrinter {
     }
 }
 
-/// The one line each command renders to.
-const fn line_of(command: PrinterCommand) -> &'static str {
-    match command {
-        PrinterCommand::ReportPosition => "M114",
-    }
-}
+/// The one line sent as a line: asking where the head is.
+const POSITION_REPORT: &str = "M114";
+
+/// How long a position read waits for the printer to report one.
+const POSITION_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How often a position read asks again while nothing has answered.
+const POSITION_ASK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// How long a pause waits for a job the instance is still starting to begin.
+const STARTING_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// How often a pause asks again whether the job has begun.
+const STARTING_ASK_EVERY: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// The G-code reader, as the sink a download is streamed into.
 struct Reader(ExtrudedTo);
@@ -403,7 +521,7 @@ impl PrinterPort for OctoPrintPrinter {
     }
 
     fn pause(&self) -> BoxFuture<'_, Result<(), PrinterError>> {
-        Box::pin(async move { self.job_command(json!({ "command": "pause", "action": "pause" })) })
+        Box::pin(async move { self.pause_job() })
     }
 
     fn resume(&self) -> BoxFuture<'_, Result<(), PrinterError>> {
@@ -494,6 +612,18 @@ impl PrinterPort for OctoPrintPrinter {
         Box::pin(async move { self.read_extruded_to(&file_name, position_bytes) })
     }
 
+    fn printed_extent(
+        &self,
+        file_name: FileName,
+        position_bytes: i64,
+    ) -> BoxFuture<'_, Result<Option<PrintedExtent>, PrinterError>> {
+        Box::pin(async move { self.read_printed_extent(&file_name, position_bytes) })
+    }
+
+    fn read_position(&self) -> BoxFuture<'_, Result<AxisPosition, PrinterError>> {
+        Box::pin(async move { self.read_head() })
+    }
+
     fn push_events(&self) -> BoxFuture<'_, Result<BoxStream<'static, PrinterPush>, PrinterError>> {
         Box::pin(async move {
             crate::push::open(&self.config)
@@ -502,6 +632,6 @@ impl PrinterPort for OctoPrintPrinter {
     }
 
     fn send_command(&self, command: PrinterCommand) -> BoxFuture<'_, Result<(), PrinterError>> {
-        Box::pin(async move { self.command_line(command) })
+        Box::pin(async move { self.command(command) })
     }
 }

@@ -53,6 +53,8 @@ mod scripted;
 #[path = "instance/waiting.rs"]
 mod waiting;
 
+#[path = "live/recovery.rs"]
+mod recovery;
 #[path = "live/stops.rs"]
 mod stops;
 #[path = "live/loop.rs"]
@@ -73,4 +75,15 @@ fn the_whole_loop_is_proven_against_a_real_octoprint_and_a_real_harness() {
         .expect("a runtime");
     runtime.block_on(whole_loop::walk(&instance));
     runtime.block_on(stops::walk(&instance));
+}
+
+/// The agent's granted recoveries, against a real `OctoPrint`.
+#[test]
+fn the_agents_granted_recoveries_move_and_cool_a_real_octoprint() {
+    let instance = scripted::scripted();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    runtime.block_on(recovery::walk(&instance));
 }

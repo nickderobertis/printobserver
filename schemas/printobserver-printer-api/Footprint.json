@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The XY rectangle every extruding move of a file lies inside, in\nmillimetres.",
+  "properties": {
+    "max_x": {
+      "description": "The largest X.",
+      "format": "double",
+      "type": "number"
+    },
+    "max_y": {
+      "description": "The largest Y.",
+      "format": "double",
+      "type": "number"
+    },
+    "min_x": {
+      "description": "The smallest X.",
+      "format": "double",
+      "type": "number"
+    },
+    "min_y": {
+      "description": "The smallest Y.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "min_x",
+    "min_y",
+    "max_x",
+    "max_y"
+  ],
+  "title": "Footprint",
+  "type": "object"
+}

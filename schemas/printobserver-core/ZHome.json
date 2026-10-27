@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Where the machine homes Z, and whether doing so sweeps the bed.",
+  "properties": {
+    "sweeps_bed": {
+      "description": "Whether homing Z brings a gantry down over the whole bed.",
+      "type": "boolean",
+      "x-two-valued-fact": true
+    },
+    "x": {
+      "description": "Where in X Z is homed, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "y": {
+      "description": "Where in Y Z is homed, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "x",
+    "y",
+    "sweeps_bed"
+  ],
+  "title": "ZHome",
+  "type": "object"
+}

@@ -39,7 +39,7 @@ pub fn both_renderings_carry_the_same_fields(world: &World) {
     for one in walk::walk(world) {
         let arguments = failures::succeeding(&one);
         both_ways(world, &arguments, &one.operation(), Answer::Success, None);
-        if one.operation().granted_as().is_some() {
+        if one.operation().granted_as().is_some() || one.operation().recovery_kind().is_some() {
             let refused = failures::rejected(world, &one);
             both_ways(
                 world,
@@ -63,7 +63,7 @@ fn paths_this_walk_runs() -> BTreeSet<(&'static str, Answer)> {
     let mut found = BTreeSet::new();
     for operation in OPERATIONS {
         found.insert((operation.name, Answer::Success));
-        if operation.granted_as().is_some() {
+        if operation.granted_as().is_some() || operation.recovery_kind().is_some() {
             found.insert((operation.name, Answer::Rejected));
         }
     }

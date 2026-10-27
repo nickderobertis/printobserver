@@ -98,21 +98,40 @@ pub fn walk(instance: &Scripted) {
         "the position did not grow: {first} then {second}"
     );
 
-    // extruded_to — at the position the job reported, strictly part of the
-    // whole, and exactly what this fixture's own G-code feeds by then.
-    let fed = block_on(printer.extruded_to(name.clone(), second)).expect("the feed");
+    // extruded_to — at a position the job reported past the fixture's first
+    // feeding move, strictly part of the whole, and exactly what this
+    // fixture's own G-code feeds by then.
+    let fed_at = fed_position(instance, &analysed, first);
+    let fed = block_on(printer.extruded_to(name.clone(), fed_at)).expect("the feed");
     let whole = analysed[0].length_mm;
     let charged = lengths(&fed);
     assert_eq!(charged.len(), 1, "one tool fed: {fed:?}");
     assert!(
         charged[0].1 > 0.0 && charged[0].1 < whole,
-        "{} mm fed by byte {second}, against {whole} mm analysed",
+        "{} mm fed by byte {fed_at}, against {whole} mm analysed",
         charged[0].1
     );
     assert_eq!(
         fed,
-        printobserver_octoprint::extruded_to(FIXTURE_BYTES, second),
+        printobserver_octoprint::extruded_to(FIXTURE_BYTES, fed_at),
         "the download is the file that was uploaded"
+    );
+
+    // printed_extent — read from the same download at the same position, and
+    // exactly what this fixture's own G-code laid down by then: the square at
+    // Z 0, inside the corners its moves name.
+    let extent = block_on(printer.printed_extent(name.clone(), fed_at))
+        .expect("the extent")
+        .expect("the fixture extruded by then");
+    assert_eq!(
+        Some(extent),
+        printobserver_octoprint::printed_extent(FIXTURE_BYTES, fed_at),
+        "the download is the file that was uploaded"
+    );
+    assert!(extent.tallest_mm.abs() < f64::EPSILON, "{extent:?}");
+    assert!(
+        extent.footprint.max_x <= 30.0 && extent.footprint.max_y <= 30.0,
+        "{extent:?}"
     );
 
     // cancel — and the instance clears the position.
@@ -278,6 +297,28 @@ fn running_position(instance: &Scripted, analysed: &[ToolFilament], past: i64) -
         assert_eq!(job.filament, analysed, "the job's filament is the analysis");
         Ok(position)
     })
+}
+
+/// The first position the running fixture reports past `past` by which its
+/// own G-code has fed filament: the file opens with comments and settings, so
+/// an early position can lie before its first feeding move, and a read there
+/// would find nothing fed and nothing laid down. Waited on rather than assumed,
+/// within [`REACHED`].
+fn fed_position(instance: &Scripted, analysed: &[ToolFilament], past: i64) -> i64 {
+    let deadline = std::time::Instant::now() + REACHED;
+    let mut past = past;
+    loop {
+        let position = running_position(instance, analysed, past);
+        if !printobserver_octoprint::extruded_to(FIXTURE_BYTES, position).is_empty() {
+            return position;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "waited {REACHED:?} for the running fixture to pass its first feeding move, \
+             and it reported byte {position}"
+        );
+        past = position;
+    }
 }
 
 /// The cancel this walk took added one failure to the file's tally and none to

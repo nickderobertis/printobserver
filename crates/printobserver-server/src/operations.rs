@@ -3,8 +3,10 @@
 //! # One operation per public operation, and no more
 //!
 //! The list here is the whole API. It is exactly one operation per variant of
-//! [`PrintAction`](printobserver_core::PrintAction) and of
-//! [`SpoolCommand`](printobserver_core::SpoolCommand) the contracts declare,
+//! [`PrintAction`](printobserver_core::PrintAction), of
+//! [`SpoolCommand`](printobserver_core::SpoolCommand) and of
+//! [`RecoveryAction`](printobserver_core::RecoveryAction) the contracts
+//! declare, and the recovery read beside the last ([`RECOVERY_STATUS`]),
 //! plus thirteen operations beside them — the prints listing, status, context,
 //! image materialization, history, the event log followed in the order it was
 //! stored, a fresh look, the manifest's read and write, and the four reads of
@@ -18,7 +20,8 @@
 //! The spool ledger's operations name no print: a spool is the printer's, not
 //! one print's, so they sit beneath `/spools` and `/history` rather than
 //! beneath a print, and a supervision turn's print binding constrains none of
-//! them.
+//! them. Nor do the recovery operations, beneath `/printer/recovery`: what a
+//! recovery moves is the printer, whatever the last print left on its bed.
 //!
 //! Every operation sits beneath [`VERSION_PREFIX`], takes JSON where it takes a
 //! body at all, and answers JSON.
@@ -51,7 +54,9 @@ use printobserver_types::serde_json::{Value, json};
 // them: a client of this surface that derives its own commands from these
 // operations — the command-line program — reads which action each is and what
 // that action carries from here, without naming the supervision domain itself.
-pub use printobserver_core::{ActionKind, PrintAction, SpoolCommand};
+pub use printobserver_core::{
+    ActionKind, PrintAction, RecoveryAction, RecoveryActionKind, SpoolCommand,
+};
 
 /// The one versioned prefix every public operation is served beneath.
 pub const VERSION_PREFIX: &str = "/v1";
@@ -236,6 +241,10 @@ pub enum Effect {
     /// passes the grants every action passes — and asks nothing of the
     /// machine. Its kind is one of the ledger's five and no print action.
     Command(SpoolCommandKind),
+    /// It asks the printer for one recovery action, so it carries a reason
+    /// and passes the recovery grants — and names no print: what it moves is
+    /// the printer, whatever the last print left on its bed.
+    Recovery(RecoveryActionKind),
     /// It writes a record without asking anything of the machine.
     Write,
 }
@@ -349,7 +358,17 @@ impl Operation {
         match self.effect {
             Effect::Mutating(kind) => Some(kind),
             Effect::Command(kind) => Some(kind.action_kind()),
-            Effect::Read | Effect::Write => None,
+            Effect::Read | Effect::Write | Effect::Recovery(_) => None,
+        }
+    }
+
+    /// Which recovery action this operation asks for, when it asks for one:
+    /// the kind the recovery grants rule on.
+    #[must_use]
+    pub const fn recovery_kind(&self) -> Option<RecoveryActionKind> {
+        match self.effect {
+            Effect::Recovery(kind) => Some(kind),
+            _ => None,
         }
     }
 
@@ -363,7 +382,7 @@ impl Operation {
     pub const fn is_mutating(&self) -> bool {
         matches!(
             self.effect,
-            Effect::Mutating(_) | Effect::Command(_) | Effect::Write
+            Effect::Mutating(_) | Effect::Command(_) | Effect::Recovery(_) | Effect::Write
         )
     }
 
@@ -389,7 +408,7 @@ impl Operation {
             Some((vocabulary, kind)) => {
                 let routed: Vec<String> = found.iter().map(|path| path.name.clone()).collect();
                 found.extend(
-                    action_parameters(vocabulary, kind)
+                    action_parameters(vocabulary, &kind)
                         .into_iter()
                         .filter(|field| !routed.contains(&field.name)),
                 );
@@ -419,7 +438,7 @@ impl Operation {
     #[must_use]
     pub fn request_shapes(&self) -> Vec<(Parameter, Value)> {
         let action = match Vocabulary::of(self.effect) {
-            Some((vocabulary, kind)) => action_shapes(vocabulary, kind),
+            Some((vocabulary, kind)) => action_shapes(vocabulary, &kind),
             None => Vec::new(),
         };
         self.request()
@@ -461,7 +480,9 @@ impl Operation {
     #[must_use]
     pub const fn answers_with(&self) -> &'static [Answer] {
         match self.effect {
-            Effect::Mutating(_) | Effect::Command(_) => &[Answer::Success, Answer::Rejected],
+            Effect::Mutating(_) | Effect::Command(_) | Effect::Recovery(_) => {
+                &[Answer::Success, Answer::Rejected]
+            }
             Effect::Read | Effect::Write => &[Answer::Success],
         }
     }
@@ -487,6 +508,8 @@ impl Operation {
         let schema = match (self.name, self.effect) {
             (_, Effect::Mutating(_)) => schema_for!(crate::wire::ActionAnswer),
             (_, Effect::Command(_)) => schema_for!(crate::wire::SpoolCommandAnswer),
+            (_, Effect::Recovery(_)) => schema_for!(crate::wire::RecoveryAnswer),
+            (RECOVERY_STATUS, _) => schema_for!(crate::wire::RecoveryStatusAnswer),
             ("spools", _) => schema_for!(crate::wire::SpoolsAnswer),
             ("spool", _) => schema_for!(crate::wire::SpoolAnswer),
             ("printer_history", _) => schema_for!(crate::wire::TimelineAnswer),
@@ -553,14 +576,24 @@ enum Vocabulary {
     Actions,
     /// The spool ledger's commands, tagged by `command`.
     Commands,
+    /// The recovery actions, tagged by `action`, each carried beside the
+    /// actor and the reason every request carries.
+    Recovery,
 }
 
 impl Vocabulary {
     /// The vocabulary one effect's body is read from, and the variant it names.
-    const fn of(effect: Effect) -> Option<(Self, ActionKind)> {
+    fn of(effect: Effect) -> Option<(Self, String)> {
+        let tag = |kind: ActionKind| {
+            printobserver_types::serde_json::to_value(kind)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .unwrap_or_else(|| panic!("`{kind:?}` renders as the tag it is spelled by"))
+        };
         match effect {
-            Effect::Mutating(kind) => Some((Self::Actions, kind)),
-            Effect::Command(kind) => Some((Self::Commands, kind.action_kind())),
+            Effect::Mutating(kind) => Some((Self::Actions, tag(kind))),
+            Effect::Command(kind) => Some((Self::Commands, tag(kind.action_kind()))),
+            Effect::Recovery(kind) => Some((Self::Recovery, kind.as_str().to_owned())),
             Effect::Read | Effect::Write => None,
         }
     }
@@ -568,19 +601,67 @@ impl Vocabulary {
     /// The field the vocabulary's tag travels in.
     const fn tag(self) -> &'static str {
         match self {
-            Self::Actions => ACTION_TAG,
+            Self::Actions | Self::Recovery => ACTION_TAG,
             Self::Commands => COMMAND_TAG,
         }
     }
 
     /// The vocabulary's own schema, as the contracts declare it.
+    ///
+    /// A recovery action names neither who asks nor why — those are the
+    /// request's, not the action's — so its request body is each variant of
+    /// the contracts' own `RecoveryAction` with the two beside it.
     fn schema(self) -> Value {
         use printobserver_types::schemars::schema_for;
         match self {
             Self::Actions => schema_for!(PrintAction).to_value(),
             Self::Commands => schema_for!(SpoolCommand).to_value(),
+            Self::Recovery => recovery_request_schema(),
         }
     }
+}
+
+/// The contracts' own `RecoveryAction`, each variant carrying the actor and
+/// the reason a recovery request carries beside it.
+fn recovery_request_schema() -> Value {
+    use printobserver_types::schemars::schema_for;
+    let mut schema = schema_for!(RecoveryAction).to_value();
+    let actor = schema_for!(printobserver_core::Actor).to_value();
+    if let Some(variants) = schema.get_mut("oneOf").and_then(Value::as_array_mut) {
+        for variant in variants {
+            if let Some(properties) = variant.get_mut("properties").and_then(Value::as_object_mut) {
+                properties.insert(
+                    "actor".to_owned(),
+                    json!({ "$ref": "#/$defs/Actor", "description": "Who is asking." }),
+                );
+                properties.insert(
+                    "reason".to_owned(),
+                    json!({ "type": "string", "description": "Why the actor is asking for this." }),
+                );
+            }
+            if let Some(required) = variant.get_mut("required").and_then(Value::as_array_mut) {
+                required.push(json!("actor"));
+                required.push(json!("reason"));
+            }
+        }
+    }
+    let defs = schema
+        .as_object_mut()
+        .map(|top| top.entry("$defs").or_insert_with(|| json!({})));
+    if let Some(Value::Object(defs)) = defs {
+        if let Some(Value::Object(nested)) = actor.get("$defs") {
+            for (name, shape) in nested {
+                defs.insert(name.clone(), shape.clone());
+            }
+        }
+        let mut own = actor.clone();
+        if let Some(top) = own.as_object_mut() {
+            top.remove("$defs");
+            top.remove("$schema");
+        }
+        defs.insert("Actor".to_owned(), own);
+    }
+    schema
 }
 
 /// The shape of each field one action of the vocabulary takes.
@@ -593,13 +674,13 @@ impl Vocabulary {
 /// # Panics
 ///
 /// Panics when the contracts declare no variant tagged with this action.
-fn action_shapes(vocabulary: Vocabulary, kind: ActionKind) -> Vec<(String, Value)> {
+fn action_shapes(vocabulary: Vocabulary, kind: &str) -> Vec<(String, Value)> {
     let schema = vocabulary.schema();
     let variant = action_variant(&schema, vocabulary, kind);
     variant
         .get("properties")
         .and_then(Value::as_object)
-        .unwrap_or_else(|| panic!("the action `{kind:?}` declares no properties"))
+        .unwrap_or_else(|| panic!("the action `{kind}` declares no properties"))
         .iter()
         .filter(|(name, _)| name.as_str() != vocabulary.tag())
         .map(|(name, field)| (name.clone(), field.clone()))
@@ -612,18 +693,14 @@ fn action_shapes(vocabulary: Vocabulary, kind: ActionKind) -> Vec<(String, Value
 ///
 /// Panics when the contracts declare no variant tagged with this action, which
 /// is this server's declared list and that closed type having come apart.
-fn action_variant(schema: &Value, vocabulary: Vocabulary, kind: ActionKind) -> Value {
-    let tag = printobserver_types::serde_json::to_value(kind)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| panic!("`{kind:?}` renders as the tag it is spelled by"));
+fn action_variant(schema: &Value, vocabulary: Vocabulary, tag: &str) -> Value {
     schema
         .get("oneOf")
         .and_then(Value::as_array)
         .and_then(|variants| {
             variants.iter().find(|variant| {
                 variant.pointer(&format!("/properties/{}/const", vocabulary.tag()))
-                    == Some(&json!(tag.clone()))
+                    == Some(&json!(tag))
             })
         })
         .cloned()
@@ -654,7 +731,7 @@ fn path_parameters(path: &str) -> Vec<Parameter> {
 ///
 /// Panics when the contracts declare no variant tagged with this action, which
 /// is this server's declared list and that closed type having come apart.
-fn action_parameters(vocabulary: Vocabulary, kind: ActionKind) -> Vec<Parameter> {
+fn action_parameters(vocabulary: Vocabulary, kind: &str) -> Vec<Parameter> {
     let schema = vocabulary.schema();
     let variant = action_variant(&schema, vocabulary, kind);
     let required: Vec<&str> = variant
@@ -665,7 +742,7 @@ fn action_parameters(vocabulary: Vocabulary, kind: ActionKind) -> Vec<Parameter>
     let properties = variant
         .get("properties")
         .and_then(Value::as_object)
-        .unwrap_or_else(|| panic!("the action `{kind:?}` declares no properties"));
+        .unwrap_or_else(|| panic!("the action `{kind}` declares no properties"));
     properties
         .iter()
         .filter(|(name, _)| name.as_str() != vocabulary.tag())
@@ -764,6 +841,21 @@ const fn command(name: &'static str, path: &'static str, kind: SpoolCommandKind)
     }
 }
 
+/// One recovery action, at the path it is asked for under.
+const fn recovery(name: &'static str, path: &'static str, kind: RecoveryActionKind) -> Operation {
+    Operation {
+        name,
+        method: Method::Post,
+        path,
+        effect: Effect::Recovery(kind),
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[],
+        image_path_field: None,
+    }
+}
+
 /// One read, which takes no body.
 const fn read(name: &'static str, path: &'static str) -> Operation {
     Operation {
@@ -791,7 +883,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 29] = [
+pub const OPERATIONS: [Operation; 37] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -967,9 +1059,51 @@ pub const OPERATIONS: [Operation; 29] = [
         "/spools/{spool_id}/actions/retire_spool",
         SpoolCommandKind::RetireSpool,
     ),
+    // What every recovery action is checked against now, and what each would
+    // meet. The printer's rather than a print's, so it takes no print.
+    read(RECOVERY_STATUS, "/printer/recovery"),
+    recovery(
+        "recover_lift",
+        "/printer/recovery/recover_lift",
+        RecoveryActionKind::RecoverLift,
+    ),
+    recovery(
+        "recover_cool",
+        "/printer/recovery/recover_cool",
+        RecoveryActionKind::RecoverCool,
+    ),
+    recovery(
+        "recover_fan",
+        "/printer/recovery/recover_fan",
+        RecoveryActionKind::RecoverFan,
+    ),
+    recovery(
+        "recover_heat",
+        "/printer/recovery/recover_heat",
+        RecoveryActionKind::RecoverHeat,
+    ),
+    recovery(
+        "recover_park",
+        "/printer/recovery/recover_park",
+        RecoveryActionKind::RecoverPark,
+    ),
+    recovery(
+        "recover_home_xy",
+        "/printer/recovery/recover_home_xy",
+        RecoveryActionKind::RecoverHomeXy,
+    ),
+    recovery(
+        "recover_home_z",
+        "/printer/recovery/recover_home_z",
+        RecoveryActionKind::RecoverHomeZ,
+    ),
 ];
 
-/// The thirteen operations this server serves beside the two vocabularies.
+/// The read beside the recovery vocabulary: what every recovery action is
+/// checked against now, and what each would meet.
+pub const RECOVERY_STATUS: &str = "recover_status";
+
+/// The thirteen operations this server serves beside the vocabularies.
 ///
 /// Twelve of them read and one writes a manifest, which asks nothing of the
 /// machine; what they have in common is that none of them is an action or a
@@ -1046,6 +1180,12 @@ mod tests {
                     assert_eq!(declared.action_kind(), None);
                     assert_eq!(declared.command_kind(), Some(kind.action_kind()));
                     assert_eq!(declared.granted_as(), Some(kind.action_kind()));
+                    assert!(declared.is_mutating());
+                }
+                Effect::Recovery(kind) => {
+                    assert_eq!(declared.action_kind(), None);
+                    assert_eq!(declared.granted_as(), None);
+                    assert_eq!(declared.recovery_kind(), Some(kind));
                     assert!(declared.is_mutating());
                 }
                 Effect::Write => {
@@ -1164,6 +1304,40 @@ mod tests {
             kinds.1,
             printobserver_types::serde_json::json!({"type": "array", "items": {"type": "string"}})
         );
+    }
+
+    /// A recovery action's body is its own fields beside the actor and the
+    /// reason, less the tag the operation names.
+    #[test]
+    fn a_recovery_actions_body_is_its_fields_beside_the_actor_and_the_reason() {
+        let heat = operation("recover_heat").expect("the heat is served");
+        let names: Vec<(String, bool, super::Located)> = heat
+            .request()
+            .into_iter()
+            .map(|parameter| (parameter.name, parameter.required, parameter.located))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                ("actor".to_owned(), true, super::Located::Body),
+                ("clearance_asserted".to_owned(), false, super::Located::Body),
+                ("reason".to_owned(), true, super::Located::Body),
+                ("target_c".to_owned(), true, super::Located::Body),
+                ("tool".to_owned(), true, super::Located::Body),
+            ]
+        );
+        let cool = operation("recover_cool").expect("the cool is served");
+        let names: Vec<String> = cool
+            .request()
+            .into_iter()
+            .map(|parameter| parameter.name)
+            .collect();
+        assert_eq!(names, vec!["actor".to_owned(), "reason".to_owned()]);
+        let served: Vec<super::RecoveryActionKind> = OPERATIONS
+            .iter()
+            .filter_map(super::Operation::recovery_kind)
+            .collect();
+        assert_eq!(served, super::RecoveryActionKind::ALL.to_vec());
     }
 
     /// An operation this server does not serve is answered as none.

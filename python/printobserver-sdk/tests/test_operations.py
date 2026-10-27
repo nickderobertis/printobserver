@@ -2561,6 +2561,706 @@ def test_retire_spool_makes_no_request_when_the_reason_is_empty() -> None:
         equal(host.requests(), 0, describing="what a blank reason sent")
 
 
+def test_recover_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_status` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"actions": [{"action": "recover_lift", "allowed": false, "r'
+        'efusal": {"actor_may_not_request": {"action": "recover_lift"'
+        '}}}], "last_print": {"footprint": {"max_x": 1.5, "max_y": 1.'
+        '5, "min_x": 1.5, "min_y": 1.5}, "print_id": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc", "tallest_mm": 1.5}, "paused_print": '
+        '{"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "resuma'
+        'ble": true}, "position": {"x": 1.5, "y": 1.5, "z": 1.5}, "st'
+        'ate": "operational", "temperatures": {"bed": {"actual_c": 1.'
+        '5, "target_c": 1.5}, "tools": [{"actual_c": 1.5, "target_c":'
+        ' 1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "x": 1.5,'
+        ' "y": 1.5}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_status()
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(received.target, "/v1/printer/recovery")
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_lift_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_lift` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_lift(1.5, "a generated walk is asking")
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_lift")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "mm": 1.5, "reason": "a generated walk is'
+            ' asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_lift_surfaces_the_policys_own_refusal() -> None:
+    """`recover_lift` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_lift(1.5, "a generated walk is asking")
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_lift_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_lift` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_lift(1.5, "")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_lift(1.5, "   ")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recover_cool_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_cool` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_cool("a generated walk is asking")
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_cool")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_cool_surfaces_the_policys_own_refusal() -> None:
+    """`recover_cool` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_cool("a generated walk is asking")
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_cool_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_cool` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_cool("")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_cool("   ")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recover_fan_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_fan` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_fan(1.5, "a generated walk is asking")
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_fan")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "percent": 1.5, "reason": "a generated wa'
+            'lk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_fan_surfaces_the_policys_own_refusal() -> None:
+    """`recover_fan` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_fan(1.5, "a generated walk is asking")
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_fan_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_fan` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_fan(1.5, "")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_fan(1.5, "   ")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recover_heat_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_heat` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_heat("a generated walk is asking", 1.5, 7, True)
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_heat")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "clearance_asserted": true, "reason": "a '
+            'generated walk is asking", "target_c": 1.5, "tool": 7}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_heat_surfaces_the_policys_own_refusal() -> None:
+    """`recover_heat` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_heat("a generated walk is asking", 1.5, 7, True)
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_heat_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_heat` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_heat("", 1.5, 7, True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_heat("   ", 1.5, 7, True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recover_park_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_park` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_park("a generated walk is asking", True)
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_park")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "clearance_asserted": true, "reason": "a '
+            'generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_park_surfaces_the_policys_own_refusal() -> None:
+    """`recover_park` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_park("a generated walk is asking", True)
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_park_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_park` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_park("", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_park("   ", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recover_home_xy_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_home_xy` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_home_xy("a generated walk is asking", True)
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_home_xy")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "clearance_asserted": true, "reason": "a '
+            'generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_home_xy_surfaces_the_policys_own_refusal() -> None:
+    """`recover_home_xy` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_home_xy("a generated walk is asking", True)
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_home_xy_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_home_xy` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_home_xy("", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_home_xy("   ", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recover_home_z_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recover_home_z` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"executed": "succeeded"}, "detail": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '"}, "kind": "action_executed", "payload": {"action_id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+        "}"
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recover_home_z("a generated walk is asking", True)
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/recovery/recover_home_z")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "bed_clear_asserted": true, "reason": "a '
+            'generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recover_home_z_surfaces_the_policys_own_refusal() -> None:
+    """`recover_home_z` surfaces the policy's own refusal, typed."""
+    refusal = json.loads(
+        '{"action": {"action": "recover_lift", "mm": 1.5}, "decision"'
+        ': {"rejected": {"out_of_bounds": {"allowed": {"max": 1.25, "'
+        'min": 0.5}, "field": "mm", "requested": 1.5}}}, "detail": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a'
+        '1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}, "kind": "action_executed", "payload":'
+        ' {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "inte'
+        'rvention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "prin'
+        't_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}]}'
+    )
+
+    with Host(409, refusal) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_home_z("a generated walk is asking", True)
+        except RejectedError as refused:
+            equal(refused.requested, 1.5)
+            equal(refused.allowed, {"min": 0.5, "max": 1.25})
+            truth(
+                isinstance(refused.reason, dict) and "out_of_bounds" in refused.reason,
+                describing="the refusal itself to be carried",
+            )
+            equal(refused.answer, refusal)
+        else:
+            truth(False, describing="the policy's refusal to arrive as one")
+
+
+def test_recover_home_z_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recover_home_z` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_home_z("", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recover_home_z("   ", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
 def test_history_carries_a_known_and_an_unknown_kind_through_the_kind_table() -> None:
     """`history` drives the kind table over a known and an unknown kind.
 

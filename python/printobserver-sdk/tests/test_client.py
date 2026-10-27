@@ -62,18 +62,21 @@ def test_nothing_answering_at_the_configured_address_is_its_own_failure() -> Non
 
 
 def test_an_answer_this_client_cannot_read_is_said_to_be_one() -> None:
-    """A body that is not a document is refused rather than handed on."""
-    with Host(200, None) as host:
-        client = Client(host.address, ACTOR)
-        # A host answering the four bytes `null` sends a document that is not
-        # an object, which this client reads and the type it was asked for is
-        # not. What is asserted is the read: the parse is what fails when the
-        # body is not JSON at all.
-        equal(client.status(PRINT), None)
+    """A document that is not of the type the operation declares is refused rather than handed on.
 
-    with Host(200, "{") as host:
-        client = Client(host.address, ACTOR)
-        equal(client.status(PRINT), "{")
+    `null`, and a bare string, are documents a parse reads and no status answer
+    is; each is refused under the status it arrived with.
+    """
+    for answered in (None, "{"):
+        with Host(200, answered) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.status(PRINT)
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 200, describing=f"{answered!r}")
+            else:
+                truth(False, describing=f"{answered!r} to be refused as unreadable")
 
 
 def test_a_request_the_supervisor_will_not_act_on_carries_its_own_words() -> None:
@@ -209,7 +212,265 @@ def test_a_surface_on_its_own_makes_no_request() -> None:
     surface = GeneratedSurface()
 
     try:
-        surface.call("GET", "/v1/anything", [], None)
+        surface.call("GET", "/v1/anything", [], None, "PrintsAnswer")
     except NotImplementedError:
         return
     truth(False, describing="a surface to make no request")
+
+
+#: A recovery's answer, carrying whatever decision a test gives it.
+def _recovery(decision: object) -> dict[str, object]:
+    """A recovery answer around one decision."""
+    return {
+        "action": {"action": "recover_fan", "percent": 50.0},
+        "decision": decision,
+        "detail": "recover_fan reached the printer, which refused it: the fan is stuck",
+        "events": [],
+    }
+
+
+def test_a_recovery_the_machine_refused_carries_the_supervisors_words() -> None:
+    """A recovery has no action record; the supervisor's sentence is the answer."""
+    with Host(502, _recovery({"executed": {"failed": {"reason": "the fan is stuck"}}})) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_fan(50.0, "because")
+        except RefusedError as refused:
+            equal(refused.status, 502)
+            contains(refused.detail, "the fan is stuck", describing="what the printer said")
+        else:
+            truth(False, describing="a recovery the machine refused to arrive as one")
+
+
+def test_a_recovery_refused_with_bounds_no_reader_can_read_is_unreadable() -> None:
+    """A refusal whose bounds are not a value and a range is not handed on as one."""
+    for refused in (
+        {"out_of_bounds": {"field": "percent", "requested": "lots", "allowed": {}}},
+        {"out_of_bounds": "everything"},
+        {"out_of_bounds": {"field": "percent", "requested": True, "allowed": {"min": 0, "max": 1}}},
+        {"out_of_bounds": {"requested": 150.0, "allowed": {"min": 0.0, "max": 100.0}}},
+        None,
+        {"two": {}, "arms": {}},
+        {"print_running": {}},
+        "print_running",
+        {"z_untrusted": {}},
+        {"printer_cannot": {"action": 7, "detail": None}},
+        {"insufficient_clearance": {"margin_mm": "5", "nozzle_z_mm": 1.0, "tallest_mm": 2.0}},
+        {"print_running": {"state": 7}},
+        {
+            "out_of_bounds": {
+                "field": "percent",
+                "requested": float("nan"),
+                "allowed": {"min": 0.0, "max": 100.0},
+            }
+        },
+        {
+            "out_of_bounds": {
+                "field": "percent",
+                "requested": 10**400,
+                "allowed": {"min": 0.0, "max": 100.0},
+            }
+        },
+    ):
+        with Host(409, _recovery({"rejected": refused})) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{refused!r}")
+            else:
+                truth(False, describing=f"{refused!r} to be refused as unreadable")
+
+
+def test_a_refusal_whose_answer_is_not_an_object_is_unreadable() -> None:
+    """A policy or machine refusal answered as anything but an object is not handed on as one."""
+    for status in (409, 502):
+        for answer in (None, "refused", 7, [_recovery({"rejected": "print_running"})]):
+            with Host(status, answer) as host:
+                client = Client(host.address, ACTOR)
+                try:
+                    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                    client.recover_fan(50.0, "because")
+                except UnreadableError as unreadable:
+                    equal(unreadable.status, status, describing=f"{answer!r}")
+                else:
+                    truth(False, describing=f"{answer!r} at {status} to be unreadable")
+
+
+def test_a_known_refusal_well_formed_arrives_as_a_refusal() -> None:
+    """A refusal the contracts declare, carrying a state no vocabulary names, is handed on."""
+    refused = {"print_running": {"state": {"unknown": "Connecting"}}}
+    with Host(409, _recovery({"rejected": refused})) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_fan(50.0, "because")
+        except RejectedError as rejected:
+            equal(rejected.reason, refused)
+        else:
+            truth(False, describing="a well-formed refusal to arrive as one")
+
+
+#: Recovery answers the contracts forbid, each refused under `409`: a recovery
+#: action missing its parameter, naming no declared action, or carrying a
+#: parameter of the wrong type; a refusal no vocabulary declares, or carrying a
+#: printer state no vocabulary names; and an event entry of no declared shape.
+MALFORMED_RECOVERIES = (
+    {**_recovery({"rejected": "z_untrusted"}), "action": {"action": "recover_lift"}},
+    {**_recovery({"rejected": "z_untrusted"}), "action": {"action": "recover_dance"}},
+    {
+        **_recovery({"rejected": "z_untrusted"}),
+        "action": {"action": "recover_fan", "percent": "lots"},
+    },
+    _recovery({"rejected": "a_newer_reason"}),
+    _recovery({"rejected": {"a_newer_reason": {"anything": 1}}}),
+    _recovery({"rejected": {"print_running": {"state": "melting"}}}),
+    {**_recovery({"rejected": "z_untrusted"}), "events": [{"kind": 7}]},
+)
+
+
+def test_a_recovery_refusal_no_contract_declares_is_unreadable() -> None:
+    """Every malformed recovery answer is refused as unreadable rather than handed on."""
+    for answer in MALFORMED_RECOVERIES:
+        with Host(409, answer) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{answer!r}")
+            else:
+                truth(False, describing=f"{answer!r} to be unreadable")
+
+
+#: A spool command's refusal, around one spool refusal cause.
+def _spool_refusal(cause: object) -> dict[str, object]:
+    """A spool command answer refused with `spool_refused` for `cause`."""
+    return {
+        "decision": {"rejected": {"spool_refused": {"cause": cause, "message": "refused"}}},
+        "events": [],
+    }
+
+
+def test_a_spool_refusal_is_read_only_with_a_cause_the_contracts_declare() -> None:
+    """A declared cause arrives as a refusal; an undeclared one is unreadable."""
+    spool = "0198f0a1-2b3c-7d4e-8f90-123456789abc"
+    declared = _spool_refusal({"cause": "unknown_spool", "spool_id": spool})
+    with Host(409, declared) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.retire_spool(spool, "because")
+        except RejectedError as rejected:
+            equal(rejected.answer, declared)
+        else:
+            truth(False, describing="a declared spool refusal to arrive as one")
+    for cause in ({"cause": "melted"}, {"cause": "unknown_spool"}):
+        with Host(409, _spool_refusal(cause)) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.retire_spool(spool, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{cause!r}")
+            else:
+                truth(False, describing=f"{cause!r} to be unreadable")
+
+
+def test_a_machine_refusal_of_a_recovery_that_did_not_fail_is_unreadable() -> None:
+    """A 502 carrying a recovery whose decision is no failure at the printer is not one."""
+    for decision in (
+        {"rejected": "z_untrusted"},
+        {"executed": "succeeded"},
+        None,
+        {"executed": {"failed": {"reason": "the fan is stuck"}}, "rejected": "z_untrusted"},
+        {"executed": {"failed": {"reason": "the fan is stuck"}, "succeeded": True}},
+    ):
+        with Host(502, _recovery(decision)) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 502, describing=f"{decision!r}")
+            else:
+                truth(False, describing=f"{decision!r} at 502 to be unreadable")
+
+
+def test_a_policy_refusal_whose_decision_has_two_arms_is_unreadable() -> None:
+    """A decision carrying a refusal beside another arm is no decision at all."""
+    with Host(409, _recovery({"rejected": "z_untrusted", "executed": "succeeded"})) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            client.recover_fan(50.0, "because")
+        except UnreadableError as unreadable:
+            equal(unreadable.status, 409)
+        else:
+            truth(False, describing="a two-armed decision to be unreadable")
+
+
+def test_a_recovery_refusal_missing_its_parts_is_unreadable() -> None:
+    """A recovery's refusal with no action name, or no events, is not handed on as one."""
+    for answer in (
+        {**_recovery({"rejected": "z_untrusted"}), "action": {}},
+        {
+            key: value
+            for key, value in _recovery({"rejected": "z_untrusted"}).items()
+            if key != "events"
+        },
+    ):
+        with Host(409, answer) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_fan(50.0, "because")
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 409, describing=f"{answer!r}")
+            else:
+                truth(False, describing=f"{answer!r} to be unreadable")
+
+
+def _status_with(allowance: object) -> dict[str, object]:
+    """A recovery read whose one allowance is `allowance`."""
+    return {
+        "actions": [allowance],
+        "last_print": None,
+        "paused_print": None,
+        "position": None,
+        "state": "operational",
+        "temperatures": {
+            "bed": {"actual_c": 25.0, "target_c": 0.0},
+            "tools": [{"actual_c": 25.0, "target_c": 0.0, "tool": 0}],
+        },
+        "z_home": None,
+        "z_trust": {"untrusted": "this server started and has homed nothing"},
+    }
+
+
+def test_a_recovery_read_whose_allowance_contradicts_itself_is_unreadable() -> None:
+    """An allowance is handed on only when `refusal` is sent exactly when `allowed` is false."""
+    for agreeing in (
+        {"action": "recover_lift", "allowed": True},
+        {"action": "recover_heat", "allowed": False, "refusal": "z_untrusted"},
+    ):
+        with Host(200, _status_with(agreeing)) as host:
+            client = Client(host.address, ACTOR)
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            equal(client.recover_status(), _status_with(agreeing), describing=f"{agreeing!r}")
+    for contradiction in (
+        {"action": "recover_lift", "allowed": True, "refusal": "z_untrusted"},
+        {"action": "recover_heat", "allowed": False},
+        {"action": "recover_lift", "allowed": True, "refusal": None},
+    ):
+        with Host(200, _status_with(contradiction)) as host:
+            client = Client(host.address, ACTOR)
+            try:
+                # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+                client.recover_status()
+            except UnreadableError as unreadable:
+                equal(unreadable.status, 200, describing=f"{contradiction!r}")
+            else:
+                truth(False, describing=f"{contradiction!r} to be unreadable")

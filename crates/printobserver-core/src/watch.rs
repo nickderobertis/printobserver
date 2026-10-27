@@ -572,10 +572,19 @@ impl Supervisor {
     pub async fn note_push(&self, push: PrinterPush) -> Result<(), CoreError> {
         match push {
             PrinterPush::Reset => {
+                // A reset forgets where every axis is.
+                self.distrust_z("the printer pushed a reset, and a reset forgets where Z is");
+                // Which print was running is read before the close-out is told
+                // of the reset: told first, it can close that print while the
+                // read is still waiting on the store, and the reset would then
+                // name no print. A close-out that reads the machine idle first
+                // waits `RESET_GRACE` for this flag, so setting it a moment
+                // later still reaches it.
+                let running = self.running_print().await;
                 self.watch_state().pushes.reset = true;
                 // A reset is recorded whatever the store answers about which
                 // print was running: the push is not sent again.
-                let (during_print, detail) = match self.running_print().await {
+                let (during_print, detail) = match running {
                     Ok(Some(print)) => (
                         Some(print.id),
                         format!("the printer pushed a reset during print {}", print.id),
@@ -706,6 +715,13 @@ impl Supervisor {
             let held = self.watch_state();
             (held.last_state.clone(), held.channel_is_down())
         };
+        if is_down(state) && previous.as_ref() != Some(state) {
+            // A printer that went offline or into error may have been
+            // reset, moved or powered off since: where Z is is unknown.
+            self.distrust_z(format!(
+                "the printer went {state:?}, and Z may have moved since"
+            ));
+        }
         let changed = previous
             .as_ref()
             .filter(|previous| *previous != state && (is_down(previous) || is_down(state)));
@@ -767,6 +783,14 @@ impl Supervisor {
             self.watch_state().unattended = None;
             return Ok(());
         }
+        self.distrust_z(format!(
+            "print {print_id} ended {}, and where it left Z is unknown",
+            if payload.outcome == PrintOutcome::Failed {
+                "failed"
+            } else {
+                "interrupted"
+            }
+        ));
         self.watch_state().unattended = Some(Unattended {
             print_id,
             began: self.clock().elapsed(),

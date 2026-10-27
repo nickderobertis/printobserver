@@ -32,9 +32,9 @@ const EXEMPT: &str = "FileName";
 /// The one method that newtype must be taken by.
 const EXEMPT_METHOD: &str = "start";
 
-/// Every method that newtype may be taken by: `start`, and the two reads that
+/// Every method that newtype may be taken by: `start`, and the three reads that
 /// name one file.
-const EXEMPT_METHODS: [&str; 3] = [EXEMPT_METHOD, "file_facts", "extruded_to"];
+const EXEMPT_METHODS: [&str; 4] = [EXEMPT_METHOD, "file_facts", "extruded_to", "printed_extent"];
 
 /// The printer port's own source.
 fn port_source() -> String {

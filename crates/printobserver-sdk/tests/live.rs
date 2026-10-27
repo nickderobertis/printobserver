@@ -23,7 +23,9 @@ mod supervisor;
 
 use std::collections::BTreeMap;
 
-use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RejectionReason};
+use printobserver_sdk::{
+    Actor, Client, ClientError, JobManifest, RecoveryRejection, RejectionReason,
+};
 
 /// The reason every mutating call of this walk carries.
 const REASON: &str = "a generated walk is asking";
@@ -295,6 +297,272 @@ fn step_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live::Pr
         "`cancel` sent another `reason`"
     );
     live::same("cancel", &answered, &seen.answer);
+}
+
+/// `recover_status`, answered by a real supervisor.
+fn step_recover_status(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_status()
+        .expect("`recover_status` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`recover_status`");
+    assert_eq!(seen.target, "/v1/printer/recovery", "`recover_status`");
+    assert_eq!(seen.status, 200, "`recover_status`");
+    assert_eq!(seen.body, "", "`recover_status` sends no body");
+    live::same("recover_status", &answered, &seen.answer);
+}
+
+/// `recover_lift`, answered by a real supervisor.
+fn step_recover_lift(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_lift(5.0, REASON)
+        .expect("`recover_lift` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_lift`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_lift",
+        "`recover_lift`"
+    );
+    assert_eq!(seen.status, 200, "`recover_lift`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_lift`"
+    );
+    assert_eq!(
+        sent["mm"],
+        serde_json::to_value(5.0).expect("a value renders"),
+        "`recover_lift` sent another `mm`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_lift` sent another `reason`"
+    );
+    live::same("recover_lift", &answered, &seen.answer);
+}
+
+/// `recover_fan`, answered by a real supervisor.
+fn step_recover_fan(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_fan(50.0, REASON)
+        .expect("`recover_fan` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_fan`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_fan",
+        "`recover_fan`"
+    );
+    assert_eq!(seen.status, 200, "`recover_fan`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_fan`"
+    );
+    assert_eq!(
+        sent["percent"],
+        serde_json::to_value(50.0).expect("a value renders"),
+        "`recover_fan` sent another `percent`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_fan` sent another `reason`"
+    );
+    live::same("recover_fan", &answered, &seen.answer);
+}
+
+/// `recover_home_z`, answered by a real supervisor.
+fn step_recover_home_z(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_home_z(REASON, Some(true))
+        .expect("`recover_home_z` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_home_z`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_home_z",
+        "`recover_home_z`"
+    );
+    assert_eq!(seen.status, 200, "`recover_home_z`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_home_z`"
+    );
+    assert_eq!(
+        sent["bed_clear_asserted"],
+        serde_json::to_value(true).expect("a value renders"),
+        "`recover_home_z` sent another `bed_clear_asserted`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_home_z` sent another `reason`"
+    );
+    live::same("recover_home_z", &answered, &seen.answer);
+}
+
+/// `recover_heat`, answered by a real supervisor.
+fn step_recover_heat(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_heat(REASON, 150.0, 0, Some(true))
+        .expect("`recover_heat` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_heat`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_heat",
+        "`recover_heat`"
+    );
+    assert_eq!(seen.status, 200, "`recover_heat`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_heat`"
+    );
+    assert_eq!(
+        sent["clearance_asserted"],
+        serde_json::to_value(true).expect("a value renders"),
+        "`recover_heat` sent another `clearance_asserted`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_heat` sent another `reason`"
+    );
+    assert_eq!(
+        sent["target_c"],
+        serde_json::to_value(150.0).expect("a value renders"),
+        "`recover_heat` sent another `target_c`"
+    );
+    assert_eq!(
+        sent["tool"],
+        serde_json::to_value(0).expect("a value renders"),
+        "`recover_heat` sent another `tool`"
+    );
+    live::same("recover_heat", &answered, &seen.answer);
+}
+
+/// `recover_park`, answered by a real supervisor.
+fn step_recover_park(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_park(REASON, Some(true))
+        .expect("`recover_park` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_park`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_park",
+        "`recover_park`"
+    );
+    assert_eq!(seen.status, 200, "`recover_park`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_park`"
+    );
+    assert_eq!(
+        sent["clearance_asserted"],
+        serde_json::to_value(true).expect("a value renders"),
+        "`recover_park` sent another `clearance_asserted`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_park` sent another `reason`"
+    );
+    live::same("recover_park", &answered, &seen.answer);
+}
+
+/// `recover_home_xy`, answered by a real supervisor.
+fn step_recover_home_xy(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_home_xy(REASON, Some(true))
+        .expect("`recover_home_xy` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_home_xy`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_home_xy",
+        "`recover_home_xy`"
+    );
+    assert_eq!(seen.status, 200, "`recover_home_xy`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_home_xy`"
+    );
+    assert_eq!(
+        sent["clearance_asserted"],
+        serde_json::to_value(true).expect("a value renders"),
+        "`recover_home_xy` sent another `clearance_asserted`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_home_xy` sent another `reason`"
+    );
+    live::same("recover_home_xy", &answered, &seen.answer);
+}
+
+/// `recover_cool`, answered by a real supervisor.
+fn step_recover_cool(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .recover_cool(REASON)
+        .expect("`recover_cool` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recover_cool`");
+    assert_eq!(
+        seen.target, "/v1/printer/recovery/recover_cool",
+        "`recover_cool`"
+    );
+    assert_eq!(seen.status, 200, "`recover_cool`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recover_cool`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recover_cool` sent another `reason`"
+    );
+    live::same("recover_cool", &answered, &seen.answer);
 }
 
 /// `start_print`, answered by a real supervisor.
@@ -1094,6 +1362,160 @@ fn refused_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     live::same("cancel", &rejection.answer, &seen.answer);
 }
 
+/// `recover_lift`, refused by a real supervisor's own policy.
+fn refused_recover_lift(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_lift(5.0, REASON)
+        .expect_err("`recover_lift` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_lift`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_lift` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_lift`");
+    live::same("recover_lift", &rejection.answer, &seen.answer);
+}
+
+/// `recover_fan`, refused by a real supervisor's own policy.
+fn refused_recover_fan(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_fan(50.0, REASON)
+        .expect_err("`recover_fan` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_fan`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_fan` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_fan`");
+    live::same("recover_fan", &rejection.answer, &seen.answer);
+}
+
+/// `recover_home_z`, refused by a real supervisor's own policy.
+fn refused_recover_home_z(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_home_z(REASON, Some(true))
+        .expect_err("`recover_home_z` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_home_z`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_home_z` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_home_z`");
+    live::same("recover_home_z", &rejection.answer, &seen.answer);
+}
+
+/// `recover_heat`, refused by a real supervisor's own policy.
+fn refused_recover_heat(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_heat(REASON, 150.0, 0, Some(true))
+        .expect_err("`recover_heat` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_heat`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_heat` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_heat`");
+    live::same("recover_heat", &rejection.answer, &seen.answer);
+}
+
+/// `recover_park`, refused by a real supervisor's own policy.
+fn refused_recover_park(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_park(REASON, Some(true))
+        .expect_err("`recover_park` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_park`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_park` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_park`");
+    live::same("recover_park", &rejection.answer, &seen.answer);
+}
+
+/// `recover_home_xy`, refused by a real supervisor's own policy.
+fn refused_recover_home_xy(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_home_xy(REASON, Some(true))
+        .expect_err("`recover_home_xy` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_home_xy`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_home_xy` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_home_xy`");
+    live::same("recover_home_xy", &rejection.answer, &seen.answer);
+}
+
+/// `recover_cool`, refused by a real supervisor's own policy.
+fn refused_recover_cool(client: &Client, _world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    let refused = client
+        .recover_cool(REASON)
+        .expect_err("`recover_cool` is refused for an actor granted nothing");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("`recover_cool`: the refusal did not arrive as a rejection");
+    };
+    assert!(
+        matches!(
+            rejection.rejection,
+            RecoveryRejection::ActorMayNotRequest { .. }
+        ),
+        "`recover_cool` was refused for something other than the grant: {:?}",
+        rejection.rejection
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.status, 409, "`recover_cool`");
+    live::same("recover_cool", &rejection.answer, &seen.answer);
+}
+
 /// `start_print`, refused by a real supervisor's own policy.
 fn refused_start_print(
     client: &Client,
@@ -1455,6 +1877,14 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_events(&client, &world, &proxy);
     step_look(&client, &world, &proxy);
     step_cancel(&client, &world, &proxy);
+    step_recover_status(&client, &world, &proxy);
+    step_recover_lift(&client, &world, &proxy);
+    step_recover_fan(&client, &world, &proxy);
+    step_recover_home_z(&client, &world, &proxy);
+    step_recover_heat(&client, &world, &proxy);
+    step_recover_park(&client, &world, &proxy);
+    step_recover_home_xy(&client, &world, &proxy);
+    step_recover_cool(&client, &world, &proxy);
     let world = step_start_print(&client, &world, &proxy, &manifest);
     step_set_feedrate_factor(&client, &world, &proxy);
     step_set_flowrate_factor(&client, &world, &proxy);
@@ -1476,7 +1906,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 29, "every call went through the proxy");
+    assert!(proxy.calls() >= 37, "every call went through the proxy");
     standing.stop();
 }
 
@@ -1498,6 +1928,13 @@ fn every_action_is_refused_as_a_typed_rejection_by_a_real_supervisor() {
     let world = about_the_running_print(&client, world);
 
     refused_cancel(&client, &world, &proxy);
+    refused_recover_lift(&client, &world, &proxy);
+    refused_recover_fan(&client, &world, &proxy);
+    refused_recover_home_z(&client, &world, &proxy);
+    refused_recover_heat(&client, &world, &proxy);
+    refused_recover_park(&client, &world, &proxy);
+    refused_recover_home_xy(&client, &world, &proxy);
+    refused_recover_cool(&client, &world, &proxy);
     refused_start_print(&client, &world, &proxy, &manifest);
     refused_set_feedrate_factor(&client, &world, &proxy);
     refused_set_flowrate_factor(&client, &world, &proxy);

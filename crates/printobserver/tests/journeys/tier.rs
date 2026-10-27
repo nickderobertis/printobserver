@@ -59,4 +59,6 @@ pub fn run(world: &World, depth: &str) {
     redaction::no_run_of_the_walk_prints_the_credential(world);
     // Last, because it ends the print every journey above acts on.
     closing::an_operator_closes_a_record_left_open(world);
+    // After the close, because it asks the machine to sit idle.
+    failures::a_recovery_the_machine_refuses_is_answered_as_that(world);
 }

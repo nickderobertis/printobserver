@@ -208,6 +208,10 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
         RejectionReason::InterventionStillActive { intervention_id } => {
             format!("intervention {intervention_id} has neither expired nor been restored")
         }
+        RejectionReason::PrintNotResumable { recovery_event_id } => format!(
+            "recovery event {recovery_event_id} moved the printer while this print was paused, \
+             and resuming would print the rest of the layer at the wrong height"
+        ),
     }
 }
 
@@ -369,7 +373,7 @@ impl Supervisor {
             actor,
             requested_at,
         };
-        let issued = self.issue_decided_action(request, decision, None).await?;
+        let issued = self.issue_action(request, decision, None).await?;
         if let PolicyDecision::Rejected(reason) = &issued.record.decision {
             return Ok(InterventionOutcome::RestoreFailed {
                 reason: rejection_detail(reason),

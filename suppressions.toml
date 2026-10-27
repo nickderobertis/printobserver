@@ -410,7 +410,6 @@ file = "crates/printobserver/tests/journeys/documented.rs"
 site = "pub fn operator_workflow("
 reason = "The function is the six steps of one supervision turn, written in the order the skill states them, and each step's inputs are what the steps before it resolved out of the documentation. Splitting it would put the reader's own sequence in six places and leave nothing carrying the turn, which is the one thing this journey is about."
 
-
 [[suppression]]
 rule = "boundary_inputs_validated"
 file = "crates/printobserver-server/src/config.rs"
@@ -1081,7 +1080,7 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_live.py"
-site = "Every method, answered by a real supervisor, in the one order it admits."
+site = "def test_every_method_is_answered_by_a_real_supervisor("
 reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
 
 [[suppression]]
@@ -1117,7 +1116,7 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "python/printobserver-sdk/integration/test_live.py"
-site = "Every action, refused by a real supervisor's own policy, typed."
+site = "def test_every_action_is_refused_as_a_typed_rejection("
 reason = "A generated walk, written by `tools/contract-codegen`'s emitter together with this directive: the same ground as the entry for this rule at `python/printobserver-sdk/integration/test_journey.py`."
 
 [[suppression]]
@@ -1141,8 +1140,8 @@ reason = "Not a directive over this file's own code: it is the text the emitter 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
 file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "Every action, refused by a real supervisor"
-reason = "Not a directive over this file's own code: it is the text the emitter writes on the generated Python action walk's signature, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+site = "TIER_BLOCK_END = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes around each generated Python live-walk test function, so that the block standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entries for this rule."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1178,12 +1177,6 @@ reason = "A generated walk, written by `tools/contract-codegen`'s emitter togeth
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
 site = "def test_every_method_is_answered_by_a_real_supervisor"
-reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
-
-[[suppression]]
-rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "Every method, answered by a real supervisor, in the one order it admits."
 reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python walk, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
 [[suppression]]
@@ -1273,30 +1266,6 @@ rule = "names_match_behavior"
 file = "tools/contract-codegen/src/contract_codegen/naming.py"
 site = "NAME_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the three emitters write above the method of each operation `NAMED_FOR_WHAT_IS_ASKED` names, so that the directives standing in `contract.rs`, `contract.ts` and `contract.py` are regenerated rather than lost on the next `just generate-clients`. The reasons are those files' entries for this rule."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "python/printobserver-sdk/src/printobserver_sdk/contract.py"
-site = "return cast("
-reason = "Every generated method of the published Python client hands on the document `Client.call` parsed as its answer's declared `TypedDict`, which is the pass-through property the client is generated for: what a method answers is the document the server sent. `_document` refuses a body that is not JSON as `UnreadableError`, and checks no shape beyond that, for all seventeen operations alike. The server serializes the answer from the very type `operations.json` declares, and the generated operation tests prove each method answers exactly what was sent. Validating shapes at runtime is a transport-wide change to a published client — a validator for every generated type — rather than something one operation can take on, and one method validating while sixteen do not would be a calling convention of its own."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "npm/printobserver-sdk/src/contract.ts"
-site = "return await this.call<"
-reason = "The Node client's counterpart of `python/printobserver-sdk/src/printobserver_sdk/contract.py`'s entry for this rule: every generated method hands on what `call` parsed as its answer's declared interface, `document` refuses a body that is not JSON as `Unreadable` and checks no shape beyond that, for every operation alike. The ground is that entry's, unchanged."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
-site = "BOUNDARY_DIRECTIVE = "
-reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's `cast`, so that the directives standing in `python/printobserver-sdk/src/printobserver_sdk/contract.py` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
-
-[[suppression]]
-rule = "boundary_inputs_validated"
-file = "tools/contract-codegen/src/contract_codegen/emit_typescript.py"
-site = "BOUNDARY_DIRECTIVE = "
-reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated method's typed call, so that the directives standing in `npm/printobserver-sdk/src/contract.ts` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -1695,7 +1664,7 @@ reason = "This journey proves `release_artifacts.world`, which the client worlds
 rule = "async_typed_clients_at_boundaries"
 file = "tools/octoprint-env/octoprint_env.py"
 site = "status, answer = call("
-reason = "The one request `upload` makes: a file put on an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before it starts that file. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
+reason = "The one request `upload` makes, and the one `terminal` and `connect` make: a file put on, a line typed at, or a reconnect asked of an OctoPrint this script itself started, on loopback, by a command whose whole contract is one blocking step a journey waits on before its next. Nothing runs beside it for an awaited client to overlap, and it goes through the same helper the `http.client.HTTPConnection` entry above gives the reason for; the product reaches OctoPrint from the `printobserver-octoprint` crate rather than from this script."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -2286,6 +2255,24 @@ reason = "This module composes every answer and event a stub hands the agent as 
 [[suppression]]
 rule = "modern_domain_modeling"
 file = "tests/skilltest/scenario.py"
+site = "def _recovery_answers("
+reason = "This function composes the recovery vocabulary's answers a stub hands the agent as the JSON documents the server would serve, and holds every answer, event payload and the recovery read to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_spool_answers`, `_synthetic_alert`, `look`, `record`, `context`) is built the same way, and skilltest-wiring checks each answer against its operation's answer schema and the generated example's field names. A Python model would restate those schemas a second time beside the generated ones."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "RECOVERY_ASKED: dict[str, dict[str, Any]] = {"
+reason = "The fields each recovery action's stub echoes as asked: the `action` member of the documents `_recovery_answers` composes, held there to the `RecoveryAction` schema through every payload and answer `conforming()` checks. That function's entry gives the reason a Python model is not written beside the generated schema."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
+site = "Z_HOME = {"
+reason = "Where the case's printer homes Z, the `z_home` member of the recovery read `_recovery_answers` composes, held there to the `RecoveryStatus` schema by `conforming()`. That function's entry gives the reason a Python model is not written beside the generated schema."
+
+[[suppression]]
+rule = "modern_domain_modeling"
+file = "tests/skilltest/scenario.py"
 site = "def _spool_answers("
 reason = "This function composes the spool ledger's answers and events a stub hands the agent as the JSON documents the server would serve, and holds the spool, the preflight and every event payload to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the answer it returns is checked against each operation's answer schema by skilltest-wiring. A Python model would restate those schemas a second time beside the generated ones."
 
@@ -2407,16 +2394,11 @@ file = "tools/release-artifacts/tests/test_tracking.py"
 site = "exchange("
 reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
 
-
-
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."
-
-
-
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -2576,13 +2558,11 @@ file = ".github/lib/graph.mjs"
 site = "export function triggers("
 reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
 
-
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/lib/graph.mjs"
 site = "function cellsOf("
 reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
-
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -2709,3 +2689,225 @@ rule = "invalid_states_unrepresentable"
 file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
 site = "NON_EMPTY_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated Rust list the schema bounds with `minItems: 1`, so that the directives standing in `crates/printobserver-sdk/src/contract.rs` are regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "clearance_asserted: bool,"
+reason = "The recovery vocabulary's own contract, agreed across the plan and built against by its consumers, fixes `clearance_asserted` as a boolean defaulting to false. It is the operator's yes-or-no word that the nozzle is clear of the part; every combination of it with the action's other fields is a request the policy rules on, and an agent's assertion is refused as clearance by the grants rather than by the type."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "bed_clear_asserted: bool,"
+reason = "The recovery vocabulary's own contract fixes `bed_clear_asserted` as a boolean defaulting to false: the operator's yes-or-no word that homing Z meets nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "pub resumable: bool,"
+reason = "The contract answers a paused print's resumability as `{print_id, resumable}`. Both values are real states of a paused print; the event that made it non-resumable is named where a caller acts on it, in the `print_not_resumable` refusal of its resume."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "pub sweeps_bed: bool,"
+reason = "Whether homing Z sweeps a gantry over the whole bed is a yes-or-no fact of the machine the operator states in `recovery.z_home_sweeps_bed`; both answers are machines that exist."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub z_home_sweeps_bed: Option<bool>,"
+reason = "The operator states this fact of the machine as yes or no under `recovery.z_home_sweeps_bed`; it is read as written so that a section leaving it out is refused naming the key, and both answers are machines that exist."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub allowed: bool,"
+reason = "Generated from `ActionAllowance`, whose wire form the recovery contract fixes as `{action, allowed: true}` or `{action, allowed: false, refusal}`. Core's own reading refuses a mismatched pair, and the schema marks `allowed` as held in step with `refusal`; the generator has no boolean-tagged union in any of the three clients, so its Rust emitter writes this directive above every field the schema marks so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "PAIRED_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated Rust field the schema marks `x-paired-with`, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "`terminal` types one line, which the printer's own serial log then shows sent."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suites that already drive that script's other commands, `upload` among them; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "A line typed at, or a reconnect asked of, an instance nothing started is refused."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs the device-refusal suite alone, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey joins the suites that already drive that script's other commands, `upload` among them; moving one command's journey into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = 'client.recover_fan(50.0, "because")'
+reason = "These tests hold the published synchronous Python client's refusal reading to a host answering malformed refusals, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "pub z_home_sweeps_bed: bool,"
+reason = "The operator's `recovery.z_home_sweeps_bed` configuration value: whether homing Z brings a gantry down over the whole bed is a yes-or-no fact of the machine, and both answers are machines that exist. Nothing else is held in step with it."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "allowed: bool,"
+reason = "The private wire form `ActionAllowance` is read through and written from, and nothing else. The domain type holds only an optional refusal, so it cannot represent a contradiction; this struct exists to read the contract's `{action, allowed, refusal}` document, and `ActionAllowance`'s `Deserialize` refuses both contradictory pairs before any value of the domain type is made."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub resumable: bool,"
+reason = "Generated from core's `PausedPrint`, whose `resumable` field the schema marks `x-two-valued-fact`: the contract answers a paused print's resumability as `{print_id, resumable}`, and both values are real states of a paused print. Core's own entry for that field says so; the Rust emitter writes this directive above every field the schema marks so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub sweeps_bed: bool,"
+reason = "Generated from core's `ZHome`, whose `sweeps_bed` field the schema marks `x-two-valued-fact`: whether homing Z sweeps a gantry over the whole bed is a yes-or-no fact of the machine, and both answers are machines that exist. Core's own entry for that field says so; the Rust emitter writes this directive above every field the schema marks so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "TWO_VALUED_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated Rust field the schema marks `x-two-valued-fact`, so that the directives standing in `crates/printobserver-sdk/src/contract.rs` are regenerated rather than lost on the next `just generate-clients`. The reasons are that file's entries for this rule."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tools/release-artifacts/src/release_artifacts/world.py"
+site = 'document["recovery"] = {'
+reason = "The journey is each client's live method walk — `python/printobserver-sdk/integration/test_live.py`, and its generated counterparts in the Rust and Node clients — which starts the real supervisor this world configures against the virtual printer and asks every recovery of it, from `recover_status` to `recover_home_z`, asserting each answer. Those walks are the integration tier's rather than this module's own suite, because they need the scripted OctoPrint up."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tools/release-artifacts/src/release_artifacts/world.py"
+site = 'document["policy"] = {"recovery": {"operator": []}}'
+reason = "The journey is each client's live rejection walk — `test_every_action_is_refused_as_a_typed_rejection` in `python/printobserver-sdk/integration/test_live.py`, and its generated counterparts in the Rust and Node clients — which starts this refusing world's real supervisor and asks every recovery of it, asserting each is refused `actor_may_not_request`. Those walks are the integration tier's rather than this module's own suite, because they need the scripted OctoPrint up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "    allowed: bool,"
+reason = "Generated: `ActionAllowanceAsSent` is the private form an allowance is read through, which exists to hold the contract's `{action, allowed, refusal}` document to its pairing — `ActionAllowance`'s `TryFrom` refuses both contradictory pairs before any value of the public type is made. The schema marks `allowed` `x-paired-with`, and the Rust emitter writes this directive above every field so marked."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/records/recovery.rs"
+site = "impl<'de> Deserialize<'de> for ActionAllowance {"
+reason = "No program reads an allowance back through core: the server only writes one, in its recovery read. This reading exists so the record corpus round-trips the type, and it is held by `tests/records.rs` to both contradictions and to the published schema's own verdict on each. The readers that meet an allowance over a boundary are the clients, and the Rust one is driven with both contradictions through a real HTTP answer in `crates/printobserver-sdk/tests/answers.rs`."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub away_from_bed: Option<String>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_facts` reads it into core's closed `AwayFromBed` before anything uses it, and refuses any other word naming `recovery.away_from_bed` and the two it admits — the pattern `spools.preflight` already follows. A serde enum here would refuse the same value with a parser message that names neither the key nor the accepted words."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub operator: Option<Vec<String>>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed `RecoveryActionKind` before anything uses it, and refuses an unknown one naming `policy.recovery.operator` and the action, as `spools.preflight` is read. A serde enum here would refuse it with a parser message naming neither."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub agent: Option<Vec<String>>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed `RecoveryActionKind`, refusing an unknown one, and refuses `recover_home_z` here naming `policy.recovery.agent` — a refusal about a valid value that no type could make and that must name the key. A serde enum here would refuse an unknown name with a parser message naming neither."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub asserting: Option<Vec<String>>,"
+reason = "The configuration file as written, which is not the domain value: `recovery_grants` reads each name into core's closed actor class, refusing an unknown one, and refuses `agent` here naming `policy.recovery.asserting` — a refusal about a valid value that no type could make and that must name the key. A serde enum here would refuse an unknown name with a parser message naming neither."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = "if moved.abs() <= AXIS_LIMIT {"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is a guard against relative coordinates summing past any travel, which no slicer writes and no OctoPrint instance produces on demand; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = "fn curve(&mut self, words: &[(char, String)], start: [f64; 3]) {"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds — the arc's circle, exercised end to end by the fixture's `G3` — also bounds the `R` form and refuses an arc wider than any machine, which are forms a test file need not carry to reach the same code; both are proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of their behaviour."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = "fn declare(&mut self, words: &[(char, String)]) {"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is `G92` declaring an axis where it is: slicers write it for the extruder alone, which the fixture's `G92 E0` drives end to end, and a declaration of X, Y or Z moves the file's own coordinates in a way the recovery read's footprint would follow rather than the machine; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-octoprint/src/gcode.rs"
+site = ".filter(|value| value.abs() <= AXIS_LIMIT)"
+reason = "The reader is a pure function over the bytes OctoPrint serves back unchanged, and its boundary is proven end to end: the CLI's virtual-printer journey uploads `crates/printobserver/tests/fixtures/recovery-part.gcode` — an extruder reset, relative axes, a home of one axis, an arc and a descending extruding segment — interrupts it, and holds the recovery read to the height and footprint the reader must make of it; the adapter's live walk holds a real download's extent to the reader's own over the same bytes. What this site adds is a guard that reads a non-finite or impossibly large axis word as absent, which no slicer writes and no OctoPrint instance produces on demand; it is proven in `tests/journeys/gcode.rs` over the same reader, which is the whole of its behaviour."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "clearance_asserted: Option<bool>,"
+reason = "Generated from core's `RecoveryAction`, whose `clearance_asserted` the schema marks `x-two-valued-fact`, both in each variant and in each method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that the nozzle is clear of the part. Every value of it is a request the policy rules on, and an agent's assertion is refused as clearance by the grants rather than by the type; core's own entry for the field says so. Absent and false are the same request, which is why a caller may leave it out."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "bed_clear_asserted: Option<bool>,"
+reason = "Generated from core's `RecoveryAction`, whose `bed_clear_asserted` the schema marks `x-two-valued-fact`, both in its variant and in the method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that homing Z will meet nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state; core's own entry for the field says so."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "one sequential command to its instance"
+reason = "Each is one command to the OctoPrint `just octoprint-up` started — a cancel, a queued jog, a restart of the hold print — made by a journey that waits on the machine's answer before its next step, through the same blocking helper every journey of this suite drives that instance with, which `tests/environment.py` gives the reason for. Nothing runs beside it for an async client to overlap, and an async client would be a second client of an instance the product never reaches from here."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_startup_failures.py"
+site = "A running instance refusing a line or a reconnect is reported with its status and words."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target names its fast suites file by file, and `test-integration` runs the rest, where this file's journeys of `terminal` and `connect` failing already live. This journey drives the same two commands against a stand-in host this test starts and stops itself — no shared instance — beside the journey of the same commands refused for an absent instance; moving it into a project of its own would split one script's failure suite across two."
+
+[[suppression]]
+rule = "test_tiers_split_by_project_not_by_marker"
+file = "tools/octoprint-env/tests/test_running_environment.py"
+site = "A `G91` jog closed by `G90` moves Z by what it asked, however long the queue."
+reason = "This environment's suites are already split by target and by file rather than by a marker: the project's `test` target runs its fast suites file by file, and `test-integration` runs the rest against the OctoPrint `just octoprint-up` started — the per-project layout `AGENTS.md` describes, which `nx.json` keeps from running beside another project's integration tier. This journey proves the install's repair of that instance's virtual printer on the running instance, beside the other journeys that drive it; moving it into a project of its own would split one script's integration tier across two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = 'client.retire_spool(spool, "because")'
+reason = "These tests hold the published synchronous Python client's reading of a spool command's refusal to a host answering declared and undeclared refusal causes, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "python/printobserver-sdk/integration/test_live.py"
+site = "from repo_checks.expect import equal, truth"
+reason = "The generated live walk's assertion vocabulary, imported as every suite of this repository imports it, written by `tools/contract-codegen`'s emitter together with this directive. The walk runs only under the project's `test-integration` target, which runs on every change whatever it affects, so the project's edge onto the repository's checks selects no run the target would not already have: the same ground as this file's entries for its two walks."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/contract-codegen/src/contract_codegen/emit_python.py"
+site = '"from repo_checks.expect import equal, truth",'
+reason = "Not a directive over this file's own code: it is the text the emitter writes above the generated Python live walk's assertion import, so that the directive standing in `python/printobserver-sdk/integration/test_live.py` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = "client.recover_status()"
+reason = "These tests hold the published synchronous Python client's reading of a recovery read to a host answering agreeing and contradictory allowances, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "python/printobserver-sdk/tests/test_client.py"
+site = "client.status(PRINT)"
+reason = "This test holds the published synchronous Python client to refusing, as unreadable, a document no status answer is, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."

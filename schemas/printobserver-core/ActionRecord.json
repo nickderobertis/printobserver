@@ -1135,6 +1135,29 @@
         },
         {
           "additionalProperties": false,
+          "description": "A resume was refused because a recovery action was executed while the\nprint was paused: the head moved, and `OctoPrint` restores no position\non resume, so the rest of the layer would print at the wrong height.",
+          "properties": {
+            "print_not_resumable": {
+              "additionalProperties": false,
+              "properties": {
+                "recovery_event_id": {
+                  "$ref": "#/$defs/EventId",
+                  "description": "The `recovery_executed` event that made it so."
+                }
+              },
+              "required": [
+                "recovery_event_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "A spool command could not be carried out.",
           "properties": {
             "spool_refused": {

@@ -532,6 +532,27 @@ pub fn spool_body(kind: printobserver_core::ActionKind) -> serde_json::Value {
     body
 }
 
+/// One recovery action's body, which its own bounds accept.
+pub fn recovery_body(
+    kind: printobserver_server::RecoveryActionKind,
+) -> printobserver_types::serde_json::Value {
+    use printobserver_server::RecoveryActionKind;
+    use printobserver_types::serde_json::json;
+    let mut body = match kind {
+        RecoveryActionKind::RecoverLift => json!({ "mm": 5.0 }),
+        RecoveryActionKind::RecoverCool => json!({}),
+        RecoveryActionKind::RecoverFan => json!({ "percent": 50.0 }),
+        RecoveryActionKind::RecoverHeat => json!({ "tool": 0, "target_c": 150.0 }),
+        RecoveryActionKind::RecoverPark | RecoveryActionKind::RecoverHomeXy => {
+            json!({ "clearance_asserted": true })
+        }
+        RecoveryActionKind::RecoverHomeZ => json!({ "bed_clear_asserted": true }),
+    };
+    body["actor"] = json!("operator");
+    body["reason"] = json!("free the nozzle from the part");
+    body
+}
+
 /// The body a manifest write takes: the manifest, and why it is being written.
 ///
 /// A manifest narrows what any actor may ask for, so replacing one carries a

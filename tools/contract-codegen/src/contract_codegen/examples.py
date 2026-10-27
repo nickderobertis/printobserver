@@ -118,7 +118,11 @@ def _fields(
     answer carried would be one the walk's own equality catches, and it can
     only catch it for a value that was there.
     """
-    return {entry.name: value_of(entry.type, contract, seen) for entry in fields}
+    value = {entry.name: value_of(entry.type, contract, seen) for entry in fields}
+    # A flag held in step with an optional sibling is false exactly when that
+    # sibling is sent, and every sibling is sent here.
+    value.update({entry.name: False for entry in fields if entry.paired_with})
+    return value
 
 
 def _declared(declaration: object, contract: Contract, seen: frozenset[str]) -> object:
@@ -206,6 +210,10 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
                     },
                 },
             }
+        case {"action": _, "detail": _, "decision": _}:
+            # A recovery's answer names its action and carries its own decision.
+            bounds = {"field": "mm", "requested": NUMBER, "allowed": {"min": 0.5, "max": 1.25}}
+            return {**answered, "decision": {"rejected": {"out_of_bounds": bounds}}}
         case {"decision": _}:
             refusal = {"cause": {"cause": "unknown_spool", "spool_id": TEXT}, "message": TEXT}
             return {**answered, "decision": {"rejected": {"spool_refused": refusal}}}
@@ -215,7 +223,16 @@ def rejection_of(operation: Operation, contract: Contract) -> object:
 
 def is_ledger_refusal(rejection: object) -> bool:
     """Whether one refusal document is the spool ledger's rather than the policy's."""
-    return isinstance(rejection, dict) and "record" not in rejection
+    return (
+        isinstance(rejection, dict)
+        and "record" not in rejection
+        and not is_recovery_refusal(rejection)
+    )
+
+
+def is_recovery_refusal(rejection: object) -> bool:
+    """Whether one refusal document is a recovery's rather than the policy's."""
+    return isinstance(rejection, dict) and "action" in rejection and "detail" in rejection
 
 
 def argument_of(shape: TypeExpr, contract: Contract) -> object:

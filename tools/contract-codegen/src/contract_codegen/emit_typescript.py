@@ -36,6 +36,7 @@ from contract_codegen.model import (
     TypeExpr,
     Union,
     Variant,
+    shape_table,
 )
 from contract_codegen.naming import (
     NAME_DIRECTIVE,
@@ -171,15 +172,6 @@ def _argument(parameter: Parameter) -> str:
     return f"{camel(parameter.name)}: {type_name(parameter.type)}"
 
 
-#: The directive every generated call's typed answer carries.
-#:
-#: `call` parses the document the server sent and checks no shape against the
-#: type it is handed on as — for every operation alike — so the judged rule
-#: asking for runtime validation at that boundary is answered once, in
-#: `suppressions.toml`, for every method the generator writes.
-BOUNDARY_DIRECTIVE = "// llmlint: ignore[boundary_inputs_validated] See suppressions.toml."
-
-
 def _target(operation: Operation) -> str:
     """The request target one call is made to, as TypeScript builds it."""
     path = operation.path
@@ -245,10 +237,9 @@ def _method(operation: Operation) -> list[str]:
                 lines.append(f"    sending{typescript_member(parameter.name)} = {spelled};")
     else:
         lines.append("    const sending = undefined;")
-    lines.append(f"    {BOUNDARY_DIRECTIVE}")
     lines.append(
         f'    return await this.call<{operation.answer}>("{operation.method}", '
-        f"target, asked, sending);"
+        f'target, asked, sending, "{operation.answer}");'
     )
     lines.append("  }")
     return lines
@@ -363,6 +354,26 @@ def _contract_version() -> list[str]:
     ]
 
 
+def _shape_table(contract: Contract) -> list[str]:
+    """Every declaration, as the client checks a document against it.
+
+    Written as the JSON it is, inside one template string parsed once on
+    import, so the table is the generator's own text rather than a second
+    rendering of it.
+    """
+    table = json.dumps(shape_table(contract), indent=1, sort_keys=True)
+    return [
+        *doc_lines(
+            "Every declaration of the contracts, as the client checks a document against "
+            "its declared type: generated from the same declarations as every type above."
+        ),
+        "export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`",
+        *table.splitlines(),
+        "`);",
+        "",
+    ]
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Node client."""
     lines = [
@@ -391,6 +402,7 @@ def emit(contract: Contract) -> str:
         lines.append("")
 
     lines.extend(_kind_table(contract))
+    lines.extend(_shape_table(contract))
 
     lines.extend(
         doc_lines(

@@ -191,6 +191,140 @@ async function stepCancel(client: Client, proxy: Recording) {
   same("cancel", answered, seen.answer);
 }
 
+/** `recover_status`, answered by a real supervisor. */
+async function stepRecoverStatus(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverStatus();
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("GET");
+  expect(seen.target).toBe(`/v1/printer/recovery`);
+  expect(seen.status).toBe(200);
+  expect(seen.body).toBe("");
+  same("recover_status", answered, seen.answer);
+}
+
+/** `recover_lift`, answered by a real supervisor. */
+async function stepRecoverLift(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverLift(5.0, REASON);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_lift`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.mm).toEqual(5.0);
+  expect(sent.reason).toEqual(REASON);
+  same("recover_lift", answered, seen.answer);
+}
+
+/** `recover_fan`, answered by a real supervisor. */
+async function stepRecoverFan(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverFan(50.0, REASON);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_fan`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.percent).toEqual(50.0);
+  expect(sent.reason).toEqual(REASON);
+  same("recover_fan", answered, seen.answer);
+}
+
+/** `recover_home_z`, answered by a real supervisor. */
+async function stepRecoverHomeZ(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverHomeZ(REASON, true);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_home_z`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.bed_clear_asserted).toEqual(true);
+  expect(sent.reason).toEqual(REASON);
+  same("recover_home_z", answered, seen.answer);
+}
+
+/** `recover_heat`, answered by a real supervisor. */
+async function stepRecoverHeat(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverHeat(REASON, 150.0, 0, true);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_heat`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.clearance_asserted).toEqual(true);
+  expect(sent.reason).toEqual(REASON);
+  expect(sent.target_c).toEqual(150.0);
+  expect(sent.tool).toEqual(0);
+  same("recover_heat", answered, seen.answer);
+}
+
+/** `recover_park`, answered by a real supervisor. */
+async function stepRecoverPark(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverPark(REASON, true);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_park`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.clearance_asserted).toEqual(true);
+  expect(sent.reason).toEqual(REASON);
+  same("recover_park", answered, seen.answer);
+}
+
+/** `recover_home_xy`, answered by a real supervisor. */
+async function stepRecoverHomeXy(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverHomeXy(REASON, true);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_home_xy`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.clearance_asserted).toEqual(true);
+  expect(sent.reason).toEqual(REASON);
+  same("recover_home_xy", answered, seen.answer);
+}
+
+/** `recover_cool`, answered by a real supervisor. */
+async function stepRecoverCool(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.recoverCool(REASON);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/recovery/recover_cool`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
+  same("recover_cool", answered, seen.answer);
+}
+
 /** `start_print`, answered by a real supervisor. */
 async function stepStartPrint(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "operational");
@@ -585,6 +719,14 @@ test("every method is answered by a real supervisor", async () => {
   await stepEvents(client, proxy);
   await stepLook(client, proxy);
   await stepCancel(client, proxy);
+  await stepRecoverStatus(client, proxy);
+  await stepRecoverLift(client, proxy);
+  await stepRecoverFan(client, proxy);
+  await stepRecoverHomeZ(client, proxy);
+  await stepRecoverHeat(client, proxy);
+  await stepRecoverPark(client, proxy);
+  await stepRecoverHomeXy(client, proxy);
+  await stepRecoverCool(client, proxy);
   await stepStartPrint(client, proxy);
   await stepSetFeedrateFactor(client, proxy);
   await stepSetFlowrateFactor(client, proxy);
@@ -606,7 +748,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepRetireSpool(client, proxy);
   await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(29);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(37);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */
@@ -621,6 +763,106 @@ async function refusedCancel(client: Client, proxy: Recording) {
   const seen = proxy.last();
   expect(seen.status).toBe(409);
   same("cancel", refused.answer, seen.answer);
+}
+
+/** `recover_lift`, refused by a real supervisor's own policy. */
+async function refusedRecoverLift(client: Client, proxy: Recording) {
+  const refused = await client.recoverLift(5.0, REASON).catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_lift`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_lift", refused.answer, seen.answer);
+}
+
+/** `recover_fan`, refused by a real supervisor's own policy. */
+async function refusedRecoverFan(client: Client, proxy: Recording) {
+  const refused = await client.recoverFan(50.0, REASON).catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_fan`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_fan", refused.answer, seen.answer);
+}
+
+/** `recover_home_z`, refused by a real supervisor's own policy. */
+async function refusedRecoverHomeZ(client: Client, proxy: Recording) {
+  const refused = await client.recoverHomeZ(REASON, true).catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_home_z`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_home_z", refused.answer, seen.answer);
+}
+
+/** `recover_heat`, refused by a real supervisor's own policy. */
+async function refusedRecoverHeat(client: Client, proxy: Recording) {
+  const refused = await client
+    .recoverHeat(REASON, 150.0, 0, true)
+    .catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_heat`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_heat", refused.answer, seen.answer);
+}
+
+/** `recover_park`, refused by a real supervisor's own policy. */
+async function refusedRecoverPark(client: Client, proxy: Recording) {
+  const refused = await client.recoverPark(REASON, true).catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_park`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_park", refused.answer, seen.answer);
+}
+
+/** `recover_home_xy`, refused by a real supervisor's own policy. */
+async function refusedRecoverHomeXy(client: Client, proxy: Recording) {
+  const refused = await client.recoverHomeXy(REASON, true).catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_home_xy`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_home_xy", refused.answer, seen.answer);
+}
+
+/** `recover_cool`, refused by a real supervisor's own policy. */
+async function refusedRecoverCool(client: Client, proxy: Recording) {
+  const refused = await client.recoverCool(REASON).catch((raised: unknown) => raised);
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_cool`: the refusal did not arrive as a rejection");
+  }
+  expect(refused.reason).toHaveProperty("actor_may_not_request");
+  const seen = proxy.last();
+  expect(seen.status).toBe(409);
+  same("recover_cool", refused.answer, seen.answer);
 }
 
 /** `start_print`, refused by a real supervisor's own policy. */
@@ -900,6 +1142,13 @@ test("every action is refused as a typed rejection by a real supervisor", async 
     }
 
     await refusedCancel(client, proxy);
+    await refusedRecoverLift(client, proxy);
+    await refusedRecoverFan(client, proxy);
+    await refusedRecoverHomeZ(client, proxy);
+    await refusedRecoverHeat(client, proxy);
+    await refusedRecoverPark(client, proxy);
+    await refusedRecoverHomeXy(client, proxy);
+    await refusedRecoverCool(client, proxy);
     await refusedStartPrint(client, proxy);
     await refusedSetFeedrateFactor(client, proxy);
     await refusedSetFlowrateFactor(client, proxy);

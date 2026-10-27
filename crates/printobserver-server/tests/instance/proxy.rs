@@ -124,6 +124,17 @@ impl Proxy {
             .collect()
     }
 
+    /// Every body the instance has received that carries one, but those made
+    /// against `path`: what an assertion about one action reads when a request
+    /// to `path` is one the server makes on its own, whatever it was asked.
+    pub fn bodies_but_to(&self, path: &str) -> Vec<String> {
+        self.requests()
+            .into_iter()
+            .filter(|request| !request.body.is_empty() && request.path != path)
+            .map(|request| request.body)
+            .collect()
+    }
+
     /// Forget everything recorded so far, so the next assertion is about the
     /// next action alone.
     ///

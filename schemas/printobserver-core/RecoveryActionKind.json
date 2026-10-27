@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One recovery action, named without its fields: what a grant names and what\na refusal of an ungranted request names.",
+  "oneOf": [
+    {
+      "const": "recover_lift",
+      "description": "Move the nozzle away from the bed.",
+      "type": "string"
+    },
+    {
+      "const": "recover_cool",
+      "description": "Every heater's target to zero.",
+      "type": "string"
+    },
+    {
+      "const": "recover_fan",
+      "description": "Set the part-cooling fan.",
+      "type": "string"
+    },
+    {
+      "const": "recover_heat",
+      "description": "Heat one tool.",
+      "type": "string"
+    },
+    {
+      "const": "recover_park",
+      "description": "Move the head to the configured park place.",
+      "type": "string"
+    },
+    {
+      "const": "recover_home_xy",
+      "description": "Home X and Y.",
+      "type": "string"
+    },
+    {
+      "const": "recover_home_z",
+      "description": "Home Z.",
+      "type": "string"
+    }
+  ],
+  "title": "RecoveryActionKind"
+}

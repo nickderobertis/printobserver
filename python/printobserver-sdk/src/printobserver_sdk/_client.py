@@ -18,6 +18,7 @@ import json
 from typing import cast
 from urllib.parse import quote, urlsplit
 
+from printobserver_sdk._shapes import conforms
 from printobserver_sdk._surface import (
     NoReasonError,
     PrinterRefusedError,
@@ -31,8 +32,9 @@ from printobserver_sdk.contract import (
     Actor,
     GeneratedClient,
     Range,
+    RecoveryAnswer,
+    RecoveryRejection,
     RejectionReason,
-    RejectionReasonOutOfBoundsPayload,
     SpoolCommandAnswer,
 )
 
@@ -85,15 +87,18 @@ class Client(GeneratedClient):
         target: str,
         asked: list[tuple[str, str]],
         sending: dict[str, object] | None,
+        answer: str,
     ) -> object:
         """Make one call and answer the document that came back.
 
         Returns:
-            The document the supervisor answered, parsed.
+            The document the supervisor answered, parsed, and held to `answer`:
+            the type the contracts declare for it.
 
         Raises:
             UnreachableError: If nothing answered at the configured address.
-            UnreadableError: If the answer is not a document this client can read.
+            UnreadableError: If the answer is not a document this client can read,
+                or not one of the type the contracts declare for it.
             RefusedError: If the supervisor will not do what it was asked.
             PrinterRefusedError: If the policy accepted the action and the machine
                 refused it.
@@ -119,7 +124,10 @@ class Client(GeneratedClient):
             connection.close()
 
         if status == SUCCESS_STATUS:
-            return _document(status, said)
+            document = _document(status, said)
+            if not conforms(document, answer):
+                raise UnreadableError(status, f"the supervisor answered no {answer}: {document!r}")
+            return document
         if status == REJECTED_STATUS:
             raise _rejection(status, said)
         if status == MACHINE_REFUSED_STATUS:
@@ -165,41 +173,83 @@ def _said(said: str) -> str:
     return "it said nothing this client can read"
 
 
-def _rejection(status: int, said: str) -> Exception:
-    """The policy's own refusal, as the answer to it carries it."""
-    document = _document(status, said)
-    # An action's answer carries its decision in its record; a spool command's
-    # carries it at the top. Each `cast` below names the type `operations.json`
-    # declares for the refusal the match has just told apart: `_document` hands
-    # back the server's JSON untyped, and the match is the check this client
-    # makes of its shape before naming it.
-    answer: ActionAnswer | SpoolCommandAnswer
+def _answer_type(document: object) -> str:
+    """The answer type a refused document declares itself as by its members.
+
+    An action's answer carries its record; a recovery's names its action beside
+    its decision; a spool command's carries its decision at the top.
+    """
     match document:
-        case {"record": {"decision": {"rejected": refused}}}:
-            answer = cast(ActionAnswer, document)
-        case {"decision": {"rejected": refused}}:
-            answer = cast(SpoolCommandAnswer, document)
+        case {"record": _}:
+            return "ActionAnswer"
+        case {"action": _}:
+            return "RecoveryAnswer"
+        case _:
+            return "SpoolCommandAnswer"
+
+
+def _rejection(status: int, said: str) -> Exception:
+    """The policy's own refusal, as the answer to it carries it.
+
+    The whole answer is held to the type the contracts declare for it — every
+    member, every closed set of names and arms, every nested shape — before
+    any of it is handed on as that type.
+    """
+    document = _document(status, said)
+    declared = _answer_type(document)
+    if not conforms(document, declared):
+        return UnreadableError(
+            status, f"the supervisor refused this and answered no {declared}: {document!r}"
+        )
+    match document:
+        case {"record": {"decision": {"rejected": refused}}} | {"decision": {"rejected": refused}}:
+            pass
         case _:
             return UnreadableError(
                 status,
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
-    # What `rejected` holds is the contracts' `RejectionReason`, which the
-    # server serializes it from; the match bound it untyped.
-    reason = cast(RejectionReason, refused)
+    # Each `cast` names the type the document was just held to.
+    answer = cast(ActionAnswer | SpoolCommandAnswer | RecoveryAnswer, document)
+    reason = cast(RejectionReason | RecoveryRejection, refused)
     requested: float | None = None
     allowed: Range | None = None
-    if isinstance(reason, dict) and "out_of_bounds" in reason:
-        bounds = cast(RejectionReasonOutOfBoundsPayload, reason["out_of_bounds"])
-        requested = bounds["requested"]
-        allowed = bounds["allowed"]
+    match refused:
+        case {
+            "out_of_bounds": {"requested": int() | float() as asked, "allowed": dict() as bounds}
+        }:
+            requested = float(asked)
+            allowed = cast(Range, bounds)
+        case _:
+            pass
     return RejectedError(reason, requested, allowed, answer)
 
 
 def _machine_refusal(status: int, said: str) -> Exception:
-    """The machine's own refusal of an action the policy accepted."""
-    answer = cast(ActionAnswer, _document(status, said))
+    """The machine's own refusal of an action the policy accepted.
+
+    A recovery the machine refused carries no action record, and arrives as the
+    supervisor's own words for it: a recovery answer whose decision was carried
+    out and failed at the printer. Either answer is held to the type the
+    contracts declare for it before any of it is handed on.
+    """
+    document = _document(status, said)
+    declared = _answer_type(document)
+    if declared == "SpoolCommandAnswer" or not conforms(document, declared):
+        return UnreadableError(
+            status, "the supervisor answered a refusal carrying neither a record nor words"
+        )
+    match document:
+        case {"decision": {"executed": {"failed": {"reason": str()}}}, "detail": str() as detail}:
+            return RefusedError(status, detail)
+        case {"record": dict()}:
+            # The type the document was just held to.
+            answer = cast(ActionAnswer, document)
+        case _:
+            return UnreadableError(
+                status, "the supervisor answered a machine refusal of a recovery that did not fail"
+            )
     return PrinterRefusedError(
         answer.get("printer_refusal") or "it said nothing this client can read", answer
     )

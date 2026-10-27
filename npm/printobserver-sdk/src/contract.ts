@@ -97,10 +97,31 @@ export const OPERATION_NAMES = [
   "unload_spool",
   "adjust_spool",
   "retire_spool",
+  "recover_status",
+  "recover_lift",
+  "recover_cool",
+  "recover_fan",
+  "recover_heat",
+  "recover_park",
+  "recover_home_xy",
+  "recover_home_z",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
 export type AcknowledgementDisposition = "continue" | "watch" | "stop";
+
+/**
+ * Whether one recovery action is allowed now: `allowed`, and the refusal it
+ * would meet, present exactly when it is not.
+ */
+export interface ActionAllowance {
+  /** One shape of the contracts, which say nothing more about it. */
+  action: RecoveryActionKind;
+  /** Whether it is allowed now. */
+  allowed: boolean;
+  /** One shape of the contracts, which say nothing more about it. */
+  refusal?: RecoveryRejection;
+}
 
 /** What one mutating request left behind it. */
 export interface ActionAnswer {
@@ -238,6 +259,17 @@ export interface AgentAssessmentPayload {
   assessment: AgentAssessment;
   /** The session the turn ran in. */
   session_name: string;
+}
+
+/** The bed heater, as a recovery read reports it. */
+export interface BedTemperature {
+  /** What it reads, in degrees Celsius, `null` when not reported. */
+  actual_c: number | null;
+  /**
+   * What it is driving towards, in degrees Celsius, `null` when not
+   * reported.
+   */
+  target_c: number | null;
 }
 
 /**
@@ -566,6 +598,21 @@ export interface FileTallyRebaselinedPayload {
   origin: string;
 }
 
+/**
+ * The XY rectangle every extruding move of a file lies inside, in
+ * millimetres.
+ */
+export interface Footprint {
+  /** The largest X. */
+  max_x: number;
+  /** The largest Y. */
+  max_y: number;
+  /** The smallest X. */
+  min_x: number;
+  /** The smallest Y. */
+  min_y: number;
+}
+
 /** Why a camera frame was not one to hand the agent. */
 export type FrameCause = "blank" | "undecodable";
 
@@ -780,6 +827,19 @@ export interface JobSnapshot {
   state: PrinterState;
 }
 
+/**
+ * What the last print laid down, read from its own G-code up to the last
+ * file position recorded for it.
+ */
+export interface LastPrint {
+  /** Where in X and Y it laid material. */
+  footprint: Footprint;
+  /** The print. */
+  print_id: PrintId;
+  /** The tallest part it laid down, in millimetres. */
+  tallest_mm: number;
+}
+
 /** One spool loaded on one tool, as a print started. */
 export interface LoadedSpool {
   /** The spool loaded on it. */
@@ -921,6 +981,20 @@ export interface OperatorAcknowledgementPayload {
   acknowledged_event_id: EventId;
   /** What the operator asked for next. */
   disposition: AcknowledgementDisposition;
+}
+
+/**
+ * The print paused under the printer, and whether resuming it is still safe.
+ *
+ * A recovery action executed while it was paused moved the head, and
+ * `OctoPrint` restores no position on resume, so the rest of the layer would
+ * print at the wrong height: such a print is not resumable.
+ */
+export interface PausedPrint {
+  /** The print. */
+  print_id: PrintId;
+  /** Whether it may be resumed. */
+  resumable: boolean;
 }
 
 /**
@@ -1451,6 +1525,178 @@ export type RawBytes = string;
 export type RebaselineDisposition = "accounted" | "unverified";
 
 /**
+ * The whole recovery vocabulary, and there is no other.
+ *
+ * The two assertions are the operator's word for what printobserver cannot
+ * see: `clearance_asserted` that the nozzle is clear of the part, and
+ * `bed_clear_asserted` that homing Z will meet nothing on the bed. Each is
+ * false when left out.
+ */
+export type RecoveryAction =
+  | { action: "recover_lift"; mm: number }
+  | { action: "recover_cool" }
+  | { action: "recover_fan"; percent: number }
+  | { action: "recover_heat"; clearance_asserted?: boolean; target_c: number; tool: number }
+  | { action: "recover_park"; clearance_asserted?: boolean }
+  | { action: "recover_home_xy"; clearance_asserted?: boolean }
+  | { action: "recover_home_z"; bed_clear_asserted?: boolean };
+
+/**
+ * One recovery action, named without its fields: what a grant names and what
+ * a refusal of an ungranted request names.
+ */
+export type RecoveryActionKind =
+  | "recover_lift"
+  | "recover_cool"
+  | "recover_fan"
+  | "recover_heat"
+  | "recover_park"
+  | "recover_home_xy"
+  | "recover_home_z";
+
+/**
+ * What a recovery action answers, carried out or refused.
+ *
+ * A refusal is the same shape and deliberately so: `decision` is either
+ * `executed`, carrying what the printer made of it, or `rejected`, carrying
+ * the reason, and the two events are what the request wrote.
+ */
+export interface RecoveryAnswer {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** What became of it. */
+  decision: RecoveryDecision;
+  /**
+   * What became of it, in a sentence for a person: why it was refused and
+   * what would let it go ahead, or what it did.
+   */
+  detail: string;
+  /**
+   * The `recovery_requested` event, and the `recovery_executed` or
+   * `recovery_rejected` beside it.
+   */
+  events: Array<EventRecord>;
+}
+
+/**
+ * What became of a recovery request: carried out with the printer's outcome,
+ * or refused — one or the other, never both and never neither.
+ */
+export type RecoveryDecision = { executed: ExecutionOutcome } | { rejected: RecoveryRejection };
+
+/** A recovery action reached the printer, and what the printer made of it. */
+export interface RecoveryExecutedPayload {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** Who asked. */
+  actor: Actor;
+  /** What the printer made of it. */
+  outcome: ExecutionOutcome;
+  /** Why. */
+  reason: string;
+}
+
+/** One field of a recovery action a bound is held to. */
+export type RecoveryField =
+  | "mm"
+  | "percent"
+  | "tool"
+  | "target_c"
+  | "clearance_asserted"
+  | "bed_clear_asserted";
+
+/** Where the print head is, in millimetres, as the printer reported it. */
+export interface RecoveryPosition {
+  /** X. */
+  x: number;
+  /** Y. */
+  y: number;
+  /** Z. */
+  z: number;
+}
+
+/** A recovery action was refused, and reached nothing. */
+export interface RecoveryRejectedPayload {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** Who asked. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+  /** Why it was refused. */
+  rejection: RecoveryRejection;
+}
+
+/**
+ * Why a recovery request was refused, each a variant of its own so a
+ * consumer tells them apart by matching rather than by reading words.
+ */
+export type RecoveryRejection =
+  | { actor_may_not_request: { action: RecoveryActionKind } }
+  | { print_running: { state: PrinterState } }
+  | "printer_unreachable"
+  | "z_untrusted"
+  | { insufficient_clearance: { margin_mm: number; nozzle_z_mm: number; tallest_mm: number } }
+  | { out_of_bounds: { allowed: Range; field: RecoveryField; requested: number } }
+  | { assertion_required: { field: RecoveryField } }
+  | "recovery_not_configured"
+  | { printer_cannot: { action: RecoveryActionKind; detail: string } };
+
+/**
+ * A recovery action was asked for.
+ *
+ * The printer's rather than any print's, so it is written with no print.
+ */
+export interface RecoveryRequestedPayload {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** Who asked. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+}
+
+/**
+ * What a recovery read answers: everything a recovery is checked against,
+ * and what each action would meet now.
+ */
+export interface RecoveryStatus {
+  /** Each action, and whether it is allowed now. */
+  actions: Array<ActionAllowance>;
+  /**
+   * What the last print laid down, `null` when there is no print with a
+   * file to read or its file could not be read.
+   */
+  last_print: LastPrint | null;
+  /** The print paused under the printer, `null` when none is. */
+  paused_print: PausedPrint | null;
+  /**
+   * Where the head is, read only while Z is trusted; `null` otherwise or
+   * when it could not be read.
+   */
+  position: RecoveryPosition | null;
+  /** The state the printer reports; `offline` when it could not be read. */
+  state: PrinterState;
+  /** Every heater. */
+  temperatures: RecoveryTemperatures;
+  /**
+   * Where Z is homed and whether that sweeps the bed, `null` when
+   * recovery is not configured.
+   */
+  z_home: ZHome | null;
+  /** Whether Z is trusted. */
+  z_trust: ZTrust;
+}
+
+/** Every heater, as a recovery read reports it. */
+export interface RecoveryTemperatures {
+  /** The bed, `null` when the printer reports none. */
+  bed: BedTemperature | null;
+  /** Each tool. */
+  tools: Array<ToolTemperature>;
+}
+
+/**
  * Why a request was refused.
  *
  * Each rejection is a distinct variant, so a consumer distinguishes them by
@@ -1486,6 +1732,7 @@ export type RejectionReason =
   | "print_already_ended"
   | { print_still_active: { state: PrinterState } }
   | { intervention_still_active: { intervention_id: InterventionId } }
+  | { print_not_resumable: { recovery_event_id: EventId } }
   | { spool_refused: { cause: SpoolRefusalCause; message: string } };
 
 /**
@@ -1878,6 +2125,19 @@ export interface ToolFilament {
   volume_cm3?: number | null;
 }
 
+/** One tool heater, as a recovery read reports it. */
+export interface ToolTemperature {
+  /** What it reads, in degrees Celsius, `null` when not reported. */
+  actual_c: number | null;
+  /**
+   * What it is driving towards, in degrees Celsius, `null` when not
+   * reported.
+   */
+  target_c: number | null;
+  /** The tool, in the printer's own numbering. */
+  tool: number;
+}
+
 /** A print this system never saw was found in the printer's own tally. */
 export interface UnaccountedPrintPayload {
   /** Whether it was charged against a spool. */
@@ -1933,6 +2193,19 @@ export type UnverifiedReason =
   | { reason: "filament_change_unconfirmed_position"; print_id: PrintId }
   | { reason: "tally_reset"; file_name: string; origin: string };
 
+/** Where the machine homes Z, and whether doing so sweeps the bed. */
+export interface ZHome {
+  /** Whether homing Z brings a gantry down over the whole bed. */
+  sweeps_bed: boolean;
+  /** Where in X Z is homed, in millimetres. */
+  x: number;
+  /** Where in Y Z is homed, in millimetres. */
+  y: number;
+}
+
+/** Whether Z is trusted, and since when or why not. */
+export type ZTrust = { trusted_since: Timestamp } | { untrusted: string };
+
 /**
  * Every kind the server declares a payload type for, keyed by the kind's
  * name, and the type each payload has. A kind this client does not know
@@ -1963,6 +2236,9 @@ export interface EventPayloads {
   print_untracked: PrintUntrackedPayload;
   printer_connection_changed: PrinterConnectionChangedPayload;
   printer_reset: PrinterResetPayload;
+  recovery_executed: RecoveryExecutedPayload;
+  recovery_rejected: RecoveryRejectedPayload;
+  recovery_requested: RecoveryRequestedPayload;
   spool_adjusted: SpoolAdjustedPayload;
   spool_command_rejected: SpoolCommandRejectedPayload;
   spool_loaded: SpoolLoadedPayload;
@@ -2003,6 +2279,9 @@ export const EVENT_KINDS = [
   "print_untracked",
   "printer_connection_changed",
   "printer_reset",
+  "recovery_executed",
+  "recovery_rejected",
+  "recovery_requested",
   "spool_adjusted",
   "spool_command_rejected",
   "spool_loaded",
@@ -2034,6 +2313,6030 @@ export function payloadOf<K extends keyof EventPayloads>(
 }
 
 /**
+ * Every declaration of the contracts, as the client checks a document
+ * against its declared type: generated from the same declarations as every
+ * type above.
+ */
+export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
+{
+ "AcknowledgementDisposition": {
+  "enum": [
+   "continue",
+   "watch",
+   "stop"
+  ]
+ },
+ "ActionAllowance": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryActionKind"
+     }
+    },
+    "allowed": {
+     "paired_with": "refusal",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "refusal": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "ref": "RecoveryRejection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionAnswer": {
+  "struct": {
+   "fields": {
+    "intervention": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Intervention"
+      }
+     }
+    },
+    "printer_refusal": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "record": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionExecutedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "intervention_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "InterventionId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ActionKind": {
+  "enum": [
+   "pause",
+   "resume",
+   "cancel",
+   "start_print",
+   "set_feedrate_factor",
+   "set_flowrate_factor",
+   "set_tool_target_c",
+   "set_bed_target_c",
+   "set_fan_percent",
+   "acknowledge_failure",
+   "close_print",
+   "register_spool",
+   "load_spool",
+   "unload_spool",
+   "adjust_spool",
+   "retire_spool"
+  ]
+ },
+ "ActionRecord": {
+  "struct": {
+   "fields": {
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    },
+    "executed_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ExecutionOutcome"
+      }
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "request": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionRequest"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRejectedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRequest": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "requested_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRequestedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintAction"
+     }
+    },
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Actor": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "agent": {
+     "fields": {
+      "session_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "operator": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "system": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "ActorClass": {
+  "enum": [
+   "agent",
+   "operator",
+   "system"
+  ]
+ },
+ "Adjustable": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "AgentAssessment": {
+  "struct": {
+   "fields": {
+    "confidence": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Confidence"
+     }
+    },
+    "did": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "escalating": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "should_continue": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "summary": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "why": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentAssessmentPayload": {
+  "struct": {
+   "fields": {
+    "assessment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AgentAssessment"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedTemperature": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraDegradedPayload": {
+  "struct": {
+   "fields": {
+    "attempts": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "cause": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FrameCause"
+     }
+    },
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraLookPayload": {
+  "struct": {
+   "fields": {
+    "delivered": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "EventId"
+      },
+      "non_empty": false
+     }
+    },
+    "waited_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ChargeKey": {
+  "union": {
+   "tag_field": "key",
+   "variants": {
+    "print": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      },
+      "segment": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unobserved": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "generation": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "origin": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "print_number": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "ChargeMethod": {
+  "enum": [
+   "slicer_estimate",
+   "gcode_extrusion",
+   "file_fraction",
+   "unobserved_estimate"
+  ]
+ },
+ "ChargePendedPayload": {
+  "struct": {
+   "fields": {
+    "pending": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PendingCharge"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ChargedFilament": {
+  "struct": {
+   "fields": {
+    "density_g_cm3": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "diameter_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "grams": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_after_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_before_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ClearedMark": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Confidence": {
+  "enum": [
+   "low",
+   "medium",
+   "high"
+  ]
+ },
+ "ContextAnswer": {
+  "struct": {
+   "fields": {
+    "context": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintContext"
+     }
+    },
+    "image_path": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "DetectorHealth": {
+  "union": {
+   "tag_field": "status",
+   "variants": {
+    "available": {
+     "fields": {
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unavailable": {
+     "fields": {
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "null"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "DetectorHealthChangedPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "status": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorStatus"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "DetectorStatus": {
+  "enum": [
+   "available",
+   "unavailable"
+  ]
+ },
+ "EffectiveBounds": {
+  "struct": {
+   "fields": {
+    "allowed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "map": {
+       "ref": "Range"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ErrorAnswer": {
+  "struct": {
+   "fields": {
+    "error": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ErrorSource": {
+  "enum": [
+   "printer",
+   "host"
+  ]
+ },
+ "EventId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventKind": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventRecord": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "payload": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "any": true
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    },
+    "raw": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "RawBytes"
+      }
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "source": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventSource"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "EventSource": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventsAnswer": {
+  "struct": {
+   "fields": {
+    "cursor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "print_ended": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintEnded"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ExecutionOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "failed": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "succeeded": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "FilamentChangeSignalledPayload": {
+  "struct": {
+   "fields": {
+    "position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SignalPosition"
+      }
+     }
+    },
+    "source_kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FilamentConsumedPayload": {
+  "struct": {
+   "fields": {
+    "analysed_length_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "charge_key": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeKey"
+     }
+    },
+    "charged": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ChargedFilament"
+      }
+     }
+    },
+    "length_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "method": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeMethod"
+     }
+    },
+    "note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FileName": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "FilePosition": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "observed_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "size_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FileTallyRebaselinedPayload": {
+  "struct": {
+   "fields": {
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RebaselineDisposition"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "new_failures": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "new_generation": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "new_successes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_failures": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_generation": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_successes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "origin": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Footprint": {
+  "struct": {
+   "fields": {
+    "max_x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "max_y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min_x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min_y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FrameCause": {
+  "enum": [
+   "blank",
+   "undecodable"
+  ]
+ },
+ "HeatedTool": {
+  "struct": {
+   "fields": {
+    "target_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "HeaterSnapshot": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "offset_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "HistoryAnswer": {
+  "struct": {
+   "fields": {
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageAnswer": {
+  "struct": {
+   "fields": {
+    "path": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "record": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ImageRecord": {
+  "struct": {
+   "fields": {
+    "byte_len": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "content_type": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "fetched_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageId"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "relative_path": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "source_url": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageRef": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageId"
+     }
+    },
+    "sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Intervention": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "adjustable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "applied_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "applied_value": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "expires_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionOutcome"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "prior_value": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "restored_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "InterventionExpiredPayload": {
+  "struct": {
+   "fields": {
+    "adjustable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "intervention_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionOutcome"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "InterventionId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "InterventionOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "restore_failed": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "restore_unavailable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "restored": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "still_active": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "superseded": {
+     "fields": {
+      "by": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "JobError": {
+  "struct": {
+   "fields": {
+    "source": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ErrorSource"
+     }
+    },
+    "text": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "JobManifest": {
+  "struct": {
+   "fields": {
+    "allowed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "map": {
+       "ref": "Range"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "material": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "metadata": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "map": {
+       "scalar": "string"
+      }
+     }
+    },
+    "nozzle_diameter_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "slicer_profile": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "JobSnapshot": {
+  "struct": {
+   "fields": {
+    "completion": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "error": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobError"
+      }
+     }
+    },
+    "estimated_print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "filament": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ToolFilament"
+      },
+      "non_empty": false
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_origin": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_left_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "size_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "LastPrint": {
+  "struct": {
+   "fields": {
+    "footprint": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Footprint"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "tallest_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "LoadedSpool": {
+  "struct": {
+   "fields": {
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Look": {
+  "struct": {
+   "fields": {
+    "arrived": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "detector_paused": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    },
+    "frame": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "image_path": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "MalformedExternalEventPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ManifestAnswer": {
+  "struct": {
+   "fields": {
+    "manifest": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "narrowings": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ManifestNarrowing"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ManifestNarrowing": {
+  "struct": {
+   "fields": {
+    "adjustable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "applied": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Range"
+     }
+    },
+    "requested": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Range"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ObicoFailureAlertPayload": {
+  "struct": {
+   "fields": {
+    "ended_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "is_warning": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "obico_print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_paused": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "started_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ObicoNotificationType": {
+  "enum": [
+   "started",
+   "done",
+   "cancelled",
+   "paused",
+   "resumed",
+   "filament_change",
+   "heater_cooled",
+   "heater_target"
+  ]
+ },
+ "ObicoPrinterNotificationPayload": {
+  "struct": {
+   "fields": {
+    "ended_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "notification_type": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ObicoNotificationType"
+     }
+    },
+    "obico_print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "started_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "OperatorAcknowledgementPayload": {
+  "struct": {
+   "fields": {
+    "acknowledged_event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AcknowledgementDisposition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PausedPrint": {
+  "struct": {
+   "fields": {
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "resumable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PendingCharge": {
+  "struct": {
+   "fields": {
+    "analysed_length_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "charge_key": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintSegmentKey"
+     }
+    },
+    "length_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "method": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeMethod"
+     }
+    },
+    "note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "pended_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PendingTaken": {
+  "struct": {
+   "fields": {
+    "charge_key": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeKey"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PeriodicObservationPayload": {
+  "struct": {
+   "fields": {
+    "interval_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PolicyDecision": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "accepted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "rejected": {
+     "fields": {},
+     "payload": {
+      "ref": "RejectionReason"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "PortFailurePayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "site": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PortFailureSite"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PortFailureSite": {
+  "enum": [
+   "printer_snapshot",
+   "printer_job",
+   "image_write",
+   "supervision_turn",
+   "camera_look",
+   "detector_acknowledgement"
+  ]
+ },
+ "PositionFreshness": {
+  "enum": [
+   "read_at_signal",
+   "last_recorded"
+  ]
+ },
+ "Preflight": {
+  "struct": {
+   "fields": {
+    "checked_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PreflightTool"
+      },
+      "non_empty": false
+     }
+    },
+    "verdict": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PreflightVerdict"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightAnswer": {
+  "struct": {
+   "fields": {
+    "preflight": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Preflight"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightCheckedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ActionId"
+      }
+     }
+    },
+    "preflight": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Preflight"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightNeed": {
+  "struct": {
+   "fields": {
+    "buffer_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "required_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightObjection": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "insufficient": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": false
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_analysis": {
+     "fields": {
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unverified_spool": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "PreflightNeed"
+        }
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PreflightSpool": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightTool": {
+  "struct": {
+   "fields": {
+    "result": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PreflightToolResult"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightToolResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "insufficient": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": false
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_analysis": {
+     "fields": {
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "overridden": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "need": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unverified_spool": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "PreflightNeed"
+        }
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PreflightVerdict": {
+  "enum": [
+   "passed",
+   "unchecked",
+   "insufficient",
+   "unverified_spool",
+   "no_analysis",
+   "overridden",
+   "warned"
+  ]
+ },
+ "PrintAction": {
+  "union": {
+   "tag_field": "action",
+   "variants": {
+    "acknowledge_failure": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "disposition": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "AcknowledgementDisposition"
+       }
+      },
+      "event_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "EventId"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "cancel": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "close_print": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "outcome": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintOutcome"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "pause": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "resume": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_bed_target_c": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "target_c": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_fan_percent": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "percent": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_feedrate_factor": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "factor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_flowrate_factor": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "factor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_tool_target_c": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "target_c": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "start_print": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "FileName"
+       }
+      },
+      "manifest": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "JobManifest"
+       }
+      },
+      "override_filament_check": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PrintContext": {
+  "struct": {
+   "fields": {
+    "bounds": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EffectiveBounds"
+     }
+    },
+    "detector": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "ref": "DetectorHealth"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "latest_image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "manifest": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintRecord"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    },
+    "recent_events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintEnded": {
+  "struct": {
+   "fields": {
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintOutcome"
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintEndedPayload": {
+  "struct": {
+   "fields": {
+    "last_position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintOutcome"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "PrintOutcome": {
+  "enum": [
+   "completed",
+   "cancelled",
+   "failed",
+   "interrupted"
+  ]
+ },
+ "PrintRecord": {
+  "struct": {
+   "fields": {
+    "end_reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "ended_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "job_print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "job_started_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "narrowings": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ManifestNarrowing"
+      },
+      "non_empty": false
+     }
+    },
+    "opened_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "provider_print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintSegmentKey": {
+  "struct": {
+   "fields": {
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "segment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintStartedPayload": {
+  "struct": {
+   "fields": {
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "loaded": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "LoadedSpool"
+      },
+      "non_empty": false
+     }
+    },
+    "preflight": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Preflight"
+      }
+     }
+    },
+    "started_by": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ActionId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintUntrackedPayload": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterConnectionChangedPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "from": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "to": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterResetPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "during_print": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterSnapshot": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "HeaterSnapshot"
+      }
+     }
+    },
+    "chamber": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "HeaterSnapshot"
+      }
+     }
+    },
+    "connection": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "fan_percent": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "feedrate_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "flowrate_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "observed_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "HeaterSnapshot"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterState": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "cancelling": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "error": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "offline": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "operational": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "paused": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "printing": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unknown": {
+     "fields": {},
+     "payload": {
+      "scalar": "string"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "PrintsAnswer": {
+  "struct": {
+   "fields": {
+    "active": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    },
+    "prints": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PrintRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Range": {
+  "struct": {
+   "fields": {
+    "max": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RawBytes": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "RebaselineDisposition": {
+  "enum": [
+   "accounted",
+   "unverified"
+  ]
+ },
+ "RecoveryAction": {
+  "union": {
+   "tag_field": "action",
+   "variants": {
+    "recover_cool": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "recover_fan": {
+     "fields": {
+      "percent": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_heat": {
+     "fields": {
+      "clearance_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "target_c": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_home_xy": {
+     "fields": {
+      "clearance_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_home_z": {
+     "fields": {
+      "bed_clear_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_lift": {
+     "fields": {
+      "mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_park": {
+     "fields": {
+      "clearance_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "RecoveryActionKind": {
+  "enum": [
+   "recover_lift",
+   "recover_cool",
+   "recover_fan",
+   "recover_heat",
+   "recover_park",
+   "recover_home_xy",
+   "recover_home_z"
+  ]
+ },
+ "RecoveryAnswer": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryDecision"
+     }
+    },
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryDecision": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "executed": {
+     "fields": {},
+     "payload": {
+      "ref": "ExecutionOutcome"
+     },
+     "unit": false
+    },
+    "rejected": {
+     "fields": {},
+     "payload": {
+      "ref": "RecoveryRejection"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "RecoveryExecutedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ExecutionOutcome"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryField": {
+  "enum": [
+   "mm",
+   "percent",
+   "tool",
+   "target_c",
+   "clearance_asserted",
+   "bed_clear_asserted"
+  ]
+ },
+ "RecoveryPosition": {
+  "struct": {
+   "fields": {
+    "x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "z": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryRejectedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "rejection": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryRejection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryRejection": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "actor_may_not_request": {
+     "fields": {
+      "action": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryActionKind"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "assertion_required": {
+     "fields": {
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryField"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "insufficient_clearance": {
+     "fields": {
+      "margin_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "nozzle_z_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tallest_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "out_of_bounds": {
+     "fields": {
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Range"
+       }
+      },
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryField"
+       }
+      },
+      "requested": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_running": {
+     "fields": {
+      "state": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "printer_cannot": {
+     "fields": {
+      "action": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryActionKind"
+       }
+      },
+      "detail": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "printer_unreachable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "recovery_not_configured": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "z_untrusted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "RecoveryRequestedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryStatus": {
+  "struct": {
+   "fields": {
+    "actions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ActionAllowance"
+      },
+      "non_empty": false
+     }
+    },
+    "last_print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "LastPrint"
+      }
+     }
+    },
+    "paused_print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "PausedPrint"
+      }
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "RecoveryPosition"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "temperatures": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryTemperatures"
+     }
+    },
+    "z_home": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "ZHome"
+      }
+     }
+    },
+    "z_trust": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ZTrust"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryTemperatures": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "BedTemperature"
+      }
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ToolTemperature"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RejectionReason": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "actor_may_not_request": {
+     "fields": {
+      "action": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "ActionKind"
+       }
+      },
+      "actor_class": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "ActorClass"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "analysis_unavailable": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "waited_s": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "insufficient_filament": {
+     "fields": {
+      "buffer_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "required_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "spool_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "unverified": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "UnverifiedReason"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "intervention_still_active": {
+     "fields": {
+      "intervention_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "invalid_from_state": {
+     "fields": {
+      "state": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "min_interval_not_elapsed": {
+     "fields": {
+      "interval_s": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "since_last_s": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_active_print": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "out_of_bounds": {
+     "fields": {
+      "adjustable": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      },
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Range"
+       }
+      },
+      "requested": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_already_ended": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "print_not_resumable": {
+     "fields": {
+      "recovery_event_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "EventId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_still_active": {
+     "fields": {
+      "state": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "spool_refused": {
+     "fields": {
+      "cause": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolRefusalCause"
+       }
+      },
+      "message": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unsupported_adjustable": {
+     "fields": {
+      "adjustable": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unverified_spool": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "UnverifiedReason"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "spool_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "Reported": {
+  "struct": {
+   "fields": {
+    "out_of_range": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "value": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SignalPosition": {
+  "struct": {
+   "fields": {
+    "freshness": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PositionFreshness"
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolAdjustedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "cleared_marks": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ClearedMark"
+      },
+      "non_empty": false
+     }
+    },
+    "gross_g": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "remaining_after_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_before_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "took_pending": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PendingTaken"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolAnswer": {
+  "struct": {
+   "fields": {
+    "recent": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "spool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolCommand": {
+  "union": {
+   "tag_field": "command",
+   "variants": {
+    "adjust_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "gross_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "load_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "register_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "color": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "string"
+        }
+       }
+      },
+      "density_g_cm3": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "diameter_mm": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "initial_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "tare_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retire_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unload_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SpoolCommandAnswer": {
+  "struct": {
+   "fields": {
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    },
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "spool": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolRecord"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolCommandRejectedPayload": {
+  "struct": {
+   "fields": {
+    "command": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolCommand"
+     }
+    },
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolField": {
+  "enum": [
+   "name",
+   "material",
+   "diameter_mm",
+   "density_g_cm3",
+   "initial_g",
+   "remaining_g",
+   "tare_g",
+   "gross_g"
+  ]
+ },
+ "SpoolId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "SpoolLifecycle": {
+  "union": {
+   "tag_field": "state",
+   "variants": {
+    "loaded": {
+     "fields": {
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retired": {
+     "fields": {
+      "at": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "shelved": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "SpoolLoadedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "cleared_marks": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ClearedMark"
+      },
+      "non_empty": false
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "replaced": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "took_pending": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PendingTaken"
+      },
+      "non_empty": false
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRecord": {
+  "struct": {
+   "fields": {
+    "color": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "density_g_cm3": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "diameter_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "initial_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "lifecycle": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolLifecycle"
+     }
+    },
+    "material": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "registered_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "remaining_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tare_g": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "trust": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolTrust"
+     }
+    },
+    "updated_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRefusalCause": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "conflicting_fields": {
+     "fields": {
+      "fields": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "SpoolField"
+        },
+        "non_empty": false
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "density_required": {
+     "fields": {
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "SpoolId"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "invalid_adjustment_figure": {
+     "fields": {
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolField"
+       }
+      },
+      "value": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "ledger_refused": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "missing_field": {
+     "fields": {
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolField"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "not_loaded": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "nothing_to_confirm": {
+     "fields": {
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retired_spool": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "tare_required": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_spool": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_tool": {
+     "fields": {
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SpoolRegisteredPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "spool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRetiredPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "remaining_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolTrust": {
+  "union": {
+   "tag_field": "state",
+   "variants": {
+    "unverified": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "verified": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "SpoolUnloadedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolUnverifiedPayload": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolsAnswer": {
+  "struct": {
+   "fields": {
+    "at_a_glance": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "pending": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PendingCharge"
+      },
+      "non_empty": false
+     }
+    },
+    "spools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "SpoolRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "StartupOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "intervention_expired": {
+     "fields": {
+      "adjustable": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      },
+      "intervention_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      },
+      "outcome": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionOutcome"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_adopted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "session_resumed": {
+     "fields": {
+      "session_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "StartupReconciliationPayload": {
+  "struct": {
+   "fields": {
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "StartupOutcome"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "StatusAnswer": {
+  "struct": {
+   "fields": {
+    "detector": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealth"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintRecord"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    },
+    "session": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SupervisionSession"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSession": {
+  "struct": {
+   "fields": {
+    "close_reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "closed_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "created_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "harness_identity": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "last_turn_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSessionClosedPayload": {
+  "struct": {
+   "fields": {
+    "close_reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSessionOpenedPayload": {
+  "struct": {
+   "fields": {
+    "harness_identity": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "TimelineAnswer": {
+  "struct": {
+   "fields": {
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "next": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Timestamp": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ToolFilament": {
+  "struct": {
+   "fields": {
+    "length_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "volume_cm3": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ToolTemperature": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnaccountedPrintPayload": {
+  "struct": {
+   "fields": {
+    "charged": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "printed_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "success": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnattendedPrinterActivityPayload": {
+  "struct": {
+   "fields": {
+    "bed_target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "last_print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "moved": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "boolean"
+      }
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "HeatedTool"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnverifiedMark": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "since": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnverifiedReason": {
+  "union": {
+   "tag_field": "reason",
+   "variants": {
+    "filament_change_unconfirmed": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "filament_change_unconfirmed_position": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "tally_reset": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "origin": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unaccounted_print": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "printed_at": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "uncharged_print": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "ZHome": {
+  "struct": {
+   "fields": {
+    "sweeps_bed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ZTrust": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "trusted_since": {
+     "fields": {},
+     "payload": {
+      "ref": "Timestamp"
+     },
+     "unit": false
+    },
+    "untrusted": {
+     "fields": {},
+     "payload": {
+      "scalar": "string"
+     },
+     "unit": false
+    }
+   }
+  }
+ }
+}
+`);
+
+/**
  * One method per operation the server declares.
  *
  * Every method here is generated from the checked-in description of the
@@ -2053,8 +8356,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<PrintsAnswer>("GET", target, asked, sending);
+    return await this.call<PrintsAnswer>("GET", target, asked, sending, "PrintsAnswer");
   }
 
   /**
@@ -2068,8 +8370,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints/${printId}/status`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<StatusAnswer>("GET", target, asked, sending);
+    return await this.call<StatusAnswer>("GET", target, asked, sending, "StatusAnswer");
   }
 
   /**
@@ -2083,8 +8384,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints/${printId}/context`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ContextAnswer>("GET", target, asked, sending);
+    return await this.call<ContextAnswer>("GET", target, asked, sending, "ContextAnswer");
   }
 
   /**
@@ -2098,8 +8398,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/images/${imageId}`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ImageAnswer>("GET", target, asked, sending);
+    return await this.call<ImageAnswer>("GET", target, asked, sending, "ImageAnswer");
   }
 
   /**
@@ -2116,8 +8415,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["limit", String(limit)]);
     }
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<HistoryAnswer>("GET", target, asked, sending);
+    return await this.call<HistoryAnswer>("GET", target, asked, sending, "HistoryAnswer");
   }
 
   /**
@@ -2160,8 +8458,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["limit", String(limit)]);
     }
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<EventsAnswer>("GET", target, asked, sending);
+    return await this.call<EventsAnswer>("GET", target, asked, sending, "EventsAnswer");
   }
 
   /**
@@ -2175,8 +8472,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/prints/${printId}/manifest`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ManifestAnswer>("GET", target, asked, sending);
+    return await this.call<ManifestAnswer>("GET", target, asked, sending, "ManifestAnswer");
   }
 
   /**
@@ -2193,8 +8489,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["wait_s", String(waitS)]);
     }
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<Look>("GET", target, asked, sending);
+    return await this.call<Look>("GET", target, asked, sending, "Look");
   }
 
   /**
@@ -2217,8 +8512,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.reason = reason;
     sending.manifest = manifest;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ManifestAnswer>("PUT", target, asked, sending);
+    return await this.call<ManifestAnswer>("PUT", target, asked, sending, "ManifestAnswer");
   }
 
   /**
@@ -2235,8 +8529,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["include_retired", String(includeRetired)]);
     }
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolsAnswer>("GET", target, asked, sending);
+    return await this.call<SpoolsAnswer>("GET", target, asked, sending, "SpoolsAnswer");
   }
 
   /**
@@ -2250,8 +8543,7 @@ export class GeneratedClient extends GeneratedSurface {
     const target = `/v1/spools/${spoolId}`;
     const asked: Array<[string, string]> = [];
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolAnswer>("GET", target, asked, sending);
+    return await this.call<SpoolAnswer>("GET", target, asked, sending, "SpoolAnswer");
   }
 
   /**
@@ -2292,8 +8584,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["limit", String(limit)]);
     }
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<TimelineAnswer>("GET", target, asked, sending);
+    return await this.call<TimelineAnswer>("GET", target, asked, sending, "TimelineAnswer");
   }
 
   /**
@@ -2310,8 +8601,7 @@ export class GeneratedClient extends GeneratedSurface {
       asked.push(["file_name", String(fileName)]);
     }
     const sending = undefined;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<PreflightAnswer>("GET", target, asked, sending);
+    return await this.call<PreflightAnswer>("GET", target, asked, sending, "PreflightAnswer");
   }
 
   /**
@@ -2330,8 +8620,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2350,8 +8639,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2370,8 +8658,7 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2401,8 +8688,7 @@ export class GeneratedClient extends GeneratedSurface {
       sending.override_filament_check = overrideFilamentCheck;
     }
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2430,8 +8716,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.factor = factor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2459,8 +8744,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.factor = factor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2490,8 +8774,7 @@ export class GeneratedClient extends GeneratedSurface {
     sending.reason = reason;
     sending.target_c = targetC;
     sending.tool = tool;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2519,8 +8802,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.reason = reason;
     sending.target_c = targetC;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2548,8 +8830,7 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.percent = percent;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2575,8 +8856,7 @@ export class GeneratedClient extends GeneratedSurface {
     sending.disposition = disposition;
     sending.event_id = eventId;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2596,8 +8876,7 @@ export class GeneratedClient extends GeneratedSurface {
     sending.actor = this.actor;
     sending.outcome = outcome;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<ActionAnswer>("POST", target, asked, sending);
+    return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");
   }
 
   /**
@@ -2644,8 +8923,13 @@ export class GeneratedClient extends GeneratedSurface {
     if (tareG !== undefined) {
       sending.tare_g = tareG;
     }
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+    return await this.call<SpoolCommandAnswer>(
+      "POST",
+      target,
+      asked,
+      sending,
+      "SpoolCommandAnswer",
+    );
   }
 
   /**
@@ -2665,8 +8949,13 @@ export class GeneratedClient extends GeneratedSurface {
     sending.actor = this.actor;
     sending.reason = reason;
     sending.tool = tool;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+    return await this.call<SpoolCommandAnswer>(
+      "POST",
+      target,
+      asked,
+      sending,
+      "SpoolCommandAnswer",
+    );
   }
 
   /**
@@ -2685,8 +8974,13 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+    return await this.call<SpoolCommandAnswer>(
+      "POST",
+      target,
+      asked,
+      sending,
+      "SpoolCommandAnswer",
+    );
   }
 
   /**
@@ -2716,8 +9010,13 @@ export class GeneratedClient extends GeneratedSurface {
     if (remainingG !== undefined) {
       sending.remaining_g = remainingG;
     }
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+    return await this.call<SpoolCommandAnswer>(
+      "POST",
+      target,
+      asked,
+      sending,
+      "SpoolCommandAnswer",
+    );
   }
 
   /**
@@ -2736,7 +9035,180 @@ export class GeneratedClient extends GeneratedSurface {
     const sending: Record<string, unknown> = {};
     sending.actor = this.actor;
     sending.reason = reason;
-    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
-    return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+    return await this.call<SpoolCommandAnswer>(
+      "POST",
+      target,
+      asked,
+      sending,
+      "SpoolCommandAnswer",
+    );
+  }
+
+  /**
+   * Call `recover_status` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async recoverStatus(): Promise<RecoveryStatus> {
+    const target = `/v1/printer/recovery`;
+    const asked: Array<[string, string]> = [];
+    const sending = undefined;
+    return await this.call<RecoveryStatus>("GET", target, asked, sending, "RecoveryStatus");
+  }
+
+  /**
+   * Call `recover_lift` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverLift(mm: number, reason: string): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_lift`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.mm = mm;
+    sending.reason = reason;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `recover_cool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverCool(reason: string): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_cool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `recover_fan` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverFan(percent: number, reason: string): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_fan`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.percent = percent;
+    sending.reason = reason;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `recover_heat` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverHeat(
+    reason: string,
+    targetC: number,
+    tool: number,
+    clearanceAsserted?: boolean,
+  ): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_heat`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (clearanceAsserted !== undefined) {
+      sending.clearance_asserted = clearanceAsserted;
+    }
+    sending.reason = reason;
+    sending.target_c = targetC;
+    sending.tool = tool;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `recover_park` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverPark(reason: string, clearanceAsserted?: boolean): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_park`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (clearanceAsserted !== undefined) {
+      sending.clearance_asserted = clearanceAsserted;
+    }
+    sending.reason = reason;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `recover_home_xy` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverHomeXy(reason: string, clearanceAsserted?: boolean): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_home_xy`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (clearanceAsserted !== undefined) {
+      sending.clearance_asserted = clearanceAsserted;
+    }
+    sending.reason = reason;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `recover_home_z` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverHomeZ(reason: string, bedClearAsserted?: boolean): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_home_z`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (bedClearAsserted !== undefined) {
+      sending.bed_clear_asserted = bedClearAsserted;
+    }
+    sending.reason = reason;
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
   }
 }

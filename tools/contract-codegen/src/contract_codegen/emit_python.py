@@ -37,6 +37,7 @@ from contract_codegen.model import (
     TypeExpr,
     Union,
     Variant,
+    shape_table,
 )
 from contract_codegen.naming import (
     NAME_DIRECTIVE,
@@ -283,13 +284,14 @@ def _argument(parameter: Parameter, identifiers: frozenset[str] = frozenset()) -
 #: generator writes rather than site by site as operations are added.
 ASYNC_DIRECTIVE = "# llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml."
 
-#: The directive every generated method's `cast` carries.
-#:
-#: `call` checks no shape against the type an answer is handed on as — for
-#: every operation alike — so the judged rule asking for runtime validation at
-#: that boundary is answered once, in `suppressions.toml`, for every method the
-#: generator writes.
-BOUNDARY_DIRECTIVE = "# llmlint: ignore[boundary_inputs_validated] See suppressions.toml."
+#: The region each generated live-walk test function sits in: the slow tier is
+#: its own directory under its own target rather than a marker inside the fast
+#: one, and a line-scoped directive on the signature covers none of the steps
+#: the walk calls, which grow with the contract.
+TIER_BLOCK = (
+    "# llmlint: ignore-block[test_tiers_split_by_project_not_by_marker] See suppressions.toml."
+)
+TIER_BLOCK_END = "# llmlint: ignore-end[test_tiers_split_by_project_not_by_marker]"
 
 
 def _string(text: str) -> str:
@@ -378,10 +380,12 @@ def _method(operation: Operation, identifiers: frozenset[str] = frozenset()) -> 
     else:
         lines.append("        sending = None")
     lines.append(f"        {ASYNC_DIRECTIVE}")
-    lines.append(f'        answered = self.call("{operation.method}", target, asked, sending)')
-    lines.append("        # `call` checks no shape; the server serializes this answer from the")
-    lines.append("        # type `operations.json` declares for it, so this cast names that type.")
-    lines.append(f"        {BOUNDARY_DIRECTIVE}")
+    lines.append(
+        f'        answered = self.call("{operation.method}", target, asked, sending, '
+        f'"{operation.answer}")'
+    )
+    lines.append("        # `call` has held the answer to the type `operations.json` declares")
+    lines.append("        # for it, so this cast names that type.")
     lines.append(f"        return cast({operation.answer}, answered)")
     return lines
 
@@ -498,6 +502,30 @@ def _contract_version() -> list[str]:
     ]
 
 
+def _shape_table(contract: Contract) -> list[str]:
+    """Every declaration, as the client checks a document against it.
+
+    Written as the JSON it is, inside one string read once on import, so the
+    table is the generator's own text rather than a second rendering of it.
+    """
+    table = json.dumps(shape_table(contract), indent=1, sort_keys=True)
+    return [
+        *comment(
+            "Every declaration of the contracts, as the client checks a document "
+            "against its declared type: generated from the same declarations as "
+            "every type above.",
+            "",
+        ),
+        "SHAPES: dict[str, object] = json.loads(",
+        '    """',
+        *table.splitlines(),
+        '"""',
+        ")",
+        "",
+        "",
+    ]
+
+
 def emit(contract: Contract) -> str:
     """The whole generated module of the Python client."""
     typing_names = ["Literal", "NotRequired", "TypeAlias", "TypedDict", "cast"]
@@ -509,6 +537,7 @@ def emit(contract: Contract) -> str:
         "",
         "from __future__ import annotations",
         "",
+        "import json",
         f"from typing import {', '.join(sorted(typing_names))}",
         "",
         "from printobserver_sdk._surface import GeneratedSurface, reason_given",
@@ -529,6 +558,7 @@ def emit(contract: Contract) -> str:
         lines.append("")
 
     lines.extend(_kind_table(contract))
+    lines.extend(_shape_table(contract))
 
     lines.append("class GeneratedClient(GeneratedSurface):")
     lines.extend(
@@ -942,6 +972,7 @@ def emit_live(contract: Contract) -> str:
         "from live import PATIENCE_SECONDS, Proxy, same",
         "from printobserver_sdk import Client, RejectedError",
         "from printobserver_sdk.contract import JobManifest",
+        "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         "from repo_checks.expect import equal, truth",
         "from supervisor_world import Standing, Supervisor",
         "",
@@ -1034,11 +1065,11 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
+        TIER_BLOCK,
         "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         "def test_every_method_is_answered_by_a_real_supervisor(",
         "    world: Supervisor,",
-        ") -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-        " See suppressions.toml.",
+        ") -> None:",
         '    """Every method, answered by a real supervisor, in the one order it admits."""',
         "    with Proxy(world.server) as proxy:",
         "        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.",
@@ -1052,6 +1083,7 @@ def emit_live(contract: Contract) -> str:
         f"            proxy.calls() >= {len(steps)},",
         '            describing="every call to have gone through the proxy",',
         "        )",
+        TIER_BLOCK_END,
         "",
         "",
     ]
@@ -1096,11 +1128,11 @@ def emit_live(contract: Contract) -> str:
         ]
 
     lines += [
+        TIER_BLOCK,
         "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         "def test_every_action_is_refused_as_a_typed_rejection(",
         "    tmp_path_factory: pytest.TempPathFactory,",
-        ") -> None:  # llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-        " See suppressions.toml.",
+        ") -> None:",
         '    """Every action, refused by a real supervisor\'s own policy, typed.',
         "",
         "    One client acting as the operator, the one identity its credential is,",
@@ -1117,5 +1149,6 @@ def emit_live(contract: Contract) -> str:
         '        client = Client(proxy.url, "operator", world.credential)',
         "        world = about_the_running_print(client, world)",
         *(f"        refused_{step.name}(client, world, proxy)" for step in rejected_live(contract)),
+        TIER_BLOCK_END,
     ]
     return "\n".join(lines).rstrip("\n") + "\n"

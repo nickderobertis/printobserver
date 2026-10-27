@@ -36,11 +36,11 @@ use std::collections::BTreeMap;
 use std::str::FromStr as _;
 
 use printobserver_core::{
-    AcknowledgementDisposition, ActionId, ActionKind, Actor, ActorClass, EffectiveBounds,
-    InterventionId, PrintAction, SafetyEnvelope,
+    AcknowledgementDisposition, ActionAllowance, ActionId, ActionKind, Actor, ActorClass,
+    EffectiveBounds, InterventionId, PrintAction, SafetyEnvelope,
 };
 use printobserver_printer_api::Adjustable;
-use printobserver_types::contract::{Sample, TypeContract};
+use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::{self, Value};
 use printobserver_types::{Range, WireField, wire_fields};
 use records::declared;
@@ -300,6 +300,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("invalid_from_state", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
+            ("print_not_resumable", "object", true),
             ("print_still_active", "object", true),
             ("spool_refused", "object", true),
             ("unsupported_adjustable", "object", true),
@@ -421,6 +422,116 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("reason", "string", true),
         ],
     ),
+    (
+        "ActionAllowance",
+        &[
+            ("action", "RecoveryActionKind", true),
+            ("allowed", "boolean", true),
+            ("refusal", "RecoveryRejection", false),
+        ],
+    ),
+    (
+        "BedTemperature",
+        &[("actual_c", "number", true), ("target_c", "number", true)],
+    ),
+    (
+        "LastPrint",
+        &[
+            ("footprint", "Footprint", true),
+            ("print_id", "PrintId", true),
+            ("tallest_mm", "number", true),
+        ],
+    ),
+    (
+        "PausedPrint",
+        &[
+            ("print_id", "PrintId", true),
+            ("resumable", "boolean", true),
+        ],
+    ),
+    (
+        "RecoveryAction",
+        &[
+            ("action", "string", true),
+            ("bed_clear_asserted", "boolean", false),
+            ("clearance_asserted", "boolean", false),
+            ("mm", "number", true),
+            ("percent", "number", true),
+            ("target_c", "number", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    ("RecoveryActionKind", &[]),
+    (
+        "RecoveryDecision",
+        &[
+            ("executed", "ExecutionOutcome", true),
+            ("rejected", "RecoveryRejection", true),
+        ],
+    ),
+    ("RecoveryField", &[]),
+    (
+        "RecoveryPosition",
+        &[
+            ("x", "number", true),
+            ("y", "number", true),
+            ("z", "number", true),
+        ],
+    ),
+    (
+        "RecoveryRejection",
+        &[
+            ("actor_may_not_request", "object", true),
+            ("assertion_required", "object", true),
+            ("insufficient_clearance", "object", true),
+            ("out_of_bounds", "object", true),
+            ("print_running", "object", true),
+            ("printer_cannot", "object", true),
+        ],
+    ),
+    (
+        "RecoveryStatus",
+        &[
+            ("actions", "array:ActionAllowance", true),
+            ("last_print", "LastPrint", true),
+            ("paused_print", "PausedPrint", true),
+            ("position", "RecoveryPosition", true),
+            ("state", "PrinterState", true),
+            ("temperatures", "RecoveryTemperatures", true),
+            ("z_home", "ZHome", true),
+            ("z_trust", "ZTrust", true),
+        ],
+    ),
+    (
+        "RecoveryTemperatures",
+        &[
+            ("bed", "BedTemperature", true),
+            ("tools", "array:ToolTemperature", true),
+        ],
+    ),
+    (
+        "ToolTemperature",
+        &[
+            ("actual_c", "number", true),
+            ("target_c", "number", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
+        "ZHome",
+        &[
+            ("sweeps_bed", "boolean", true),
+            ("x", "number", true),
+            ("y", "number", true),
+        ],
+    ),
+    (
+        "ZTrust",
+        &[
+            ("trusted_since", "Timestamp", true),
+            ("untrusted", "string", true),
+        ],
+    ),
 ];
 
 /// Every declared record carries exactly the fields the contract states.
@@ -498,6 +609,63 @@ fn every_action_reads_back_what_it_carries() {
         PrintAction::sample_full().kind(),
         ActionKind::SetFeedrateFactor
     );
+}
+
+/// A recovery allowance is read back only when `allowed` and `refusal` agree:
+/// allowed with no refusal, or refused with one. Either contradiction is
+/// refused at the boundary, naming what it got wrong, rather than read as
+/// whichever half a reader looked at first — and the published schema, which
+/// states the same pairing for every client, gives each document the verdict
+/// reading it does.
+#[test]
+fn a_recovery_allowance_whose_two_halves_disagree_is_refused() {
+    let schema = jsonschema::validator_for(&schema_of::<ActionAllowance>())
+        .expect("the allowance's schema compiles");
+    let allowed = serde_json::json!({ "action": "recover_lift", "allowed": true });
+    let refused = serde_json::json!({
+        "action": "recover_heat", "allowed": false, "refusal": "z_untrusted",
+    });
+    for agreeing in [&allowed, &refused] {
+        let read: ActionAllowance =
+            serde_json::from_value(agreeing.clone()).expect("an agreeing allowance reads");
+        assert!(schema.is_valid(agreeing), "the schema refused {agreeing}");
+        assert_eq!(
+            &serde_json::to_value(&read).expect("an allowance emits"),
+            agreeing
+        );
+    }
+
+    for (contradiction, named) in [
+        (
+            serde_json::json!({
+                "action": "recover_lift", "allowed": true, "refusal": "z_untrusted",
+            }),
+            "an allowed action carries no refusal",
+        ),
+        (
+            serde_json::json!({ "action": "recover_heat", "allowed": false }),
+            "a refused action carries its refusal",
+        ),
+        (
+            serde_json::json!({ "action": "recover_lift", "allowed": true, "refusal": null }),
+            "never as null",
+        ),
+        (
+            serde_json::json!({ "action": "recover_heat", "allowed": false, "refusal": null }),
+            "never as null",
+        ),
+    ] {
+        assert!(
+            !schema.is_valid(&contradiction),
+            "the schema admitted {contradiction}"
+        );
+        let error = serde_json::from_value::<ActionAllowance>(contradiction.clone())
+            .expect_err("a contradictory allowance is refused");
+        assert!(
+            error.to_string().contains(named),
+            "{contradiction}: {error}"
+        );
+    }
 }
 
 /// Every actor reports the class a safety envelope grants actions to.

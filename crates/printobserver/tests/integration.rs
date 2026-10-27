@@ -57,6 +57,8 @@ mod filament;
 mod formats;
 #[path = "journeys/materializing.rs"]
 mod materializing;
+#[path = "journeys/recovering.rs"]
+mod recovering;
 #[path = "journeys/redaction.rs"]
 mod redaction;
 #[path = "journeys/running.rs"]
@@ -110,4 +112,32 @@ fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone(
     let world = World::open(world::SCRIPTED);
 
     documented::walk(&world);
+}
+
+/// After a print interrupted part-way, every recovery command against a real
+/// `OctoPrint`, each carried out or refused as Z trust and the part's height
+/// rule, the machine following what was carried out and nothing else.
+#[test]
+fn every_recovery_command_is_proven_after_an_interrupted_print() {
+    recovering::after_an_interrupted_print();
+}
+
+/// A print printobserver started and ran to its end leaves Z trusted and the
+/// moves over the part allowed by the clearance measured.
+#[test]
+fn a_finished_print_printobserver_started_leaves_z_trusted() {
+    recovering::after_a_print_printobserver_started_and_finished();
+}
+
+/// A recovery under a paused print makes it not resumable, and a paused print
+/// no recovery moved resumes.
+#[test]
+fn a_recovery_under_a_paused_print_makes_its_resume_refused() {
+    recovering::a_recovery_under_a_paused_print_makes_it_not_resumable();
+}
+
+/// Where away from the bed is down the axis, a lift moves Z down.
+#[test]
+fn a_lift_moves_away_from_the_bed_down_the_axis() {
+    recovering::a_lift_moves_away_from_the_bed_whichever_way_that_is();
 }

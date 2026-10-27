@@ -385,6 +385,18 @@ impl World {
         }
     }
 
+    /// Tell a stood-in machine to refuse everything it is asked to do while it
+    /// goes on answering reads, or to stop. Answers whether this world has one.
+    pub fn machine_refuses_actions(&self, refusing: bool) -> bool {
+        match &self.printer {
+            Printer::StoodIn(machine) => {
+                machine.refusing_actions(refusing);
+                true
+            }
+            Printer::Scripted { .. } => false,
+        }
+    }
+
     /// Tell a stood-in machine to drop every request unanswered, as one
     /// switched off does, or to stop.
     ///
@@ -1366,6 +1378,16 @@ pub fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
             "skill_path": skill.display().to_string(),
         },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
+        // The machine's own facts every recovery is checked against.
+        "recovery": {
+            "away_from_bed": "z_plus",
+            "max_z_mm": 200.0,
+            "max_lift_mm": 50.0,
+            "clearance_margin_mm": 5.0,
+            "park_xy": [10.0, 200.0],
+            "z_home_xy": [100.0, 100.0],
+            "z_home_sweeps_bed": false,
+        },
         // The credential the walk's own commands are configured with is the
         // operator's, chosen here so that a search for it in anything this
         // program prints finds only a rendering of it, and the supervisor is

@@ -122,6 +122,10 @@ pub enum PrinterMethod {
     PrintedFiles,
     /// `extruded_to`.
     ExtrudedTo,
+    /// `printed_extent`.
+    PrintedExtent,
+    /// `read_position`.
+    ReadPosition,
     /// `push_events`.
     PushEvents,
     /// `send_command`.
@@ -130,7 +134,7 @@ pub enum PrinterMethod {
 
 impl PrinterMethod {
     /// Every method the printer port declares.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::Snapshot,
         Self::Job,
         Self::Start,
@@ -145,6 +149,8 @@ impl PrinterMethod {
         Self::FileFacts,
         Self::PrintedFiles,
         Self::ExtrudedTo,
+        Self::PrintedExtent,
+        Self::ReadPosition,
         Self::PushEvents,
         Self::SendCommand,
     ];
@@ -167,6 +173,8 @@ impl PrinterMethod {
             Self::FileFacts => "file_facts",
             Self::PrintedFiles => "printed_files",
             Self::ExtrudedTo => "extruded_to",
+            Self::PrintedExtent => "printed_extent",
+            Self::ReadPosition => "read_position",
             Self::PushEvents => "push_events",
             Self::SendCommand => "send_command",
         }

@@ -286,7 +286,7 @@ Reached at `GET /v1/history`.
 
 **Arguments.**
 
-- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked`, `file_tally_rebaselined`, `printer_connection_changed`, `printer_reset`, `unattended_printer_activity` and `detector_health_changed`; any other is refused.
+- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked`, `file_tally_rebaselined`, `printer_connection_changed`, `printer_reset`, `unattended_printer_activity`, `detector_health_changed`, `recovery_requested`, `recovery_executed` and `recovery_rejected`; any other is refused.
 - `--since` — the earliest instant to read from, inclusive, in RFC 3339 (optional).
 - `--until` — the latest instant to read to, inclusive (optional).
 - `--spool-id` — only the events naming this spool (optional).
@@ -612,6 +612,139 @@ Reached at `POST /v1/spools/{spool_id}/actions/retire_spool`.
 **Output.** The spool command's answer: its `decision`, the spool as the command left it, and every event it wrote, in order.
 
 **Failures.** `rejected` when the actor may not ask for it — `actor_may_not_request`, which the safety envelope's grants decide, and a supervision turn's agent is granted no spool command — or when the ledger will not carry it out — `spool_refused`, whose tagged `cause` names why and the spool, tool, field or material it is about, and whose `message` says what to do instead, and which the program prints beside the record. Both are recorded. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not. `unreachable` when nothing answers at the configured address.
+
+### recover-status
+
+What every recovery action is checked against now, and what each would meet: the printer's state, whether Z is trusted and since when or why not, the head's position (only while Z is trusted), every heater, what the last print laid down — its tallest part and its footprint, read from its own G-code up to its last recorded file position — the print paused under the printer and whether it may still resume, where Z is homed and whether homing it sweeps the bed, and each action's allowance or refusal for the caller.
+
+Reached at `GET /v1/printer/recovery`.
+
+**Arguments.** None.
+
+**Output.** `RecoveryStatus`: `state`, `z_trust`, `position`, `temperatures`, `last_print`, `paused_print`, `z_home` and `actions`.
+
+**Failures.** `unreachable` when nothing answers at the configured address.
+
+### recover-lift
+
+Move the nozzle away from the bed by a distance, never past `recovery.max_z_mm` while Z is trusted. Allowed whenever no print is running.
+
+Reached at `POST /v1/printer/recovery/recover_lift`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--mm` — how far, above zero and at most `recovery.max_lift_mm` (required).
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### recover-cool
+
+Set every heater's target to zero. Allowed whenever no print is running.
+
+Reached at `POST /v1/printer/recovery/recover_cool`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### recover-fan
+
+Set the part-cooling fan. Allowed whenever no print is running.
+
+Reached at `POST /v1/printer/recovery/recover_fan`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--percent` — the percentage, from 0 to 100 (required).
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### recover-heat
+
+Heat one tool, inside the safety envelope's range for it. Needs Z trusted and the nozzle `recovery.clearance_margin_mm` above the last print's tallest part, or the operator's word that it is clear.
+
+Reached at `POST /v1/printer/recovery/recover_heat`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--tool` — the tool, in the printer's own numbering (required).
+- `--target-c` — the target, in degrees Celsius (required).
+- `--clearance-asserted` — `true` for the operator's word that the nozzle is clear of the part; the agent's never counts (optional; false when left out).
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### recover-park
+
+Move the head to `recovery.park_xy`. Needs Z trusted and the clearance a heat needs.
+
+Reached at `POST /v1/printer/recovery/recover_park`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--clearance-asserted` — `true` for the operator's word that the nozzle is clear of the part; the agent's never counts (optional; false when left out).
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### recover-home-xy
+
+Home X and Y. Needs Z trusted and the clearance a heat needs.
+
+Reached at `POST /v1/printer/recovery/recover_home_xy`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--clearance-asserted` — `true` for the operator's word that the nozzle is clear of the part; the agent's never counts (optional; false when left out).
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### recover-home-z
+
+Home Z, after which Z is trusted. Needs the operator's word that the bed is clear, and is never granted to the agent; the refusal says whether homing Z brings a gantry down over the whole bed.
+
+Reached at `POST /v1/printer/recovery/recover_home_z`.
+
+**Arguments.**
+
+- `--actor` — who is asking (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+- `--bed-clear-asserted` — `true` for the operator's word that homing Z meets nothing on the bed (optional; false when left out, which is refused `assertion_required`).
+
+**Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
+
+**Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
 
 ### watch
 

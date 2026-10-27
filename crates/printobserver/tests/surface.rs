@@ -33,8 +33,10 @@ use printobserver::surface::{
     LOCAL_COMMANDS, SERVE_COMMAND, SIGN_IN_COMMAND, Supply, WATCH_COMMAND, command_for, option_for,
     surface,
 };
-use printobserver_server::operations::{ActionKind, PrintAction, SpoolCommand};
-use printobserver_server::{BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, ValueKind};
+use printobserver_server::operations::{ActionKind, PrintAction, RecoveryAction, SpoolCommand};
+use printobserver_server::{
+    BESIDE_THE_ACTIONS, Located, OPERATIONS, Parameter, RECOVERY_STATUS, ValueKind,
+};
 use printobserver_types::serde_json::Value;
 
 /// The reads this program has beside the two vocabularies, as its own tasks
@@ -179,6 +181,73 @@ fn command_fields(tag: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     (all, required)
 }
 
+/// The contracts' own recovery vocabulary, as its schema declares it.
+fn recovery_schema() -> Value {
+    printobserver_types::schemars::schema_for!(RecoveryAction).to_value()
+}
+
+/// Every tag the contracts' own recovery vocabulary declares.
+fn recovery_tags() -> BTreeSet<String> {
+    recovery_schema()
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .expect("the recovery vocabulary is a closed set of variants")
+        .iter()
+        .map(|variant| {
+            variant
+                .pointer("/properties/action/const")
+                .and_then(Value::as_str)
+                .expect("every variant is tagged with the action it is")
+                .to_owned()
+        })
+        .collect()
+}
+
+/// The fields one recovery action declares, and which it declares as
+/// required, less its tag — and the actor and the reason every recovery
+/// request carries beside them, both required.
+fn recovery_fields(tag: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+    let declared = recovery_schema()
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .and_then(|variants| {
+            variants
+                .iter()
+                .find(|variant| {
+                    variant
+                        .pointer("/properties/action/const")
+                        .and_then(Value::as_str)
+                        == Some(tag)
+                })
+                .cloned()
+        })
+        .unwrap_or_else(|| panic!("the contracts declare no recovery action tagged `{tag}`"));
+    let beside = ["actor".to_owned(), "reason".to_owned()];
+    let mut all: BTreeSet<String> = declared
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("a variant declares its fields")
+        .keys()
+        .filter(|name| name.as_str() != "action")
+        .cloned()
+        .collect();
+    all.extend(beside.clone());
+    let mut required: BTreeSet<String> = declared
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|name| *name != "action")
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    required.extend(beside);
+    (all, required)
+}
+
 /// Every tag the contracts' own action vocabulary declares.
 fn action_tags() -> BTreeSet<String> {
     action_schema()
@@ -266,18 +335,27 @@ fn derived(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
             .and_then(|value| value.as_str().map(str::to_owned))
             .expect("an action renders as the tag it is spelled by")
     };
-    match (operation.action_kind(), operation.command_kind()) {
-        (Some(kind), _) => {
+    match (
+        operation.action_kind(),
+        operation.command_kind(),
+        operation.recovery_kind(),
+    ) {
+        (Some(kind), _, _) => {
             let (fields, needed) = variant_fields(&tag_of(kind));
             all.extend(fields);
             required.extend(needed);
         }
-        (None, Some(kind)) => {
+        (None, Some(kind), _) => {
             let (fields, needed) = command_fields(&tag_of(kind));
             all.extend(fields);
             required.extend(needed);
         }
-        (None, None) => {
+        (None, None, Some(kind)) => {
+            let (fields, needed) = recovery_fields(kind.as_str());
+            all.extend(fields);
+            required.extend(needed);
+        }
+        (None, None, None) => {
             for parameter in operation.request() {
                 if parameter.located != Located::Body {
                     continue;
@@ -301,6 +379,8 @@ fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Ve
 
     let mut wanted: BTreeSet<String> = action_tags().iter().map(|tag| command_for(tag)).collect();
     wanted.extend(command_tags().iter().map(|tag| command_for(tag)));
+    wanted.extend(recovery_tags().iter().map(|tag| command_for(tag)));
+    wanted.insert(command_for(RECOVERY_STATUS));
     wanted.extend(READS.iter().map(|read| command_for(read)));
     wanted.insert("server".to_owned());
     wanted.insert("sign-in".to_owned());
@@ -434,7 +514,7 @@ fn the_server_declares_exactly_the_reads_this_task_names() {
     );
     assert_eq!(
         OPERATIONS.len(),
-        action_tags().len() + command_tags().len() + READS.len(),
+        action_tags().len() + command_tags().len() + recovery_tags().len() + 1 + READS.len(),
         "the server serves an operation that is neither an action of the vocabulary nor one \
          of the reads this program's own task names"
     );

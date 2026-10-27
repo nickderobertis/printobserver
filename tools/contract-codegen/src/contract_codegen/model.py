@@ -75,6 +75,12 @@ class Field:
     # An optional field whose null is sent and means something its absence
     # does not, so a client that re-serializes it keeps the two apart.
     null_is_sent: bool = False
+    # The field this one is held in step with by the declaring type's own
+    # reading, which a generated struct of two independent fields cannot be.
+    paired_with: str = ""
+    # A boolean both of whose values are real states of what it describes,
+    # which the declaring type's own field says why it is not an enum.
+    two_valued_fact: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +183,9 @@ class Parameter:
     #: Whether a request may carry it more than once, each item a value of its
     #: own: a query list, sent as one `name=value` per item.
     repeated: bool = False
+    #: Whether it is a boolean both of whose values are real, as the field it
+    #: is described from is marked.
+    two_valued_fact: bool = False
 
     @property
     def optional(self) -> bool:
@@ -221,6 +230,14 @@ class Operation:
         """Whether the policy can refuse this operation and answer the refusal."""
         return bool(self.rejection)
 
+    @property
+    def recovers(self) -> bool:
+        """Whether this operation asks for a recovery action.
+
+        Its refusal is a recovery's own rather than the print policy's.
+        """
+        return self.rejection == RECOVERY_ANSWER
+
     def supplied(self) -> tuple[Parameter, ...]:
         """Every value a caller of a generated method supplies, in method order.
 
@@ -236,6 +253,94 @@ class Operation:
         ordered.extend(parameter for parameter in rest if not parameter.optional)
         ordered.extend(parameter for parameter in rest if parameter.optional)
         return tuple(ordered)
+
+
+#: The shape a recovery action answers with, carried out or refused.
+RECOVERY_ANSWER = "RecoveryAnswer"
+
+
+def shape_of(expression: TypeExpr) -> dict[str, object]:
+    """One type expression, as a reading client's shape table writes it."""
+    match expression:
+        case Ref(name):
+            return {"ref": name}
+        case Scalar(kind):
+            return {"scalar": kind}
+        case ListOf(item, non_empty):
+            return {"list": shape_of(item), "non_empty": non_empty}
+        case MapOf(value):
+            return {"map": shape_of(value)}
+        case Nullable(inner):
+            return {"nullable": shape_of(inner)}
+        case AnyValue():
+            return {"any": True}
+    msg = f"{expression!r} is not a type expression a shape is written for"
+    raise TypeError(msg)
+
+
+def _shaped_fields(fields: tuple[Field, ...]) -> dict[str, object]:
+    """Every property of one object shape: its shape, whether it is required, and its pair.
+
+    A property held in step with an optional sibling names it as `paired_with`:
+    it is false exactly when that sibling is sent.
+    """
+    return {
+        entry.name: {
+            "shape": shape_of(entry.type),
+            "required": entry.required,
+            "paired_with": entry.paired_with,
+        }
+        for entry in fields
+    }
+
+
+def _shaped_variants(variants: tuple[Variant, ...]) -> dict[str, object]:
+    """Every arm of one closed set: carrying nothing, one named shape, or its own fields."""
+    return {
+        variant.tag: {
+            "unit": variant.unit,
+            "payload": None if variant.payload is None else shape_of(variant.payload),
+            "fields": _shaped_fields(variant.fields),
+        }
+        for variant in variants
+    }
+
+
+def shape_table(contract: Contract) -> dict[str, object]:
+    """Every declaration of the contracts, as a reading client checks a document against it.
+
+    One table, generated from the same declarations each client's types are,
+    so a client holding an answer to its declared type reads no second copy of
+    the contracts to do it. An object admits members it does not declare, as
+    the Rust client's types do; every closed set — a name, an arm, a tag —
+    admits only what it declares.
+
+    Raises:
+        TypeError: If a declaration is of no kind a shape is written for.
+    """
+    table: dict[str, object] = {}
+    for declaration in contract.declarations:
+        match declaration:
+            case Alias(name, target, _):
+                table[name] = {"alias": shape_of(target)}
+            case Enumeration(name, _, values):
+                table[name] = {"enum": [value for value, _ in values]}
+            case Struct(name, _, fields, variants, tag_field):
+                table[name] = {
+                    "struct": {
+                        "fields": _shaped_fields(fields),
+                        "tag_field": tag_field,
+                        "variants": _shaped_variants(variants),
+                    }
+                }
+            case Union(name, _, variants, tag_field):
+                table[name] = {
+                    "union": {"tag_field": tag_field, "variants": _shaped_variants(variants)}
+                }
+            case _:  # pragma: no cover - the model declares no fifth kind
+                msg = f"{declaration!r} is not a declaration a shape is written for"
+                raise TypeError(msg)
+    return table
 
 
 #: The value every mutating request carries saying who is asking, which a

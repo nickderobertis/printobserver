@@ -6,7 +6,7 @@
 //! called and awaited and each asserted to answer that method's declared
 //! success type rather than an error.
 //!
-//! It overrides none of the three file reads, which every implementation
+//! It overrides none of the file reads and not the position read, which every implementation
 //! inherits answering a refusal until it implements them, and those are held
 //! to that refusal here.
 //!
@@ -108,7 +108,7 @@ fn every_method_answers_its_declared_success_type() {
     assert_eq!(block_on(port.set_fan_percent(100.0)), Ok(()));
 }
 
-/// A printer overriding none of the three file reads answers each with the
+/// A printer overriding none of the file reads, nor the position read, answers each with the
 /// port's own refusal: status 501, naming the read it cannot answer.
 #[test]
 fn the_file_reads_a_printer_does_not_implement_are_refused_with_501() {
@@ -129,6 +129,14 @@ fn the_file_reads_a_printer_does_not_implement_are_refused_with_501() {
         block_on(port.extruded_to(FileName::sample_full(), 4_096)),
         Err(refused("extruded_to"))
     );
+    assert_eq!(
+        block_on(port.printed_extent(FileName::sample_full(), 4_096)),
+        Err(refused("printed_extent"))
+    );
+    assert_eq!(
+        block_on(port.read_position()),
+        Err(refused("read_position"))
+    );
 }
 
 /// A printer overriding neither the push channel nor the command answers each
@@ -148,6 +156,25 @@ fn the_push_channel_and_the_command_a_printer_does_not_implement_are_refused_wit
         block_on(port.send_command(printobserver_printer_api::PrinterCommand::ReportPosition)),
         Err(refused("send_command"))
     );
+    for command in [
+        printobserver_printer_api::PrinterCommand::MoveZ { mm: 5.0 },
+        printobserver_printer_api::PrinterCommand::MoveXy {
+            x_mm: 10.0,
+            y_mm: 200.0,
+        },
+        printobserver_printer_api::PrinterCommand::Home {
+            axes: printobserver_printer_api::HomeAxes::Xy,
+        },
+        printobserver_printer_api::PrinterCommand::Home {
+            axes: printobserver_printer_api::HomeAxes::Z,
+        },
+    ] {
+        assert_eq!(
+            block_on(port.send_command(command)),
+            Err(refused("send_command")),
+            "{command:?} reached a printer that takes no command"
+        );
+    }
 }
 
 /// The same trait object is shareable across threads, which is what core needs.

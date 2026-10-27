@@ -167,6 +167,11 @@ fn unacceptable(
         | ConfigField::SpoolsBufferPercent
         | ConfigField::SpoolsBufferMinG
         | ConfigField::SpoolsAnalysisWaitSeconds => unacceptable_spools(field, &mut document),
+        // The `[recovery]` keys and the `[policy.recovery]` ones.
+        recovery if recovery.key().starts_with("recovery.") => {
+            unacceptable_recovery(recovery, &mut document);
+        }
+        grants => unacceptable_grants(grants, &mut document),
     }
     document
 }
@@ -253,6 +258,78 @@ fn unacceptable_spools(field: ConfigField, document: &mut toml::Value) {
         ),
         other => panic!("`{other}` is not a `[spools]` key"),
     }
+}
+
+/// A `[recovery]` table stating every fact of a machine this walk can drive.
+fn recovery_facts() -> toml::Table {
+    toml::from_str(
+        "away_from_bed = \"z_plus\"\nmax_z_mm = 200.0\nmax_lift_mm = 50.0\n\
+         clearance_margin_mm = 5.0\npark_xy = [10.0, 200.0]\nz_home_xy = [100.0, 100.0]\n\
+         z_home_sweeps_bed = false\n",
+    )
+    .expect("the recovery facts are a table")
+}
+
+/// The `[recovery]` key one field is, made unacceptable: a direction that is
+/// neither, a height of nothing, a lift past the machine, a margin below
+/// nothing, a place with one figure, or a fact left out.
+fn unacceptable_recovery(field: ConfigField, document: &mut toml::Value) {
+    let mut facts = recovery_facts();
+    match field {
+        ConfigField::RecoveryAwayFromBed => {
+            facts.insert("away_from_bed".to_owned(), toml::Value::from("sideways"));
+        }
+        ConfigField::RecoveryMaxZMm => {
+            facts.insert("max_z_mm".to_owned(), toml::Value::Float(0.0));
+        }
+        ConfigField::RecoveryMaxLiftMm => {
+            facts.insert("max_lift_mm".to_owned(), toml::Value::Float(500.0));
+        }
+        ConfigField::RecoveryClearanceMarginMm => {
+            facts.insert("clearance_margin_mm".to_owned(), toml::Value::Float(-1.0));
+        }
+        ConfigField::RecoveryParkXy => {
+            facts.insert(
+                "park_xy".to_owned(),
+                toml::Value::Array(vec![toml::Value::Float(10.0)]),
+            );
+        }
+        ConfigField::RecoveryZHomeXy => {
+            facts.insert(
+                "z_home_xy".to_owned(),
+                toml::Value::Array(vec![toml::Value::Float(-5.0), toml::Value::Float(5.0)]),
+            );
+        }
+        ConfigField::RecoveryZHomeSweepsBed => {
+            facts.remove("z_home_sweeps_bed");
+        }
+        other => panic!("`{other}` is not a `[recovery]` key"),
+    }
+    set(document, "recovery", toml::Value::Table(facts));
+}
+
+/// The `[policy.recovery]` key one field is, made unacceptable: an action
+/// this program does not have, the Z home granted to the agent, or the
+/// agent's word counted as clearance.
+fn unacceptable_grants(field: ConfigField, document: &mut toml::Value) {
+    let (key, value) = match field {
+        ConfigField::PolicyRecoveryOperator => ("operator", "recover_everything"),
+        ConfigField::PolicyRecoveryAgent => ("agent", "recover_home_z"),
+        ConfigField::PolicyRecoveryAsserting => ("asserting", "agent"),
+        other => panic!("`{other}` is not a `[policy.recovery]` key"),
+    };
+    let grants = toml::Table::from_iter([(
+        key.to_owned(),
+        toml::Value::Array(vec![toml::Value::from(value)]),
+    )]);
+    set(
+        document,
+        "policy",
+        toml::Value::Table(toml::Table::from_iter([(
+            "recovery".to_owned(),
+            toml::Value::Table(grants),
+        )])),
+    );
 }
 
 /// A `[spools]` table carrying one key.

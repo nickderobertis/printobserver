@@ -600,10 +600,15 @@ async fn stored_records(world: &World, print_id: printobserver_types::PrintId) -
 /// narrowings, and the record comparison would see it. A body that wrote back
 /// what was already there would leave that comparison proving nothing.
 fn reasonless_body(operation: &Operation, reason: Option<&str>) -> Value {
-    let mut body = match (operation.action_kind(), operation.command_kind()) {
-        (Some(kind), _) => asked(kind).accepted,
-        (None, Some(kind)) => crate::world::spool_body(kind),
-        (None, None) => crate::world::manifest_write(&wider_than_the_envelope()),
+    let mut body = match (
+        operation.action_kind(),
+        operation.command_kind(),
+        operation.recovery_kind(),
+    ) {
+        (Some(kind), _, _) => asked(kind).accepted,
+        (None, Some(kind), _) => crate::world::spool_body(kind),
+        (None, None, Some(kind)) => crate::world::recovery_body(kind),
+        (None, None, None) => crate::world::manifest_write(&wider_than_the_envelope()),
     };
     let object = body.as_object_mut().expect("the body is an object");
     match reason {

@@ -432,6 +432,91 @@ variant does not declare is refused `400`, as is a body naming either of those
 two. Every one carries a reason, refused `400` when it is empty before anything
 is decided or written.
 
+### recover_status
+
+What every recovery action is checked against now, and what each would meet for the caller.
+
+`GET /v1/printer/recovery` — answers success.
+
+Takes nothing. It answers `RecoveryStatus`: `state`; `z_trust`, `{"trusted_since": <timestamp>}` or `{"untrusted": "<why>"}`; `position`, `{x, y, z}` read only while Z is trusted, else `null`; `temperatures`; `last_print`, `{print_id, tallest_mm, footprint}` read from that print's own G-code up to its last recorded file position, else `null`; `paused_print`, `{print_id, resumable}` while a print is paused, else `null`; `z_home`, `{x, y, sweeps_bed}`; and `actions`, one `{action, allowed}` per action, with `refusal` — a `RecoveryRejection` — exactly when `allowed` is false.
+
+### recover_lift
+
+Move the nozzle away from the bed by `mm`.
+
+`POST /v1/printer/recovery/recover_lift` — answers success, rejected.
+
+Takes `actor` (body), `mm` (body), `reason` (body). It answers `RecoveryAnswer`.
+
+### recover_cool
+
+Set every heater's target to zero.
+
+`POST /v1/printer/recovery/recover_cool` — answers success, rejected.
+
+Takes `actor` (body), `reason` (body). It answers `RecoveryAnswer`.
+
+### recover_fan
+
+Set the part-cooling fan, from 0 to 100 percent.
+
+`POST /v1/printer/recovery/recover_fan` — answers success, rejected.
+
+Takes `actor` (body), `percent` (body), `reason` (body). It answers `RecoveryAnswer`.
+
+### recover_heat
+
+Heat one tool, within the safety envelope's range for it.
+
+`POST /v1/printer/recovery/recover_heat` — answers success, rejected.
+
+Takes `actor` (body), `clearance_asserted` (body, optional), `reason` (body), `target_c` (body), `tool` (body). It answers `RecoveryAnswer`.
+
+### recover_park
+
+Move the head to the configured `recovery.park_xy`.
+
+`POST /v1/printer/recovery/recover_park` — answers success, rejected.
+
+Takes `actor` (body), `clearance_asserted` (body, optional), `reason` (body). It answers `RecoveryAnswer`.
+
+### recover_home_xy
+
+Home X and Y.
+
+`POST /v1/printer/recovery/recover_home_xy` — answers success, rejected.
+
+Takes `actor` (body), `clearance_asserted` (body, optional), `reason` (body). It answers `RecoveryAnswer`.
+
+### recover_home_z
+
+Home Z. Needs `bed_clear_asserted` true from the operator, and is never the agent's.
+
+`POST /v1/printer/recovery/recover_home_z` — answers success, rejected.
+
+Takes `actor` (body), `bed_clear_asserted` (body, optional), `reason` (body). It answers `RecoveryAnswer`.
+
+Recovery moves the printer, not a print, and accepts no G-code. Every action is
+refused `print_running` while a print is printing or cancelling and
+`printer_unreachable` while the printer is offline; lift, cool and fan need
+nothing more; heat, park and home XY need Z trusted — from a Z home or a print
+printobserver started, lost on a disconnect, an error, a reset, an
+`interrupted` or `failed` ending, a Z home or a lift the printer failed, or a
+restart — and the nozzle
+`recovery.clearance_margin_mm` above the last print's tallest part, or the
+operator's `clearance_asserted`. The agent's assertion never counts, and the
+agent holds no recovery unless `[policy.recovery]` grants one. Any recovery
+executed while a print is paused makes that print's `resume` refused
+`print_not_resumable`, naming the `recovery_executed` event. A refusal is a
+`RecoveryRejection` — `actor_may_not_request`, `print_running`,
+`printer_unreachable`, `z_untrusted`, `insufficient_clearance`,
+`out_of_bounds`, `assertion_required`, `recovery_not_configured` or
+`printer_cannot` — answered `409` as the answer's `decision.rejected`, with `detail` saying what
+would let it go ahead. Each request writes `recovery_requested` and then
+`recovery_executed` or `recovery_rejected`, with no print. A body carrying a
+field no action declares, raw G-code included, or no reason, is refused `400`
+and recorded nowhere.
+
 ## The clients
 
 One entry per client this repository declares, and one entry per method that
@@ -628,6 +713,46 @@ figure from exactly one of the two and returns `SpoolCommandAnswer`.
 
 `client.retire_spool(spool_id, reason)` retires a spool and returns
 `SpoolCommandAnswer`.
+
+#### recover_status
+
+`client.recover_status()` reads what every recovery action is checked against
+now and returns `RecoveryStatus`.
+
+#### recover_lift
+
+`client.recover_lift(mm, reason)` lifts the nozzle away from the bed and
+returns `RecoveryAnswer`; a refusal arrives as `ClientError::RecoveryRejected`.
+
+#### recover_cool
+
+`client.recover_cool(reason)` sets every heater's target to zero and returns
+`RecoveryAnswer`.
+
+#### recover_fan
+
+`client.recover_fan(percent, reason)` sets the part-cooling fan and returns
+`RecoveryAnswer`.
+
+#### recover_heat
+
+`client.recover_heat(reason, target_c, tool, clearance_asserted)` heats one tool
+and returns `RecoveryAnswer`.
+
+#### recover_park
+
+`client.recover_park(reason, clearance_asserted)` parks the head and returns
+`RecoveryAnswer`.
+
+#### recover_home_xy
+
+`client.recover_home_xy(reason, clearance_asserted)` homes X and Y and returns
+`RecoveryAnswer`.
+
+#### recover_home_z
+
+`client.recover_home_z(reason, bed_clear_asserted)` homes Z and returns
+`RecoveryAnswer`.
 
 #### call
 

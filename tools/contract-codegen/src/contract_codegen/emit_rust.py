@@ -6,7 +6,7 @@ import json
 
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
-from contract_codegen.examples import is_ledger_refusal
+from contract_codegen.examples import is_ledger_refusal, is_recovery_refusal
 from contract_codegen.model import (
     ACTOR_PARAMETER,
     ENVELOPE,
@@ -39,6 +39,9 @@ from contract_codegen.naming import (
     rust_identifier,
 )
 from contract_codegen.walk import ABSENT, EventStep, LiveStep
+
+#: The line a generated refusal test reads the range allowed through.
+ALLOWED_RANGE = "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),"
 
 #: What each scalar of the contracts is in Rust.
 SCALARS = {
@@ -86,9 +89,46 @@ def doc_lines(text: str, indent: str = "") -> list[str]:
 #: The directive above a generated list the schema bounds as never empty.
 NON_EMPTY_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
 
+#: The directive written above a field the schema marks as held in step with
+#: another, which two independent generated fields cannot be.
+PAIRED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
+#: The directive written above a boolean the schema marks as a two-valued fact,
+#: carrying over the declaring field's own directive.
+TWO_VALUED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
 
 PRESENT = "present"
 """The deserializer of a field whose null is sent: whatever was sent, as sent."""
+
+SENT = "Sent"
+"""How a paired struct reads the sibling it is held to: left out, null, or a value."""
+
+
+def _sent() -> list[str]:
+    """The three ways a field can arrive, which a paired struct's form as sent reads."""
+    return [
+        *doc_lines("One field of an answer as it was sent: left out, sent as null, or a value."),
+        "#[derive(Default)]",
+        f"enum {SENT}<T> {{",
+        "    /// Left out.",
+        "    #[default]",
+        "    Absent,",
+        "    /// Sent as null.",
+        "    Null,",
+        "    /// Sent as a value.",
+        "    Value(T),",
+        "}",
+        "",
+        f"impl<'de, T: Deserialize<'de>> Deserialize<'de> for {SENT}<T> {{",
+        "    fn deserialize<D: serde::Deserializer<'de>>(",
+        "        deserializer: D,",
+        "    ) -> Result<Self, D::Error> {",
+        "        Ok(Option::<T>::deserialize(deserializer)?.map_or(Self::Null, Self::Value))",
+        "    }",
+        "}",
+        "",
+    ]
 
 
 def _present() -> list[str]:
@@ -142,6 +182,15 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
         # A list the schema says is never empty is a `Vec` here, which can be:
         # the generator has no non-empty type yet, and suppressions.toml says so.
         lines.append(f"{indent}{NON_EMPTY_DIRECTIVE}")
+    if entry.paired_with:
+        # Two fields held in step are two independent fields of the struct;
+        # what refuses a mismatched pair is the struct's own reading, through
+        # the form as sent that `_paired_struct` writes beside it.
+        lines.append(f"{indent}{PAIRED_DIRECTIVE}")
+    if entry.two_valued_fact:
+        # A yes-or-no fact both of whose answers are real; the declaring
+        # field's own suppression says why, and this one carries it over.
+        lines.append(f"{indent}{TWO_VALUED_DIRECTIVE}")
     if not entry.required and entry.null_is_sent:
         # Absent, null and a value are three answers here, so the outer option
         # is whether it was sent and the inner whether it was null.
@@ -217,6 +266,8 @@ def _declaration(declaration: Declaration) -> list[str]:
             for variant in variants:
                 lines.extend(_variant(variant, "    "))
             lines.append("}")
+        case Struct(name, _, fields, _, _) if any(entry.paired_with for entry in fields):
+            lines.extend(_paired_struct(name, fields))
         case Struct(name, _, fields, _, _):
             lines.append(DERIVES)
             lines.append(f"pub struct {name} {{")
@@ -234,6 +285,97 @@ def _declaration(declaration: Declaration) -> list[str]:
         case _:  # pragma: no cover - the model declares no fifth kind
             msg = f"{declaration!r} is not a declaration Rust is generated for"
             raise TypeError(msg)
+    return lines
+
+
+def _paired_struct(name: str, fields: tuple[Field, ...]) -> list[str]:
+    """An object one of whose booleans is held in step with an optional sibling.
+
+    The marker means one thing: the boolean is false exactly when the sibling
+    it names is sent. The object is read through its own form as sent, and a
+    document in which the two disagree is refused as it is read rather than
+    handed on as a value no server sends.
+
+    Raises:
+        ValueError: If a marked field is not a boolean, or names a sibling
+            that is not an optional field of the same object.
+    """
+    by_name = {entry.name: entry for entry in fields}
+    pairs: list[tuple[str, str]] = []
+    for entry in fields:
+        if not entry.paired_with:
+            continue
+        partner = by_name.get(entry.paired_with)
+        if entry.type != Scalar("boolean") or partner is None or partner.required:
+            msg = f"`{name}.{entry.name}` is paired with no optional sibling it could be held to"
+            raise ValueError(msg)
+        pairs.append((entry.name, partner.name))
+    sent = f"{name}AsSent"
+    lines = [DERIVES, f'#[serde(try_from = "{sent}")]', f"pub struct {name} {{"]
+    for entry in fields:
+        lines.extend(_field(entry, "    "))
+    lines += [
+        "}",
+        "",
+        *doc_lines(
+            f"One `{name}` as it was sent, before its paired fields are held to each other."
+        ),
+        "#[derive(Deserialize)]",
+        f"struct {sent} {{",
+    ]
+    partners = {partner for _, partner in pairs}
+    for entry in fields:
+        if entry.name not in partners:
+            lines.extend(_field(entry, "    ", public=False))
+            continue
+        # Read as sent, so a null sent for it is told apart from its absence,
+        # and refused.
+        lines += [
+            *doc_lines(entry.doc, "    "),
+            "    #[serde(default)]",
+            f"    {rust_identifier(entry.name)}: {SENT}<{type_name(entry.type)}>,",
+        ]
+    lines += [
+        "}",
+        "",
+        f"impl TryFrom<{sent}> for {name} {{",
+        "    type Error = String;",
+        "",
+        f"    fn try_from(sent: {sent}) -> Result<Self, Self::Error> {{",
+    ]
+    for flag, partner in pairs:
+        flag_name, partner_name = rust_identifier(flag), rust_identifier(partner)
+        lines += [
+            f"        let {partner_name} = match sent.{partner_name} {{",
+            f"            {SENT}::Absent => None,",
+            f"            {SENT}::Value(value) => Some(value),",
+            f"            {SENT}::Null => {{",
+            "                return Err(",
+            f'                    "`{partner}` is sent as one or not at all, never as null"',
+            "                        .to_owned(),",
+            "                );",
+            "            }",
+            "        };",
+            f"        if sent.{flag_name} == {partner_name}.is_some() {{",
+            "            return Err(",
+            f'                "`{flag}` is false exactly when `{partner}` is sent, '
+            'and they disagree"',
+            "                    .to_owned(),",
+            "            );",
+            "        }",
+        ]
+    lines += [
+        "        Ok(Self {",
+        *(
+            f"            {rust_identifier(entry.name)},"
+            if entry.name in partners
+            else f"            {rust_identifier(entry.name)}: sent.{rust_identifier(entry.name)},"
+            for entry in fields
+        ),
+        "        })",
+        "    }",
+        "}",
+    ]
     return lines
 
 
@@ -285,7 +427,19 @@ def _target(operation: Operation) -> str:
 def _method(operation: Operation) -> list[str]:
     """One operation, as the Rust client's own method."""
     supplied = operation.supplied()
-    arguments = ", ".join(["&self", *(_argument(parameter) for parameter in supplied)])
+    # A two-valued argument carries its field's directive on the line above
+    # it, which rustfmt keeps where it is written.
+    arguments = ", ".join(
+        [
+            "&self",
+            *(
+                f"\n        {TWO_VALUED_DIRECTIVE}\n        {_argument(parameter)}"
+                if parameter.two_valued_fact
+                else _argument(parameter)
+                for parameter in supplied
+            ),
+        ]
+    )
     lines = doc_lines(
         f"Call `{operation.name}` on the configured supervisor.\n\n"
         f"# Errors\n\n"
@@ -469,6 +623,12 @@ def emit(contract: Contract) -> str:
     ]
     if _sends_null(contract):
         lines.extend(_present())
+    if any(
+        entry.paired_with
+        for declaration in contract.declarations
+        for entry in _declared_fields(declaration)
+    ):
+        lines.extend(_sent())
     for declaration in contract.declarations:
         lines.extend(_declaration(declaration))
         lines.append("")
@@ -527,6 +687,15 @@ def emit_walk(contract: Contract) -> str:
             if isinstance(parameter.carried, Ref)
         }
         | {"Actor", "Client", "ClientError", "RejectionReason"}
+        | (
+            {"RecoveryRejection"}
+            if any(
+                is_recovery_refusal(step.rejection)
+                for step in plan(contract)
+                if step.rejection is not None
+            )
+            else set()
+        )
         | ({"EVENT_KINDS", events.known_type} if events else set())
     )
     lines = [
@@ -629,25 +798,42 @@ def emit_walk(contract: Contract) -> str:
                 f"    let refused = client.{method_name(step.name, 'rust')}({call})",
                 f'        .expect_err("`{step.name}` is refused");',
                 "",
-                "    let ClientError::Rejected(rejection) = refused else {",
-                '        panic!("the policy\'s refusal did not arrive as one");',
-                "    };",
                 *(
                     [
-                        "    assert_eq!(rejection.requested, None);",
-                        "    assert_eq!(rejection.allowed, None);",
-                        "    assert!(matches!(rejection.reason, "
-                        "RejectionReason::SpoolRefused { .. }));",
-                    ]
-                    if is_ledger_refusal(step.rejection)
-                    else [
+                        "    let ClientError::RecoveryRejected(rejection) = refused else {",
+                        '        panic!("the recovery\'s refusal did not arrive as one");',
+                        "    };",
                         "    assert_eq!(rejection.requested, Some(1.5));",
                         "    assert_eq!(",
-                        "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),",
+                        ALLOWED_RANGE,
                         "        Some((0.5, 1.25))",
                         "    );",
-                        "    assert!(matches!(rejection.reason, "
-                        "RejectionReason::OutOfBounds { .. }));",
+                        "    assert!(matches!(rejection.rejection, "
+                        "RecoveryRejection::OutOfBounds { .. }));",
+                    ]
+                    if is_recovery_refusal(step.rejection)
+                    else [
+                        "    let ClientError::Rejected(rejection) = refused else {",
+                        '        panic!("the policy\'s refusal did not arrive as one");',
+                        "    };",
+                        *(
+                            [
+                                "    assert_eq!(rejection.requested, None);",
+                                "    assert_eq!(rejection.allowed, None);",
+                                "    assert!(matches!(rejection.reason, "
+                                "RejectionReason::SpoolRefused { .. }));",
+                            ]
+                            if is_ledger_refusal(step.rejection)
+                            else [
+                                "    assert_eq!(rejection.requested, Some(1.5));",
+                                "    assert_eq!(",
+                                ALLOWED_RANGE,
+                                "        Some((0.5, 1.25))",
+                                "    );",
+                                "    assert!(matches!(rejection.reason, "
+                                "RejectionReason::OutOfBounds { .. }));",
+                            ]
+                        ),
                     ]
                 ),
                 "    assert_eq!(",
@@ -838,7 +1024,14 @@ def emit_live(contract: Contract) -> str:
         "",
         "use std::collections::BTreeMap;",
         "",
-        "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RejectionReason};",
+        (
+            "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RecoveryRejection, "
+            "RejectionReason};"
+            if any(step.operation.recovers for step in rejected_live(contract))
+            else (
+                "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RejectionReason};"
+            )
+        ),
         "",
         "/// The reason every mutating call of this walk carries.",
         f'const REASON: &str = "{REASON}";',
@@ -942,6 +1135,9 @@ def emit_live(contract: Contract) -> str:
         # A step whose call names nothing of the world still takes it, as every
         # refused step does, and says so in the name it binds it by.
         named = any(token.startswith("world.") for _, token in step.arguments)
+        other_than_the_grant = (
+            f'        "`{step.name}` was refused for something other than the grant: {{:?}}",'
+        )
         lines += [
             f"/// `{step.name}`, refused by a real supervisor's own policy.",
             f"fn refused_{step.name}(",
@@ -953,14 +1149,33 @@ def emit_live(contract: Contract) -> str:
             f"    let refused = client.{spelled}({call})",
             f'        .expect_err("`{step.name}` is refused for an actor granted nothing");',
             "",
-            "    let ClientError::Rejected(rejection) = refused else {",
-            f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
-            "    };",
-            "    assert!(",
-            "        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),",
-            f'        "`{step.name}` was refused for something other than the grant: {{:?}}",',
-            "        rejection.reason",
-            "    );",
+            *(
+                [
+                    "    let ClientError::RecoveryRejected(rejection) = refused else {",
+                    f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
+                    "    };",
+                    "    assert!(",
+                    "        matches!(",
+                    "            rejection.rejection,",
+                    "            RecoveryRejection::ActorMayNotRequest { .. }",
+                    "        ),",
+                    other_than_the_grant,
+                    "        rejection.rejection",
+                    "    );",
+                ]
+                if step.operation.recovers
+                else [
+                    "    let ClientError::Rejected(rejection) = refused else {",
+                    f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
+                    "    };",
+                    "    assert!(",
+                    "        matches!(rejection.reason, "
+                    "RejectionReason::ActorMayNotRequest { .. }),",
+                    other_than_the_grant,
+                    "        rejection.reason",
+                    "    );",
+                ]
+            ),
             "    let seen = proxy.last();",
             f'    assert_eq!(seen.status, 409, "`{step.name}`");',
             f'    live::same("{step.name}", &rejection.answer, &seen.answer);',

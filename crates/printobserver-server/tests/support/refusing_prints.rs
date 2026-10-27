@@ -1,13 +1,15 @@
 //! A print store whose read of the open prints, or of one print, can be made
-//! to fail, and then to recover, under a running server.
+//! to fail, and then to recover, under a running server — or whose read of
+//! the open prints can be made slow.
 //!
 //! Everything else is the durable store's own answer: this stands between the
 //! server and that store, passing every call through, so that a journey can
 //! fail the one read a periodic observation round begins with and watch the
 //! running server carry on once the store answers again.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use printobserver_core::store::{BoxFuture, PrintStore, StoreError};
 use printobserver_core::{JobManifest, ManifestNarrowing, PrintRecord};
@@ -26,6 +28,8 @@ pub struct RefusingPrints {
     refusing: AtomicBool,
     /// Whether the read of one print by its identifier fails.
     refusing_lookups: AtomicBool,
+    /// How long the read of the open prints waits before it reads, if at all.
+    slowing: Mutex<Option<Duration>>,
 }
 
 impl RefusingPrints {
@@ -36,7 +40,15 @@ impl RefusingPrints {
             inner,
             refusing: AtomicBool::new(false),
             refusing_lookups: AtomicBool::new(false),
+            slowing: Mutex::new(None),
         })
+    }
+
+    /// Make the read of the open prints wait `delay` before it reads the
+    /// store, from now on, or stop slowing it. What it answers is the store as
+    /// it stands once the wait is over, as a read held up by a busy disk does.
+    pub fn slowing(&self, delay: Option<Duration>) {
+        *self.slowing.lock().expect("the delay is not poisoned") = delay;
     }
 
     /// Fail the read of one print by its identifier from now on, or stop
@@ -79,7 +91,14 @@ impl PrintStore for RefusingPrints {
                 })
             });
         }
-        self.inner.open_prints()
+        let delay = *self.slowing.lock().expect("the delay is not poisoned");
+        match delay {
+            Some(delay) => Box::pin(async move {
+                tokio::time::sleep(delay).await;
+                self.inner.open_prints().await
+            }),
+            None => self.inner.open_prints(),
+        }
     }
 
     fn prints(&self) -> BoxFuture<'_, Result<Vec<PrintRecord>, StoreError>> {

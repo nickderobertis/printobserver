@@ -8,6 +8,7 @@ generate-clients`, and commit what that writes.
 
 from __future__ import annotations
 
+import json
 from typing import Literal, NotRequired, TypeAlias, TypedDict, cast, overload
 
 from printobserver_sdk._surface import GeneratedSurface, reason_given
@@ -92,11 +93,34 @@ OPERATION_NAMES: tuple[str, ...] = (
     "unload_spool",
     "adjust_spool",
     "retire_spool",
+    "recover_status",
+    "recover_lift",
+    "recover_cool",
+    "recover_fan",
+    "recover_heat",
+    "recover_park",
+    "recover_home_xy",
+    "recover_home_z",
 )
 
 
 # What an operator's acknowledgement of a failure event asks for next.
 AcknowledgementDisposition: TypeAlias = Literal["continue", "watch", "stop"]
+
+
+class ActionAllowance(TypedDict):
+    """`ActionAllowance`, as the contracts declare it.
+
+    Whether one recovery action is allowed now: `allowed`, and the refusal
+    it would meet, present exactly when it is not.
+    """
+
+    # One shape of the contracts, which say nothing more about it.
+    action: RecoveryActionKind
+    # Whether it is allowed now.
+    allowed: bool
+    # One shape of the contracts, which say nothing more about it.
+    refusal: NotRequired[RecoveryRejection]
 
 
 class ActionAnswer(TypedDict):
@@ -286,6 +310,19 @@ class AgentAssessmentPayload(TypedDict):
     assessment: AgentAssessment
     # The session the turn ran in.
     session_name: str
+
+
+class BedTemperature(TypedDict):
+    """`BedTemperature`, as the contracts declare it.
+
+    The bed heater, as a recovery read reports it.
+    """
+
+    # What it reads, in degrees Celsius, `null` when not reported.
+    actual_c: float | None
+    # What it is driving towards, in degrees Celsius, `null` when not
+    # reported.
+    target_c: float | None
 
 
 class CameraDegradedPayload(TypedDict):
@@ -728,6 +765,23 @@ class FileTallyRebaselinedPayload(TypedDict):
     origin: str
 
 
+class Footprint(TypedDict):
+    """`Footprint`, as the contracts declare it.
+
+    The XY rectangle every extruding move of a file lies inside, in
+    millimetres.
+    """
+
+    # The largest X.
+    max_x: float
+    # The largest Y.
+    max_y: float
+    # The smallest X.
+    min_x: float
+    # The smallest Y.
+    min_y: float
+
+
 # Why a camera frame was not one to hand the agent.
 FrameCause: TypeAlias = Literal["blank", "undecodable"]
 
@@ -1017,6 +1071,21 @@ class JobSnapshot(TypedDict):
     state: PrinterState
 
 
+class LastPrint(TypedDict):
+    """`LastPrint`, as the contracts declare it.
+
+    What the last print laid down, read from its own G-code up to the last
+    file position recorded for it.
+    """
+
+    # Where in X and Y it laid material.
+    footprint: Footprint
+    # The print.
+    print_id: PrintId
+    # The tallest part it laid down, in millimetres.
+    tallest_mm: float
+
+
 class LoadedSpool(TypedDict):
     """`LoadedSpool`, as the contracts declare it.
 
@@ -1180,6 +1249,24 @@ class OperatorAcknowledgementPayload(TypedDict):
     acknowledged_event_id: EventId
     # What the operator asked for next.
     disposition: AcknowledgementDisposition
+
+
+class PausedPrint(TypedDict):
+    """`PausedPrint`, as the contracts declare it.
+
+    The print paused under the printer, and whether resuming it is still
+    safe.
+
+    A recovery action executed while it was paused moved the head, and
+    `OctoPrint` restores no position on resume, so the rest of the layer
+    would
+    print at the wrong height: such a print is not resumable.
+    """
+
+    # The print.
+    print_id: PrintId
+    # Whether it may be resumed.
+    resumable: bool
 
 
 class PendingCharge(TypedDict):
@@ -2041,6 +2128,406 @@ RawBytes: TypeAlias = str
 RebaselineDisposition: TypeAlias = Literal["accounted", "unverified"]
 
 
+class RecoveryActionRecoverLift(TypedDict):
+    """The `recover_lift` arm of `RecoveryAction`.
+
+    Move the nozzle away from the bed by `mm`.
+    """
+
+    action: Literal["recover_lift"]
+    # How far, in millimetres: above zero and at most
+    # `recovery.max_lift_mm`.
+    mm: float
+
+
+class RecoveryActionRecoverFan(TypedDict):
+    """The `recover_fan` arm of `RecoveryAction`.
+
+    Set the part-cooling fan.
+    """
+
+    action: Literal["recover_fan"]
+    # The percentage, from 0 to 100.
+    percent: float
+
+
+class RecoveryActionRecoverHeat(TypedDict):
+    """The `recover_heat` arm of `RecoveryAction`.
+
+    Heat one tool, within the safety envelope's range for it.
+    """
+
+    action: Literal["recover_heat"]
+    # The operator's word that the nozzle is clear of the part.
+    clearance_asserted: NotRequired[bool]
+    # The target, in degrees Celsius.
+    target_c: float
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+class RecoveryActionRecoverPark(TypedDict):
+    """The `recover_park` arm of `RecoveryAction`.
+
+    Move the head to `recovery.park_xy`.
+    """
+
+    action: Literal["recover_park"]
+    # The operator's word that the nozzle is clear of the part.
+    clearance_asserted: NotRequired[bool]
+
+
+class RecoveryActionRecoverHomeXy(TypedDict):
+    """The `recover_home_xy` arm of `RecoveryAction`.
+
+    Home X and Y.
+    """
+
+    action: Literal["recover_home_xy"]
+    # The operator's word that the nozzle is clear of the part.
+    clearance_asserted: NotRequired[bool]
+
+
+class RecoveryActionRecoverHomeZ(TypedDict):
+    """The `recover_home_z` arm of `RecoveryAction`.
+
+    Home Z.
+    """
+
+    action: Literal["recover_home_z"]
+    # The operator's word that homing Z will meet nothing on the bed.
+    bed_clear_asserted: NotRequired[bool]
+
+
+# The whole recovery vocabulary, and there is no other.
+#
+# The two assertions are the operator's word for what printobserver cannot
+# see: `clearance_asserted` that the nozzle is clear of the part, and
+# `bed_clear_asserted` that homing Z will meet nothing on the bed. Each is
+# false when left out.
+RecoveryAction: TypeAlias = (
+    RecoveryActionRecoverLift
+    | RecoveryActionRecoverFan
+    | RecoveryActionRecoverHeat
+    | RecoveryActionRecoverPark
+    | RecoveryActionRecoverHomeXy
+    | RecoveryActionRecoverHomeZ
+    | Literal["recover_cool"]
+)
+
+
+# One recovery action, named without its fields: what a grant names and what
+# a refusal of an ungranted request names.
+RecoveryActionKind: TypeAlias = Literal[
+    "recover_lift",
+    "recover_cool",
+    "recover_fan",
+    "recover_heat",
+    "recover_park",
+    "recover_home_xy",
+    "recover_home_z",
+]
+
+
+class RecoveryAnswer(TypedDict):
+    """`RecoveryAnswer`, as the contracts declare it.
+
+    What a recovery action answers, carried out or refused.
+
+    A refusal is the same shape and deliberately so: `decision` is either
+    `executed`, carrying what the printer made of it, or `rejected`,
+    carrying
+    the reason, and the two events are what the request wrote.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # What became of it.
+    decision: RecoveryDecision
+    # What became of it, in a sentence for a person: why it was refused and
+    # what would let it go ahead, or what it did.
+    detail: str
+    # The `recovery_requested` event, and the `recovery_executed` or
+    # `recovery_rejected` beside it.
+    events: list[EventRecord]
+
+
+class RecoveryDecisionExecuted(TypedDict):
+    """The `executed` arm of `RecoveryDecision`.
+
+    It reached the printer, and this is what the printer made of it.
+    """
+
+    executed: ExecutionOutcome
+
+
+class RecoveryDecisionRejected(TypedDict):
+    """The `rejected` arm of `RecoveryDecision`.
+
+    It was refused, and reached nothing.
+    """
+
+    rejected: RecoveryRejection
+
+
+# What became of a recovery request: carried out with the printer's outcome,
+# or refused — one or the other, never both and never neither.
+RecoveryDecision: TypeAlias = RecoveryDecisionExecuted | RecoveryDecisionRejected
+
+
+class RecoveryExecutedPayload(TypedDict):
+    """`RecoveryExecutedPayload`, as the contracts declare it.
+
+    A recovery action reached the printer, and what the printer made of
+    it.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # Who asked.
+    actor: Actor
+    # What the printer made of it.
+    outcome: ExecutionOutcome
+    # Why.
+    reason: str
+
+
+# One field of a recovery action a bound is held to.
+RecoveryField: TypeAlias = Literal[
+    "mm", "percent", "tool", "target_c", "clearance_asserted", "bed_clear_asserted"
+]
+
+
+class RecoveryPosition(TypedDict):
+    """`RecoveryPosition`, as the contracts declare it.
+
+    Where the print head is, in millimetres, as the printer reported it.
+    """
+
+    # X.
+    x: float
+    # Y.
+    y: float
+    # Z.
+    z: float
+
+
+class RecoveryRejectedPayload(TypedDict):
+    """`RecoveryRejectedPayload`, as the contracts declare it.
+
+    A recovery action was refused, and reached nothing.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # Who asked.
+    actor: Actor
+    # Why.
+    reason: str
+    # Why it was refused.
+    rejection: RecoveryRejection
+
+
+class RecoveryRejectionActorMayNotRequestPayload(TypedDict):
+    """What the `actor_may_not_request` arm of `RecoveryRejection` carries.
+
+    The asking actor's class is not granted this action.
+    """
+
+    # The action asked for.
+    action: RecoveryActionKind
+
+
+class RecoveryRejectionActorMayNotRequest(TypedDict):
+    """The `actor_may_not_request` arm of `RecoveryRejection`.
+
+    The asking actor's class is not granted this action.
+    """
+
+    actor_may_not_request: RecoveryRejectionActorMayNotRequestPayload
+
+
+class RecoveryRejectionPrintRunningPayload(TypedDict):
+    """What the `print_running` arm of `RecoveryRejection` carries.
+
+    A print is running, or being cancelled: nothing may move the printer
+    under it.
+    """
+
+    # The state the printer reported.
+    state: PrinterState
+
+
+class RecoveryRejectionPrintRunning(TypedDict):
+    """The `print_running` arm of `RecoveryRejection`.
+
+    A print is running, or being cancelled: nothing may move the printer
+    under it.
+    """
+
+    print_running: RecoveryRejectionPrintRunningPayload
+
+
+class RecoveryRejectionInsufficientClearancePayload(TypedDict):
+    """What the `insufficient_clearance` arm of `RecoveryRejection` carries.
+
+    The nozzle is not far enough above the tallest part the last print
+    laid down.
+    """
+
+    # The clearance asked above it, in millimetres.
+    margin_mm: float
+    # Where the printer reports the nozzle, in millimetres.
+    nozzle_z_mm: float
+    # The tallest part the last print laid down, in millimetres.
+    tallest_mm: float
+
+
+class RecoveryRejectionInsufficientClearance(TypedDict):
+    """The `insufficient_clearance` arm of `RecoveryRejection`.
+
+    The nozzle is not far enough above the tallest part the last print
+    laid down.
+    """
+
+    insufficient_clearance: RecoveryRejectionInsufficientClearancePayload
+
+
+class RecoveryRejectionOutOfBoundsPayload(TypedDict):
+    """What the `out_of_bounds` arm of `RecoveryRejection` carries.
+
+    A value the request carries is outside the range allowed for it.
+    """
+
+    # The range allowed, inclusive.
+    allowed: Range
+    # The field.
+    field: RecoveryField
+    # The value asked for.
+    requested: float
+
+
+class RecoveryRejectionOutOfBounds(TypedDict):
+    """The `out_of_bounds` arm of `RecoveryRejection`.
+
+    A value the request carries is outside the range allowed for it.
+    """
+
+    out_of_bounds: RecoveryRejectionOutOfBoundsPayload
+
+
+class RecoveryRejectionAssertionRequiredPayload(TypedDict):
+    """What the `assertion_required` arm of `RecoveryRejection` carries.
+
+    This action needs an assertion the request did not make.
+    """
+
+    # The assertion it needs.
+    field: RecoveryField
+
+
+class RecoveryRejectionAssertionRequired(TypedDict):
+    """The `assertion_required` arm of `RecoveryRejection`.
+
+    This action needs an assertion the request did not make.
+    """
+
+    assertion_required: RecoveryRejectionAssertionRequiredPayload
+
+
+class RecoveryRejectionPrinterCannotPayload(TypedDict):
+    """What the `printer_cannot` arm of `RecoveryRejection` carries.
+
+    The printer cannot do what this action needs: a move its adapter does
+    not support, or a nozzle position it cannot read.
+    """
+
+    # The action asked for.
+    action: RecoveryActionKind
+    # What the printer cannot do, in words.
+    detail: str
+
+
+class RecoveryRejectionPrinterCannot(TypedDict):
+    """The `printer_cannot` arm of `RecoveryRejection`.
+
+    The printer cannot do what this action needs: a move its adapter does
+    not support, or a nozzle position it cannot read.
+    """
+
+    printer_cannot: RecoveryRejectionPrinterCannotPayload
+
+
+# Why a recovery request was refused, each a variant of its own so a
+# consumer tells them apart by matching rather than by reading words.
+RecoveryRejection: TypeAlias = (
+    RecoveryRejectionActorMayNotRequest
+    | RecoveryRejectionPrintRunning
+    | RecoveryRejectionInsufficientClearance
+    | RecoveryRejectionOutOfBounds
+    | RecoveryRejectionAssertionRequired
+    | RecoveryRejectionPrinterCannot
+    | Literal["printer_unreachable", "z_untrusted", "recovery_not_configured"]
+)
+
+
+class RecoveryRequestedPayload(TypedDict):
+    """`RecoveryRequestedPayload`, as the contracts declare it.
+
+    A recovery action was asked for.
+
+    The printer's rather than any print's, so it is written with no print.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # Who asked.
+    actor: Actor
+    # Why.
+    reason: str
+
+
+class RecoveryStatus(TypedDict):
+    """`RecoveryStatus`, as the contracts declare it.
+
+    What a recovery read answers: everything a recovery is checked
+    against,
+    and what each action would meet now.
+    """
+
+    # Each action, and whether it is allowed now.
+    actions: list[ActionAllowance]
+    # What the last print laid down, `null` when there is no print with a
+    # file to read or its file could not be read.
+    last_print: LastPrint | None
+    # The print paused under the printer, `null` when none is.
+    paused_print: PausedPrint | None
+    # Where the head is, read only while Z is trusted; `null` otherwise or
+    # when it could not be read.
+    position: RecoveryPosition | None
+    # The state the printer reports; `offline` when it could not be read.
+    state: PrinterState
+    # Every heater.
+    temperatures: RecoveryTemperatures
+    # Where Z is homed and whether that sweeps the bed, `null` when
+    # recovery is not configured.
+    z_home: ZHome | None
+    # Whether Z is trusted.
+    z_trust: ZTrust
+
+
+class RecoveryTemperatures(TypedDict):
+    """`RecoveryTemperatures`, as the contracts declare it.
+
+    Every heater, as a recovery read reports it.
+    """
+
+    # The bed, `null` when the printer reports none.
+    bed: BedTemperature | None
+    # Each tool.
+    tools: list[ToolTemperature]
+
+
 class RejectionReasonOutOfBoundsPayload(TypedDict):
     """What the `out_of_bounds` arm of `RejectionReason` carries.
 
@@ -2267,6 +2754,29 @@ class RejectionReasonInterventionStillActive(TypedDict):
     intervention_still_active: RejectionReasonInterventionStillActivePayload
 
 
+class RejectionReasonPrintNotResumablePayload(TypedDict):
+    """What the `print_not_resumable` arm of `RejectionReason` carries.
+
+    A resume was refused because a recovery action was executed while the
+    print was paused: the head moved, and `OctoPrint` restores no position
+    on resume, so the rest of the layer would print at the wrong height.
+    """
+
+    # The `recovery_executed` event that made it so.
+    recovery_event_id: EventId
+
+
+class RejectionReasonPrintNotResumable(TypedDict):
+    """The `print_not_resumable` arm of `RejectionReason`.
+
+    A resume was refused because a recovery action was executed while the
+    print was paused: the head moved, and `OctoPrint` restores no position
+    on resume, so the rest of the layer would print at the wrong height.
+    """
+
+    print_not_resumable: RejectionReasonPrintNotResumablePayload
+
+
 class RejectionReasonSpoolRefusedPayload(TypedDict):
     """What the `spool_refused` arm of `RejectionReason` carries.
 
@@ -2303,6 +2813,7 @@ RejectionReason: TypeAlias = (
     | RejectionReasonAnalysisUnavailable
     | RejectionReasonPrintStillActive
     | RejectionReasonInterventionStillActive
+    | RejectionReasonPrintNotResumable
     | RejectionReasonSpoolRefused
     | Literal["no_active_print", "print_already_ended"]
 )
@@ -3031,6 +3542,21 @@ class ToolFilament(TypedDict):
     volume_cm3: NotRequired[float | None]
 
 
+class ToolTemperature(TypedDict):
+    """`ToolTemperature`, as the contracts declare it.
+
+    One tool heater, as a recovery read reports it.
+    """
+
+    # What it reads, in degrees Celsius, `null` when not reported.
+    actual_c: float | None
+    # What it is driving towards, in degrees Celsius, `null` when not
+    # reported.
+    target_c: float | None
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
 class UnaccountedPrintPayload(TypedDict):
     """`UnaccountedPrintPayload`, as the contracts declare it.
 
@@ -3166,6 +3692,43 @@ UnverifiedReason: TypeAlias = (
 )
 
 
+class ZHome(TypedDict):
+    """`ZHome`, as the contracts declare it.
+
+    Where the machine homes Z, and whether doing so sweeps the bed.
+    """
+
+    # Whether homing Z brings a gantry down over the whole bed.
+    sweeps_bed: bool
+    # Where in X Z is homed, in millimetres.
+    x: float
+    # Where in Y Z is homed, in millimetres.
+    y: float
+
+
+class ZTrustTrustedSince(TypedDict):
+    """The `trusted_since` arm of `ZTrust`.
+
+    Z is where printobserver last put it, from this instant on: a `home_z`
+    it executed, or a print it started.
+    """
+
+    trusted_since: Timestamp
+
+
+class ZTrustUntrusted(TypedDict):
+    """The `untrusted` arm of `ZTrust`.
+
+    Z is not trusted, and why.
+    """
+
+    untrusted: str
+
+
+# Whether Z is trusted, and since when or why not.
+ZTrust: TypeAlias = ZTrustTrustedSince | ZTrustUntrusted
+
+
 # Every kind the server declares a payload type for, and the type each
 # payload has. A kind this client does not know flows through `EventRecord`
 # untouched, and is in no table.
@@ -3194,6 +3757,9 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "print_untracked": PrintUntrackedPayload,
     "printer_connection_changed": PrinterConnectionChangedPayload,
     "printer_reset": PrinterResetPayload,
+    "recovery_executed": RecoveryExecutedPayload,
+    "recovery_rejected": RecoveryRejectedPayload,
+    "recovery_requested": RecoveryRequestedPayload,
     "spool_adjusted": SpoolAdjustedPayload,
     "spool_command_rejected": SpoolCommandRejectedPayload,
     "spool_loaded": SpoolLoadedPayload,
@@ -3349,6 +3915,24 @@ def payload_of(
 
 @overload
 def payload_of(
+    event: EventRecord, kind: Literal["recovery_executed"]
+) -> RecoveryExecutedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["recovery_rejected"]
+) -> RecoveryRejectedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["recovery_requested"]
+) -> RecoveryRequestedPayload | None: ...
+
+
+@overload
+def payload_of(
     event: EventRecord, kind: Literal["spool_adjusted"]
 ) -> SpoolAdjustedPayload | None: ...
 
@@ -3433,6 +4017,6031 @@ def payload_of(event: EventRecord, kind: str) -> object | None:
     return event["payload"]
 
 
+# Every declaration of the contracts, as the client checks a document
+# against its declared type: generated from the same declarations as every
+# type above.
+SHAPES: dict[str, object] = json.loads(
+    """
+{
+ "AcknowledgementDisposition": {
+  "enum": [
+   "continue",
+   "watch",
+   "stop"
+  ]
+ },
+ "ActionAllowance": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryActionKind"
+     }
+    },
+    "allowed": {
+     "paired_with": "refusal",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "refusal": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "ref": "RecoveryRejection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionAnswer": {
+  "struct": {
+   "fields": {
+    "intervention": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Intervention"
+      }
+     }
+    },
+    "printer_refusal": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "record": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionExecutedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "intervention_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "InterventionId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ActionKind": {
+  "enum": [
+   "pause",
+   "resume",
+   "cancel",
+   "start_print",
+   "set_feedrate_factor",
+   "set_flowrate_factor",
+   "set_tool_target_c",
+   "set_bed_target_c",
+   "set_fan_percent",
+   "acknowledge_failure",
+   "close_print",
+   "register_spool",
+   "load_spool",
+   "unload_spool",
+   "adjust_spool",
+   "retire_spool"
+  ]
+ },
+ "ActionRecord": {
+  "struct": {
+   "fields": {
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    },
+    "executed_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ExecutionOutcome"
+      }
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "request": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionRequest"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRejectedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRequest": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "requested_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ActionRequestedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintAction"
+     }
+    },
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Actor": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "agent": {
+     "fields": {
+      "session_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "operator": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "system": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "ActorClass": {
+  "enum": [
+   "agent",
+   "operator",
+   "system"
+  ]
+ },
+ "Adjustable": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "AgentAssessment": {
+  "struct": {
+   "fields": {
+    "confidence": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Confidence"
+     }
+    },
+    "did": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "escalating": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "should_continue": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "summary": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "why": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentAssessmentPayload": {
+  "struct": {
+   "fields": {
+    "assessment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AgentAssessment"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedTemperature": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraDegradedPayload": {
+  "struct": {
+   "fields": {
+    "attempts": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "cause": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FrameCause"
+     }
+    },
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraLookPayload": {
+  "struct": {
+   "fields": {
+    "delivered": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "EventId"
+      },
+      "non_empty": false
+     }
+    },
+    "waited_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ChargeKey": {
+  "union": {
+   "tag_field": "key",
+   "variants": {
+    "print": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      },
+      "segment": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unobserved": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "generation": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "origin": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "print_number": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "ChargeMethod": {
+  "enum": [
+   "slicer_estimate",
+   "gcode_extrusion",
+   "file_fraction",
+   "unobserved_estimate"
+  ]
+ },
+ "ChargePendedPayload": {
+  "struct": {
+   "fields": {
+    "pending": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PendingCharge"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ChargedFilament": {
+  "struct": {
+   "fields": {
+    "density_g_cm3": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "diameter_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "grams": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_after_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_before_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ClearedMark": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Confidence": {
+  "enum": [
+   "low",
+   "medium",
+   "high"
+  ]
+ },
+ "ContextAnswer": {
+  "struct": {
+   "fields": {
+    "context": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintContext"
+     }
+    },
+    "image_path": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "DetectorHealth": {
+  "union": {
+   "tag_field": "status",
+   "variants": {
+    "available": {
+     "fields": {
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unavailable": {
+     "fields": {
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "null"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "DetectorHealthChangedPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "status": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorStatus"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "DetectorStatus": {
+  "enum": [
+   "available",
+   "unavailable"
+  ]
+ },
+ "EffectiveBounds": {
+  "struct": {
+   "fields": {
+    "allowed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "map": {
+       "ref": "Range"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ErrorAnswer": {
+  "struct": {
+   "fields": {
+    "error": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ErrorSource": {
+  "enum": [
+   "printer",
+   "host"
+  ]
+ },
+ "EventId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventKind": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventRecord": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "payload": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "any": true
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    },
+    "raw": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "RawBytes"
+      }
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "source": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventSource"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "EventSource": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "EventsAnswer": {
+  "struct": {
+   "fields": {
+    "cursor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "print_ended": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintEnded"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ExecutionOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "failed": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "succeeded": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "FilamentChangeSignalledPayload": {
+  "struct": {
+   "fields": {
+    "position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SignalPosition"
+      }
+     }
+    },
+    "source_kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FilamentConsumedPayload": {
+  "struct": {
+   "fields": {
+    "analysed_length_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "charge_key": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeKey"
+     }
+    },
+    "charged": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ChargedFilament"
+      }
+     }
+    },
+    "length_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "method": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeMethod"
+     }
+    },
+    "note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FileName": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "FilePosition": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "observed_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "size_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FileTallyRebaselinedPayload": {
+  "struct": {
+   "fields": {
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RebaselineDisposition"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "new_failures": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "new_generation": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "new_successes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_failures": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_generation": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "old_successes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "origin": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Footprint": {
+  "struct": {
+   "fields": {
+    "max_x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "max_y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min_x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min_y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FrameCause": {
+  "enum": [
+   "blank",
+   "undecodable"
+  ]
+ },
+ "HeatedTool": {
+  "struct": {
+   "fields": {
+    "target_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "HeaterSnapshot": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "offset_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "HistoryAnswer": {
+  "struct": {
+   "fields": {
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageAnswer": {
+  "struct": {
+   "fields": {
+    "path": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "record": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ImageRecord": {
+  "struct": {
+   "fields": {
+    "byte_len": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "content_type": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "fetched_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageId"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "relative_path": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "source_url": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ImageRef": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageId"
+     }
+    },
+    "sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Intervention": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ActionId"
+     }
+    },
+    "adjustable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "applied_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "applied_value": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "expires_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionOutcome"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "prior_value": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "restored_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "InterventionExpiredPayload": {
+  "struct": {
+   "fields": {
+    "adjustable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "intervention_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "InterventionOutcome"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "InterventionId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "InterventionOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "restore_failed": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "restore_unavailable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "restored": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "still_active": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "superseded": {
+     "fields": {
+      "by": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "JobError": {
+  "struct": {
+   "fields": {
+    "source": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ErrorSource"
+     }
+    },
+    "text": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "JobManifest": {
+  "struct": {
+   "fields": {
+    "allowed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "map": {
+       "ref": "Range"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "material": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "metadata": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "map": {
+       "scalar": "string"
+      }
+     }
+    },
+    "nozzle_diameter_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "slicer_profile": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "JobSnapshot": {
+  "struct": {
+   "fields": {
+    "completion": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "error": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobError"
+      }
+     }
+    },
+    "estimated_print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "filament": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ToolFilament"
+      },
+      "non_empty": false
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_origin": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_left_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "size_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "LastPrint": {
+  "struct": {
+   "fields": {
+    "footprint": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Footprint"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "tallest_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "LoadedSpool": {
+  "struct": {
+   "fields": {
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Look": {
+  "struct": {
+   "fields": {
+    "arrived": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "detector_paused": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    },
+    "frame": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "image_path": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "MalformedExternalEventPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ManifestAnswer": {
+  "struct": {
+   "fields": {
+    "manifest": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "narrowings": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ManifestNarrowing"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ManifestNarrowing": {
+  "struct": {
+   "fields": {
+    "adjustable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Adjustable"
+     }
+    },
+    "applied": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Range"
+     }
+    },
+    "requested": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Range"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ObicoFailureAlertPayload": {
+  "struct": {
+   "fields": {
+    "ended_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "is_warning": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "obico_print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_paused": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "started_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ObicoNotificationType": {
+  "enum": [
+   "started",
+   "done",
+   "cancelled",
+   "paused",
+   "resumed",
+   "filament_change",
+   "heater_cooled",
+   "heater_target"
+  ]
+ },
+ "ObicoPrinterNotificationPayload": {
+  "struct": {
+   "fields": {
+    "ended_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "notification_type": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ObicoNotificationType"
+     }
+    },
+    "obico_print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "started_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "OperatorAcknowledgementPayload": {
+  "struct": {
+   "fields": {
+    "acknowledged_event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AcknowledgementDisposition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PausedPrint": {
+  "struct": {
+   "fields": {
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "resumable": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PendingCharge": {
+  "struct": {
+   "fields": {
+    "analysed_length_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "charge_key": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintSegmentKey"
+     }
+    },
+    "length_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "method": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeMethod"
+     }
+    },
+    "note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "pended_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PendingTaken": {
+  "struct": {
+   "fields": {
+    "charge_key": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ChargeKey"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PeriodicObservationPayload": {
+  "struct": {
+   "fields": {
+    "interval_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PolicyDecision": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "accepted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "rejected": {
+     "fields": {},
+     "payload": {
+      "ref": "RejectionReason"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "PortFailurePayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "site": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PortFailureSite"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PortFailureSite": {
+  "enum": [
+   "printer_snapshot",
+   "printer_job",
+   "image_write",
+   "supervision_turn",
+   "camera_look",
+   "detector_acknowledgement"
+  ]
+ },
+ "PositionFreshness": {
+  "enum": [
+   "read_at_signal",
+   "last_recorded"
+  ]
+ },
+ "Preflight": {
+  "struct": {
+   "fields": {
+    "checked_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PreflightTool"
+      },
+      "non_empty": false
+     }
+    },
+    "verdict": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PreflightVerdict"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightAnswer": {
+  "struct": {
+   "fields": {
+    "preflight": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Preflight"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightCheckedPayload": {
+  "struct": {
+   "fields": {
+    "action_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ActionId"
+      }
+     }
+    },
+    "preflight": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Preflight"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightNeed": {
+  "struct": {
+   "fields": {
+    "buffer_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "required_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightObjection": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "insufficient": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": false
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_analysis": {
+     "fields": {
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unverified_spool": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "PreflightNeed"
+        }
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PreflightSpool": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightTool": {
+  "struct": {
+   "fields": {
+    "result": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PreflightToolResult"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PreflightToolResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "insufficient": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": false
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_analysis": {
+     "fields": {
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "overridden": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "need": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightNeed"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unverified_spool": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      },
+      "need": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "PreflightNeed"
+        }
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PreflightVerdict": {
+  "enum": [
+   "passed",
+   "unchecked",
+   "insufficient",
+   "unverified_spool",
+   "no_analysis",
+   "overridden",
+   "warned"
+  ]
+ },
+ "PrintAction": {
+  "union": {
+   "tag_field": "action",
+   "variants": {
+    "acknowledge_failure": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "disposition": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "AcknowledgementDisposition"
+       }
+      },
+      "event_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "EventId"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "cancel": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "close_print": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "outcome": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintOutcome"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "pause": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "resume": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_bed_target_c": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "target_c": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_fan_percent": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "percent": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_feedrate_factor": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "factor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_flowrate_factor": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "factor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "set_tool_target_c": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "duration_s": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "target_c": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "start_print": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "FileName"
+       }
+      },
+      "manifest": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "JobManifest"
+       }
+      },
+      "override_filament_check": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "PrintContext": {
+  "struct": {
+   "fields": {
+    "bounds": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EffectiveBounds"
+     }
+    },
+    "detector": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "ref": "DetectorHealth"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "latest_image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "manifest": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintRecord"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    },
+    "recent_events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintEnded": {
+  "struct": {
+   "fields": {
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintOutcome"
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintEndedPayload": {
+  "struct": {
+   "fields": {
+    "last_position": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "FilePosition"
+      }
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintOutcome"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "PrintOutcome": {
+  "enum": [
+   "completed",
+   "cancelled",
+   "failed",
+   "interrupted"
+  ]
+ },
+ "PrintRecord": {
+  "struct": {
+   "fields": {
+    "end_reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "ended_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "job_print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "job_started_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "narrowings": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ManifestNarrowing"
+      },
+      "non_empty": false
+     }
+    },
+    "opened_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "provider_print_id": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintSegmentKey": {
+  "struct": {
+   "fields": {
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "segment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintStartedPayload": {
+  "struct": {
+   "fields": {
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "loaded": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "LoadedSpool"
+      },
+      "non_empty": false
+     }
+    },
+    "preflight": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Preflight"
+      }
+     }
+    },
+    "started_by": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ActionId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrintUntrackedPayload": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterConnectionChangedPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "from": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "to": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterResetPayload": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "during_print": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterSnapshot": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "HeaterSnapshot"
+      }
+     }
+    },
+    "chamber": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "HeaterSnapshot"
+      }
+     }
+    },
+    "connection": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "fan_percent": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "feedrate_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "flowrate_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Reported"
+      }
+     }
+    },
+    "observed_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "HeaterSnapshot"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PrinterState": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "cancelling": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "error": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "offline": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "operational": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "paused": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "printing": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unknown": {
+     "fields": {},
+     "payload": {
+      "scalar": "string"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "PrintsAnswer": {
+  "struct": {
+   "fields": {
+    "active": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrintId"
+      }
+     }
+    },
+    "prints": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PrintRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Range": {
+  "struct": {
+   "fields": {
+    "max": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "min": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RawBytes": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "RebaselineDisposition": {
+  "enum": [
+   "accounted",
+   "unverified"
+  ]
+ },
+ "RecoveryAction": {
+  "union": {
+   "tag_field": "action",
+   "variants": {
+    "recover_cool": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "recover_fan": {
+     "fields": {
+      "percent": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_heat": {
+     "fields": {
+      "clearance_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "target_c": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_home_xy": {
+     "fields": {
+      "clearance_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_home_z": {
+     "fields": {
+      "bed_clear_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_lift": {
+     "fields": {
+      "mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "recover_park": {
+     "fields": {
+      "clearance_asserted": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "RecoveryActionKind": {
+  "enum": [
+   "recover_lift",
+   "recover_cool",
+   "recover_fan",
+   "recover_heat",
+   "recover_park",
+   "recover_home_xy",
+   "recover_home_z"
+  ]
+ },
+ "RecoveryAnswer": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryDecision"
+     }
+    },
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryDecision": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "executed": {
+     "fields": {},
+     "payload": {
+      "ref": "ExecutionOutcome"
+     },
+     "unit": false
+    },
+    "rejected": {
+     "fields": {},
+     "payload": {
+      "ref": "RecoveryRejection"
+     },
+     "unit": false
+    }
+   }
+  }
+ },
+ "RecoveryExecutedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ExecutionOutcome"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryField": {
+  "enum": [
+   "mm",
+   "percent",
+   "tool",
+   "target_c",
+   "clearance_asserted",
+   "bed_clear_asserted"
+  ]
+ },
+ "RecoveryPosition": {
+  "struct": {
+   "fields": {
+    "x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "z": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryRejectedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "rejection": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryRejection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryRejection": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "actor_may_not_request": {
+     "fields": {
+      "action": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryActionKind"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "assertion_required": {
+     "fields": {
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryField"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "insufficient_clearance": {
+     "fields": {
+      "margin_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "nozzle_z_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "tallest_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "out_of_bounds": {
+     "fields": {
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Range"
+       }
+      },
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryField"
+       }
+      },
+      "requested": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_running": {
+     "fields": {
+      "state": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "printer_cannot": {
+     "fields": {
+      "action": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "RecoveryActionKind"
+       }
+      },
+      "detail": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "printer_unreachable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "recovery_not_configured": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "z_untrusted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "RecoveryRequestedPayload": {
+  "struct": {
+   "fields": {
+    "action": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryAction"
+     }
+    },
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryStatus": {
+  "struct": {
+   "fields": {
+    "actions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ActionAllowance"
+      },
+      "non_empty": false
+     }
+    },
+    "last_print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "LastPrint"
+      }
+     }
+    },
+    "paused_print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "PausedPrint"
+      }
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "RecoveryPosition"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "temperatures": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "RecoveryTemperatures"
+     }
+    },
+    "z_home": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "ZHome"
+      }
+     }
+    },
+    "z_trust": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ZTrust"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RecoveryTemperatures": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "BedTemperature"
+      }
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ToolTemperature"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "RejectionReason": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "actor_may_not_request": {
+     "fields": {
+      "action": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "ActionKind"
+       }
+      },
+      "actor_class": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "ActorClass"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "analysis_unavailable": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "waited_s": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "insufficient_filament": {
+     "fields": {
+      "buffer_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "required_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "spool_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "unverified": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "UnverifiedReason"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "intervention_still_active": {
+     "fields": {
+      "intervention_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "invalid_from_state": {
+     "fields": {
+      "state": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "min_interval_not_elapsed": {
+     "fields": {
+      "interval_s": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "since_last_s": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "no_active_print": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "out_of_bounds": {
+     "fields": {
+      "adjustable": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      },
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Range"
+       }
+      },
+      "requested": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_already_ended": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "print_not_resumable": {
+     "fields": {
+      "recovery_event_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "EventId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_still_active": {
+     "fields": {
+      "state": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "spool_refused": {
+     "fields": {
+      "cause": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolRefusalCause"
+       }
+      },
+      "message": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unsupported_adjustable": {
+     "fields": {
+      "adjustable": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unverified_spool": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "UnverifiedReason"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "spool_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "Reported": {
+  "struct": {
+   "fields": {
+    "out_of_range": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "value": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SignalPosition": {
+  "struct": {
+   "fields": {
+    "freshness": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PositionFreshness"
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolAdjustedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "cleared_marks": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ClearedMark"
+      },
+      "non_empty": false
+     }
+    },
+    "gross_g": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "remaining_after_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "remaining_before_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "took_pending": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PendingTaken"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolAnswer": {
+  "struct": {
+   "fields": {
+    "recent": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "spool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolCommand": {
+  "union": {
+   "tag_field": "command",
+   "variants": {
+    "adjust_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "gross_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "load_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "register_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "color": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "string"
+        }
+       }
+      },
+      "density_g_cm3": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "diameter_mm": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "initial_g": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "remaining_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      },
+      "tare_g": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "number"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retire_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unload_spool": {
+     "fields": {
+      "actor": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Actor"
+       }
+      },
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SpoolCommandAnswer": {
+  "struct": {
+   "fields": {
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    },
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "spool": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolRecord"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolCommandRejectedPayload": {
+  "struct": {
+   "fields": {
+    "command": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolCommand"
+     }
+    },
+    "decision": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PolicyDecision"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolField": {
+  "enum": [
+   "name",
+   "material",
+   "diameter_mm",
+   "density_g_cm3",
+   "initial_g",
+   "remaining_g",
+   "tare_g",
+   "gross_g"
+  ]
+ },
+ "SpoolId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "SpoolLifecycle": {
+  "union": {
+   "tag_field": "state",
+   "variants": {
+    "loaded": {
+     "fields": {
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retired": {
+     "fields": {
+      "at": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "shelved": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "SpoolLoadedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "cleared_marks": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "ClearedMark"
+      },
+      "non_empty": false
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "replaced": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "took_pending": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PendingTaken"
+      },
+      "non_empty": false
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRecord": {
+  "struct": {
+   "fields": {
+    "color": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "density_g_cm3": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "diameter_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "initial_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "lifecycle": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolLifecycle"
+     }
+    },
+    "material": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "registered_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "remaining_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tare_g": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "trust": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolTrust"
+     }
+    },
+    "updated_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRefusalCause": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "conflicting_fields": {
+     "fields": {
+      "fields": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "SpoolField"
+        },
+        "non_empty": false
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "density_required": {
+     "fields": {
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool_id": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "ref": "SpoolId"
+        }
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "invalid_adjustment_figure": {
+     "fields": {
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolField"
+       }
+      },
+      "value": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "ledger_refused": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "missing_field": {
+     "fields": {
+      "field": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolField"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "not_loaded": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "nothing_to_confirm": {
+     "fields": {
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "retired_spool": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "tare_required": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_spool": {
+     "fields": {
+      "spool_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SpoolId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_tool": {
+     "fields": {
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SpoolRegisteredPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "spool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolRetiredPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "remaining_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolTrust": {
+  "union": {
+   "tag_field": "state",
+   "variants": {
+    "unverified": {
+     "fields": {
+      "marks": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "ref": "UnverifiedMark"
+        },
+        "non_empty": true
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "verified": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "SpoolUnloadedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolUnverifiedPayload": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SpoolsAnswer": {
+  "struct": {
+   "fields": {
+    "at_a_glance": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "pending": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PendingCharge"
+      },
+      "non_empty": false
+     }
+    },
+    "spools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "SpoolRecord"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "StartupOutcome": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "intervention_expired": {
+     "fields": {
+      "adjustable": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Adjustable"
+       }
+      },
+      "intervention_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionId"
+       }
+      },
+      "outcome": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "InterventionOutcome"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "print_adopted": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "session_resumed": {
+     "fields": {
+      "session_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "StartupReconciliationPayload": {
+  "struct": {
+   "fields": {
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "StartupOutcome"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "StatusAnswer": {
+  "struct": {
+   "fields": {
+    "detector": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealth"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobSnapshot"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintRecord"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PrinterSnapshot"
+      }
+     }
+    },
+    "session": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SupervisionSession"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSession": {
+  "struct": {
+   "fields": {
+    "close_reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "closed_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "created_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "harness_identity": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "last_turn_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSessionClosedPayload": {
+  "struct": {
+   "fields": {
+    "close_reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SupervisionSessionOpenedPayload": {
+  "struct": {
+   "fields": {
+    "harness_identity": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "TimelineAnswer": {
+  "struct": {
+   "fields": {
+    "events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "EventRecord"
+      },
+      "non_empty": false
+     }
+    },
+    "next": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "Timestamp": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
+ "ToolFilament": {
+  "struct": {
+   "fields": {
+    "length_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "volume_cm3": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ToolTemperature": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "tool": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnaccountedPrintPayload": {
+  "struct": {
+   "fields": {
+    "charged": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "printed_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
+    "success": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnattendedPrinterActivityPayload": {
+  "struct": {
+   "fields": {
+    "bed_target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "last_print_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "moved": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "boolean"
+      }
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "HeatedTool"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnverifiedMark": {
+  "struct": {
+   "fields": {
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "UnverifiedReason"
+     }
+    },
+    "since": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "UnverifiedReason": {
+  "union": {
+   "tag_field": "reason",
+   "variants": {
+    "filament_change_unconfirmed": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "filament_change_unconfirmed_position": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "tally_reset": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "origin": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unaccounted_print": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "printed_at": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "uncharged_print": {
+     "fields": {
+      "print_id": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PrintId"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "ZHome": {
+  "struct": {
+   "fields": {
+    "sweeps_bed": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "boolean"
+     }
+    },
+    "x": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ZTrust": {
+  "union": {
+   "tag_field": "",
+   "variants": {
+    "trusted_since": {
+     "fields": {},
+     "payload": {
+      "ref": "Timestamp"
+     },
+     "unit": false
+    },
+    "untrusted": {
+     "fields": {},
+     "payload": {
+      "scalar": "string"
+     },
+     "unit": false
+    }
+   }
+  }
+ }
+}
+"""
+)
+
+
 class GeneratedClient(GeneratedSurface):
     """One method per operation the server declares.
 
@@ -3457,10 +10066,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "PrintsAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(PrintsAnswer, answered)
 
     def status(self, print_id: PrintId) -> StatusAnswer:
@@ -3477,10 +10085,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "StatusAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(StatusAnswer, answered)
 
     def context(self, print_id: PrintId) -> ContextAnswer:
@@ -3497,10 +10104,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "ContextAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ContextAnswer, answered)
 
     def image(self, image_id: ImageId) -> ImageAnswer:
@@ -3517,10 +10123,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "ImageAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ImageAnswer, answered)
 
     def history(self, print_id: PrintId, limit: int | None = None) -> HistoryAnswer:
@@ -3539,10 +10144,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("limit", str(limit)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "HistoryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(HistoryAnswer, answered)
 
     def events(
@@ -3581,10 +10185,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("limit", str(limit)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "EventsAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(EventsAnswer, answered)
 
     def manifest_get(self, print_id: PrintId) -> ManifestAnswer:
@@ -3601,10 +10204,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "ManifestAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ManifestAnswer, answered)
 
     def look(self, print_id: PrintId, wait_s: int | None = None) -> Look:
@@ -3623,10 +10225,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("wait_s", str(wait_s)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "Look")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(Look, answered)
 
     def manifest_set(self, print_id: PrintId, reason: str, manifest: JobManifest) -> ManifestAnswer:
@@ -3650,10 +10251,9 @@ class GeneratedClient(GeneratedSurface):
         sending["reason"] = reason
         sending["manifest"] = manifest
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("PUT", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("PUT", target, asked, sending, "ManifestAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ManifestAnswer, answered)
 
     def spools(self, include_retired: bool | None = None) -> SpoolsAnswer:
@@ -3672,10 +10272,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("include_retired", "true" if include_retired else "false"))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "SpoolsAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolsAnswer, answered)
 
     def spool(self, spool_id: SpoolId) -> SpoolAnswer:
@@ -3692,10 +10291,9 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "SpoolAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolAnswer, answered)
 
     def printer_history(
@@ -3733,10 +10331,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("limit", str(limit)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "TimelineAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(TimelineAnswer, answered)
 
     def preflight(self, file_name: str) -> PreflightAnswer:
@@ -3755,10 +10352,9 @@ class GeneratedClient(GeneratedSurface):
             asked.append(("file_name", str(file_name)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("GET", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "PreflightAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(PreflightAnswer, answered)
 
     def pause(self, print_id: PrintId, reason: str) -> ActionAnswer:
@@ -3782,10 +10378,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def resume(self, print_id: PrintId, reason: str) -> ActionAnswer:
@@ -3809,10 +10404,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def cancel(self, print_id: PrintId, reason: str) -> ActionAnswer:
@@ -3836,10 +10430,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def start_print(
@@ -3874,10 +10467,9 @@ class GeneratedClient(GeneratedSurface):
             sending["override_filament_check"] = override_filament_check
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_feedrate_factor(
@@ -3906,10 +10498,9 @@ class GeneratedClient(GeneratedSurface):
         sending["factor"] = factor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_flowrate_factor(
@@ -3938,10 +10529,9 @@ class GeneratedClient(GeneratedSurface):
         sending["factor"] = factor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_tool_target_c(
@@ -3976,10 +10566,9 @@ class GeneratedClient(GeneratedSurface):
         sending["target_c"] = target_c
         sending["tool"] = tool
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_bed_target_c(
@@ -4008,10 +10597,9 @@ class GeneratedClient(GeneratedSurface):
         sending["reason"] = reason
         sending["target_c"] = target_c
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def set_fan_percent(
@@ -4040,10 +10628,9 @@ class GeneratedClient(GeneratedSurface):
         sending["percent"] = percent
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def acknowledge_failure(
@@ -4075,10 +10662,9 @@ class GeneratedClient(GeneratedSurface):
         sending["event_id"] = event_id
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def close_print(self, print_id: PrintId, outcome: PrintOutcome, reason: str) -> ActionAnswer:
@@ -4103,10 +10689,9 @@ class GeneratedClient(GeneratedSurface):
         sending["outcome"] = outcome
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "ActionAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(ActionAnswer, answered)
 
     def register_spool(
@@ -4154,10 +10739,9 @@ class GeneratedClient(GeneratedSurface):
         if tare_g is not None:
             sending["tare_g"] = tare_g
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def load_spool(self, spool_id: SpoolId, reason: str, tool: int) -> SpoolCommandAnswer:
@@ -4182,10 +10766,9 @@ class GeneratedClient(GeneratedSurface):
         sending["reason"] = reason
         sending["tool"] = tool
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def unload_spool(self, spool_id: SpoolId, reason: str) -> SpoolCommandAnswer:
@@ -4209,10 +10792,9 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def adjust_spool(
@@ -4246,10 +10828,9 @@ class GeneratedClient(GeneratedSurface):
         if remaining_g is not None:
             sending["remaining_g"] = remaining_g
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
 
     def retire_spool(self, spool_id: SpoolId, reason: str) -> SpoolCommandAnswer:
@@ -4273,8 +10854,224 @@ class GeneratedClient(GeneratedSurface):
         sending["actor"] = self.actor
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = self.call("POST", target, asked, sending)
-        # `call` checks no shape; the server serializes this answer from the
-        # type `operations.json` declares for it, so this cast names that type.
-        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "SpoolCommandAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
         return cast(SpoolCommandAnswer, answered)
+
+    def recover_status(self) -> RecoveryStatus:
+        """Call `recover_status` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/printer/recovery"
+        asked: list[tuple[str, str]] = []
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "RecoveryStatus")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryStatus, answered)
+
+    def recover_lift(self, mm: float, reason: str) -> RecoveryAnswer:
+        """Call `recover_lift` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_lift"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["mm"] = mm
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_cool(self, reason: str) -> RecoveryAnswer:
+        """Call `recover_cool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_cool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_fan(self, percent: float, reason: str) -> RecoveryAnswer:
+        """Call `recover_fan` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_fan"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["percent"] = percent
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_heat(
+        self, reason: str, target_c: float, tool: int, clearance_asserted: bool | None = None
+    ) -> RecoveryAnswer:
+        """Call `recover_heat` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_heat"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if clearance_asserted is not None:
+            sending["clearance_asserted"] = clearance_asserted
+        sending["reason"] = reason
+        sending["target_c"] = target_c
+        sending["tool"] = tool
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_park(self, reason: str, clearance_asserted: bool | None = None) -> RecoveryAnswer:
+        """Call `recover_park` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_park"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if clearance_asserted is not None:
+            sending["clearance_asserted"] = clearance_asserted
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_home_xy(
+        self, reason: str, clearance_asserted: bool | None = None
+    ) -> RecoveryAnswer:
+        """Call `recover_home_xy` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_home_xy"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if clearance_asserted is not None:
+            sending["clearance_asserted"] = clearance_asserted
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_home_z(self, reason: str, bed_clear_asserted: bool | None = None) -> RecoveryAnswer:
+        """Call `recover_home_z` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_home_z"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if bed_clear_asserted is not None:
+            sending["bed_clear_asserted"] = bed_clear_asserted
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecoveryAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecoveryAnswer, answered)

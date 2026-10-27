@@ -70,4 +70,4 @@ pub use convert::{
     COMMAND_SET, FAN_PWM_PARAMETER, FAN_SET_COMMAND, fan_pwm_of_percent, fraction_of_completion,
     percent_of_multiplier,
 };
-pub use gcode::{ExtrudedTo, Extrusion, extruded_to};
+pub use gcode::{ExtrudedTo, Extrusion, extruded_to, printed_extent};
