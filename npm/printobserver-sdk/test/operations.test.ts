@@ -1680,6 +1680,526 @@ test("retire_spool makes no request when the reason is empty", async () => {
   }
 });
 
+test("recover_status sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"actions": [{"action": "recover_lift", "allowed": true, "refusal": {"actor_may_not_request": {"action": "recover_lift"}}}], "last_print": {"footprint": {"max_x": 1.5, "max_y": 1.5, "min_x": 1.5, "min_y": 1.5}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tallest_mm": 1.5}, "paused_print": {"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "resumable": true}, "position": {"x": 1.5, "y": 1.5, "z": 1.5}, "state": "operational", "temperatures": {"bed": {"actual_c": 1.5, "target_c": 1.5}, "tools": [{"actual_c": 1.5, "target_c": 1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "xy": [1.5]}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverStatus();
+
+  const received = host.received();
+  expect(received.method).toBe("GET");
+  expect(received.target).toBe("/v1/printer/recovery");
+  expect(received.body).toBe("");
+  expect(answered).toEqual(answer);
+});
+
+test("recover_lift sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverLift(1.5, "a generated walk is asking");
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_lift");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "mm": 1.5, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_lift surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverLift(1.5, "a generated walk is asking");
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_lift`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_lift makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverLift(1.5, "");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverLift(1.5, "   ");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("recover_cool sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverCool("a generated walk is asking");
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_cool");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_cool surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverCool("a generated walk is asking");
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_cool`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_cool makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverCool("");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverCool("   ");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("recover_fan sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverFan(1.5, "a generated walk is asking");
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_fan");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "percent": 1.5, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_fan surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverFan(1.5, "a generated walk is asking");
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_fan`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_fan makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverFan(1.5, "");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverFan(1.5, "   ");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("recover_heat sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverHeat("a generated walk is asking", 1.5, 7, true);
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_heat");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "clearance_asserted": true, "reason": "a generated walk is asking", "target_c": 1.5, "tool": 7}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_heat surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverHeat("a generated walk is asking", 1.5, 7, true);
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_heat`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_heat makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverHeat("", 1.5, 7, true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverHeat("   ", 1.5, 7, true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("recover_park sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverPark("a generated walk is asking", true);
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_park");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "clearance_asserted": true, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_park surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverPark("a generated walk is asking", true);
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_park`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_park makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverPark("", true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverPark("   ", true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("recover_home_xy sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverHomeXy("a generated walk is asking", true);
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_home_xy");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "clearance_asserted": true, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_home_xy surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverHomeXy("a generated walk is asking", true);
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_home_xy`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_home_xy makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverHomeXy("", true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverHomeXy("   ", true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
+test("recover_home_z sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.recoverHomeZ("a generated walk is asking", true);
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/recovery/recover_home_z");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "bed_clear_asserted": true, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("recover_home_z surfaces the policy's own refusal", async () => {
+  const refusal = JSON.parse(
+    '{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}',
+  );
+  await using host = Host.answering(409, refusal);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  let refused: unknown;
+  try {
+    await client.recoverHomeZ("a generated walk is asking", true);
+  } catch (raised) {
+    refused = raised;
+  }
+
+  expect(refused).toBeInstanceOf(Rejected);
+  if (!(refused instanceof Rejected)) {
+    throw new Error("`recover_home_z`: the refusal did not arrive as a rejection");
+  }
+  const rejection = refused;
+  expect(rejection.requested).toBe(1.5);
+  expect(rejection.allowed).toEqual({ min: 0.5, max: 1.25 });
+  expect(rejection.reason).toHaveProperty("out_of_bounds");
+  expect(rejection.answer).toEqual(refusal);
+});
+
+test("recover_home_z makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverHomeZ("", true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.recoverHomeZ("   ", true);
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
 test("history carries a known and an unknown kind through the kind table", async () => {
   const answer = JSON.parse(
     '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "kind_from_a_newer_server", "payload": {"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',

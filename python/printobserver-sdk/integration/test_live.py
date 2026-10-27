@@ -243,6 +243,208 @@ def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("cancel", answered, seen.answer)
 
 
+def step_recover_status(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_status`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_status()
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`recover_status`")
+    equal(seen.target, "/v1/printer/recovery", describing="`recover_status`")
+    equal(seen.status, 200, describing="`recover_status`")
+    equal(seen.body, "", describing="what `recover_status` sent")
+    same("recover_status", answered, seen.answer)
+
+
+def step_recover_lift(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_lift`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_lift(5.0, REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_lift`")
+    equal(seen.target, "/v1/printer/recovery/recover_lift", describing="`recover_lift`")
+    equal(seen.status, 200, describing="`recover_lift`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_lift` acted as")
+    equal(
+        sent["mm"],
+        5.0,
+        describing="the `mm` `recover_lift` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_lift` sent",
+    )
+    same("recover_lift", answered, seen.answer)
+
+
+def step_recover_fan(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_fan`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_fan(50.0, REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_fan`")
+    equal(seen.target, "/v1/printer/recovery/recover_fan", describing="`recover_fan`")
+    equal(seen.status, 200, describing="`recover_fan`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_fan` acted as")
+    equal(
+        sent["percent"],
+        50.0,
+        describing="the `percent` `recover_fan` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_fan` sent",
+    )
+    same("recover_fan", answered, seen.answer)
+
+
+def step_recover_home_z(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_home_z`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_home_z(REASON, True)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_home_z`")
+    equal(seen.target, "/v1/printer/recovery/recover_home_z", describing="`recover_home_z`")
+    equal(seen.status, 200, describing="`recover_home_z`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_home_z` acted as")
+    equal(
+        sent["bed_clear_asserted"],
+        True,
+        describing="the `bed_clear_asserted` `recover_home_z` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_home_z` sent",
+    )
+    same("recover_home_z", answered, seen.answer)
+
+
+def step_recover_heat(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_heat`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_heat(REASON, 150.0, 0, True)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_heat`")
+    equal(seen.target, "/v1/printer/recovery/recover_heat", describing="`recover_heat`")
+    equal(seen.status, 200, describing="`recover_heat`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_heat` acted as")
+    equal(
+        sent["clearance_asserted"],
+        True,
+        describing="the `clearance_asserted` `recover_heat` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_heat` sent",
+    )
+    equal(
+        sent["target_c"],
+        150.0,
+        describing="the `target_c` `recover_heat` sent",
+    )
+    equal(
+        sent["tool"],
+        0,
+        describing="the `tool` `recover_heat` sent",
+    )
+    same("recover_heat", answered, seen.answer)
+
+
+def step_recover_park(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_park`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_park(REASON, True)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_park`")
+    equal(seen.target, "/v1/printer/recovery/recover_park", describing="`recover_park`")
+    equal(seen.status, 200, describing="`recover_park`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_park` acted as")
+    equal(
+        sent["clearance_asserted"],
+        True,
+        describing="the `clearance_asserted` `recover_park` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_park` sent",
+    )
+    same("recover_park", answered, seen.answer)
+
+
+def step_recover_home_xy(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_home_xy`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_home_xy(REASON, True)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_home_xy`")
+    equal(seen.target, "/v1/printer/recovery/recover_home_xy", describing="`recover_home_xy`")
+    equal(seen.status, 200, describing="`recover_home_xy`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_home_xy` acted as")
+    equal(
+        sent["clearance_asserted"],
+        True,
+        describing="the `clearance_asserted` `recover_home_xy` sent",
+    )
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_home_xy` sent",
+    )
+    same("recover_home_xy", answered, seen.answer)
+
+
+def step_recover_cool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_cool`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recover_cool(REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recover_cool`")
+    equal(seen.target, "/v1/printer/recovery/recover_cool", describing="`recover_cool`")
+    equal(seen.status, 200, describing="`recover_cool`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recover_cool` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recover_cool` sent",
+    )
+    same("recover_cool", answered, seen.answer)
+
+
 def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervisor:
     """`start_print`, answered by a real supervisor."""
     ready(client, world.print_id, "operational")
@@ -856,6 +1058,14 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_events(client, world, proxy)
         step_look(client, world, proxy)
         step_cancel(client, world, proxy)
+        step_recover_status(client, world, proxy)
+        step_recover_lift(client, world, proxy)
+        step_recover_fan(client, world, proxy)
+        step_recover_home_z(client, world, proxy)
+        step_recover_heat(client, world, proxy)
+        step_recover_park(client, world, proxy)
+        step_recover_home_xy(client, world, proxy)
+        step_recover_cool(client, world, proxy)
         world = step_start_print(client, world, proxy)
         step_set_feedrate_factor(client, world, proxy)
         step_set_flowrate_factor(client, world, proxy)
@@ -878,7 +1088,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 29,
+            proxy.calls() >= 37,
             describing="every call to have gone through the proxy",
         )
 
@@ -910,6 +1120,125 @@ def refused_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
         same("cancel", refused.answer, seen.answer)
     else:
         truth(False, describing="`cancel` to be refused")
+
+
+def refused_recover_lift(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_lift`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_lift(5.0, REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_lift` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_lift`")
+        same("recover_lift", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_lift` to be refused")
+
+
+def refused_recover_fan(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_fan`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_fan(50.0, REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_fan` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_fan`")
+        same("recover_fan", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_fan` to be refused")
+
+
+def refused_recover_home_z(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_home_z`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_home_z(REASON, True)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_home_z` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_home_z`")
+        same("recover_home_z", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_home_z` to be refused")
+
+
+def refused_recover_heat(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_heat`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_heat(REASON, 150.0, 0, True)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_heat` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_heat`")
+        same("recover_heat", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_heat` to be refused")
+
+
+def refused_recover_park(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_park`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_park(REASON, True)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_park` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_park`")
+        same("recover_park", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_park` to be refused")
+
+
+def refused_recover_home_xy(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_home_xy`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_home_xy(REASON, True)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_home_xy` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_home_xy`")
+        same("recover_home_xy", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_home_xy` to be refused")
+
+
+def refused_recover_cool(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recover_cool`, refused by a real supervisor's own policy."""
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recover_cool(REASON)
+    except RejectedError as refused:
+        truth(
+            isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,
+            describing="`recover_cool` to be refused for the grant",
+        )
+        seen = proxy.last()
+        equal(seen.status, 409, describing="`recover_cool`")
+        same("recover_cool", refused.answer, seen.answer)
+    else:
+        truth(False, describing="`recover_cool` to be refused")
 
 
 def refused_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None:
@@ -1197,6 +1526,13 @@ def test_every_action_is_refused_as_a_typed_rejection(
         client = Client(proxy.url, "operator", world.credential)
         world = about_the_running_print(client, world)
         refused_cancel(client, world, proxy)
+        refused_recover_lift(client, world, proxy)
+        refused_recover_fan(client, world, proxy)
+        refused_recover_home_z(client, world, proxy)
+        refused_recover_heat(client, world, proxy)
+        refused_recover_park(client, world, proxy)
+        refused_recover_home_xy(client, world, proxy)
+        refused_recover_cool(client, world, proxy)
         refused_start_print(client, world, proxy)
         refused_set_feedrate_factor(client, world, proxy)
         refused_set_flowrate_factor(client, world, proxy)

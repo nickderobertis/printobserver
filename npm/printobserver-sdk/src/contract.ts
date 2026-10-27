@@ -97,10 +97,31 @@ export const OPERATION_NAMES = [
   "unload_spool",
   "adjust_spool",
   "retire_spool",
+  "recover_status",
+  "recover_lift",
+  "recover_cool",
+  "recover_fan",
+  "recover_heat",
+  "recover_park",
+  "recover_home_xy",
+  "recover_home_z",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
 export type AcknowledgementDisposition = "continue" | "watch" | "stop";
+
+/**
+ * Whether one recovery action is allowed now: `allowed`, and the refusal it
+ * would meet, present exactly when it is not.
+ */
+export interface ActionAllowance {
+  /** One shape of the contracts, which say nothing more about it. */
+  action: RecoveryActionKind;
+  /** Whether it is allowed now. */
+  allowed: boolean;
+  /** One shape of the contracts, which say nothing more about it. */
+  refusal?: RecoveryRejection;
+}
 
 /** What one mutating request left behind it. */
 export interface ActionAnswer {
@@ -238,6 +259,17 @@ export interface AgentAssessmentPayload {
   assessment: AgentAssessment;
   /** The session the turn ran in. */
   session_name: string;
+}
+
+/** The bed heater, as a recovery read reports it. */
+export interface BedTemperature {
+  /** What it reads, in degrees Celsius, `null` when not reported. */
+  actual_c?: number | null;
+  /**
+   * What it is driving towards, in degrees Celsius, `null` when not
+   * reported.
+   */
+  target_c?: number | null;
 }
 
 /**
@@ -566,6 +598,21 @@ export interface FileTallyRebaselinedPayload {
   origin: string;
 }
 
+/**
+ * The XY rectangle every extruding move of a file lies inside, in
+ * millimetres.
+ */
+export interface Footprint {
+  /** The largest X. */
+  max_x: number;
+  /** The largest Y. */
+  max_y: number;
+  /** The smallest X. */
+  min_x: number;
+  /** The smallest Y. */
+  min_y: number;
+}
+
 /** Why a camera frame was not one to hand the agent. */
 export type FrameCause = "blank" | "undecodable";
 
@@ -780,6 +827,19 @@ export interface JobSnapshot {
   state: PrinterState;
 }
 
+/**
+ * What the last print laid down, read from its own G-code up to the last
+ * file position recorded for it.
+ */
+export interface LastPrint {
+  /** Where in X and Y it laid material. */
+  footprint: Footprint;
+  /** The print. */
+  print_id: PrintId;
+  /** The tallest part it laid down, in millimetres. */
+  tallest_mm: number;
+}
+
 /** One spool loaded on one tool, as a print started. */
 export interface LoadedSpool {
   /** The spool loaded on it. */
@@ -921,6 +981,20 @@ export interface OperatorAcknowledgementPayload {
   acknowledged_event_id: EventId;
   /** What the operator asked for next. */
   disposition: AcknowledgementDisposition;
+}
+
+/**
+ * The print paused under the printer, and whether resuming it is still safe.
+ *
+ * A recovery action executed while it was paused moved the head, and
+ * `OctoPrint` restores no position on resume, so the rest of the layer would
+ * print at the wrong height: such a print is not resumable.
+ */
+export interface PausedPrint {
+  /** The print. */
+  print_id: PrintId;
+  /** Whether it may be resumed. */
+  resumable: boolean;
 }
 
 /**
@@ -1451,6 +1525,173 @@ export type RawBytes = string;
 export type RebaselineDisposition = "accounted" | "unverified";
 
 /**
+ * The whole recovery vocabulary, and there is no other.
+ *
+ * The two assertions are the operator's word for what printobserver cannot
+ * see: `clearance_asserted` that the nozzle is clear of the part, and
+ * `bed_clear_asserted` that homing Z will meet nothing on the bed. Each is
+ * false when left out.
+ */
+export type RecoveryAction =
+  | { action: "recover_lift"; mm: number }
+  | { action: "recover_cool" }
+  | { action: "recover_fan"; percent: number }
+  | { action: "recover_heat"; clearance_asserted?: boolean; target_c: number; tool: number }
+  | { action: "recover_park"; clearance_asserted?: boolean }
+  | { action: "recover_home_xy"; clearance_asserted?: boolean }
+  | { action: "recover_home_z"; bed_clear_asserted?: boolean };
+
+/**
+ * One recovery action, named without its fields: what a grant names and what
+ * a refusal of an ungranted request names.
+ */
+export type RecoveryActionKind =
+  | "recover_lift"
+  | "recover_cool"
+  | "recover_fan"
+  | "recover_heat"
+  | "recover_park"
+  | "recover_home_xy"
+  | "recover_home_z";
+
+/**
+ * What a recovery action answers, carried out or refused.
+ *
+ * A refusal is the same shape and deliberately so: `rejection` carries the
+ * reason, and the two events are what the request wrote.
+ */
+export interface RecoveryAnswer {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /**
+   * What became of it, in a sentence for a person: why it was refused and
+   * what would let it go ahead, or what it did.
+   */
+  detail: string;
+  /**
+   * The `recovery_requested` event, and the `recovery_executed` or
+   * `recovery_rejected` beside it.
+   */
+  events: Array<EventRecord>;
+  /** What the printer made of it, when it reached the printer. */
+  outcome?: ExecutionOutcome | null;
+  /** Why it was refused, when it was. */
+  rejection?: RecoveryRejection | null;
+}
+
+/** A recovery action reached the printer, and what the printer made of it. */
+export interface RecoveryExecutedPayload {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** Who asked. */
+  actor: Actor;
+  /** What the printer made of it. */
+  outcome: ExecutionOutcome;
+  /** Why. */
+  reason: string;
+}
+
+/** One field of a recovery action a bound is held to. */
+export type RecoveryField =
+  | "mm"
+  | "percent"
+  | "tool"
+  | "target_c"
+  | "clearance_asserted"
+  | "bed_clear_asserted";
+
+/** Where the print head is, in millimetres, as the printer reported it. */
+export interface RecoveryPosition {
+  /** X. */
+  x: number;
+  /** Y. */
+  y: number;
+  /** Z. */
+  z: number;
+}
+
+/** A recovery action was refused, and reached nothing. */
+export interface RecoveryRejectedPayload {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** Who asked. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+  /** Why it was refused. */
+  rejection: RecoveryRejection;
+}
+
+/**
+ * Why a recovery request was refused, each a variant of its own so a
+ * consumer tells them apart by matching rather than by reading words.
+ */
+export type RecoveryRejection =
+  | { actor_may_not_request: { action: RecoveryActionKind } }
+  | { print_running: { state: PrinterState } }
+  | "printer_unreachable"
+  | "z_untrusted"
+  | { insufficient_clearance: { margin_mm: number; nozzle_z_mm: number; tallest_mm: number } }
+  | { out_of_bounds: { allowed: Range; field: RecoveryField; requested: number } }
+  | { assertion_required: { field: RecoveryField } }
+  | "recovery_not_configured"
+  | { printer_cannot: { action: RecoveryActionKind; detail: string } };
+
+/**
+ * A recovery action was asked for.
+ *
+ * The printer's rather than any print's, so it is written with no print.
+ */
+export interface RecoveryRequestedPayload {
+  /** What was asked for. */
+  action: RecoveryAction;
+  /** Who asked. */
+  actor: Actor;
+  /** Why. */
+  reason: string;
+}
+
+/**
+ * What a recovery read answers: everything a recovery is checked against,
+ * and what each action would meet now.
+ */
+export interface RecoveryStatus {
+  /** Each action, and whether it is allowed now. */
+  actions: Array<ActionAllowance>;
+  /**
+   * What the last print laid down, `null` when there is no print with a
+   * file to read or its file could not be read.
+   */
+  last_print?: LastPrint | null;
+  /** The print paused under the printer, `null` when none is. */
+  paused_print?: PausedPrint | null;
+  /**
+   * Where the head is, read only while Z is trusted; `null` otherwise or
+   * when it could not be read.
+   */
+  position?: RecoveryPosition | null;
+  /** The state the printer reports; `offline` when it could not be read. */
+  state: PrinterState;
+  /** Every heater. */
+  temperatures: RecoveryTemperatures;
+  /**
+   * Where Z is homed and whether that sweeps the bed, `null` when
+   * recovery is not configured.
+   */
+  z_home?: ZHome | null;
+  /** Whether Z is trusted. */
+  z_trust: ZTrust;
+}
+
+/** Every heater, as a recovery read reports it. */
+export interface RecoveryTemperatures {
+  /** The bed, `null` when the printer reports none. */
+  bed?: BedTemperature | null;
+  /** Each tool. */
+  tools: Array<ToolTemperature>;
+}
+
+/**
  * Why a request was refused.
  *
  * Each rejection is a distinct variant, so a consumer distinguishes them by
@@ -1486,6 +1727,7 @@ export type RejectionReason =
   | "print_already_ended"
   | { print_still_active: { state: PrinterState } }
   | { intervention_still_active: { intervention_id: InterventionId } }
+  | { print_not_resumable: { recovery_event_id: EventId } }
   | { spool_refused: { cause: SpoolRefusalCause; message: string } };
 
 /**
@@ -1878,6 +2120,19 @@ export interface ToolFilament {
   volume_cm3?: number | null;
 }
 
+/** One tool heater, as a recovery read reports it. */
+export interface ToolTemperature {
+  /** What it reads, in degrees Celsius, `null` when not reported. */
+  actual_c?: number | null;
+  /**
+   * What it is driving towards, in degrees Celsius, `null` when not
+   * reported.
+   */
+  target_c?: number | null;
+  /** The tool, in the printer's own numbering. */
+  tool: number;
+}
+
 /** A print this system never saw was found in the printer's own tally. */
 export interface UnaccountedPrintPayload {
   /** Whether it was charged against a spool. */
@@ -1933,6 +2188,17 @@ export type UnverifiedReason =
   | { reason: "filament_change_unconfirmed_position"; print_id: PrintId }
   | { reason: "tally_reset"; file_name: string; origin: string };
 
+/** Where the machine homes Z, and whether doing so sweeps the bed. */
+export interface ZHome {
+  /** Whether homing Z brings a gantry down over the whole bed. */
+  sweeps_bed: boolean;
+  /** Where in X and Y Z is homed. */
+  xy: Array<number>;
+}
+
+/** Whether Z is trusted, and since when or why not. */
+export type ZTrust = { trusted_since: Timestamp } | { untrusted: string };
+
 /**
  * Every kind the server declares a payload type for, keyed by the kind's
  * name, and the type each payload has. A kind this client does not know
@@ -1963,6 +2229,9 @@ export interface EventPayloads {
   print_untracked: PrintUntrackedPayload;
   printer_connection_changed: PrinterConnectionChangedPayload;
   printer_reset: PrinterResetPayload;
+  recovery_executed: RecoveryExecutedPayload;
+  recovery_rejected: RecoveryRejectedPayload;
+  recovery_requested: RecoveryRequestedPayload;
   spool_adjusted: SpoolAdjustedPayload;
   spool_command_rejected: SpoolCommandRejectedPayload;
   spool_loaded: SpoolLoadedPayload;
@@ -2003,6 +2272,9 @@ export const EVENT_KINDS = [
   "print_untracked",
   "printer_connection_changed",
   "printer_reset",
+  "recovery_executed",
+  "recovery_rejected",
+  "recovery_requested",
   "spool_adjusted",
   "spool_command_rejected",
   "spool_loaded",
@@ -2738,5 +3010,181 @@ export class GeneratedClient extends GeneratedSurface {
     sending.reason = reason;
     // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
     return await this.call<SpoolCommandAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_status` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async recoverStatus(): Promise<RecoveryStatus> {
+    const target = `/v1/printer/recovery`;
+    const asked: Array<[string, string]> = [];
+    const sending = undefined;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryStatus>("GET", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_lift` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverLift(mm: number, reason: string): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_lift`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.mm = mm;
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_cool` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverCool(reason: string): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_cool`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_fan` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverFan(percent: number, reason: string): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_fan`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.percent = percent;
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_heat` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverHeat(
+    reason: string,
+    targetC: number,
+    tool: number,
+    clearanceAsserted?: boolean,
+  ): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_heat`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (clearanceAsserted !== undefined) {
+      sending.clearance_asserted = clearanceAsserted;
+    }
+    sending.reason = reason;
+    sending.target_c = targetC;
+    sending.tool = tool;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_park` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverPark(reason: string, clearanceAsserted?: boolean): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_park`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (clearanceAsserted !== undefined) {
+      sending.clearance_asserted = clearanceAsserted;
+    }
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_home_xy` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverHomeXy(reason: string, clearanceAsserted?: boolean): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_home_xy`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (clearanceAsserted !== undefined) {
+      sending.clearance_asserted = clearanceAsserted;
+    }
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
+  }
+
+  /**
+   * Call `recover_home_z` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recoverHomeZ(reason: string, bedClearAsserted?: boolean): Promise<RecoveryAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/recovery/recover_home_z`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    if (bedClearAsserted !== undefined) {
+      sending.bed_clear_asserted = bedClearAsserted;
+    }
+    sending.reason = reason;
+    // llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+    return await this.call<RecoveryAnswer>("POST", target, asked, sending);
   }
 }

@@ -245,6 +245,20 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     # The bring-up left a print running, so the walk sets it down and starts
     # one — which is also the only order in which both are answered.
     Ordered("cancel", "printing"),
+    # With the print set down and before the next starts, the printer is
+    # idle: where a recovery is asked for. Z is not trusted — the bring-up
+    # print was not started by this supervisor — so the walk lifts, sets the
+    # fan and homes Z with the bed asserted clear, and only then makes the
+    # moves that need Z, each with the operator's word that the nozzle is clear.
+    # It cools last, so nothing is left heating.
+    Ordered("recover_status", "operational"),
+    Ordered("recover_lift", "operational"),
+    Ordered("recover_fan", "operational"),
+    Ordered("recover_home_z", "operational"),
+    Ordered("recover_heat", "operational"),
+    Ordered("recover_park", "operational"),
+    Ordered("recover_home_xy", "operational"),
+    Ordered("recover_cool", "operational"),
     Ordered("start_print", "operational"),
     Ordered("set_feedrate_factor", "printing"),
     Ordered("set_flowrate_factor", "printing"),
@@ -338,6 +352,14 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("register_spool", "density_g_cm3"): "1.24",
     ("register_spool", "tare_g"): "200.0",
     ("load_spool", "tool"): "0",
+    ("recover_lift", "mm"): "5.0",
+    ("recover_fan", "percent"): "50.0",
+    ("recover_heat", "tool"): "0",
+    ("recover_heat", "target_c"): "150.0",
+    ("recover_heat", "clearance_asserted"): "bool:true",
+    ("recover_park", "clearance_asserted"): "bool:true",
+    ("recover_home_xy", "clearance_asserted"): "bool:true",
+    ("recover_home_z", "bed_clear_asserted"): "bool:true",
     # A correction is from exactly one figure: the remaining one, and no
     # scale reading beside it.
     ("adjust_spool", "remaining_g"): "800.0",

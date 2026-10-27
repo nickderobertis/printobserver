@@ -19,6 +19,8 @@ if TYPE_CHECKING:  # pragma: no cover - imported for annotations alone
         ActionAnswer,
         Actor,
         Range,
+        RecoveryAnswer,
+        RecoveryRejection,
         RejectionReason,
         SpoolCommandAnswer,
     )
@@ -96,15 +98,16 @@ class RejectedError(ClientError):
     `allowed` are the value that was asked for and the range that is allowed,
     which the policy states when it ruled on a value and which are `None` when
     it ruled on something else. `answer` is the whole answer: an action's
-    record, or a spool command's decision and the events its refusal wrote.
+    record, a spool command's decision and the events its refusal wrote, or a
+    recovery's answer — whose `reason` is the recovery's own refusal.
     """
 
     def __init__(
         self,
-        reason: RejectionReason,
+        reason: RejectionReason | RecoveryRejection,
         requested: float | None,
         allowed: Range | None,
-        answer: ActionAnswer | SpoolCommandAnswer,
+        answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer,
     ) -> None:
         """Record the reason, the value asked for and the range allowed."""
         said = f"the supervisor's policy refused this action: {reason!r}"

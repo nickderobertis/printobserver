@@ -115,6 +115,23 @@ pub fn walk(instance: &Scripted) {
         "the download is the file that was uploaded"
     );
 
+    // printed_extent — read from the same download at the same position, and
+    // exactly what this fixture's own G-code laid down by then: the square at
+    // Z 0, inside the corners its moves name.
+    let extent = block_on(printer.printed_extent(name.clone(), second))
+        .expect("the extent")
+        .expect("the fixture extruded by then");
+    assert_eq!(
+        Some(extent),
+        printobserver_octoprint::printed_extent(FIXTURE_BYTES, second),
+        "the download is the file that was uploaded"
+    );
+    assert!(extent.tallest_mm.abs() < f64::EPSILON, "{extent:?}");
+    assert!(
+        extent.footprint.max_x <= 30.0 && extent.footprint.max_y <= 30.0,
+        "{extent:?}"
+    );
+
     // cancel — and the instance clears the position.
     block_on(printer.cancel()).expect("the fixture cancels");
     let cleared = wait::until("the cancel to clear the job's position", REACHED, || {

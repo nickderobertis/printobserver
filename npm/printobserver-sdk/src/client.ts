@@ -17,6 +17,8 @@ import type {
   ActionAnswer,
   Actor,
   Range,
+  RecoveryAnswer,
+  RecoveryRejection,
   RejectionReason,
   SpoolCommandAnswer,
 } from "./contract.ts";
@@ -158,7 +160,24 @@ function refusalText(said: string): string {
 
 /** The policy's own refusal, as the answer to it carries it. */
 function rejection(status: number, said: string): Error {
-  const answer = document<ActionAnswer | SpoolCommandAnswer>(status, said);
+  const answered = document<ActionAnswer | SpoolCommandAnswer | RecoveryAnswer>(status, said);
+  // A recovery's answer carries its own refusal at the top.
+  if ("rejection" in answered && answered.rejection) {
+    const refused: RecoveryRejection = answered.rejection;
+    if (typeof refused === "object" && "out_of_bounds" in refused) {
+      return new Rejected(
+        refused,
+        refused.out_of_bounds.requested,
+        refused.out_of_bounds.allowed,
+        answered,
+      );
+    }
+    return new Rejected(refused, undefined, undefined, answered);
+  }
+  if (!("record" in answered) && !("decision" in answered)) {
+    return new Unreadable(status, "the supervisor refused this recovery and answered no refusal");
+  }
+  const answer: ActionAnswer | SpoolCommandAnswer = answered;
   // An action's answer carries its decision in its record; a spool command's
   // carries it at the top.
   const decision = "record" in answer ? answer.record.decision : answer.decision;
@@ -180,7 +199,13 @@ function rejection(status: number, said: string): Error {
 
 /** The machine's own refusal of an action the policy accepted. */
 function machineRefusal(status: number, said: string): Error {
-  const answer = document<ActionAnswer>(status, said);
+  const answered = document<ActionAnswer | RecoveryAnswer>(status, said);
+  // A recovery the machine refused carries no action record, and arrives as
+  // the supervisor's own words for it.
+  if (!("record" in answered)) {
+    return new Refused(status, answered.detail);
+  }
+  const answer: ActionAnswer = answered;
   return new PrinterRefused(
     answer.printer_refusal ?? "it said nothing this client can read",
     answer,

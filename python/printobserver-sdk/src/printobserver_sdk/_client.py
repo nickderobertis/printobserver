@@ -31,6 +31,9 @@ from printobserver_sdk.contract import (
     Actor,
     GeneratedClient,
     Range,
+    RecoveryAnswer,
+    RecoveryRejection,
+    RecoveryRejectionOutOfBoundsPayload,
     RejectionReason,
     RejectionReasonOutOfBoundsPayload,
     SpoolCommandAnswer,
@@ -173,33 +176,48 @@ def _rejection(status: int, said: str) -> Exception:
     # declares for the refusal the match has just told apart: `_document` hands
     # back the server's JSON untyped, and the match is the check this client
     # makes of its shape before naming it.
-    answer: ActionAnswer | SpoolCommandAnswer
+    answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer
     match document:
         case {"record": {"decision": {"rejected": refused}}}:
             answer = cast(ActionAnswer, document)
         case {"decision": {"rejected": refused}}:
             answer = cast(SpoolCommandAnswer, document)
+        # A recovery's answer carries its own refusal at the top.
+        case {"rejection": refused}:
+            answer = cast(RecoveryAnswer, document)
         case _:
             return UnreadableError(
                 status,
                 "the supervisor refused this action and answered a record whose decision "
                 "is not a refusal",
             )
-    # What `rejected` holds is the contracts' `RejectionReason`, which the
-    # server serializes it from; the match bound it untyped.
-    reason = cast(RejectionReason, refused)
+    # What `rejected` holds is the contracts' `RejectionReason`, and what
+    # `rejection` holds their `RecoveryRejection`, which the server serializes
+    # each from; the match bound it untyped.
+    reason = cast(RejectionReason | RecoveryRejection, refused)
     requested: float | None = None
     allowed: Range | None = None
     if isinstance(reason, dict) and "out_of_bounds" in reason:
-        bounds = cast(RejectionReasonOutOfBoundsPayload, reason["out_of_bounds"])
+        bounds = cast(
+            RejectionReasonOutOfBoundsPayload | RecoveryRejectionOutOfBoundsPayload,
+            reason["out_of_bounds"],
+        )
         requested = bounds["requested"]
         allowed = bounds["allowed"]
     return RejectedError(reason, requested, allowed, answer)
 
 
 def _machine_refusal(status: int, said: str) -> Exception:
-    """The machine's own refusal of an action the policy accepted."""
-    answer = cast(ActionAnswer, _document(status, said))
+    """The machine's own refusal of an action the policy accepted.
+
+    A recovery the machine refused carries no action record, and arrives as the
+    supervisor's own words for it.
+    """
+    document = _document(status, said)
+    match document:
+        case {"action": _, "detail": str() as detail}:
+            return RefusedError(status, detail)
+    answer = cast(ActionAnswer, document)
     return PrinterRefusedError(
         answer.get("printer_refusal") or "it said nothing this client can read", answer
     )

@@ -16,13 +16,17 @@ use crate::surface::{
 };
 
 /// The methods of the printer port that read rather than act: the push
-/// channel is driven by `journeys/pushing.rs` against the scripted instance.
-const READING_METHODS: [&str; 6] = [
+/// channel is driven by `journeys/pushing.rs` against the scripted instance,
+/// what a file printed by `live/files.rs`, and where the head is by
+/// `live/acting.rs` reading each move back.
+const READING_METHODS: [&str; 8] = [
     "snapshot",
     "job",
     "file_facts",
     "printed_files",
     "extruded_to",
+    "printed_extent",
+    "read_position",
     "push_events",
 ];
 

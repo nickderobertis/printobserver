@@ -221,6 +221,14 @@ class Operation:
         """Whether the policy can refuse this operation and answer the refusal."""
         return bool(self.rejection)
 
+    @property
+    def recovers(self) -> bool:
+        """Whether this operation asks for a recovery action.
+
+        Its refusal is a recovery's own rather than the print policy's.
+        """
+        return self.rejection == RECOVERY_ANSWER
+
     def supplied(self) -> tuple[Parameter, ...]:
         """Every value a caller of a generated method supplies, in method order.
 
@@ -237,6 +245,9 @@ class Operation:
         ordered.extend(parameter for parameter in rest if parameter.optional)
         return tuple(ordered)
 
+
+#: The shape a recovery action answers with, carried out or refused.
+RECOVERY_ANSWER = "RecoveryAnswer"
 
 #: The value every mutating request carries saying who is asking, which a
 #: client supplies from what it was constructed with rather than per call.

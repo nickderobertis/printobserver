@@ -15,6 +15,8 @@ import type {
   ActionAnswer,
   Actor,
   Range,
+  RecoveryAnswer,
+  RecoveryRejection,
   RejectionReason,
   SpoolCommandAnswer,
 } from "./contract.ts";
@@ -116,24 +118,24 @@ export class PrinterRefused extends ClientError {
  * when it ruled on something else.
  */
 export class Rejected extends ClientError {
-  /** Why the action was refused. */
-  readonly reason: RejectionReason;
+  /** Why the action was refused: the policy's reason, or a recovery's own refusal. */
+  readonly reason: RejectionReason | RecoveryRejection;
   /** The value that was asked for, where the policy ruled on one. */
   readonly requested: number | undefined;
   /** The range that is allowed, where the policy ruled on a value. */
   readonly allowed: Range | undefined;
   /**
    * The whole answer: an action's, whose record carries the request and the
-   * decision, or a spool command's, carrying the decision and the events its
-   * refusal wrote.
+   * decision, a spool command's, carrying the decision and the events its
+   * refusal wrote, or a recovery's, carrying its own refusal.
    */
-  readonly answer: ActionAnswer | SpoolCommandAnswer;
+  readonly answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer;
 
   constructor(
-    reason: RejectionReason,
+    reason: RejectionReason | RecoveryRejection,
     requested: number | undefined,
     allowed: Range | undefined,
-    answer: ActionAnswer | SpoolCommandAnswer,
+    answer: ActionAnswer | SpoolCommandAnswer | RecoveryAnswer,
   ) {
     super(
       `the supervisor's policy refused this action: ${JSON.stringify(reason)}` +

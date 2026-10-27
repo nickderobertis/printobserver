@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use printobserver_octoprint::{ExtrudedTo, extruded_to};
+use printobserver_octoprint::{ExtrudedTo, extruded_to, printed_extent};
 use printobserver_printer_api::ToolFilament;
 
 /// How far a whole-file sum may stand from the slicer's own figure.
@@ -309,4 +309,109 @@ fn a_reset_of_another_axis_keeps_the_extruder_position() {
 #[test]
 fn a_number_split_by_a_space_is_no_number() {
     feeds(&whole("M83\nG1 E1 2\nG1 E 3\nG1 E1\n"), &[(0, 4.0)]);
+}
+
+/// What one text printed up to a position, as the tallest extruded height and
+/// the footprint's corners.
+fn extent_to(text: &str, position_bytes: i64) -> Option<(f64, [f64; 4])> {
+    printed_extent(text.as_bytes(), position_bytes).map(|extent| {
+        (
+            extent.tallest_mm,
+            [
+                extent.footprint.min_x,
+                extent.footprint.min_y,
+                extent.footprint.max_x,
+                extent.footprint.max_y,
+            ],
+        )
+    })
+}
+
+/// The extent matches its known values, to within rounding.
+fn laid_down(text: &str, position_bytes: i64, tallest: f64, footprint: [f64; 4]) {
+    let (found_tallest, found_footprint) = extent_to(text, position_bytes)
+        .unwrap_or_else(|| panic!("nothing was laid down by {text:?}"));
+    assert!(
+        (found_tallest - tallest).abs() < ROUNDING,
+        "the tallest extruded height is {found_tallest}, expected {tallest}"
+    );
+    for (found, expected) in found_footprint.iter().zip(footprint) {
+        assert!(
+            (found - expected).abs() < ROUNDING,
+            "the footprint is {found_footprint:?}, expected {footprint:?}"
+        );
+    }
+}
+
+/// Absolute and relative axes: `G91` moves from where the head is, `G90`
+/// moves to a place, and only the moves that extrude while travelling in X or
+/// Y count. A travel above the part — `G0 Z30` — lays nothing down.
+#[test]
+fn absolute_and_relative_axes_bound_what_was_laid_down() {
+    let text = "G90\nM83\nG1 Z0.2\nG1 X10 Y10\nG1 X20 Y10 E1\nG91\nG1 Y5 E1\nG1 Z0.3\n\
+                G1 X-5 E1\nG90\nG0 Z30\nG0 X100 Y100\n";
+
+    // Layers at 0.2 and then 0.5; the head went to Z 30 and to (100, 100)
+    // without extruding, which is no part of what was printed.
+    laid_down(text, i64::MAX, 0.5, [10.0, 10.0, 20.0, 15.0]);
+}
+
+/// `G92` declares where the axes are without moving them, so what follows is
+/// measured from the declared place.
+#[test]
+fn a_declared_position_moves_what_follows() {
+    let text = "G90\nM83\nG1 X5 Y5 Z1\nG92 X0 Y0 Z0\nG1 X10 E1\nG1 Z2\nG1 Y10 E1\n";
+
+    laid_down(text, i64::MAX, 2.0, [0.0, 0.0, 10.0, 10.0]);
+}
+
+/// `G28` with no axis homes every axis to zero; with named axes it homes
+/// those alone, leaving the others where they were.
+#[test]
+fn a_home_with_and_without_named_axes_puts_those_axes_at_zero() {
+    let every = "G90\nM83\nG1 X50 Y50 Z3\nG28\nG1 X10 E1\n";
+    laid_down(every, i64::MAX, 0.0, [0.0, 0.0, 10.0, 0.0]);
+
+    let named = "G90\nM83\nG1 X50 Y50 Z3\nG28 X Y\nG1 X10 E1\n";
+    laid_down(named, i64::MAX, 3.0, [0.0, 0.0, 10.0, 0.0]);
+
+    let only_z = "G90\nM83\nG1 X50 Y40 Z3\nG28 Z\nG1 X60 E1\n";
+    laid_down(only_z, i64::MAX, 0.0, [50.0, 40.0, 60.0, 40.0]);
+}
+
+/// An arc is bounded by its two ends, and climbs like any other move.
+#[test]
+fn an_arc_is_bounded_by_its_two_ends() {
+    let text = "G90\nM83\nG1 X10 Y10 Z0.4\nG2 X30 Y10 I10 J0 E2\nG1 Z0.8\nG3 X10 Y20 I-10 J0 E2\n";
+
+    laid_down(text, i64::MAX, 0.8, [10.0, 10.0, 30.0, 20.0]);
+}
+
+/// A segment that descends while it extrudes laid material at its start too,
+/// and a feed with no travel — an unretraction, a prime — laid nothing.
+#[test]
+fn the_higher_end_of_a_descending_segment_counts_and_a_prime_does_not() {
+    let text = "G90\nM83\nG1 X0 Y0 Z5\nG1 E3\nG1 X1 Y1 Z2 E1\nG1 Z9 E1\n";
+
+    laid_down(text, i64::MAX, 5.0, [0.0, 0.0, 1.0, 1.0]);
+}
+
+/// A print stopped part-way is answered with what it laid down up to its last
+/// file position, not with the file's full height.
+#[test]
+fn a_print_stopped_part_way_is_answered_at_its_last_position() {
+    let lower = "G90\nM83\nG1 X0 Y0 Z0.2\nG1 X20 Y0 E1\nG1 Z2.0\nG1 X20 Y20 E1\n";
+    let upper = "G1 Z6.0\nG1 X40 Y20 E1\n";
+    let text = format!("{lower}{upper}");
+    let stopped = i64::try_from(lower.len()).expect("a short text");
+
+    laid_down(&text, stopped, 2.0, [0.0, 0.0, 20.0, 20.0]);
+    laid_down(&text, i64::MAX, 6.0, [0.0, 0.0, 40.0, 20.0]);
+}
+
+/// A text that extruded nothing up to the position laid nothing down.
+#[test]
+fn a_text_that_extruded_nothing_laid_nothing_down() {
+    assert_eq!(extent_to("G28\nG1 X10 Y10 Z5\n", i64::MAX), None);
+    assert_eq!(extent_to("G90\nM83\nG1 X1 Y1\nG1 X5 E1\n", 9), None);
 }

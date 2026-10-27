@@ -6,7 +6,7 @@ import json
 
 from contract_codegen.banner import banner
 from contract_codegen.doc import wrapped
-from contract_codegen.examples import is_ledger_refusal
+from contract_codegen.examples import is_ledger_refusal, is_recovery_refusal
 from contract_codegen.model import (
     ACTOR_PARAMETER,
     ENVELOPE,
@@ -39,6 +39,9 @@ from contract_codegen.naming import (
     rust_identifier,
 )
 from contract_codegen.walk import ABSENT, EventStep, LiveStep
+
+#: The line a generated refusal test reads the range allowed through.
+ALLOWED_RANGE = "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),"
 
 #: What each scalar of the contracts is in Rust.
 SCALARS = {
@@ -527,6 +530,15 @@ def emit_walk(contract: Contract) -> str:
             if isinstance(parameter.carried, Ref)
         }
         | {"Actor", "Client", "ClientError", "RejectionReason"}
+        | (
+            {"RecoveryRejection"}
+            if any(
+                is_recovery_refusal(step.rejection)
+                for step in plan(contract)
+                if step.rejection is not None
+            )
+            else set()
+        )
         | ({"EVENT_KINDS", events.known_type} if events else set())
     )
     lines = [
@@ -629,25 +641,42 @@ def emit_walk(contract: Contract) -> str:
                 f"    let refused = client.{method_name(step.name, 'rust')}({call})",
                 f'        .expect_err("`{step.name}` is refused");',
                 "",
-                "    let ClientError::Rejected(rejection) = refused else {",
-                '        panic!("the policy\'s refusal did not arrive as one");',
-                "    };",
                 *(
                     [
-                        "    assert_eq!(rejection.requested, None);",
-                        "    assert_eq!(rejection.allowed, None);",
-                        "    assert!(matches!(rejection.reason, "
-                        "RejectionReason::SpoolRefused { .. }));",
-                    ]
-                    if is_ledger_refusal(step.rejection)
-                    else [
+                        "    let ClientError::RecoveryRejected(rejection) = refused else {",
+                        '        panic!("the recovery\'s refusal did not arrive as one");',
+                        "    };",
                         "    assert_eq!(rejection.requested, Some(1.5));",
                         "    assert_eq!(",
-                        "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),",
+                        ALLOWED_RANGE,
                         "        Some((0.5, 1.25))",
                         "    );",
-                        "    assert!(matches!(rejection.reason, "
-                        "RejectionReason::OutOfBounds { .. }));",
+                        "    assert!(matches!(rejection.rejection, "
+                        "RecoveryRejection::OutOfBounds { .. }));",
+                    ]
+                    if is_recovery_refusal(step.rejection)
+                    else [
+                        "    let ClientError::Rejected(rejection) = refused else {",
+                        '        panic!("the policy\'s refusal did not arrive as one");',
+                        "    };",
+                        *(
+                            [
+                                "    assert_eq!(rejection.requested, None);",
+                                "    assert_eq!(rejection.allowed, None);",
+                                "    assert!(matches!(rejection.reason, "
+                                "RejectionReason::SpoolRefused { .. }));",
+                            ]
+                            if is_ledger_refusal(step.rejection)
+                            else [
+                                "    assert_eq!(rejection.requested, Some(1.5));",
+                                "    assert_eq!(",
+                                ALLOWED_RANGE,
+                                "        Some((0.5, 1.25))",
+                                "    );",
+                                "    assert!(matches!(rejection.reason, "
+                                "RejectionReason::OutOfBounds { .. }));",
+                            ]
+                        ),
                     ]
                 ),
                 "    assert_eq!(",
@@ -838,7 +867,14 @@ def emit_live(contract: Contract) -> str:
         "",
         "use std::collections::BTreeMap;",
         "",
-        "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RejectionReason};",
+        (
+            "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RecoveryRejection, "
+            "RejectionReason};"
+            if any(step.operation.recovers for step in rejected_live(contract))
+            else (
+                "use printobserver_sdk::{Actor, Client, ClientError, JobManifest, RejectionReason};"
+            )
+        ),
         "",
         "/// The reason every mutating call of this walk carries.",
         f'const REASON: &str = "{REASON}";',
@@ -942,6 +978,9 @@ def emit_live(contract: Contract) -> str:
         # A step whose call names nothing of the world still takes it, as every
         # refused step does, and says so in the name it binds it by.
         named = any(token.startswith("world.") for _, token in step.arguments)
+        other_than_the_grant = (
+            f'        "`{step.name}` was refused for something other than the grant: {{:?}}",'
+        )
         lines += [
             f"/// `{step.name}`, refused by a real supervisor's own policy.",
             f"fn refused_{step.name}(",
@@ -953,14 +992,33 @@ def emit_live(contract: Contract) -> str:
             f"    let refused = client.{spelled}({call})",
             f'        .expect_err("`{step.name}` is refused for an actor granted nothing");',
             "",
-            "    let ClientError::Rejected(rejection) = refused else {",
-            f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
-            "    };",
-            "    assert!(",
-            "        matches!(rejection.reason, RejectionReason::ActorMayNotRequest { .. }),",
-            f'        "`{step.name}` was refused for something other than the grant: {{:?}}",',
-            "        rejection.reason",
-            "    );",
+            *(
+                [
+                    "    let ClientError::RecoveryRejected(rejection) = refused else {",
+                    f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
+                    "    };",
+                    "    assert!(",
+                    "        matches!(",
+                    "            rejection.rejection,",
+                    "            RecoveryRejection::ActorMayNotRequest { .. }",
+                    "        ),",
+                    other_than_the_grant,
+                    "        rejection.rejection",
+                    "    );",
+                ]
+                if step.operation.recovers
+                else [
+                    "    let ClientError::Rejected(rejection) = refused else {",
+                    f'        panic!("`{step.name}`: the refusal did not arrive as a rejection");',
+                    "    };",
+                    "    assert!(",
+                    "        matches!(rejection.reason, "
+                    "RejectionReason::ActorMayNotRequest { .. }),",
+                    other_than_the_grant,
+                    "        rejection.reason",
+                    "    );",
+                ]
+            ),
             "    let seen = proxy.last();",
             f'    assert_eq!(seen.status, 409, "`{step.name}`");',
             f'    live::same("{step.name}", &rejection.answer, &seen.answer);',

@@ -92,11 +92,34 @@ OPERATION_NAMES: tuple[str, ...] = (
     "unload_spool",
     "adjust_spool",
     "retire_spool",
+    "recover_status",
+    "recover_lift",
+    "recover_cool",
+    "recover_fan",
+    "recover_heat",
+    "recover_park",
+    "recover_home_xy",
+    "recover_home_z",
 )
 
 
 # What an operator's acknowledgement of a failure event asks for next.
 AcknowledgementDisposition: TypeAlias = Literal["continue", "watch", "stop"]
+
+
+class ActionAllowance(TypedDict):
+    """`ActionAllowance`, as the contracts declare it.
+
+    Whether one recovery action is allowed now: `allowed`, and the refusal
+    it would meet, present exactly when it is not.
+    """
+
+    # One shape of the contracts, which say nothing more about it.
+    action: RecoveryActionKind
+    # Whether it is allowed now.
+    allowed: bool
+    # One shape of the contracts, which say nothing more about it.
+    refusal: NotRequired[RecoveryRejection]
 
 
 class ActionAnswer(TypedDict):
@@ -286,6 +309,19 @@ class AgentAssessmentPayload(TypedDict):
     assessment: AgentAssessment
     # The session the turn ran in.
     session_name: str
+
+
+class BedTemperature(TypedDict):
+    """`BedTemperature`, as the contracts declare it.
+
+    The bed heater, as a recovery read reports it.
+    """
+
+    # What it reads, in degrees Celsius, `null` when not reported.
+    actual_c: NotRequired[float | None]
+    # What it is driving towards, in degrees Celsius, `null` when not
+    # reported.
+    target_c: NotRequired[float | None]
 
 
 class CameraDegradedPayload(TypedDict):
@@ -728,6 +764,23 @@ class FileTallyRebaselinedPayload(TypedDict):
     origin: str
 
 
+class Footprint(TypedDict):
+    """`Footprint`, as the contracts declare it.
+
+    The XY rectangle every extruding move of a file lies inside, in
+    millimetres.
+    """
+
+    # The largest X.
+    max_x: float
+    # The largest Y.
+    max_y: float
+    # The smallest X.
+    min_x: float
+    # The smallest Y.
+    min_y: float
+
+
 # Why a camera frame was not one to hand the agent.
 FrameCause: TypeAlias = Literal["blank", "undecodable"]
 
@@ -1017,6 +1070,21 @@ class JobSnapshot(TypedDict):
     state: PrinterState
 
 
+class LastPrint(TypedDict):
+    """`LastPrint`, as the contracts declare it.
+
+    What the last print laid down, read from its own G-code up to the last
+    file position recorded for it.
+    """
+
+    # Where in X and Y it laid material.
+    footprint: Footprint
+    # The print.
+    print_id: PrintId
+    # The tallest part it laid down, in millimetres.
+    tallest_mm: float
+
+
 class LoadedSpool(TypedDict):
     """`LoadedSpool`, as the contracts declare it.
 
@@ -1180,6 +1248,24 @@ class OperatorAcknowledgementPayload(TypedDict):
     acknowledged_event_id: EventId
     # What the operator asked for next.
     disposition: AcknowledgementDisposition
+
+
+class PausedPrint(TypedDict):
+    """`PausedPrint`, as the contracts declare it.
+
+    The print paused under the printer, and whether resuming it is still
+    safe.
+
+    A recovery action executed while it was paused moved the head, and
+    `OctoPrint` restores no position on resume, so the rest of the layer
+    would
+    print at the wrong height: such a print is not resumable.
+    """
+
+    # The print.
+    print_id: PrintId
+    # Whether it may be resumed.
+    resumable: bool
 
 
 class PendingCharge(TypedDict):
@@ -2041,6 +2127,384 @@ RawBytes: TypeAlias = str
 RebaselineDisposition: TypeAlias = Literal["accounted", "unverified"]
 
 
+class RecoveryActionRecoverLift(TypedDict):
+    """The `recover_lift` arm of `RecoveryAction`.
+
+    Move the nozzle away from the bed by `mm`.
+    """
+
+    action: Literal["recover_lift"]
+    # How far, in millimetres: above zero and at most
+    # `recovery.max_lift_mm`.
+    mm: float
+
+
+class RecoveryActionRecoverFan(TypedDict):
+    """The `recover_fan` arm of `RecoveryAction`.
+
+    Set the part-cooling fan.
+    """
+
+    action: Literal["recover_fan"]
+    # The percentage, from 0 to 100.
+    percent: float
+
+
+class RecoveryActionRecoverHeat(TypedDict):
+    """The `recover_heat` arm of `RecoveryAction`.
+
+    Heat one tool, within the safety envelope's range for it.
+    """
+
+    action: Literal["recover_heat"]
+    # The operator's word that the nozzle is clear of the part.
+    clearance_asserted: NotRequired[bool]
+    # The target, in degrees Celsius.
+    target_c: float
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+class RecoveryActionRecoverPark(TypedDict):
+    """The `recover_park` arm of `RecoveryAction`.
+
+    Move the head to `recovery.park_xy`.
+    """
+
+    action: Literal["recover_park"]
+    # The operator's word that the nozzle is clear of the part.
+    clearance_asserted: NotRequired[bool]
+
+
+class RecoveryActionRecoverHomeXy(TypedDict):
+    """The `recover_home_xy` arm of `RecoveryAction`.
+
+    Home X and Y.
+    """
+
+    action: Literal["recover_home_xy"]
+    # The operator's word that the nozzle is clear of the part.
+    clearance_asserted: NotRequired[bool]
+
+
+class RecoveryActionRecoverHomeZ(TypedDict):
+    """The `recover_home_z` arm of `RecoveryAction`.
+
+    Home Z.
+    """
+
+    action: Literal["recover_home_z"]
+    # The operator's word that homing Z will meet nothing on the bed.
+    bed_clear_asserted: NotRequired[bool]
+
+
+# The whole recovery vocabulary, and there is no other.
+#
+# The two assertions are the operator's word for what printobserver cannot
+# see: `clearance_asserted` that the nozzle is clear of the part, and
+# `bed_clear_asserted` that homing Z will meet nothing on the bed. Each is
+# false when left out.
+RecoveryAction: TypeAlias = (
+    RecoveryActionRecoverLift
+    | RecoveryActionRecoverFan
+    | RecoveryActionRecoverHeat
+    | RecoveryActionRecoverPark
+    | RecoveryActionRecoverHomeXy
+    | RecoveryActionRecoverHomeZ
+    | Literal["recover_cool"]
+)
+
+
+# One recovery action, named without its fields: what a grant names and what
+# a refusal of an ungranted request names.
+RecoveryActionKind: TypeAlias = Literal[
+    "recover_lift",
+    "recover_cool",
+    "recover_fan",
+    "recover_heat",
+    "recover_park",
+    "recover_home_xy",
+    "recover_home_z",
+]
+
+
+class RecoveryAnswer(TypedDict):
+    """`RecoveryAnswer`, as the contracts declare it.
+
+    What a recovery action answers, carried out or refused.
+
+    A refusal is the same shape and deliberately so: `rejection` carries
+    the
+    reason, and the two events are what the request wrote.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # What became of it, in a sentence for a person: why it was refused and
+    # what would let it go ahead, or what it did.
+    detail: str
+    # The `recovery_requested` event, and the `recovery_executed` or
+    # `recovery_rejected` beside it.
+    events: list[EventRecord]
+    # What the printer made of it, when it reached the printer.
+    outcome: NotRequired[ExecutionOutcome | None]
+    # Why it was refused, when it was.
+    rejection: NotRequired[RecoveryRejection | None]
+
+
+class RecoveryExecutedPayload(TypedDict):
+    """`RecoveryExecutedPayload`, as the contracts declare it.
+
+    A recovery action reached the printer, and what the printer made of
+    it.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # Who asked.
+    actor: Actor
+    # What the printer made of it.
+    outcome: ExecutionOutcome
+    # Why.
+    reason: str
+
+
+# One field of a recovery action a bound is held to.
+RecoveryField: TypeAlias = Literal[
+    "mm", "percent", "tool", "target_c", "clearance_asserted", "bed_clear_asserted"
+]
+
+
+class RecoveryPosition(TypedDict):
+    """`RecoveryPosition`, as the contracts declare it.
+
+    Where the print head is, in millimetres, as the printer reported it.
+    """
+
+    # X.
+    x: float
+    # Y.
+    y: float
+    # Z.
+    z: float
+
+
+class RecoveryRejectedPayload(TypedDict):
+    """`RecoveryRejectedPayload`, as the contracts declare it.
+
+    A recovery action was refused, and reached nothing.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # Who asked.
+    actor: Actor
+    # Why.
+    reason: str
+    # Why it was refused.
+    rejection: RecoveryRejection
+
+
+class RecoveryRejectionActorMayNotRequestPayload(TypedDict):
+    """What the `actor_may_not_request` arm of `RecoveryRejection` carries.
+
+    The asking actor's class is not granted this action.
+    """
+
+    # The action asked for.
+    action: RecoveryActionKind
+
+
+class RecoveryRejectionActorMayNotRequest(TypedDict):
+    """The `actor_may_not_request` arm of `RecoveryRejection`.
+
+    The asking actor's class is not granted this action.
+    """
+
+    actor_may_not_request: RecoveryRejectionActorMayNotRequestPayload
+
+
+class RecoveryRejectionPrintRunningPayload(TypedDict):
+    """What the `print_running` arm of `RecoveryRejection` carries.
+
+    A print is running, or being cancelled: nothing may move the printer
+    under it.
+    """
+
+    # The state the printer reported.
+    state: PrinterState
+
+
+class RecoveryRejectionPrintRunning(TypedDict):
+    """The `print_running` arm of `RecoveryRejection`.
+
+    A print is running, or being cancelled: nothing may move the printer
+    under it.
+    """
+
+    print_running: RecoveryRejectionPrintRunningPayload
+
+
+class RecoveryRejectionInsufficientClearancePayload(TypedDict):
+    """What the `insufficient_clearance` arm of `RecoveryRejection` carries.
+
+    The nozzle is not far enough above the tallest part the last print
+    laid down.
+    """
+
+    # The clearance asked above it, in millimetres.
+    margin_mm: float
+    # Where the printer reports the nozzle, in millimetres.
+    nozzle_z_mm: float
+    # The tallest part the last print laid down, in millimetres.
+    tallest_mm: float
+
+
+class RecoveryRejectionInsufficientClearance(TypedDict):
+    """The `insufficient_clearance` arm of `RecoveryRejection`.
+
+    The nozzle is not far enough above the tallest part the last print
+    laid down.
+    """
+
+    insufficient_clearance: RecoveryRejectionInsufficientClearancePayload
+
+
+class RecoveryRejectionOutOfBoundsPayload(TypedDict):
+    """What the `out_of_bounds` arm of `RecoveryRejection` carries.
+
+    A value the request carries is outside the range allowed for it.
+    """
+
+    # The range allowed, inclusive.
+    allowed: Range
+    # The field.
+    field: RecoveryField
+    # The value asked for.
+    requested: float
+
+
+class RecoveryRejectionOutOfBounds(TypedDict):
+    """The `out_of_bounds` arm of `RecoveryRejection`.
+
+    A value the request carries is outside the range allowed for it.
+    """
+
+    out_of_bounds: RecoveryRejectionOutOfBoundsPayload
+
+
+class RecoveryRejectionAssertionRequiredPayload(TypedDict):
+    """What the `assertion_required` arm of `RecoveryRejection` carries.
+
+    This action needs an assertion the request did not make.
+    """
+
+    # The assertion it needs.
+    field: RecoveryField
+
+
+class RecoveryRejectionAssertionRequired(TypedDict):
+    """The `assertion_required` arm of `RecoveryRejection`.
+
+    This action needs an assertion the request did not make.
+    """
+
+    assertion_required: RecoveryRejectionAssertionRequiredPayload
+
+
+class RecoveryRejectionPrinterCannotPayload(TypedDict):
+    """What the `printer_cannot` arm of `RecoveryRejection` carries.
+
+    The printer cannot do what this action needs: a move its adapter does
+    not support, or a nozzle position it cannot read.
+    """
+
+    # The action asked for.
+    action: RecoveryActionKind
+    # What the printer cannot do, in words.
+    detail: str
+
+
+class RecoveryRejectionPrinterCannot(TypedDict):
+    """The `printer_cannot` arm of `RecoveryRejection`.
+
+    The printer cannot do what this action needs: a move its adapter does
+    not support, or a nozzle position it cannot read.
+    """
+
+    printer_cannot: RecoveryRejectionPrinterCannotPayload
+
+
+# Why a recovery request was refused, each a variant of its own so a
+# consumer tells them apart by matching rather than by reading words.
+RecoveryRejection: TypeAlias = (
+    RecoveryRejectionActorMayNotRequest
+    | RecoveryRejectionPrintRunning
+    | RecoveryRejectionInsufficientClearance
+    | RecoveryRejectionOutOfBounds
+    | RecoveryRejectionAssertionRequired
+    | RecoveryRejectionPrinterCannot
+    | Literal["printer_unreachable", "z_untrusted", "recovery_not_configured"]
+)
+
+
+class RecoveryRequestedPayload(TypedDict):
+    """`RecoveryRequestedPayload`, as the contracts declare it.
+
+    A recovery action was asked for.
+
+    The printer's rather than any print's, so it is written with no print.
+    """
+
+    # What was asked for.
+    action: RecoveryAction
+    # Who asked.
+    actor: Actor
+    # Why.
+    reason: str
+
+
+class RecoveryStatus(TypedDict):
+    """`RecoveryStatus`, as the contracts declare it.
+
+    What a recovery read answers: everything a recovery is checked
+    against,
+    and what each action would meet now.
+    """
+
+    # Each action, and whether it is allowed now.
+    actions: list[ActionAllowance]
+    # What the last print laid down, `null` when there is no print with a
+    # file to read or its file could not be read.
+    last_print: NotRequired[LastPrint | None]
+    # The print paused under the printer, `null` when none is.
+    paused_print: NotRequired[PausedPrint | None]
+    # Where the head is, read only while Z is trusted; `null` otherwise or
+    # when it could not be read.
+    position: NotRequired[RecoveryPosition | None]
+    # The state the printer reports; `offline` when it could not be read.
+    state: PrinterState
+    # Every heater.
+    temperatures: RecoveryTemperatures
+    # Where Z is homed and whether that sweeps the bed, `null` when
+    # recovery is not configured.
+    z_home: NotRequired[ZHome | None]
+    # Whether Z is trusted.
+    z_trust: ZTrust
+
+
+class RecoveryTemperatures(TypedDict):
+    """`RecoveryTemperatures`, as the contracts declare it.
+
+    Every heater, as a recovery read reports it.
+    """
+
+    # The bed, `null` when the printer reports none.
+    bed: NotRequired[BedTemperature | None]
+    # Each tool.
+    tools: list[ToolTemperature]
+
+
 class RejectionReasonOutOfBoundsPayload(TypedDict):
     """What the `out_of_bounds` arm of `RejectionReason` carries.
 
@@ -2267,6 +2731,29 @@ class RejectionReasonInterventionStillActive(TypedDict):
     intervention_still_active: RejectionReasonInterventionStillActivePayload
 
 
+class RejectionReasonPrintNotResumablePayload(TypedDict):
+    """What the `print_not_resumable` arm of `RejectionReason` carries.
+
+    A resume was refused because a recovery action was executed while the
+    print was paused: the head moved, and `OctoPrint` restores no position
+    on resume, so the rest of the layer would print at the wrong height.
+    """
+
+    # The `recovery_executed` event that made it so.
+    recovery_event_id: EventId
+
+
+class RejectionReasonPrintNotResumable(TypedDict):
+    """The `print_not_resumable` arm of `RejectionReason`.
+
+    A resume was refused because a recovery action was executed while the
+    print was paused: the head moved, and `OctoPrint` restores no position
+    on resume, so the rest of the layer would print at the wrong height.
+    """
+
+    print_not_resumable: RejectionReasonPrintNotResumablePayload
+
+
 class RejectionReasonSpoolRefusedPayload(TypedDict):
     """What the `spool_refused` arm of `RejectionReason` carries.
 
@@ -2303,6 +2790,7 @@ RejectionReason: TypeAlias = (
     | RejectionReasonAnalysisUnavailable
     | RejectionReasonPrintStillActive
     | RejectionReasonInterventionStillActive
+    | RejectionReasonPrintNotResumable
     | RejectionReasonSpoolRefused
     | Literal["no_active_print", "print_already_ended"]
 )
@@ -3031,6 +3519,21 @@ class ToolFilament(TypedDict):
     volume_cm3: NotRequired[float | None]
 
 
+class ToolTemperature(TypedDict):
+    """`ToolTemperature`, as the contracts declare it.
+
+    One tool heater, as a recovery read reports it.
+    """
+
+    # What it reads, in degrees Celsius, `null` when not reported.
+    actual_c: NotRequired[float | None]
+    # What it is driving towards, in degrees Celsius, `null` when not
+    # reported.
+    target_c: NotRequired[float | None]
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
 class UnaccountedPrintPayload(TypedDict):
     """`UnaccountedPrintPayload`, as the contracts declare it.
 
@@ -3166,6 +3669,41 @@ UnverifiedReason: TypeAlias = (
 )
 
 
+class ZHome(TypedDict):
+    """`ZHome`, as the contracts declare it.
+
+    Where the machine homes Z, and whether doing so sweeps the bed.
+    """
+
+    # Whether homing Z brings a gantry down over the whole bed.
+    sweeps_bed: bool
+    # Where in X and Y Z is homed.
+    xy: list[float]
+
+
+class ZTrustTrustedSince(TypedDict):
+    """The `trusted_since` arm of `ZTrust`.
+
+    Z is where printobserver last put it, from this instant on: a `home_z`
+    it executed, or a print it started.
+    """
+
+    trusted_since: Timestamp
+
+
+class ZTrustUntrusted(TypedDict):
+    """The `untrusted` arm of `ZTrust`.
+
+    Z is not trusted, and why.
+    """
+
+    untrusted: str
+
+
+# Whether Z is trusted, and since when or why not.
+ZTrust: TypeAlias = ZTrustTrustedSince | ZTrustUntrusted
+
+
 # Every kind the server declares a payload type for, and the type each
 # payload has. A kind this client does not know flows through `EventRecord`
 # untouched, and is in no table.
@@ -3194,6 +3732,9 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "print_untracked": PrintUntrackedPayload,
     "printer_connection_changed": PrinterConnectionChangedPayload,
     "printer_reset": PrinterResetPayload,
+    "recovery_executed": RecoveryExecutedPayload,
+    "recovery_rejected": RecoveryRejectedPayload,
+    "recovery_requested": RecoveryRequestedPayload,
     "spool_adjusted": SpoolAdjustedPayload,
     "spool_command_rejected": SpoolCommandRejectedPayload,
     "spool_loaded": SpoolLoadedPayload,
@@ -3345,6 +3886,24 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["printer_reset"]
 ) -> PrinterResetPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["recovery_executed"]
+) -> RecoveryExecutedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["recovery_rejected"]
+) -> RecoveryRejectedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["recovery_requested"]
+) -> RecoveryRequestedPayload | None: ...
 
 
 @overload
@@ -4278,3 +4837,228 @@ class GeneratedClient(GeneratedSurface):
         # type `operations.json` declares for it, so this cast names that type.
         # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
         return cast(SpoolCommandAnswer, answered)
+
+    def recover_status(self) -> RecoveryStatus:
+        """Call `recover_status` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/printer/recovery"
+        asked: list[tuple[str, str]] = []
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryStatus, answered)
+
+    def recover_lift(self, mm: float, reason: str) -> RecoveryAnswer:
+        """Call `recover_lift` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_lift"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["mm"] = mm
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_cool(self, reason: str) -> RecoveryAnswer:
+        """Call `recover_cool` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_cool"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_fan(self, percent: float, reason: str) -> RecoveryAnswer:
+        """Call `recover_fan` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_fan"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["percent"] = percent
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_heat(
+        self, reason: str, target_c: float, tool: int, clearance_asserted: bool | None = None
+    ) -> RecoveryAnswer:
+        """Call `recover_heat` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_heat"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if clearance_asserted is not None:
+            sending["clearance_asserted"] = clearance_asserted
+        sending["reason"] = reason
+        sending["target_c"] = target_c
+        sending["tool"] = tool
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_park(self, reason: str, clearance_asserted: bool | None = None) -> RecoveryAnswer:
+        """Call `recover_park` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_park"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if clearance_asserted is not None:
+            sending["clearance_asserted"] = clearance_asserted
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_home_xy(
+        self, reason: str, clearance_asserted: bool | None = None
+    ) -> RecoveryAnswer:
+        """Call `recover_home_xy` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_home_xy"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if clearance_asserted is not None:
+            sending["clearance_asserted"] = clearance_asserted
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)
+
+    def recover_home_z(self, reason: str, bed_clear_asserted: bool | None = None) -> RecoveryAnswer:
+        """Call `recover_home_z` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/recovery/recover_home_z"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        if bed_clear_asserted is not None:
+            sending["bed_clear_asserted"] = bed_clear_asserted
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending)
+        # `call` checks no shape; the server serializes this answer from the
+        # type `operations.json` declares for it, so this cast names that type.
+        # llmlint: ignore[boundary_inputs_validated] See suppressions.toml.
+        return cast(RecoveryAnswer, answered)

@@ -7,8 +7,8 @@
 
 use serde::de::DeserializeOwned;
 
-use crate::contract::{ActionAnswer, Actor, ErrorAnswer, SpoolCommandAnswer};
-use crate::error::{ClientError, RejectedAnswer, Rejection};
+use crate::contract::{ActionAnswer, Actor, ErrorAnswer, RecoveryAnswer, SpoolCommandAnswer};
+use crate::error::{ClientError, RecoveryRejected, RejectedAnswer, Rejection};
 use crate::transport::send;
 
 /// The status a rejected action is answered under.
@@ -125,6 +125,25 @@ impl Client {
 
 /// The policy's own refusal, as the answer to it carries it.
 fn rejection(body: &str, status: u16) -> ClientError {
+    // A recovery's answer carries its own refusal at the top.
+    if let Ok(document) = serde_json::from_str::<serde_json::Value>(body)
+        && document.get("rejection").is_some()
+    {
+        return match serde_json::from_value::<RecoveryAnswer>(document) {
+            Ok(answer) => RecoveryRejected::of(answer).map_or_else(
+                || ClientError::Unreadable {
+                    status,
+                    detail: "the supervisor refused this recovery and answered no refusal"
+                        .to_owned(),
+                },
+                |rejected| ClientError::RecoveryRejected(Box::new(rejected)),
+            ),
+            Err(error) => ClientError::Unreadable {
+                status,
+                detail: error.to_string(),
+            },
+        };
+    }
     // An action's answer carries its decision in its record; a spool command's
     // carries it at the top.
     let answered = serde_json::from_str::<serde_json::Value>(body).and_then(|document| {
@@ -152,7 +171,16 @@ fn rejection(body: &str, status: u16) -> ClientError {
 }
 
 /// The machine's own refusal of an action the policy accepted.
+///
+/// A recovery the machine refused carries no action record, and arrives as the
+/// supervisor's own words for it.
 fn machine_refusal(body: &str, status: u16) -> ClientError {
+    if let Ok(answer) = serde_json::from_str::<RecoveryAnswer>(body) {
+        return ClientError::Refused {
+            status,
+            detail: answer.detail,
+        };
+    }
     match serde_json::from_str::<ActionAnswer>(body) {
         Ok(answer) => ClientError::PrinterRefused {
             detail: answer

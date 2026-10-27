@@ -18,7 +18,7 @@ mod host;
 use host::Host;
 use printobserver_sdk::{
     AcknowledgementDisposition, ActionExecutedPayload, Actor, Client, ClientError, EVENT_KINDS,
-    EventId, FileName, JobManifest, PrintOutcome, RejectionReason,
+    EventId, FileName, JobManifest, PrintOutcome, RecoveryRejection, RejectionReason,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -1788,6 +1788,561 @@ fn retire_spool_makes_no_request_when_the_reason_is_empty() {
 
     let refused = client
         .retire_spool("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ")
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_status` sends what it declares and answers what the server sent.
+#[test]
+fn recover_status_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"actions": [{"action": "recover_lift", "allowed": true, "refusal": {"actor_may_not_request": {"action": "recover_lift"}}}], "last_print": {"footprint": {"max_x": 1.5, "max_y": 1.5, "min_x": 1.5, "min_y": 1.5}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tallest_mm": 1.5}, "paused_print": {"print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "resumable": true}, "position": {"x": 1.5, "y": 1.5, "z": 1.5}, "state": "operational", "temperatures": {"bed": {"actual_c": 1.5, "target_c": 1.5}, "tools": [{"actual_c": 1.5, "target_c": 1.5, "tool": 7}]}, "z_home": {"sweeps_bed": true, "xy": [1.5]}, "z_trust": {"trusted_since": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_status()
+        .expect("`recover_status` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "GET");
+    assert_eq!(received.target, "/v1/printer/recovery");
+    assert_eq!(received.body, "");
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_lift` sends what it declares and answers what the server sent.
+#[test]
+fn recover_lift_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_lift(1.5, "a generated walk is asking")
+        .expect("`recover_lift` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_lift");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "mm": 1.5, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_lift` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_lift_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_lift(1.5, "a generated walk is asking")
+        .expect_err("`recover_lift` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_lift` makes no request at all when the reason is empty.
+#[test]
+fn recover_lift_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_lift(1.5, "   ")
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_cool` sends what it declares and answers what the server sent.
+#[test]
+fn recover_cool_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_cool("a generated walk is asking")
+        .expect("`recover_cool` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_cool");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_cool` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_cool_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_cool("a generated walk is asking")
+        .expect_err("`recover_cool` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_cool` makes no request at all when the reason is empty.
+#[test]
+fn recover_cool_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_cool("   ")
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_fan` sends what it declares and answers what the server sent.
+#[test]
+fn recover_fan_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_fan(1.5, "a generated walk is asking")
+        .expect("`recover_fan` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_fan");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "percent": 1.5, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_fan` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_fan_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_fan(1.5, "a generated walk is asking")
+        .expect_err("`recover_fan` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_fan` makes no request at all when the reason is empty.
+#[test]
+fn recover_fan_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_fan(1.5, "   ")
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_heat` sends what it declares and answers what the server sent.
+#[test]
+fn recover_heat_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_heat("a generated walk is asking", 1.5, 7, Some(true))
+        .expect("`recover_heat` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_heat");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "clearance_asserted": true, "reason": "a generated walk is asking", "target_c": 1.5, "tool": 7}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_heat` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_heat_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_heat("a generated walk is asking", 1.5, 7, Some(true))
+        .expect_err("`recover_heat` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_heat` makes no request at all when the reason is empty.
+#[test]
+fn recover_heat_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_heat("   ", 1.5, 7, Some(true))
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_park` sends what it declares and answers what the server sent.
+#[test]
+fn recover_park_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_park("a generated walk is asking", Some(true))
+        .expect("`recover_park` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_park");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "clearance_asserted": true, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_park` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_park_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_park("a generated walk is asking", Some(true))
+        .expect_err("`recover_park` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_park` makes no request at all when the reason is empty.
+#[test]
+fn recover_park_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_park("   ", Some(true))
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_home_xy` sends what it declares and answers what the server sent.
+#[test]
+fn recover_home_xy_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_home_xy("a generated walk is asking", Some(true))
+        .expect("`recover_home_xy` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_home_xy");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "clearance_asserted": true, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_home_xy` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_home_xy_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_home_xy("a generated walk is asking", Some(true))
+        .expect_err("`recover_home_xy` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_home_xy` makes no request at all when the reason is empty.
+#[test]
+fn recover_home_xy_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_home_xy("   ", Some(true))
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
+/// `recover_home_z` sends what it declares and answers what the server sent.
+#[test]
+fn recover_home_z_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "outcome": "succeeded", "rejection": {"actor_may_not_request": {"action": "recover_lift"}}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .recover_home_z("a generated walk is asking", Some(true))
+        .expect("`recover_home_z` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/recovery/recover_home_z");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "bed_clear_asserted": true, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `recover_home_z` surfaces the policy's own refusal, typed.
+#[test]
+fn recover_home_z_surfaces_the_policys_own_refusal() {
+    let refusal: Value = serde_json::from_str(r#"{"action": {"action": "recover_lift", "mm": 1.5}, "detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "rejection": {"out_of_bounds": {"allowed": {"max": 1.25, "min": 0.5}, "field": "mm", "requested": 1.5}}}"#)
+        .expect("a generated refusal is a document");
+    let host = Host::answering(409, &refusal.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_home_z("a generated walk is asking", Some(true))
+        .expect_err("`recover_home_z` is refused");
+
+    let ClientError::RecoveryRejected(rejection) = refused else {
+        panic!("the recovery's refusal did not arrive as one");
+    };
+    assert_eq!(rejection.requested, Some(1.5));
+    assert_eq!(
+        rejection
+            .allowed
+            .as_ref()
+            .map(|range| (range.min, range.max)),
+        Some((0.5, 1.25))
+    );
+    assert!(matches!(
+        rejection.rejection,
+        RecoveryRejection::OutOfBounds { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&rejection.answer).expect("an answer renders"),
+        refusal
+    );
+}
+
+/// `recover_home_z` makes no request at all when the reason is empty.
+#[test]
+fn recover_home_z_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .recover_home_z("   ", Some(true))
         .expect_err("a call with no reason is refused");
 
     assert!(matches!(refused, ClientError::NoReason));

@@ -147,6 +147,60 @@ pub fn walk(instance: &Scripted) {
         &PrinterState::Operational,
         "the print to be cancelled",
     );
+
+    pin_the_moves(&proxy, &printer, instance);
+}
+
+/// Every move and home of the closed vocabulary, through the print head's own
+/// endpoint, each read back from the machine's own position report — taken
+/// over the push socket, which the proxy does not carry, so from the instance
+/// itself. Made idle, where `OctoPrint` takes a move.
+fn pin_the_moves(proxy: &Proxy, printer: &impl PrinterPort, instance: &Scripted) {
+    use printobserver_printer_api::{HomeAxes, PrinterCommand};
+
+    let direct = instance.printer();
+    let at = || block_on(direct.read_position()).expect("the position reads");
+    let started = at();
+    for (command, sent, reached) in [
+        (
+            PrinterCommand::MoveZ { mm: 5.0 },
+            serde_json::json!({ "command": "jog", "z": 5.0 }),
+            (started.x, started.y, started.z + 5.0),
+        ),
+        (
+            PrinterCommand::MoveXy {
+                x_mm: 10.0,
+                y_mm: 20.0,
+            },
+            serde_json::json!({ "command": "jog", "x": 10.0, "y": 20.0, "absolute": true }),
+            (10.0, 20.0, started.z + 5.0),
+        ),
+        (
+            PrinterCommand::Home { axes: HomeAxes::Xy },
+            serde_json::json!({ "command": "home", "axes": ["x", "y"] }),
+            (0.0, 0.0, started.z + 5.0),
+        ),
+        (
+            PrinterCommand::Home { axes: HomeAxes::Z },
+            serde_json::json!({ "command": "home", "axes": ["z"] }),
+            (0.0, 0.0, 0.0),
+        ),
+    ] {
+        proxy.forget();
+        block_on(printer.send_command(command)).expect("the move is accepted");
+        let request = only(proxy, "the move");
+        assert_eq!(request.path, "/api/printer/printhead", "{command:?}");
+        assert_eq!(request.json(), sent, "{command:?}");
+        wait::until("the move to be reported", REACHED, || {
+            let now = at();
+            let close = |a: f64, b: f64| (a - b).abs() < 1e-6;
+            if close(now.x, reached.0) && close(now.y, reached.1) && close(now.z, reached.2) {
+                Ok(())
+            } else {
+                Err(format!("{now:?}, not {reached:?}"))
+            }
+        });
+    }
 }
 
 /// The feedrate factor, in `OctoPrint`'s own units, at two distinct multipliers.
