@@ -1336,3 +1336,25 @@ async fn a_call_the_printer_cannot_make_after_one_it_made_is_a_failure() {
         ]
     );
 }
+
+/// A printer whose state cannot be read at all — not read as offline, but
+/// not read — is one no recovery can be decided against: the read answers it
+/// offline with no heaters and no position, and every action is refused
+/// `printer_unreachable`, recorded, and reaches nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_printer_whose_state_cannot_be_read_refuses_every_recovery() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.connected().await;
+    world.home_z().await;
+    world.octoprint.fails_printer_reads(true);
+
+    world.reads("offline").await;
+    let status = world.status().await;
+    assert_eq!(
+        status["temperatures"],
+        json!({ "tools": [], "bed": null }),
+        "{status:#}"
+    );
+    assert_eq!(status["position"], Value::Null, "{status:#}");
+    every_action_refused(&world, "printer_unreachable").await;
+}

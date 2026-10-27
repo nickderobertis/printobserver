@@ -126,6 +126,8 @@ struct Script {
     bed_refusal: Option<u16>,
     /// Whether the print-head endpoint refuses every move and home.
     refuses_printhead: bool,
+    /// Whether every read of the printer's state fails at the instance.
+    fails_printer_reads: bool,
     /// How the push socket's upgrade is answered.
     upgrade: Upgrade,
     /// Every line sent through the command endpoint, with whether a job was
@@ -199,6 +201,7 @@ impl ScriptedOctoPrint {
             refuses_commands: false,
             bed_refusal: None,
             refuses_printhead: false,
+            fails_printer_reads: false,
             upgrade: Upgrade::Accepted,
             commands: Vec::new(),
             job_commands: Vec::new(),
@@ -317,6 +320,13 @@ impl ScriptedOctoPrint {
     /// instance that implements no bed target at all.
     pub fn answers_bed_targets_with(&self, status: u16) {
         self.held().bed_refusal = Some(status);
+    }
+
+    /// Fail every read of the printer's state from now on with a `500`, as an
+    /// instance whose own printer plugin has crashed does, or answer them
+    /// again.
+    pub fn fails_printer_reads(&self, fails: bool) {
+        self.held().fails_printer_reads = fails;
     }
 
     /// Refuse every print-head move and home from now on, as a machine whose
@@ -675,6 +685,9 @@ fn answer(
             200,
             json!({ "current": { "state": held.connection, "port": "VIRTUAL" } }).to_string(),
         ),
+        ("GET", path) if path.starts_with("/api/printer") && held.fails_printer_reads => {
+            (500, r#"{"error":"Internal server error"}"#.to_owned())
+        }
         ("GET", path) if path.starts_with("/api/printer") => printer_body(&held),
         ("GET", "/api/job") => (200, job_body(&held.job).to_string()),
         ("POST", "/api/job") => {
