@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1](https://github.com/nickderobertis/printobserver/compare/v0.9.0...v0.10.1) - 2026-10-27
+
+### Added
+
+- *(recover)* move the printer after a failure through a closed, checked recovery vocabulary ([#275](https://github.com/nickderobertis/printobserver/pull/275))
+
 ## [0.10.0](https://github.com/nickderobertis/printobserver/compare/v0.9.0...v0.10.0) - 2026-10-27
 
 ### Added
