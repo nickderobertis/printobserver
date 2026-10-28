@@ -623,6 +623,7 @@ def test_with_no_switch_it_installs_the_per_user_server_and_says_what_is_next(
     equal(sorted((home.root / "temp").iterdir()), [], describing="its own directory, removed")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_configuration_is_the_service_installers_template_but_for_its_two_paths(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path, program: Path
 ) -> None:
@@ -651,6 +652,7 @@ def test_the_configuration_is_the_service_installers_template_but_for_its_two_pa
     equal(per_user, serviced, describing="the per-user configuration beside the service's")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_observation_interval_is_written_and_one_the_server_refuses_is_refused(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -670,6 +672,7 @@ def test_an_observation_interval_is_written_and_one_the_server_refuses_is_refuse
         equal(sorted(elsewhere.local.iterdir()), [], describing="nothing written for a refused run")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_with_the_service_registered_it_refuses_naming_the_migration_and_changes_nothing(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -691,6 +694,7 @@ def test_with_the_service_registered_it_refuses_naming_the_migration_and_changes
     equal(sorted((home.root / "temp").iterdir()), [], describing="anything left in its temp")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_client_only_beside_the_service_installs_the_program_alone_as_before(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -716,6 +720,7 @@ def test_client_only_beside_the_service_installs_the_program_alone_as_before(
     failing((refused.code, refused.said), naming="-ClientOnly, which installs no server")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_running_it_again_upgrades_in_place_and_the_installer_writes_no_state(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -764,6 +769,7 @@ def test_running_it_again_upgrades_in_place_and_the_installer_writes_no_state(
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_task_name_that_is_not_one_is_refused_before_anything_is_written(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1014,6 +1020,7 @@ def migrating(tmp_path: Path) -> Migrating:
     return Migrating(tmp_path, _session(tmp_path, stand_in_tasks=False))
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_migration_moves_the_record_verifies_it_and_only_then_deletes_the_service(
     migrating: Migrating, serviced: Serviced, program: Path, tmp_path: Path, machine: Machine
 ) -> None:
@@ -1120,6 +1127,7 @@ def _untouched(serviced: Serviced, home: Home, before: dict[str, str], ran: Ran)
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_migration_refuses_a_user_who_already_has_a_per_user_install(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -1147,6 +1155,7 @@ def test_the_migration_refuses_a_user_who_already_has_a_per_user_install(
         ({REGISTERED: "1", NOT_ELEVATED: "1"}, "not an elevated PowerShell"),
     ],
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_migration_refuses_with_no_service_or_no_elevation(
     migrating: Migrating, serviced: Serviced, tmp_path: Path, extra: dict[str, str], naming: str
 ) -> None:
@@ -1158,6 +1167,7 @@ def test_the_migration_refuses_with_no_service_or_no_elevation(
     _untouched(serviced, home, before, ran)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_migration_refuses_local_application_data_that_is_not_there(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -1169,6 +1179,7 @@ def test_the_migration_refuses_local_application_data_that_is_not_there(
     _untouched(serviced, home, before, ran)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_copy_that_does_not_verify_deletes_nothing_and_leaves_the_service_as_it_was(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -1194,6 +1205,7 @@ def test_a_copy_that_does_not_verify_deletes_nothing_and_leaves_the_service_as_i
     truth(not home.config.exists(), describing="the unverified copy removed")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_piped_form_installs_the_per_user_server_and_leaves_the_session_a_zero_status(
     releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1500,6 +1512,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
 
 
 @WINDOWS_ONLY
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
     tmp_path: Path, program: Path
 ) -> None:
@@ -1674,6 +1687,7 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
     ],
     ids=["an unanswered service query", "a refused registration", "a refused start"],
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_refusal_of_the_host_stops_the_install_naming_it(
     installing: Installing,
     releases: Callable[[str], Path],
@@ -1693,6 +1707,7 @@ def test_a_refusal_of_the_host_stops_the_install_naming_it(
         equal(sorted(home.local.iterdir()), [], describing="nothing written for a refused run")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_profile_path_carrying_a_quote_is_refused_before_anything_is_written(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1709,6 +1724,7 @@ def test_a_profile_path_carrying_a_quote_is_refused_before_anything_is_written(
 
 
 @pytest.mark.skipif(ON_WINDOWS, reason="a Windows session always names the user it runs as")
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_session_naming_no_user_is_refused_before_anything_is_written(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1721,6 +1737,7 @@ def test_a_session_naming_no_user_is_refused_before_anything_is_written(
     equal(sorted(home.local.iterdir()), [], describing="nothing written")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_state_directory_that_cannot_be_made_is_refused_naming_it(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1738,6 +1755,7 @@ def test_a_state_directory_that_cannot_be_made_is_refused_naming_it(
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_reinstall_given_an_interval_keeps_the_configuration_and_says_so(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1756,6 +1774,7 @@ def test_a_reinstall_given_an_interval_keeps_the_configuration_and_says_so(
     contains(again.said, "-ObservationIntervalSeconds was not written", describing="what it said")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_relative_install_directory_is_registered_as_a_whole_path(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1794,6 +1813,7 @@ def _service_file(serviced: Serviced, old: str, new: str) -> None:
         ("bad-user", {}, "is not an account name"),
     ],
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_migration_refuses_before_it_copies_anything(
     migrating: Migrating,
     serviced: Serviced,
@@ -1860,6 +1880,7 @@ def test_the_migration_refuses_before_it_copies_anything(
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_stop_of_a_service_that_was_not_running_is_taken_as_stopped(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -1882,6 +1903,7 @@ def test_a_stop_of_a_service_that_was_not_running_is_taken_as_stopped(
     ],
     ids=["a refused owner", "a refused deletion"],
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_refusal_after_the_copy_says_where_things_were_left(
     migrating: Migrating,
     serviced: Serviced,
@@ -1907,6 +1929,7 @@ def test_a_refusal_after_the_copy_says_where_things_were_left(
     equal(_tree(serviced.state), before, describing="the service's state")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_copied_file_gone_before_the_check_deletes_nothing(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -1927,6 +1950,7 @@ def test_a_copied_file_gone_before_the_check_deletes_nothing(
     truth(not home.config.exists(), describing="the unverified copy removed")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_upgrade_whose_stop_is_refused_puts_the_task_back_and_replaces_nothing(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1956,6 +1980,7 @@ UNWRITABLE = pytest.mark.skipif(
 
 
 @UNWRITABLE
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_upgrade_that_cannot_replace_the_program_puts_the_task_back(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -1979,6 +2004,7 @@ def test_an_upgrade_that_cannot_replace_the_program_puts_the_task_back(
 
 
 @UNWRITABLE
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_configuration_that_cannot_be_written_is_refused_before_a_task_is_registered(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -2000,6 +2026,7 @@ def test_a_configuration_that_cannot_be_written_is_refused_before_a_task_is_regi
 
 
 @UNWRITABLE
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_copy_that_cannot_be_made_leaves_the_service_registered(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2017,6 +2044,7 @@ def test_a_copy_that_cannot_be_made_leaves_the_service_registered(
     equal(_tree(serviced.state), before, describing="the service's state")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_copied_configuration_made_to_differ_deletes_nothing(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2036,6 +2064,7 @@ def test_a_copied_configuration_made_to_differ_deletes_nothing(
     truth(not home.config.exists(), describing="the unverified copy removed")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_explicit_directory_with_no_local_application_data_is_refused_for_the_server(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -2067,6 +2096,7 @@ def test_an_explicit_directory_with_no_local_application_data_is_refused_for_the
         "a refused hold and a refused start",
     ],
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_upgrade_task_scheduler_will_not_pause_replaces_nothing_and_says_where_it_left_it(
     installing: Installing,
     releases: Callable[[str], Path],
@@ -2095,6 +2125,7 @@ def test_an_upgrade_task_scheduler_will_not_pause_replaces_nothing_and_says_wher
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_status(
     releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -2121,6 +2152,7 @@ def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_stat
 
 
 @WINDOWS_ONLY
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_the_migration_refuses_an_account_this_machine_does_not_have(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2144,6 +2176,7 @@ def test_on_windows_the_migration_refuses_an_account_this_machine_does_not_have(
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_upgrade_task_scheduler_cannot_answer_about_replaces_nothing(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -2172,6 +2205,7 @@ def test_an_upgrade_task_scheduler_cannot_answer_about_replaces_nothing(
 @pytest.mark.skipif(
     ON_WINDOWS, reason="a stand-in program cannot be kept running at the installed path there"
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_an_upgrade_whose_server_will_not_exit_replaces_nothing_and_puts_the_task_back(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
@@ -2201,6 +2235,7 @@ def test_an_upgrade_whose_server_will_not_exit_replaces_nothing_and_puts_the_tas
     contains(upgrade, "Enable-ScheduledTask printobserver", describing="the task put back")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_service_that_will_not_stop_is_left_registered_and_nothing_is_copied(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2218,6 +2253,7 @@ def test_a_service_that_will_not_stop_is_left_registered_and_nothing_is_copied(
     equal(_tree(serviced.state), before, describing="the service's state")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_local_application_data_overlapping_the_services_record_is_refused(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2236,6 +2272,7 @@ def test_local_application_data_overlapping_the_services_record_is_refused(
 
 
 @UNWRITABLE
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_service_configuration_that_cannot_be_read_is_refused_before_anything_is_stopped(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2255,6 +2292,7 @@ def test_a_service_configuration_that_cannot_be_read_is_refused_before_anything_
 
 
 @UNWRITABLE
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_copy_that_cannot_be_read_back_deletes_nothing(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
 ) -> None:
@@ -2278,6 +2316,7 @@ def test_a_copy_that_cannot_be_read_back_deletes_nothing(
 
 
 @WINDOWS_ONLY
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
     installing: Installing,
     releases: Callable[[str], Path],

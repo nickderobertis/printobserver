@@ -284,6 +284,7 @@ def _script(staged: Path, home: Path, identifier: str | None, *arguments: str) -
     return _run(home, _environment(staged, home, identifier), *arguments)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def _run_in_session(
     home: Path, environment: dict[str, str], session: dict[str, str]
 ) -> tuple[int, str]:

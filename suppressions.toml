@@ -3229,3 +3229,249 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "Then, as that user, the per-user pair's first command,"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_configuration_is_the_service_installers_template_but_for_its_two_paths("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_observation_interval_is_written_and_one_the_server_refuses_is_refused("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_with_the_service_registered_it_refuses_naming_the_migration_and_changes_nothing("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_client_only_beside_the_service_installs_the_program_alone_as_before("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_running_it_again_upgrades_in_place_and_the_installer_writes_no_state("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_task_name_that_is_not_one_is_refused_before_anything_is_written("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_migration_moves_the_record_verifies_it_and_only_then_deletes_the_service("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_migration_refuses_a_user_who_already_has_a_per_user_install("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_migration_refuses_with_no_service_or_no_elevation("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_migration_refuses_local_application_data_that_is_not_there("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_copy_that_does_not_verify_deletes_nothing_and_leaves_the_service_as_it_was("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_piped_form_installs_the_per_user_server_and_leaves_the_session_a_zero_status("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_refusal_of_the_host_stops_the_install_naming_it("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_profile_path_carrying_a_quote_is_refused_before_anything_is_written("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_session_naming_no_user_is_refused_before_anything_is_written("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_state_directory_that_cannot_be_made_is_refused_naming_it("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_reinstall_given_an_interval_keeps_the_configuration_and_says_so("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_relative_install_directory_is_registered_as_a_whole_path("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_migration_refuses_before_it_copies_anything("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_stop_of_a_service_that_was_not_running_is_taken_as_stopped("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_refusal_after_the_copy_says_where_things_were_left("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_copied_file_gone_before_the_check_deletes_nothing("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_upgrade_whose_stop_is_refused_puts_the_task_back_and_replaces_nothing("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_upgrade_that_cannot_replace_the_program_puts_the_task_back("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_configuration_that_cannot_be_written_is_refused_before_a_task_is_registered("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_copy_that_cannot_be_made_leaves_the_service_registered("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_copied_configuration_made_to_differ_deletes_nothing("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_explicit_directory_with_no_local_application_data_is_refused_for_the_server("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_upgrade_task_scheduler_will_not_pause_replaces_nothing_and_says_where_it_left_it("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_status("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_on_windows_the_migration_refuses_an_account_this_machine_does_not_have("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_upgrade_task_scheduler_cannot_answer_about_replaces_nothing("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_an_upgrade_whose_server_will_not_exit_replaces_nothing_and_puts_the_task_back("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_service_that_will_not_stop_is_left_registered_and_nothing_is_copied("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_local_application_data_overlapping_the_services_record_is_refused("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_service_configuration_that_cannot_be_read_is_refused_before_anything_is_stopped("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_a_copy_that_cannot_be_read_back_deletes_nothing("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. Each case drives the committed per-user installer or migration the way the task specifies, under stand-ins or, on Windows, the real Task Scheduler."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _run_in_session("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. This part of the install-script journey existed before the change, which, as the task required, runs it with `-ClientOnly` in place."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/console.rs"
+site = "if window.is_null() {"
+reason = "A console Windows created with no window is one no journey can ask Windows for from the gate's runners, and this return does nothing, leaving the process as every console start was before this change. Both paths that reach the window are driven on Windows: a console of the server's own is asserted hidden, and one shared with a shell is asserted shown."

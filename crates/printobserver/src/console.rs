@@ -33,6 +33,7 @@ pub fn hide_a_console_of_its_own() {
     // SAFETY: `GetConsoleWindow` takes nothing and answers this process's
     // console window, or null where the console has none.
     let window = unsafe { GetConsoleWindow() };
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     if window.is_null() {
         return;
     }
