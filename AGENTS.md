@@ -290,13 +290,17 @@ from.
 - `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
 - `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: yes
-- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, install path: yes
-- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, install path: yes
+- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, per-user manager `windows-scheduled-task`, install path: yes
+- `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, per-user manager `windows-scheduled-task`, install path: yes
 [//]: # (END supported-platforms)
 
 The two Linux entries run under systemd, the macOS entry under launchd and the
 two Windows entries under the service control manager, and the installer in
-the end-user install path below writes each its own service definition.
+the end-user install path below writes each its own service definition. An
+entry may also name a **per-user manager**: the one the recommended per-user
+install runs the server under as the person using the machine, with no
+elevation. The two Windows entries name Task Scheduler's, `windows-scheduled-task`,
+and the install path states its pair beside the service's.
 `linux-aarch64` is not optional: the machine beside the printer is
 usually a small ARM board, and it is the worst place to discover an
 architecture was never built for. Apple silicon is the only macOS platform:
@@ -715,6 +719,16 @@ then two commands in order**, with the agent's skill installed, and the agent's
 harness installed and signed in as the service's own user, between those two
 commands.
 
+On Windows the recommended pair is the **per-user** one, `windows-scheduled-task`:
+the server runs as the person using the machine, from their own profile, and no
+step from the first install through an upgrade, a sign-in or a configuration
+change needs an elevated PowerShell. The service pair, `windows-service`, stays
+exactly as supported as before, as the **isolated** option for a host that wants
+an operating-system boundary between the agent and the person. The per-user
+install runs only while its user is logged on, and its supervision turns run as
+that user — so the agent could read the operator's own client configuration, and
+the per-actor policy becomes a guard rail rather than a hard boundary.
+
 The three routes are three ways of *obtaining* the program, so a reader takes
 one of them whatever platform they are on rather than one per platform. What is
 per platform is the pair of commands after them: each service manager the
@@ -814,11 +828,12 @@ printobserver --version
 
 ### Then, in order — two commands
 
-Both run with the host's administrative privilege — as root on Linux and macOS,
-in an elevated PowerShell on Windows — and which pair you run is your
-platform's own: the supported-platform list's service-manager column names it. The first of a pair
-puts the service in place and the second starts it, and one subsection below
-states one pair, headed by the service manager it belongs to. Every service
+A service pair runs with the host's administrative privilege — as root on Linux
+and macOS, in an elevated PowerShell on Windows — and which pair you run is your
+platform's own: the supported-platform list's service-manager column names it,
+and its per-user column names the per-user pair, which runs with none. The first
+of a service pair puts the service in place and the second starts it, and one
+subsection below states one pair, headed by the manager it belongs to. Every service
 manager that list names a platform the install path targets under has a pair
 here, and no manager it does not name has one. A manager whose platforms all
 answer `install path: no` may have one too: a pair is owed once the routes reach
@@ -831,11 +846,20 @@ installer does, and the reason is that this service commands a 3D printer.**
 Installing a package must not, as a side effect, start a process that can move a
 machine, so starting the supervisor stays a decision somebody takes rather than
 something that happens while they are installing. Do not fold these two steps
-back together, in any pair.
+back together, in any service pair.
+
+**The per-user pair is the one exception, and it is one by design.** Its
+installer is the person's own install of a server for themselves, so running it
+is the decision to supervise: it registers the task and starts it, and its second
+command restarts the server once the steps between the two have been taken. The
+rule above stays for every service manager — no service installer starts a
+service or registers it to start by itself.
 
 `just check-repo`'s `service-install` reads this section beside the tree and
 refuses one in which the service's name or the installer's path differs from
-what is written below, or in which that installer enables or starts anything.
+what is written below, or in which that installer runs anything its manager's
+rules forbid — for a service, anything that enables or starts it; for the
+per-user pair, anything an administrator's.
 What it reads for a platform is that platform's own service-manager column, so
 each service manager here is read against its own pair and its own rules —
 `repo-policy.toml`'s `service.managers.<manager>` — rather than against
@@ -876,7 +900,43 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
 ```
 
+#### windows-scheduled-task
+
+The recommended pair on Windows, and neither command is elevated: both run in a
+PowerShell of your own — Windows PowerShell or a newer one. The first is the
+third route's own PowerShell script, run with no switch: it puts the program in
+`%LOCALAPPDATA%\Programs\printobserver`, writes your own configuration at
+`%LOCALAPPDATA%\printobserver\config.toml` — only when none is there — and the
+state directory at `%LOCALAPPDATA%\printobserver\state`, each with your profile's
+own permissions, and registers and starts a Scheduled Task named `printobserver`,
+in the root task folder, as you. The task runs the server at your logon with your
+limited token, with no time limit, one instance at a time, and on battery power;
+every minute it starts the server again if it is not running, which is what
+brings it back after it ends however it ended. Run again, the same command
+upgrades in place: it stops the task, waits for the server to exit, replaces the
+program, leaves the configuration and the state as they are, and starts the task
+again. It refuses a machine the `printobserver` service is installed on, naming
+the migration below. The second restarts the server, which is how it reads the
+steps taken between the two, and any later configuration change. Made executable
+by the `windows-scheduled-task` node.
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+```
+
+```powershell
+Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
+```
+
+To stop supervising until you start it again, disable the task —
+`Disable-ScheduledTask -TaskName printobserver` — rather than stopping it, which
+the next minute's start undoes. On a host whose server is the service, the third
+route with `-ClientOnly` installs the program alone.
+
 #### windows-service
+
+The isolated option on Windows, for a host that wants the agent kept out of the
+person's account.
 
 <!-- llmlint: ignore[instruction_layer_localized] This section is the authoritative statement of the end-user install path, which `just check-repo` reads out of the root file for every service manager and derives the README and CI jobs from; the task requires the Windows pair here, in the per-platform shape, beside the systemd one. suppressions.toml has the full reason. -->
 Both run in an elevated PowerShell — Windows PowerShell or a newer one. The first
@@ -918,6 +978,13 @@ On Windows:
 gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
 ```
 
+On Windows, for the per-user install, as yourself and with no elevation, under
+the state directory in your own profile:
+
+```powershell
+gh skill install nickderobertis/printobserver printobserver --dir $env:LOCALAPPDATA\printobserver\state\skills
+```
+
 ### Between the two commands, issue the operator's credential
 
 <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads this step's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
@@ -941,6 +1008,10 @@ On Windows, from a PowerShell that is not elevated:
 ```powershell
 & 'C:\Program Files\printobserver\printobserver.exe' credential issue
 ```
+
+For the per-user install on Windows it is the Linux and macOS command, run as
+yourself, and the line it prints goes into your own
+`%LOCALAPPDATA%\printobserver\config.toml`, which it then names.
 
 ### Between the two commands, sign in the agent's harness
 
@@ -975,6 +1046,43 @@ with `npm install -g`, as above and without `sudo`, and then:
 ```powershell
 & 'C:\Program Files\printobserver\printobserver.exe' sign-in
 ```
+
+The per-user install's supervision turns run as you, so the harness is
+installed with `npm install -g` as you and signed in as you, with no elevation:
+with no `--config`, `sign-in` reads your per-user configuration when it is there.
+
+```powershell
+printobserver sign-in
+```
+
+### Moving a Windows service install to the per-user one
+
+One elevated step moves a host already running the `printobserver` service to
+the per-user install, keeping every print record, image and turn. Committed at
+`scripts/migrate-service-to-per-user.ps1`, it stops the service and waits for its
+process to exit; copies the service's configuration and its whole state
+directory under the named user's local application data, owned by that user
+with the profile's own permissions; rewrites only `state_dir` and
+`supervisor.skill_path` in the copy; verifies the copy — every file there, with
+the SHA-256 of each equal to its original's — before it deletes the service; and
+leaves `C:\ProgramData\printobserver` and `C:\Program Files\printobserver` as
+they were, saying how to remove them. It refuses, changing nothing, when it is not
+elevated, when `-LocalAppData` is not a directory, when no service is registered,
+or when that user already has a per-user configuration. Run it in an elevated
+PowerShell; where elevating runs it as another administrator, name the person
+the install is for with `-LocalAppData` and `-User`.
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1 | iex
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1))) -LocalAppData C:\Users\operator\AppData\Local -User PRINTPC\operator
+```
+
+Then, as that user and with no elevation, the per-user pair's first command —
+which keeps the configuration the migration copied and starts the server — and
+`printobserver sign-in`.
 
 ## The registry install-path proof
 

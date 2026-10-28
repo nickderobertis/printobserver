@@ -373,6 +373,40 @@ restarts_after_crash = "actions= restart"
 program_source = "crates/printobserver/src/windows_service.rs"
 program_constant = "SERVICE_NAME"
 
+# The per-user manager on Windows, named in a platform's per-user column: a
+# Scheduled Task the person using the machine registers for themselves, with no
+# elevation. Its installer is the third route's own PowerShell script run with
+# no switch, and it is the one installer here that starts what it installs: it
+# installs nothing for anybody but the person running it, so running it is the
+# decision to supervise. What it may not do is reach for anything an
+# administrator's: register a service, start one, or grant a permission. The
+# task runs the server at logon and, every minute, starts it again if it is not
+# running — which is what brings it back however it ended — as that user's own
+# limited token, only while they are logged on.
+[service.managers.windows-scheduled-task]
+installer = "scripts/install.ps1"
+may_not_invoke = [
+    "New-Service",
+    "Set-Service",
+    "Start-Service",
+    "sc.exe create",
+    "sc.exe config",
+    "sc.exe start",
+    "icacls",
+    "Start-Process",
+]
+starts_at_boot = "<LogonTrigger>"
+restarts_after_crash = "<Repetition> <Interval>PT1M</Interval>"
+must_carry = [
+    "<LogonType>InteractiveToken</LogonType>",
+    "<RunLevel>LeastPrivilege</RunLevel>",
+    "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
+    "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
+]
+# The one elevated step from a service install to this one; a fetch URL may
+# name it.
+migration = "scripts/migrate-service-to-per-user.ps1"
+
 [skill_install]
 # The real `gh skill install` of this repository's Agent Skill, from a copy of
 # the tree and with no GitHub credentials. Like the tiers above it declares a
@@ -773,6 +807,8 @@ waived_steps = [
   "start-service-launchd",
   "install-service-windows-service",
   "start-service-windows-service",
+  "install-service-windows-scheduled-task",
+  "start-service-windows-scheduled-task",
 ]
 waived_report = "GITHUB_STEP_SUMMARY"
 

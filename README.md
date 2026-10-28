@@ -23,10 +23,14 @@ camera → Obico → failure webhook → printobserver → supervising agent
 printer ← OctoPrint ← allowed action ← policy ← agent decision
 ```
 
-`printobserver server` is the supervisor. On an installed machine it runs as a
-service under that machine's own service manager — a systemd unit on Linux, a
-launchd daemon on macOS, a Windows service on Windows — started at boot and
-started again after a crash. It reads printer and job state through
+`printobserver server` is the supervisor. On an installed Linux or macOS machine
+it runs as a service under that machine's own service manager — a systemd unit
+on Linux, a launchd daemon on macOS — started at boot and started again after a
+crash. On Windows the recommended install runs it as you: a Scheduled Task of
+your own starts it at your logon and starts it again whenever it is not running,
+from a program, configuration and state in your own profile. The
+[isolated install](#isolated-install-on-windows-the-service) runs it as a
+Windows service instead, under an account of its own. It reads printer and job state through
 OctoPrint's API using the configured address and API key. It also exposes an
 ingress for alerts posted by Obico's webhook notification plugin; when an alert
 arrives, it immediately fetches the snapshot named by that alert.
@@ -107,11 +111,45 @@ printobserver machine that Obico can reach and use it in the webhook URL.
 
 ### 3. Install printobserver
 
-Choose one of these three routes, on whichever operating system you are on.
-Each installs a program already built for your platform and needs no Rust
-toolchain on the printer host. The routes are stated once, in
+On Windows, one command from a PowerShell of your own — not an elevated one —
+installs the program and runs its server as you. This is the recommended
+install, and no step of it, nor any upgrade, sign-in or configuration change
+after it, needs an elevated PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+```
+
+It puts the program in `%LOCALAPPDATA%\Programs\printobserver` and on your
+path, writes your own server configuration and state directory under
+`%LOCALAPPDATA%\printobserver` — the configuration only when none is there —
+and registers and starts a Scheduled Task named `printobserver` that runs the
+server as you. It prints the steps below that are left. Running the same command
+again upgrades in place: it stops the task, waits for the server to exit,
+replaces the program, keeps your configuration and state, and starts it again.
+It also takes `-ObservationIntervalSeconds`, as the service installer does, and
+`-ClientOnly` installs the program alone, for a machine whose server is the
+[isolated install](#isolated-install-on-windows-the-service).
+
+Two trade-offs come with running the server as you, and they are why the
+isolated install exists:
+
+- **It runs only while you are logged on.** After a reboot or a power loss,
+  nothing is watched until somebody logs in. On a print PC dedicated to the
+  printer, turning on automatic logon covers that.
+- **Supervision turns run as you.** The agent could read your own client
+  configuration, and with it act beyond what its own policy grants, so the
+  per-actor policy is a guard rail rather than a hard boundary.
+
+If a machine already runs the printobserver service, this command refuses and
+names the [one elevated step that moves it](#moving-from-the-windows-service-to-the-per-user-install).
+
+On Linux and macOS, choose one of these three routes. Each installs a program
+already built for your platform and needs no Rust toolchain on the printer host.
+The routes are stated once, in
 [`AGENTS.md`'s install path](./AGENTS.md#the-end-user-install-path), and a
-check holds the commands here to the ones stated there.
+check holds the commands here to the ones stated there. The first two install
+the program alone on Windows too.
 
 With Python, on Linux, macOS or Windows:
 
@@ -138,13 +176,8 @@ It also accepts a release and destination:
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh -s -- --version v0.1.0 --to ~/.local/bin
 ```
 
-On Windows, the same installer in its PowerShell form, from any PowerShell:
-
-```powershell
-irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
-```
-
-It takes the same two options:
+On Windows, the command above is this installer's PowerShell form. It takes the
+same two options:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1))) -Version v0.1.0 -To C:\Tools\printobserver
@@ -159,23 +192,16 @@ printobserver --version
 
 ### 4. Install the service files
 
-This puts four things in place — the program, a private state directory, a
-configuration template, and the service definition your platform's service
-manager reads — and deliberately starts nothing.
+On Windows, step 3 already did this, as you: skip to step 5.
 
-On Linux and macOS, the installer writes a systemd unit or a launchd property
-list, whichever the host runs services under:
+On Linux and macOS, this puts four things in place — the program, a private
+state directory, a configuration template, and the service definition your
+platform's service manager reads — and deliberately starts nothing. The
+installer writes a systemd unit or a launchd property list, whichever the host
+runs services under:
 
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-```
-
-On Windows, from an elevated PowerShell, the same installer in its Windows form
-registers a service with the service control manager — to start on demand, as
-its own virtual account, and to be brought back if its process dies:
-
-```powershell
-irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.ps1 | iex
 ```
 
 Where the installer puts things differs by platform. The rest of this guide
@@ -186,18 +212,20 @@ the program — and this table is what each role means on your machine:
 | --- | --- | --- | --- |
 | Linux | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
 | macOS | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
-| Windows | `C:\ProgramData\printobserver\config.toml` | `C:\ProgramData\printobserver\state` | `C:\Program Files\printobserver\printobserver.exe` |
+| Windows | `%LOCALAPPDATA%\printobserver\config.toml` | `%LOCALAPPDATA%\printobserver\state` | `%LOCALAPPDATA%\Programs\printobserver\printobserver.exe` |
+| Windows, isolated install | `C:\ProgramData\printobserver\config.toml` | `C:\ProgramData\printobserver\state` | `C:\Program Files\printobserver\printobserver.exe` |
 
 These are the program's own answers, from `crates/printobserver/src/locations.rs`;
 each installer writes exactly them, and a test holds this table to that module.
-The configuration file and the state directory are private: on Linux and macOS
-they are readable by root and by the service's own user, and on Windows by
-administrators and by the service's account.
+On Linux and macOS the configuration file and the state directory are private,
+readable by root and by the service's own user. On Windows they are yours, with
+your profile's own permissions, so you read and edit them, and open the images
+and turn records the agent was given, with no elevation.
 
 ### 5. Configure the supervisor
 
-Edit the configuration file — as root on Linux and macOS, from an elevated
-PowerShell on Windows:
+Edit the configuration file — as root on Linux and macOS, as yourself on
+Windows:
 
 - `state_dir` holds the database, images, sessions, the agent's prompt assets
   and, under `skills`, the agent's installed skill; the template uses your
@@ -290,16 +318,10 @@ authenticating its API key, and identifies a field it cannot accept.
 #### Issue your operator credential
 
 The service holds no credential you can authenticate with — only its verifier.
-Issue yourself one as yourself, unprivileged. On Linux and macOS:
+Issue yourself one as yourself, unprivileged, on any platform:
 
 ```console
 printobserver credential issue
-```
-
-On Windows, from a PowerShell that is not elevated:
-
-```powershell
-& 'C:\Program Files\printobserver\printobserver.exe' credential issue
 ```
 
 It draws a credential from 32 random bytes and writes it, with the address the
@@ -314,8 +336,9 @@ api.credential_verifier = "sha256:0d3f…"
 ```
 
 Put that line in the server's configuration above its first `[table]` header
-(or as `credential_verifier = …` inside an `[api]` table), and the service reads
-it when it next starts. If you change `listen`, run it again with `--replace`
+(or as `credential_verifier = …` inside an `[api]` table) — the command names
+the file, which on Windows is your own `%LOCALAPPDATA%\printobserver\config.toml`
+— and the service reads it when it next starts. If you change `listen`, run it again with `--replace`
 and `PRINTOBSERVER_SERVER` set to the new address, and put the new line in
 place of the old one. To use a credential you chose instead, pipe it into
 `printobserver credential verifier` for the same line; make it long and random,
@@ -323,7 +346,8 @@ because a verifier of a short or guessable credential can be searched offline.
 
 From then on every command you run reads your own configuration first. With no
 `--config`, a command reads `printobserver/client.toml` under your configuration
-home, then the service's own configuration file for whatever that left unnamed
+home, then, on Windows, your per-user server configuration when it is there,
+and then the service's own configuration file for whatever those left unnamed
 (it is private to the service, so from your own account that read is passed
 over). `--config <path>` reads that one file instead. `PRINTOBSERVER_SERVER` and
 `PRINTOBSERVER_CREDENTIAL` win over any file, and when both are set and no
@@ -345,23 +369,25 @@ version left there.
 
 #### The boundary that remains
 
-When the service and you run as the same OS user, a supervision turn runs as you
+When the server and you run as the same OS user, a supervision turn runs as you
 too: it can read your own client configuration, and the environment of another
 turn running at the same time — through `/proc/<pid>/environ` on Linux, or
-`ps -E` on macOS. Full isolation needs the service to run as an OS user of its
-own. The installer gives it one when it runs as root, as the steps above have
-it: on Linux and macOS it creates the `printobserver` system user (or runs the
-service as the user `--user` names), and on Windows the service runs as its own
-virtual account, `NT SERVICE\printobserver`. Issue your credential as your own
-user, not as the service's.
+`ps -E` on macOS. That is the recommended Windows install, by design: the agent
+could act beyond its own grant through your credential, so there the per-actor
+policy is a guard rail rather than a hard boundary. Full isolation needs the
+server to run as an OS user of its own. The installer gives it one when it runs
+as root, as the steps above have it on Linux and macOS: it creates the
+`printobserver` system user (or runs the service as the user `--user` names). On
+Windows the [isolated install](#isolated-install-on-windows-the-service) runs it
+as its own virtual account, `NT SERVICE\printobserver`. Issue your credential as
+your own user, not as the service's.
 
 ### 6. Install the agent's skill
 
 The agent's skill is not part of the program: it is the Agent Skill this
 repository publishes, and the service reads it from `supervisor.skill_path`.
-Install it under the state directory, where the service can read it, as the
-host's administrator — as root on Linux and macOS, from an elevated PowerShell
-on Windows. It needs GitHub CLI 2.100.0 or later, the first release with
+Install it under the state directory, where the service can read it — as root
+on Linux and macOS, and as yourself on Windows. It needs GitHub CLI 2.100.0 or later, the first release with
 `gh skill`, and no GitHub sign-in: the repository is public. The installer's
 comment above `skill_path` names the same command.
 
@@ -374,7 +400,7 @@ sudo gh skill install nickderobertis/printobserver printobserver --dir /var/lib/
 On Windows:
 
 ```powershell
-gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
+gh skill install nickderobertis/printobserver printobserver --dir $env:LOCALAPPDATA\printobserver\state\skills
 ```
 
 Run it again to take a newer skill; restart the service afterwards, because the
@@ -407,14 +433,12 @@ Then sign it in once, as the service user:
 sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
 ```
 
-On Windows, install the harness with the same `npm install -g` command, without
-`sudo`, from an elevated PowerShell. The service's virtual account cannot be
-signed in to and does not need to be — the sign-in lands under the state
-directory, which the installer made the service account's to read — so sign in
-from that same elevated PowerShell:
+On Windows the server runs as you, so install the harness with the same
+`npm install -g` command, without `sudo`, as yourself, and sign it in as
+yourself. With no `--config`, `sign-in` reads your per-user configuration:
 
 ```powershell
-& 'C:\Program Files\printobserver\printobserver.exe' sign-in
+printobserver sign-in
 ```
 
 This reads `state_dir` and `supervisor.harness` from the configuration file and
@@ -445,15 +469,18 @@ On macOS:
 sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
 ```
 
-On Windows, from an elevated PowerShell, the one command that sets the service
-to start automatically and starts it:
+On Windows the server is already running as you, from step 3; restart its task
+so it reads what steps 5 to 7 put in place. This is also the command for every
+later change to your configuration:
 
 ```powershell
-Set-Service -Name printobserver -StartupType Automatic -Status Running
+Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
 ```
 
-On every platform the service manager starts it again at every boot, and
-again if it ends abruptly.
+On Linux and macOS the service manager starts it again at every boot, and again
+if it ends abruptly. On Windows the task starts it at your logon, and starts it
+again within a minute whenever it is not running; to stop supervising until you
+start it again, run `Disable-ScheduledTask -TaskName printobserver`.
 
 Starting is separate because this service commands a 3D printer. Installing
 software must not start a process that can move the machine — at install, or at
@@ -496,6 +523,98 @@ Make the first read with that ID in place of `PRINT_ID`:
 
 ```console
 printobserver context --print-id PRINT_ID
+```
+
+## Isolated install on Windows: the service
+
+For a machine that wants an operating-system boundary between the agent and the
+person using it, the server runs as a Windows service instead, under its own
+virtual account, `NT SERVICE\printobserver`, with its configuration and state in
+`C:\ProgramData\printobserver` readable only by administrators and that
+account. Every step of it but the credential is taken in an elevated PowerShell:
+each upgrade, each harness sign-in, each configuration change, and each look at
+an image or a turn record. It is supported exactly as it always was.
+
+Take step 3 with `-ClientOnly`, which puts the program on your path and installs
+no per-user server — or either of the other two routes. Then, from an elevated
+PowerShell, put the service in place; it registers the service to start on
+demand, as its own virtual account, and to be brought back if its process dies,
+and starts nothing:
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.ps1 | iex
+```
+
+Fill in its configuration as step 5 describes, from that elevated PowerShell.
+Issue your credential from a PowerShell that is not elevated, and put its line
+into `C:\ProgramData\printobserver\config.toml`:
+
+```powershell
+& 'C:\Program Files\printobserver\printobserver.exe' credential issue
+```
+
+Install the skill under the service's state directory, from the elevated
+PowerShell:
+
+```powershell
+gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
+```
+
+Install the harness with `npm install -g` from the elevated PowerShell. The
+service's virtual account cannot be signed in to and does not need to be — the
+sign-in lands under the state directory, which the installer made the service
+account's to read — so sign in from that same elevated PowerShell:
+
+```powershell
+& 'C:\Program Files\printobserver\printobserver.exe' sign-in
+```
+
+Then set the service to start automatically, and start it, with the one command
+that does both:
+
+```powershell
+Set-Service -Name printobserver -StartupType Automatic -Status Running
+```
+
+The service control manager starts it at every boot, whether or not anybody
+logs in, and again if it ends abruptly. Starting is a command of its own because
+this service commands a 3D printer: installing software must not start a process
+that can move the machine — at install, or at the next reboot.
+
+## Moving from the Windows service to the per-user install
+
+One elevated step moves a machine that runs the service to the per-user
+install, keeping every print record, image and turn. From an elevated
+PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1 | iex
+```
+
+It stops the service and waits for it to exit; copies its configuration and its
+whole state directory — the database, the images, the turn records, the harness
+sign-ins and the skill — into your `%LOCALAPPDATA%\printobserver`, owned by you;
+rewrites only `state_dir` and `supervisor.skill_path` in the copy; and checks
+every copied file against its original's SHA-256 before it deletes the service.
+A copy that does not check out is removed again and the service left
+registered. It refuses, changing nothing, from a PowerShell that is not elevated,
+on a machine with no service, and when you already have a per-user
+configuration. It leaves `C:\ProgramData\printobserver` and
+`C:\Program Files\printobserver` where they are, and prints how to remove them
+once you are satisfied.
+
+If elevating runs it as another administrator, name yourself instead of that
+account — your own local application data and your own account:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1))) -LocalAppData C:\Users\operator\AppData\Local -User PRINTPC\operator
+```
+
+Then, as yourself and with no elevation, take step 3 — which keeps the copied
+configuration and starts the server as you — and sign the harness in again:
+
+```console
+printobserver sign-in
 ```
 
 ## Using it

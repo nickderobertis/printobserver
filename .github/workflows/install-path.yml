@@ -412,6 +412,20 @@ jobs:
         if: runner.os == 'macOS'
         continue-on-error: true
         run: sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
+      # The per-user Windows pair, the recommended one, which needs no
+      # elevation and runs the same in the runner's elevated session. It runs
+      # before the service pair, because its installer refuses a machine the
+      # service is already registered on.
+      - id: install-service-windows-scheduled-task
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+      - id: start-service-windows-scheduled-task
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
       # The Windows pair, in the elevated PowerShell the section states it for:
       # the runner's own session is elevated, and the installer refuses one
       # that is not.
@@ -436,7 +450,9 @@ jobs:
         env:
           INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-service.outcome || steps.install-service.outcome }}
           STARTED: ${{ runner.os == 'Linux' && steps.start-service-systemd.outcome || runner.os == 'macOS' && steps.start-service-launchd.outcome || steps.start-service-windows-service.outcome }}
-        run: 'echo "install-route-pypi: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
+          PER_USER_INSTALLED: ${{ steps.install-service-windows-scheduled-task.outcome }}
+          PER_USER_STARTED: ${{ steps.start-service-windows-scheduled-task.outcome }}
+        run: 'echo "install-route-pypi: service installation $INSTALLED, service startup $STARTED, per-user installation $PER_USER_INSTALLED, per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-npm:
     name: install-route-npm (${{ matrix.platform.id }})
@@ -471,6 +487,20 @@ jobs:
         if: runner.os == 'macOS'
         continue-on-error: true
         run: sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
+      # The per-user Windows pair, the recommended one, which needs no
+      # elevation and runs the same in the runner's elevated session. It runs
+      # before the service pair, because its installer refuses a machine the
+      # service is already registered on.
+      - id: install-service-windows-scheduled-task
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+      - id: start-service-windows-scheduled-task
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
       # The Windows pair, in the elevated PowerShell the section states it for:
       # the runner's own session is elevated, and the installer refuses one
       # that is not.
@@ -495,7 +525,9 @@ jobs:
         env:
           INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-service.outcome || steps.install-service.outcome }}
           STARTED: ${{ runner.os == 'Linux' && steps.start-service-systemd.outcome || runner.os == 'macOS' && steps.start-service-launchd.outcome || steps.start-service-windows-service.outcome }}
-        run: 'echo "install-route-npm: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
+          PER_USER_INSTALLED: ${{ steps.install-service-windows-scheduled-task.outcome }}
+          PER_USER_STARTED: ${{ steps.start-service-windows-scheduled-task.outcome }}
+        run: 'echo "install-route-npm: service installation $INSTALLED, service startup $STARTED, per-user installation $PER_USER_INSTALLED, per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-script:
     name: install-route-script (${{ matrix.platform.id }})
@@ -540,6 +572,20 @@ jobs:
         if: runner.os == 'macOS'
         continue-on-error: true
         run: sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
+      # The per-user Windows pair, the recommended one, which needs no
+      # elevation and runs the same in the runner's elevated session. It runs
+      # before the service pair, because its installer refuses a machine the
+      # service is already registered on.
+      - id: install-service-windows-scheduled-task
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
+      - id: start-service-windows-scheduled-task
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
       # The Windows pair, in the elevated PowerShell the section states it for:
       # the runner's own session is elevated, and the installer refuses one
       # that is not.
@@ -564,4 +610,6 @@ jobs:
         env:
           INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-service.outcome || steps.install-service.outcome }}
           STARTED: ${{ runner.os == 'Linux' && steps.start-service-systemd.outcome || runner.os == 'macOS' && steps.start-service-launchd.outcome || steps.start-service-windows-service.outcome }}
-        run: 'echo "install-route-script: service installation $INSTALLED, service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"'
+          PER_USER_INSTALLED: ${{ steps.install-service-windows-scheduled-task.outcome }}
+          PER_USER_STARTED: ${{ steps.start-service-windows-scheduled-task.outcome }}
+        run: 'echo "install-route-script: service installation $INSTALLED, service startup $STARTED, per-user installation $PER_USER_INSTALLED, per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"'

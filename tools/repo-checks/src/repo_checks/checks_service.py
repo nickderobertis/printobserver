@@ -55,6 +55,12 @@ ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
         r"\blaunchctl\s+bootstrap\s+system\s+(?P<directory>\S*)/(?P<service>[^/\s]+)\.plist\s*$"
     ),
     ServiceManager.WINDOWS_SERVICE: re.compile(r"\bSet-Service\s+-Name\s+(?P<service>\S+)\b"),
+    # The per-user pair's second command restarts the task its installer
+    # already started: `Stop-ScheduledTask ...; Start-ScheduledTask -TaskName
+    # <task>`, whose last word is the task.
+    ServiceManager.WINDOWS_SCHEDULED_TASK: re.compile(
+        r"\bStart-ScheduledTask\s+-TaskName\s+(?P<service>[^\s;]+)\s*$"
+    ),
 }
 
 # What each manager's activation command has to look like, quoted back at a
@@ -63,6 +69,7 @@ ACTIVATION_SHAPES: dict[str, str] = {
     ServiceManager.SYSTEMD: "systemctl enable --now <unit>",
     ServiceManager.LAUNCHD: "launchctl bootstrap system <directory>/<label>.plist",
     ServiceManager.WINDOWS_SERVICE: "Set-Service -Name <service> ...",
+    ServiceManager.WINDOWS_SCHEDULED_TASK: "Start-ScheduledTask -TaskName <task>",
 }
 
 # How each manager's installer declares the name it registers: `UNIT_NAME="..."`
@@ -80,6 +87,12 @@ NAME_DECLARATIONS: dict[str, tuple[re.Pattern[str], str]] = {
     ServiceManager.WINDOWS_SERVICE: (
         re.compile(r"^\$ServiceName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
         "$ServiceName = '...'",
+    ),
+    # The per-user installer declares its task inside the function the whole
+    # route runs in, so the line is indented.
+    ServiceManager.WINDOWS_SCHEDULED_TASK: (
+        re.compile(r"^\s*\$TaskName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
+        "$TaskName = '...'",
     ),
 }
 
@@ -147,6 +160,9 @@ class Rules:
     restarts_after_crash: str
     registration_directory: str | None
     program_name: tuple[str, str] | None
+    #: What the registration the installer writes must carry besides the two
+    #: settings above, each in the manager's own vocabulary.
+    must_carry: tuple[str, ...] = ()
 
 
 def _rules(repo: Repo, manager: str) -> Rules:
@@ -182,6 +198,7 @@ def _rules(repo: Repo, manager: str) -> Rules:
         if directory is not None
         else None,
         program,
+        policy_string_list(table, "must_carry", where) if "must_carry" in table else (),
     )
 
 
@@ -195,14 +212,20 @@ def installer_for(repo: Repo, manager: str) -> str:
 
 
 def installers(repo: Repo) -> list[str]:
-    """Every installer `repo-policy.toml` declares, one per manager it has rules for."""
+    """Every script `repo-policy.toml` declares per manager it has rules for.
+
+    Each manager's installer, and the migration onto it where it has one: the
+    one elevated step that moves a service install's record to a per-user one.
+    """
     managers = policy_table(repo, "service").get("managers")
     if not isinstance(managers, dict):
         return []
     return [
-        str(table["installer"])
+        str(table[key])
         for table in managers.values()
-        if isinstance(table, dict) and isinstance(table.get("installer"), str)
+        if isinstance(table, dict)
+        for key in ("installer", "migration")
+        if isinstance(table.get(key), str)
     ]
 
 
@@ -214,8 +237,9 @@ def _service_managers(repo: Repo) -> list[str]:
     """
     named: list[str] = []
     for platform in supported(repo):
-        if platform.service_manager not in named:
-            named.append(platform.service_manager)
+        for manager in platform.managers:
+            if manager not in named:
+                named.append(manager)
     return named
 
 
@@ -493,6 +517,12 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
             for number in _sets(script, setting, powershell)
         )
 
+    findings.extend(
+        f"`{named.installer}` writes no `{setting}` into the registration it makes, which "
+        f"the `{manager}` rules require of it"
+        for setting in rules.must_carry
+        if not _carries(script, setting)
+    )
     if not _carries(script, rules.restarts_after_crash):
         findings.append(
             f"`{named.installer}` writes no `{rules.restarts_after_crash}`, so the service it "

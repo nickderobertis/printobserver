@@ -640,10 +640,15 @@ system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
         $definition = Get-TaskDefinition $account $installed $InstalledConfig
         try {
             Register-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -Xml $definition -Force | Out-Null
+        } catch {
+            Stop-Install "Task Scheduler would not register the task $TaskName for ${account}: $("$_".Trim())" `
+                "The program is installed at $installed and its configuration at $InstalledConfig. Run this again as $account, from a session of your own."
+        }
+        try {
             Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
         } catch {
-            Stop-Install "Task Scheduler would not register or start the task $TaskName for ${account}: $("$_".Trim())" `
-                "The program is installed at $installed and its configuration at $InstalledConfig. Run this again as $account, from a session of your own."
+            Stop-Install "Task Scheduler registered the task $TaskName for $account and would not start it: $("$_".Trim())" `
+                "It starts the server at $account's next logon; to start it now, log on as $account and run Start-ScheduledTask -TaskName $TaskName."
         }
     }
 

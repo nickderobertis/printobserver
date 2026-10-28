@@ -97,6 +97,12 @@ fn main() -> ExitCode {
             if let Some(exit) = printobserver::windows_service::run_if_service(config.clone()) {
                 return ExitCode::from(exit.status());
             }
+            // Started by Task Scheduler, as the per-user install starts it, the
+            // console is one Windows made for this process alone, and its
+            // window would sit on the user's desktop for as long as the server
+            // runs; started from a shell, the console is the shell's, and kept.
+            #[cfg(windows)]
+            printobserver::console::release_a_console_of_its_own();
             return ExitCode::from(run_server(config).status());
         }
         Invocation::SignIn { config } => match sign_in(&config) {

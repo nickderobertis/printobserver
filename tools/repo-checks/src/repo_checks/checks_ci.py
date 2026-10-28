@@ -586,10 +586,11 @@ def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
     )
     findings.extend(
         f"AGENTS.md's supported-platform list gives `{platform.id}` the service manager "
-        f"`{platform.service_manager}`, which is none this repository has a name for "
+        f"`{manager}`, which is none this repository has a name for "
         f"({', '.join(f'`{one.value}`' for one in ServiceManager)})"
         for platform in declared
-        if platform.service_manager not in ServiceManager
+        for manager in platform.managers
+        if manager not in ServiceManager
     )
     return findings
 
@@ -852,15 +853,18 @@ def _gh_prerequisite_findings(repo: Repo) -> list[str]:
 
 
 def service_managers(repo: Repo) -> list[str]:
-    """Every service manager `AGENTS.md`'s supported-platform list names, in order.
+    """Every manager `AGENTS.md`'s supported-platform list names, in order.
+
+    A platform's per-user manager is one of them, beside its service manager.
 
     Raises:
         MarkerBlockMissingError: If `AGENTS.md` carries no such list.
     """
     named: list[str] = []
     for platform in platforms_of(repo):
-        if platform.service_manager not in named:
-            named.append(platform.service_manager)
+        for manager in platform.managers:
+            if manager not in named:
+                named.append(manager)
     return named
 
 
@@ -877,7 +881,10 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     try:
         named = service_managers(repo)
         targeted = {
-            platform.service_manager for platform in platforms_of(repo) if platform.install_path
+            manager
+            for platform in platforms_of(repo)
+            if platform.install_path
+            for manager in platform.managers
         }
     except MarkerBlockMissingError as error:
         return [str(error)]
@@ -1184,8 +1191,9 @@ def _job_service_pairs(
     for platform in declared:
         if named and platform.id not in named:
             continue
-        if platform.service_manager not in managers:
-            managers.append(platform.service_manager)
+        for manager in platform.managers:
+            if manager not in managers:
+                managers.append(manager)
     return tuple(path.commands_for(manager) for manager in managers)
 
 

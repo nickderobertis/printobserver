@@ -2219,8 +2219,8 @@ reason = "Not a test of anything: it is the stand-in supervisor process the anno
 [[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/src/config.rs"
-site = "let gathered = gather(operator.iter().chain(std::iter::once(&default)))?;"
-reason = "The second file this merge reads is the server's default configuration, a compile-time system path (`locations::HERE.config`) that no journey can write without root. `gather`'s own test proves the merge over two real files — the operator's file wins and the default fills only what it left unnamed — and `tests/credentials.rs` drives the operator's file through the real binary against a real server."
+site = "let gathered = gather("
+reason = "The last file this merge reads is the server's default configuration, a compile-time system path (`locations::HERE.config`) that no journey can write without root. `gather`'s own test proves the merge over three real files — the operator's file wins, a per-user configuration fills next, and the default fills only what both left unnamed — `tests/credentials.rs` drives the operator's file through the real binary against a real server, and `tests/per_user.rs` drives the per-user one through it."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
@@ -2911,3 +2911,75 @@ rule = "async_typed_clients_at_boundaries"
 file = "python/printobserver-sdk/tests/test_client.py"
 site = "client.status(PRINT)"
 reason = "This test holds the published synchronous Python client to refusing, as unreadable, a document no status answer is, which is the client every Python consumer is handed. It ships no async counterpart, so an async client here would test a surface nobody ships."
+
+[[suppression]]
+rule = "unsafe_code"
+file = "crates/printobserver/src/console.rs"
+site = "#[expect(unsafe_code)]"
+reason = "The per-user Windows server is started by Task Scheduler, which gives a console program a console window of its own on the user's desktop, and the task's action is the program itself with no wrapper. Letting that console go is `GetConsoleProcessList` and `FreeConsole`, which neither the standard library nor any crate in the lockfile wraps safely, so this one `cfg(windows)` function is the workspace's only unsafe site, by the manager's ruling that made the workspace lint `deny` rather than `forbid` for it; each call carries its own SAFETY comment, and the per-user journey asserts from the process that the started server has no console."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/migrate-service-to-per-user.ps1"
+site = "Say \"moved the $ServiceName"
+reason = "A migration that succeeded prints what it moved and where, the two directories it deliberately left behind with the one command that removes them, and the two commands the user runs next as themselves; each is a line the operator acts on, and `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads the next steps back. A refusal prints only its two sentences: why it stopped and what to do next."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def program"
+reason = "The same ground as this rule's entry for `tests/repo-e2e/tests/test_windows_service_installer_journey.py`'s `def program`: the end-to-end tier is one project by design, and this is the same debug build of the repository root that group's journeys already share, which the tier's own `printobserver:build` has made before any journey asks, so the build here finds nothing to do."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "tasks = ("
+reason = "Task Scheduler exists on Windows alone, and this is what proves on every other host the task definition the per-user installer hands it, the order it asks in and what it refuses. The stand-ins record what they were asked and keep the one fact the installer reads back — whether the task is registered — and the definition asserted is the document the real Task Scheduler takes. On a Windows host the session omits them and the same journey drives the real Task Scheduler."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "tasks = ("
+reason = "A user runs the installer where Task Scheduler is real; the stand-ins stand in for that host on hosts that have none, and the Windows cases run it with them left out."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "script = f\"\"\""
+reason = "The host tools stood in are the service control manager, the token query and the owner-setter, which only a Windows host has and which would act on the tester's own machine: the stand-ins answer as Windows does — a service that is or is not registered, a stopped service's process gone, an elevated or a filtered token — and record what they were asked, which is what the order and refusal assertions read. The record the migration moves is real, written by the real server, and served back by the real server after it."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "script = f\"\"\""
+reason = "An operator runs both scripts on a Windows host whose tools are real; the session stands those tools in for every other host, and the scripts run through it exactly as they would be run there, as files under PowerShell with their documented options."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "install_the_skill("
+reason = "The same ground as this rule's entry for `tests/repo-e2e/tests/test_windows_service_installer_journey.py`'s `install_the_skill(`: the gate's cells are not given GitHub CLI, so the skill is laid down as `gh skill install` lays it down — the committed skill directory alone — and the `tests/skill-install` journey proves that is what the real install lays down."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "install_the_skill("
+reason = "The skill directory an operator's `gh skill install` puts under the state directory, laid down where the configuration names it; `tests/skill-install` runs the real command."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "connection = http.client.HTTPConnection("
+reason = "One post to the server's ingress inside a sequential journey, which waits on nothing else; an async client would add an event loop to a test that has one thing to do."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "connection = sqlite3.connect("
+reason = "A read-only look at the store the real server wrote, to learn when the alert's print and image are in it, inside a sequential journey; it is the readiness read `release_artifacts.world` makes the same way."
+
+[[suppression]]
+rule = "plan_criteria_require_realistic_tests"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "equal("
+reason = "A hosted Windows runner cannot perform an interactive logon, so the journey asserts the registered at-logon trigger names the installing user and starts the server through that same task definition with `Start-ScheduledTask`; starting it through a real interactive logon is checked on a real Windows host."

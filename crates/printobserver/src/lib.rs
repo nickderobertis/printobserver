@@ -53,6 +53,8 @@
 
 pub mod client;
 pub mod config;
+#[cfg(windows)]
+pub mod console;
 pub mod credential;
 pub mod failure;
 pub mod locations;

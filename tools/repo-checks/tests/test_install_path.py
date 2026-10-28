@@ -41,6 +41,18 @@ WINDOWS_ACTIVATION = "Set-Service -Name printobserver -StartupType Automatic -St
 #: supervisor.
 INSTALLER_REPLACED = "```console\nsudo systemctl enable --now printobserver.service\n```"
 SKILL_HEADING = "\n### Between the two commands, install the agent's skill"
+#: The per-user Windows pair: the third route's own script, and the restart.
+PER_USER_INSTALLER = (
+    "irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+    "scripts/install.ps1 | iex"
+)
+PER_USER_RESTART = (
+    "Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver"
+)
+PER_USER_SKILL_INSTALL = (
+    "gh skill install nickderobertis/printobserver printobserver "
+    "--dir $env:LOCALAPPDATA\\printobserver\\state\\skills"
+)
 FOURTH_ROUTE = """
 #### Route 4 — a distribution channel nobody built
 
@@ -67,10 +79,11 @@ def test_the_section_states_three_routes_and_two_commands_per_manager(committed:
         ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
     )
     equal(path.routes[2].commands[1], PINNED)
-    equal(len(path.commands), 6)
+    equal(len(path.commands), 8)
     equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
     equal(path.commands[3], LAUNCHD_START)
-    equal(path.commands[5], WINDOWS_ACTIVATION)
+    equal(path.commands[5], PER_USER_RESTART)
+    equal(path.commands[7], WINDOWS_ACTIVATION)
 
 
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
@@ -89,7 +102,7 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
 
     equal(
         sorted(path.service_commands),
-        ["launchd", "systemd", "windows-service"],
+        ["launchd", "systemd", "windows-scheduled-task", "windows-service"],
         describing="the managers stated",
     )
     equal(
@@ -108,14 +121,15 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
         describing="the windows-service pair, in installer-then-start order",
     )
     for platform in supported(committed):
-        pair = path.commands_for(platform.service_manager)
-        if platform.install_path:
-            equal(len(pair), 2, describing=f"the pair {platform.id} is held to")
-        equal(
-            bool(pair),
-            True,
-            describing=f"whether {platform.id} has a pair to be held to",
-        )
+        for manager in platform.managers:
+            pair = path.commands_for(manager)
+            if platform.install_path:
+                equal(len(pair), 2, describing=f"the {manager} pair {platform.id} is held to")
+            equal(
+                bool(pair),
+                True,
+                describing=f"whether {platform.id} has a {manager} pair to be held to",
+            )
 
 
 def test_a_manager_whose_platform_the_install_path_comes_to_target_owes_its_pair(
@@ -451,12 +465,14 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
         (
             SKILL_INSTALL,
             WINDOWS_SKILL_INSTALL,
+            PER_USER_SKILL_INSTALL,
             "printobserver credential issue",
             WINDOWS_CREDENTIAL_ISSUE,
             "sudo npm install -g @anthropic-ai/claude-code",
             "sudo npm install -g @openai/codex",
             SIGN_IN,
             WINDOWS_SIGN_IN,
+            "printobserver sign-in",
         ),
     )
     for command in path.sign_in:
@@ -598,3 +614,95 @@ def test_dropping_the_gh_prerequisite_is_refused(tree: Callable[[], Tree]) -> No
     findings = install_path_section(broken.repo)
 
     refused(findings, "README.md states no `GitHub CLI 2.100.0 or later` prerequisite")
+
+
+MIGRATION = (
+    "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/"
+    "main/scripts/migrate-service-to-per-user.ps1))) -LocalAppData C:\\Users\\operator\\AppData\\"
+    "Local -User PRINTPC\\operator"
+)
+
+
+def test_every_windows_platform_takes_the_per_user_pair_before_the_service_pair(
+    committed: Repo,
+) -> None:
+    """The recommended per-user pair, from each Windows platform's per-user column, comes first."""
+    path = ip.parse(committed.agents_md)
+    windows = [platform for platform in supported(committed) if platform.id.startswith("windows-")]
+    equal(len(windows), 2, describing="the Windows platforms the list names")
+    for platform in windows:
+        equal(
+            platform.managers,
+            ("windows-scheduled-task", "windows-service"),
+            describing=f"{platform.id}'s managers, the per-user one first",
+        )
+    equal(
+        path.commands_for("windows-scheduled-task"),
+        (PER_USER_INSTALLER, PER_USER_RESTART),
+        describing="the per-user pair",
+    )
+
+
+def test_a_section_with_no_per_user_pair_is_refused(tree: Callable[[], Tree]) -> None:
+    """A per-user manager the list names is owed its pair like any service manager."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        "#### windows-scheduled-task\n",
+        "#### a-manager-nobody-names\n",
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "states no pair of commands for the `windows-scheduled-task`")
+
+
+def test_a_readme_restating_the_per_user_restart_differently_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The README's restart is the section's, word for word."""
+    broken = tree()
+    broken.edit(
+        "README.md",
+        PER_USER_RESTART,
+        "Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName observer",
+    )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "README.md states `Stop-ScheduledTask")
+
+
+def test_the_migration_is_part_of_the_section_and_its_restatement_is_held_to_it(
+    committed: Repo, tree: Callable[[], Tree]
+) -> None:
+    """The one elevated step is stated in the section, and the README's copy may not differ."""
+    contains(
+        ip.parse(committed.agents_md).migration,
+        MIGRATION,
+        describing="the migration the section states",
+    )
+    broken = tree()
+    broken.edit("README.md", MIGRATION, MIGRATION.replace("PRINTPC\\operator", "PRINTPC\\someone"))
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "README.md states `& ([scriptblock]::Create")
+
+
+def test_a_migration_fetched_from_a_path_the_policy_does_not_declare_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The migration's fetch URL names the script `repo-policy.toml` declares, and nothing else."""
+    broken = tree()
+    for place in ("AGENTS.md", "README.md"):
+        broken.write(
+            place,
+            broken.read(place).replace(
+                "scripts/migrate-service-to-per-user.ps1", "scripts/migrate.ps1"
+            ),
+        )
+
+    findings = install_path_section(broken.repo)
+
+    refused(findings, "fetches `scripts/migrate.ps1`")

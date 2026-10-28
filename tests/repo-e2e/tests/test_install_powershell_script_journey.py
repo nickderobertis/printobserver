@@ -22,6 +22,12 @@ release, the install directory, and what a successful run says to do next.
 What only a Windows host can do — put a `.exe` in place and run it — the
 Windows cells of the gate do, over this same journey with the real program.
 
+Every case runs the script with `-ClientOnly`, which is the script as it was
+before it learned to install a per-user server: the program on the path and
+nothing else. That the switch leaves every behaviour here as it was is what
+this journey proves of it; the script with no switch, which also installs and
+starts the per-user server, is `test_per_user_windows_install_journey.py`'s.
+
 Two releases rather than one, and the older one is a stand-in program that
 reports a version of its own: what the selection assertions are about is which
 release the script chose, and two artifacts carrying the same program could not
@@ -84,6 +90,10 @@ DEFAULT_DIRECTORY = ("AppData", "Local", "Programs", "printobserver")
 #: The temporary directory a run is given, so that what the script left there
 #: is this journey's to read.
 TEMPORARY = "temp"
+
+#: The switch every case runs the script with: the program alone, as the
+#: script installed it before it learned to install a per-user server.
+CLIENT_ONLY = "-ClientOnly"
 
 
 def _machine(identifier: str) -> str:
@@ -260,7 +270,7 @@ def _environment(staged: Path, home: Path, identifier: str | None) -> dict[str, 
 def _run(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
     """Run the committed script as a file under this host's PowerShell."""
     result = shell_run(
-        [powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT), *arguments],
+        [powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT), CLIENT_ONLY, *arguments],
         cwd=home,
         env=environment,
         timeout=600,
@@ -292,7 +302,7 @@ def _run_in_session(
         for variable, value in session.items()
     )
     result = shell_run(
-        [powershell(), "-NoProfile", "-Command", f"{assignments}; & '{text}'"],
+        [powershell(), "-NoProfile", "-Command", f"{assignments}; & '{text}' {CLIENT_ONLY}"],
         cwd=home,
         env=environment,
         timeout=600,
@@ -305,13 +315,14 @@ def _piped(home: Path, environment: dict[str, str], *arguments: str) -> tuple[in
 
     With arguments, the way the pinned form passes them — a script block made
     of the same text. The session goes on after it and says what status the
-    script left it, which is what a caller at the prompt reads.
+    script left it, which is what a caller at the prompt reads. A piped script
+    takes no switch, so `-ClientOnly` reaches it the one way a caller can hand
+    a fetched script one: through the script block form.
     """
     text = str(REPO_ROOT / SCRIPT).replace("'", "''")
     invoked = (
-        f"& ([scriptblock]::Create((Get-Content -LiteralPath '{text}' -Raw))) {' '.join(arguments)}"
-        if arguments
-        else f"Get-Content -LiteralPath '{text}' -Raw | iex"
+        f"& ([scriptblock]::Create((Get-Content -LiteralPath '{text}' -Raw))) "
+        f"{' '.join([CLIENT_ONLY, *arguments])}"
     )
     result = shell_run(
         [
