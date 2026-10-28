@@ -92,7 +92,7 @@ fn verifier_output(
     let mut out = format!(
         "{}\n{}\n",
         verifier_line(verifier),
-        placing(crate::locations::HERE.config)
+        placing(&crate::locations::default_config().display().to_string())
     );
     if let Some(path) = written_to {
         let _ = writeln!(

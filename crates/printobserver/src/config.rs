@@ -13,8 +13,10 @@
 //! `--config <path>` names the one file read. With none, the operator's own
 //! client configuration is read first — the file `printobserver credential
 //! issue` writes, under their configuration home
-//! ([`crate::locations::operator_client_config`]) — and the server's default
-//! file after it for whatever the first left unnamed. `PRINTOBSERVER_SERVER`
+//! ([`crate::locations::operator_client_config`]) — then this user's per-user
+//! server configuration when there is one
+//! ([`crate::locations::per_user_config`]), and the service's default file
+//! after both, each filling only what the files before it left unnamed. `PRINTOBSERVER_SERVER`
 //! and `PRINTOBSERVER_CREDENTIAL` win over both, and with both set and no
 //! `--config`, no file is read at all: that is how a supervision turn, whose
 //! environment carries both, reads nothing.
@@ -363,8 +365,9 @@ fn gather<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> Result<Gathered, 
 /// Read what this program was configured with.
 ///
 /// With a file named, that file is read and nothing else is. With none, the
-/// operator's own client configuration is read first, and the server's default
-/// file after it for whatever the first left unnamed; either not being there
+/// operator's own client configuration is read first, then this user's
+/// per-user server configuration, and the service's default file last, each
+/// for whatever the ones before it left unnamed; any not being there
 /// is a host that configures this program another way rather than a failure.
 /// The environment is read afterwards and wins, so one invocation can be
 /// pointed elsewhere without editing what every other invocation reads.
@@ -409,8 +412,14 @@ pub fn load(named: Option<&Path>) -> Result<ClientConfig, Unconfigured> {
         reported = path.to_path_buf();
     } else if from_environment.0.is_none() || from_environment.1.is_none() {
         let operator = crate::locations::operator_client_config();
-        // llmlint: ignore[changed_behavior_has_e2e] The second file read here is the server's default, a compile-time system path no journey can write without root; `gather`'s own test proves the merge over two real files, and `tests/credentials.rs` drives the operator's file through the binary.
-        let gathered = gather(operator.iter().chain(std::iter::once(&default)))?;
+        let per_user = crate::locations::per_user_config();
+        // llmlint: ignore[changed_behavior_has_e2e] The last file read here is the server's default, a compile-time system path no journey can write without root; `gather`'s own test proves the merge over three real files, `tests/credentials.rs` drives the operator's file through the binary, and `tests/per_user.rs` the per-user one.
+        let gathered = gather(
+            operator
+                .iter()
+                .chain(per_user.iter())
+                .chain(std::iter::once(&default)),
+        )?;
         server = gathered.server;
         credential = gathered.credential;
         if let Some((path, detail)) = gathered.passed_over {
@@ -467,6 +476,7 @@ mod tests {
 
     /// The operator's own file is read first and the server's default fills
     /// only what it left unnamed; a file naming both leaves the default unread.
+    /// A per-user configuration between them fills before the default does.
     #[test]
     fn the_operators_file_wins_and_the_default_fills_what_it_left() {
         let root = tempfile::TempDir::new().expect("a test's own directory");
@@ -501,6 +511,27 @@ mod tests {
         assert_eq!(
             whole.server.map(|(value, _)| value).as_deref(),
             Some("http://127.0.0.1:7")
+        );
+
+        let per_user = root.path().join("per-user.toml");
+        std::fs::write(&operator, "[client]\ncredential = \"the-operators\"\n").expect("writable");
+        std::fs::write(&per_user, "listen = \"127.0.0.1:8\"\n").expect("writable");
+        let between = gather([&operator, &per_user, &default])
+            .expect("the per-user file names what the default would have");
+        assert!(
+            between
+                .server
+                .is_some_and(|(value, _)| value.contains("127.0.0.1:8")),
+            "the per-user file did not supply the server before the default"
+        );
+        let missing = root.path().join("absent.toml");
+        std::fs::write(&default, "listen = \"127.0.0.1:9\"\n").expect("writable");
+        let fallen = gather([&operator, &missing, &default]).expect("an absent file is passed");
+        assert!(
+            fallen
+                .server
+                .is_some_and(|(value, _)| value.contains("127.0.0.1:9")),
+            "with no per-user file the default did not supply the server"
         );
     }
 }
