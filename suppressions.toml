@@ -2921,7 +2921,7 @@ reason = "The per-user Windows server is started by Task Scheduler, which gives 
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/migrate-service-to-per-user.ps1"
-site = "Say \"moved the configuration to $UserConfig"
+site = "[Console]::Error.WriteLine($report -join [Environment]::NewLine)"
 reason = "A migration that finished prints one status line and then exactly the commands the operator runs next: the two the task requires as the user, non-elevated (`install.ps1`, which keeps the copied configuration and starts the server, and `printobserver sign-in`), and the removal of the two directories it deliberately left, which the task requires it to print. Each line is one the operator acts on; a refusal prints only its two sentences. `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads the next steps back."
 
 [[suppression]]
@@ -3071,7 +3071,7 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/install.ps1"
-site = "Say \"$configured; registered and started the task"
+site = "[Console]::Error.WriteLine($report -join [Environment]::NewLine)"
 reason = "The per-user install's success output is one status line and then the next steps the task requires it to print, non-elevated: `printobserver credential issue` with where its verifier line goes, the skill install into this install's state directory, `printobserver sign-in`, and the task restart that reads them. A run that kept a configuration and was given an interval adds one line saying the interval was not written. Each line is one the operator acts on, and `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads every next step back."
 
 [[suppression]]
@@ -3091,3 +3091,15 @@ rule = "changed_behavior_has_e2e"
 file = "scripts/migrate-service-to-per-user.ps1"
 site = "Say \"$path, copied by this run, could not be removed"
 reason = "`tests/repo-e2e/tests/test_per_user_windows_install_journey.py` proves this script under the contract the task approved for it: run against a `-Root` throwaway root, with `sc.exe`, `whoami.exe` and `icacls` as recorded stand-ins, on every host including the Windows gate, so a journey never stops, re-owns or deletes a real service on the machine running it. This branch runs only when the filesystem refuses to delete files this same run created, which no journey can cause without also making the copy itself fail first; the copy, verification and ownership refusals that reach `Remove-Copies` are each driven, and assert the copies are gone."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def test_the_fetched_form_installs_and_leaves_the_session_with_a_zero_status("
+reason = "This case existed before the change, which renamed it and, as its task required, runs it with `-ClientOnly` in place. `AGENTS.md` places every end-to-end journey in the one `repo-e2e` project, and the task placed the per-user journey for the same script beside this one; no per-project end-to-end target exists for a narrower edge to hang from."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_place("
+reason = "The task requires this journey under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, and requires its Task Scheduler cases to run on the Windows gate shards, which run that project's end-to-end tier. `AGENTS.md` places every end-to-end journey in that one project, and no per-project end-to-end target exists for a narrower edge to hang from."

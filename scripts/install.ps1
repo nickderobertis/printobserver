@@ -729,19 +729,23 @@ system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
             [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
             return
         }
-        # One line of what the server's install did, an interval it could not
-        # write where there was one, and the steps the operator takes next.
+        # What the server's install did, an interval it could not write where
+        # there was one, and the steps the operator takes next: one report,
+        # written once.
         $configured = if ($keptConfig) { "kept $InstalledConfig and $InstalledState" } else { "wrote $InstalledConfig, whose three FILL IN values are yours to set" }
-        # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
-        Say "$configured; registered and started the task $TaskName, which runs the server as $account at logon; next, as yourself and not elevated:"
+        $report = @("${SCRIPT}: $configured; registered and started the task $TaskName, which runs the server as $account at logon; next, as yourself and not elevated:")
         if ($keptConfig -and $ObservationIntervalSeconds) {
-            Say "-ObservationIntervalSeconds was not written into the configuration kept; set supervisor.observation_interval_s in $InstalledConfig yourself"
+            $report += "${SCRIPT}: -ObservationIntervalSeconds was not written into the configuration kept; set supervisor.observation_interval_s in $InstalledConfig yourself"
         }
-        [Console]::Error.WriteLine("  printobserver credential issue")
-        [Console]::Error.WriteLine("    and put the api.credential_verifier line it prints into $InstalledConfig, above its first [table] header")
-        [Console]::Error.WriteLine("  gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills")
-        [Console]::Error.WriteLine("  printobserver sign-in")
-        [Console]::Error.WriteLine("  Stop-ScheduledTask -TaskName $TaskName; Start-ScheduledTask -TaskName $TaskName")
+        $report += @(
+            "  printobserver credential issue",
+            "    and put the api.credential_verifier line it prints into $InstalledConfig, above its first [table] header",
+            "  gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills",
+            "  printobserver sign-in",
+            "  Stop-ScheduledTask -TaskName $TaskName; Start-ScheduledTask -TaskName $TaskName"
+        )
+        # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+        [Console]::Error.WriteLine($report -join [Environment]::NewLine)
     }
     Report-Installed
 }

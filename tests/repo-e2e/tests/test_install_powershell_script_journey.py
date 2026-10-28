@@ -589,6 +589,7 @@ def test_the_script_is_committed_where_its_own_fetch_url_names() -> None:
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_fetched_form_installs_and_leaves_the_session_with_a_zero_status(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:

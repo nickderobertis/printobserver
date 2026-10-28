@@ -353,10 +353,13 @@ if ($deleted.Code -ne 0) {
 function Report-Migrated {
     $left = Under-Root 'C:\ProgramData\printobserver'
     $program = Under-Root $ProgramDirectory
+    $report = @(
+        "${Script}: moved the configuration to $UserConfig and the record to $UserState, owned by $User and verified, deleted the $ServiceName service, and left $left and $program; next, as $User and not elevated, then elevated once satisfied:",
+        "  irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex",
+        "  printobserver sign-in",
+        "  Remove-Item -Recurse -Force '$left', '$program'"
+    )
     # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
-    Say "moved the configuration to $UserConfig and the record to $UserState, owned by $User and verified, deleted the $ServiceName service, and left $left and $program; next, as $User and not elevated, then elevated once satisfied:"
-    [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex")
-    [Console]::Error.WriteLine("  printobserver sign-in")
-    [Console]::Error.WriteLine("  Remove-Item -Recurse -Force '$left', '$program'")
+    [Console]::Error.WriteLine($report -join [Environment]::NewLine)
 }
 Report-Migrated

@@ -1314,6 +1314,7 @@ def _remove_task(task: str, program: Path) -> None:
 
 
 @WINDOWS_ONLY
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_place(
     program: Path, tmp_path: Path, machine: Machine
 ) -> None:
