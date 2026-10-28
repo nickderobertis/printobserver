@@ -32,6 +32,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from repo_checks import install_path as ip
 from repo_checks.model import (
@@ -162,7 +163,7 @@ class Rules:
     registration_directory: str | None
     program_name: tuple[str, str] | None
     #: When the manager starts it unattended: at boot, or at its user's logon.
-    starts_at: str = "boot"
+    starts_at: Literal["boot", "logon"] = "boot"
     #: What the registration the installer writes must carry besides the two
     #: settings above, each in the manager's own vocabulary.
     must_carry: tuple[str, ...] = ()

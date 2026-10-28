@@ -306,6 +306,8 @@ function icacls {{
     if (Refused 'icacls') {{ return }}
     if ("$env:{ALTERS}".StartsWith('remove:')) {{
         Remove-Item -LiteralPath "$env:{ALTERS}".Substring(7)
+    }} elseif ("$env:{ALTERS}".StartsWith('unreadable:')) {{
+        & chmod 000 "$env:{ALTERS}".Substring(11)
     }} elseif ($env:{ALTERS}) {{
         Add-Content -LiteralPath $env:{ALTERS} -Value 'made to differ'
     }}
@@ -714,6 +716,7 @@ def test_running_it_again_upgrades_in_place_and_the_installer_writes_no_state(
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     (home.state / STORE).write_bytes(b"a record the server wrote")
     (home.state / "images").mkdir()
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     (home.state / "images" / "frame.jpg").write_bytes(IMAGE)
     before = _tree(home.state)
     config_before = home.config.read_bytes()
@@ -855,7 +858,7 @@ def _recorded(state: Path) -> Recorded | None:
     store = state / STORE
     if not store.is_file():
         return None
-    # llmlint: ignore[async_typed_clients_at_boundaries] a read-only look in a sequential proof
+    # llmlint: ignore[async_typed_clients_at_boundaries, tests_mirror_real_usage] see the allowlist.
     connection = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
     try:
         prints = connection.execute("SELECT id FROM prints").fetchall()
@@ -2180,3 +2183,85 @@ def test_local_application_data_overlapping_the_services_record_is_refused(
         not any(line.startswith("sc.exe stop") for line in ran.recorded),
         describing=f"nothing stopped: {ran.recorded}",
     )
+
+
+@UNWRITABLE
+def test_a_service_configuration_that_cannot_be_read_is_refused_before_anything_is_stopped(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A configuration this session may not read is said so, and the service left running."""
+    home = _home(tmp_path, "home-unreadable-config")
+    serviced.config.chmod(0o000)
+    try:
+        ran = migrating(serviced, home, "-LocalAppData", str(home.local), **{REGISTERED: "1"})
+    finally:
+        serviced.config.chmod(0o644)
+
+    failing((ran.code, ran.said), naming="could not be read")
+    truth(
+        not any(line.startswith("sc.exe stop") for line in ran.recorded),
+        describing=f"nothing stopped: {ran.recorded}",
+    )
+
+
+@UNWRITABLE
+def test_a_copy_that_cannot_be_read_back_deletes_nothing(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A copy the check cannot read is one it cannot verify: the service is left registered."""
+    home = _home(tmp_path, "home-unreadable-copy")
+    unreadable = home.state / STORE
+    try:
+        ran = migrating(
+            serviced,
+            home,
+            "-LocalAppData",
+            str(home.local),
+            **{REGISTERED: "1", ALTERS: f"unreadable:{unreadable}"},
+        )
+    finally:
+        if unreadable.exists():
+            unreadable.chmod(0o644)
+
+    failing((ran.code, ran.said), naming="could not be read back")
+    truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
+
+
+@WINDOWS_ONLY
+def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
+    installing: Installing,
+    releases: Callable[[str], Path],
+    program: Path,
+    tmp_path: Path,
+    machine: Machine,
+) -> None:
+    """A console the server shares with the shell that started it stays shown."""
+    home = _home(tmp_path, "home-shell")
+    ran = installing(home, releases(_version()))
+    passing((ran.code, ran.said), describing="the per-user install, its task stood in")
+    port = _free_port()
+    _fill_in(home.config, machine, CREDENTIAL, f"127.0.0.1:{port}")
+    # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
+    install_the_skill(home.config)
+    # A shell in a console window of its own, as `Start-Process` opens one,
+    # which then starts the server in it: the console a person's own window is.
+    shell = int(
+        _powershell_answer(
+            "(Start-Process -FilePath cmd.exe -PassThru -ArgumentList "
+            f"'/k', {_quoted(chr(34) + str(program) + chr(34))}, 'server', '--config', "
+            f"{_quoted(chr(34) + str(home.config) + chr(34))}).Id"
+        )
+    )
+    try:
+        _eventually("the shell's server answering `prints`", lambda: _serves(program, port))
+        served = _servers(program)
+        equal(len(served), 1, describing=f"one server process: {served}")
+        equal(
+            _console_window_shown(served[0], tmp_path),
+            "shown",
+            describing="the window of the console the server shares with its shell",
+        )
+    finally:
+        for pid in _servers(program):
+            shell_run(["taskkill.exe", "/F", "/PID", str(pid)], timeout=60)
+        shell_run(["taskkill.exe", "/F", "/T", "/PID", str(shell)], timeout=60)
