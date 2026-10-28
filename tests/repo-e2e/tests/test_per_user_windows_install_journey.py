@@ -2377,3 +2377,40 @@ def test_the_migration_given_no_destination_moves_into_the_sessions_own_profile(
         [f"icacls {home.local / 'printobserver'} /setowner {_account()} /T /C"],
         describing="the copies made the account running it",
     )
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_the_migration_replaces_only_the_two_values_keeping_their_comments_and_quotes(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """Indentation, spacing, quote style and an inline comment on both lines survive the move."""
+    home = _home(tmp_path, "home-commented")
+    text = serviced.config.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    state_line = next(line for line in lines if line.startswith("state_dir"))
+    skill_line = next(line for line in lines if line.startswith("skill_path"))
+    old_skill = str(serviced.state / "skills" / "printobserver" / "SKILL.md")
+    commented_state = f"  state_dir   =  '{serviced.state}'   # the service's own record"
+    # A basic string, with each backslash written as TOML's escape for one.
+    commented_skill = '\tskill_path="' + old_skill.replace("\\", "\\\\") + '"  # the skill, quoted'
+    given = text.replace(state_line, commented_state).replace(skill_line, commented_skill)
+    serviced.config.write_bytes(given.encode("utf-8"))
+    new_skill = str(home.state / "skills" / "printobserver" / "SKILL.md")
+    expected = given.replace(
+        commented_state, f"  state_dir   =  '{home.state}'   # the service's own record"
+    ).replace(
+        commented_skill,
+        '\tskill_path="' + new_skill.replace("\\", "\\\\") + '"  # the skill, quoted',
+    )
+
+    ran = migrating(
+        serviced, home, "-LocalAppData", str(home.local), "-User", _account(), **{REGISTERED: "1"}
+    )
+
+    passing((ran.code, ran.said), describing="the migration of a commented configuration")
+    equal(
+        home.config.read_bytes(),
+        expected.encode("utf-8"),
+        describing="the migrated configuration, byte for byte",
+    )
+    equal(serviced.config.read_bytes(), given.encode("utf-8"), describing="the service's config")

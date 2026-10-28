@@ -3481,3 +3481,9 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "def test_the_migration_given_no_destination_moves_into_the_sessions_own_profile("
 reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. This case runs the committed migration with its documented defaults."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_the_migration_replaces_only_the_two_values_keeping_their_comments_and_quotes("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. This case runs the committed migration over a configuration whose two rewritten lines carry inline comments and their own quoting."

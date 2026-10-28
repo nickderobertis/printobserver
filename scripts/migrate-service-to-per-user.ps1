@@ -184,10 +184,33 @@ if (-not (Test-Path -LiteralPath $ServiceConfig -PathType Leaf)) {
 # The two lines this rewrites, and nothing else: `state_dir` before the first
 # table, and `skill_path` in `[supervisor]`. Every other byte - comments, line
 # endings, the operator's own values - is carried over as it was. Each is
-# required to be one plain string, which is what the service installer writes:
-# replacing it with another keeps the document what it was. The state directory
-# moved is the one `state_dir` names, which is the record the service kept.
-$PlainValue = '^\s*(state_dir|skill_path)\s*=\s*(''(?<value>[^'']*)''|"(?<value>[^"\\]*)")\s*(#.*)?$'
+# required to be one plain string, which is what the service installer writes,
+# and only the characters between its quotes are replaced: the indentation, the
+# spacing around `=`, the quote it was written in and an inline comment after
+# it are kept exactly. The state directory moved is the one `state_dir` names,
+# which is the record the service kept.
+$PlainValue = '^(?<lead>\s*(state_dir|skill_path)\s*=\s*)(''(?<single>[^'']*)''|"(?<double>([^"\\]|\\\\)*)")(?<rest>\s*(#.*)?)$'
+
+# `$Line` with its one plain string's value replaced by `$Path`, written in the
+# quote the line already used; $null when `$Line` is not one plain string.
+function Replace-Value([string]$Line, [string]$Path) {
+    $found = [regex]::Match($Line, $PlainValue)
+    if (-not $found.Success) {
+        return $null
+    }
+    if ($found.Groups['single'].Success) {
+        $value = $found.Groups['single'].Value
+        $quoted = "'$Path'"
+    } else {
+        # A basic string's one escape a path needs: `\\` for a backslash.
+        $value = $found.Groups['double'].Value.Replace('\\', '\')
+        $quoted = '"' + $Path.Replace('\', '\\') + '"'
+    }
+    return [pscustomobject]@{
+        Value = $value
+        Line = $found.Groups['lead'].Value + $quoted + $found.Groups['rest'].Value
+    }
+}
 $ServiceState = ''
 
 try {
@@ -213,19 +236,21 @@ foreach ($line in $lines) {
     if ($body -match '^\s*\[([^\]]+)\]\s*(#.*)?$') {
         $table = $Matches[1].Trim()
     } elseif ($table -eq '' -and $body -match '^\s*state_dir\s*=') {
-        if ($body -notmatch $PlainValue) {
+        $replaced = Replace-Value $body $UserState
+        if ($null -eq $replaced) {
             Fail "$ServiceConfig's state_dir is not one plain string, so this cannot tell which directory the record is in" `
                 "Nothing was changed. Write state_dir as install-service.ps1 does, such as state_dir = '$StateDirectory', and run this again."
         }
-        $ServiceState = $Matches['value']
-        $body = "state_dir = '$UserState'"
+        $ServiceState = $replaced.Value
+        $body = $replaced.Line
         $rewroteState = $true
     } elseif ($table -eq 'supervisor' -and $body -match '^\s*skill_path\s*=') {
-        if ($body -notmatch $PlainValue) {
+        $replaced = Replace-Value $body $UserSkill
+        if ($null -eq $replaced) {
             Fail "$ServiceConfig's supervisor.skill_path is not one plain string" `
                 'Nothing was changed. Write it as install-service.ps1 does, and run this again.'
         }
-        $body = "skill_path = '$UserSkill'"
+        $body = $replaced.Line
         $rewroteSkill = $true
     }
     [void]$rewritten.Append($body).Append($ending)
