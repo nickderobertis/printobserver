@@ -102,6 +102,11 @@ ALTERS = "PRINTOBSERVER_FIXTURE_ALTERS"
 REFUSES = "PRINTOBSERVER_FIXTURE_REFUSES"
 TASKS = "PRINTOBSERVER_FIXTURE_TASKS"
 
+#: What Task Scheduler answers a start of an interactive-token task whose user
+#: has no session: ERROR_REQUEST_REFUSED, as an HRESULT and in its own words.
+SESSIONLESS_START_REFUSED_CODE = "0x800710E0"
+SESSIONLESS_START_REFUSED_TEXT = "The operator or administrator has refused the request"
+
 #: The installer's own seam for the task's name.
 TASK_NAME = "PRINTOBSERVER_TASK_NAME"
 
@@ -1585,12 +1590,25 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
             describing="the task's run level",
         )
         if code != 0:
-            # Recorded rather than passed over: the one refusal a session-less
-            # account meets, said by Task Scheduler, after the registration.
+            # The one refusal the ruling admits: Task Scheduler declining to
+            # start an interactive-token task for a user with no session, which
+            # it answers with ERROR_REQUEST_REFUSED (0x800710E0, "The operator
+            # or administrator has refused the request"). Any other failure,
+            # before or after the registration, fails here.
             contains(
                 said,
-                "registered the task",
+                f"registered the task {task} for",
                 describing=f"the start refused after registering: {said}",
+            )
+            truth(
+                any(
+                    refusal in said
+                    for refusal in (
+                        SESSIONLESS_START_REFUSED_CODE,
+                        SESSIONLESS_START_REFUSED_TEXT,
+                    )
+                ),
+                describing=f"Task Scheduler's refusal for a user with no session: {said}",
             )
         for path in stray:
             equal(path.exists(), before[str(path)], describing=f"{path}, untouched")
