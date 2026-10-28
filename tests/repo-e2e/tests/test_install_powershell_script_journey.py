@@ -267,6 +267,7 @@ def _environment(staged: Path, home: Path, identifier: str | None) -> dict[str, 
     return environment
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def _run(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
     """Run the committed script as a file under this host's PowerShell."""
     result = shell_run(

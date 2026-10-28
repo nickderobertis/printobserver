@@ -399,7 +399,9 @@ may_not_invoke = [
     "icacls",
     "Start-Process",
 ]
-starts_at_boot = "<LogonTrigger>"
+# Started at its user's logon rather than at boot: a per-user install runs
+# only while its user is logged on, which the install path states.
+starts_at_logon = "<LogonTrigger>"
 restarts_after_crash = "<Repetition> <Interval>PT1M</Interval>"
 must_carry = [
     "<LogonType>InteractiveToken</LogonType>",

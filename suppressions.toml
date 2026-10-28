@@ -2983,3 +2983,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "The per-user Windows install: installed, upgraded"
 reason = "The same ground as this rule's entries for the other journeys in `tests/repo-e2e`: `AGENTS.md` places every end-to-end journey in that one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Its two siblings for the same scripts, `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, live there for the same reason."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "(home.state / STORE).write_bytes("
+reason = "This case proves the installer writes no state file, which needs a state directory with no server writing beside it: its bytes are opaque to the installer, which must leave whatever it finds. The Windows case drives the real server through its task, and proves the print and image it recorded are served after the same upgrade."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "release = _stage("
+reason = "The older release is the real program this tree builds, its version string changed in place, so the upgrade runs from a real server to a real server and the version each reports tells them apart. An independently built older release would rebuild the whole workspace a second time on a Windows runner, against the gate-time budget, to change one string."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _run("
+reason = "The same ground as this rule's entry for this file's `def _built_here`: `AGENTS.md` places every end-to-end journey in the one `repo-e2e` project by design, and no per-project end-to-end target exists for a narrower edge to hang from. This change adds `-ClientOnly` to the run it already made."

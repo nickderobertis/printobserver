@@ -156,10 +156,13 @@ class Rules:
     installer: str
     may_not_invoke: tuple[str, ...]
     may_not_set: tuple[str, ...]
-    starts_at_boot: str
+    #: What starts the service unattended, at boot or at logon, in the manager's own words.
+    starts_unattended: str
     restarts_after_crash: str
     registration_directory: str | None
     program_name: tuple[str, str] | None
+    #: When the manager starts it unattended: at boot, or at its user's logon.
+    starts_at: str = "boot"
     #: What the registration the installer writes must carry besides the two
     #: settings above, each in the manager's own vocabulary.
     must_carry: tuple[str, ...] = ()
@@ -184,7 +187,10 @@ def _rules(repo: Repo, manager: str) -> Rules:
             f"the `{manager}` installer is held to"
         )
         raise PolicyValueError(msg)
-    named = policy_strings(table, ("installer", "starts_at_boot", "restarts_after_crash"), where)
+    # A service starts at boot; a per-user install starts at its user's logon,
+    # and its table says so under the name of the moment it starts at.
+    moment = "starts_at_logon" if "starts_at_logon" in table else "starts_at_boot"
+    named = policy_strings(table, ("installer", moment, "restarts_after_crash"), where)
     may_not_set = table.get("may_not_set")
     directory = table.get("registration_directory")
     program: tuple[str, str] | None = None
@@ -195,14 +201,15 @@ def _rules(repo: Repo, manager: str) -> Rules:
         named["installer"],
         policy_string_list(table, "may_not_invoke", where),
         policy_string_list(table, "may_not_set", where) if may_not_set is not None else (),
-        named["starts_at_boot"],
+        named[moment],
         named["restarts_after_crash"],
         policy_strings(table, ("registration_directory",), where)["registration_directory"]
         if directory is not None
         else None,
         program,
-        policy_string_list(table, "must_carry", where) if "must_carry" in table else (),
-        policy_string_list(table, "name_also_declared_in", where)
+        starts_at="logon" if moment == "starts_at_logon" else "boot",
+        must_carry=policy_string_list(table, "must_carry", where) if "must_carry" in table else (),
+        name_also_declared_in=policy_string_list(table, "name_also_declared_in", where)
         if "name_also_declared_in" in table
         else (),
     )
@@ -536,13 +543,13 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
             f"`{named.installer}` writes no `{rules.restarts_after_crash}`, so the service it "
             f"registers stays down after its process ends abruptly"
         )
-    if not _carries(script, rules.starts_at_boot) and not _carries(
-        named.activation, rules.starts_at_boot
+    if not _carries(script, rules.starts_unattended) and not _carries(
+        named.activation, rules.starts_unattended
     ):
         findings.append(
             f"neither `{named.installer}` nor the `{manager}` activation command carries "
-            f"`{rules.starts_at_boot}`, so nothing makes the service start at boot once the "
-            f"operator has activated it"
+            f"`{rules.starts_unattended}`, so nothing makes the service start at "
+            f"{rules.starts_at} once the operator has activated it"
         )
 
     findings.extend(_granted_findings(repo, named.installer, script))

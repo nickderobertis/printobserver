@@ -221,6 +221,10 @@ def _session(into: Path, *, stand_in_tasks: bool, piped: bool = False) -> Path:
 function Get-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Get-ScheduledTask $TaskName"
+    if (Refused 'Get-ScheduledTask') {{
+        Write-Error -Category PermissionDenied 'Access is denied, says the stand-in.'
+        return
+    }}
     if (Test-Path -LiteralPath "$env:{RECORDING}.task.xml") {{
         [pscustomobject]@{{ TaskName = $TaskName }}
     }}
@@ -274,6 +278,12 @@ function Refused([string]$Name) {{
 function sc.exe {{
     Record ('sc.exe ' + ($args -join ' '))
     $global:LASTEXITCODE = 0
+    if ($args[0] -eq 'queryex' -and "$env:{REFUSES}" -split ',' -contains 'queryex') {{
+        'SERVICE_NAME: printobserver'
+        '        STATE              : 4  RUNNING'
+        '        PID                : 4242'
+        return
+    }}
     if (Refused $args[0]) {{ return }}
     switch ($args[0]) {{
         'query' {{ if (-not $env:{REGISTERED}) {{ $global:LASTEXITCODE = 1060 }} }}
@@ -701,6 +711,7 @@ def test_running_it_again_upgrades_in_place_and_the_installer_writes_no_state(
         'api_key = ""', 'api_key = "the-operators-own-key"'
     )
     home.config.write_text(operators_own, encoding="utf-8")
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     (home.state / STORE).write_bytes(b"a record the server wrote")
     (home.state / "images").mkdir()
     (home.state / "images" / "frame.jpg").write_bytes(IMAGE)
@@ -1279,6 +1290,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
     home = _home(tmp_path, "home-real")
     task = f"printobserver-journey-{os.getpid()}-{int(time.time())}"
     older = _older(_version())
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     release = _stage(
         tmp_path / "release-older",
         program.read_bytes().replace(_version().encode(), older.encode()),
@@ -2047,3 +2059,75 @@ def test_on_windows_the_migration_refuses_an_account_this_machine_does_not_have(
         not any(line.startswith("sc.exe stop") for line in ran.recorded),
         describing=f"nothing stopped: {ran.recorded}",
     )
+
+
+def test_an_upgrade_task_scheduler_cannot_answer_about_replaces_nothing(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """Only a task that is not there reads as absent; any other answer stops the upgrade."""
+    home = _home(tmp_path, "home-unanswered-task")
+    first = installing(home, releases(_older(_version())))
+    passing((first.code, first.said), describing="the first install")
+    before = home.program.read_bytes()
+
+    again = installing(
+        home,
+        releases(_version()),
+        recording=tmp_path / "recorded-1",
+        extra={REFUSES: "Get-ScheduledTask"},
+    )
+
+    failing((again.code, again.said), naming="would not say whether the task printobserver")
+    equal(home.program.read_bytes(), before, describing="the program, left as it was")
+    upgrade = again.recorded[len(first.recorded) :]
+    truth(
+        not any(line.startswith(("Disable-", "Register-")) for line in upgrade),
+        describing=f"nothing asked of Task Scheduler after its refusal: {upgrade}",
+    )
+
+
+@pytest.mark.skipif(
+    ON_WINDOWS, reason="a stand-in program cannot be kept running at the installed path there"
+)
+def test_an_upgrade_whose_server_will_not_exit_replaces_nothing_and_puts_the_task_back(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A server still running a minute after its task stopped is not replaced from under it."""
+    home = _home(tmp_path, "home-lingering")
+    first = installing(home, releases(_older(_version())))
+    passing((first.code, first.said), describing="the first install")
+    sleeper = shutil.which("sleep")
+    truth(sleeper is not None, describing="this host to carry a `sleep` to keep running")
+    shutil.copy2(str(sleeper), home.program)
+    lingering = start([str(home.program), "300"], cwd=home.root)
+    try:
+        again = installing(home, releases(_version()), recording=tmp_path / "recorded-1")
+    finally:
+        lingering.kill()
+        lingering.wait(timeout=30)
+
+    failing((again.code, again.said), naming="is still running a minute after its task was stopped")
+    equal(
+        home.program.read_bytes(),
+        Path(str(sleeper)).read_bytes(),
+        describing="the program, left as it was",
+    )
+    upgrade = again.recorded[len(first.recorded) :]
+    contains(upgrade, "Enable-ScheduledTask printobserver", describing="the task put back")
+
+
+def test_a_service_that_will_not_stop_is_left_registered_and_nothing_is_copied(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A service still running a minute after its stop is not copied from under it."""
+    home = _home(tmp_path, "home-unstopped")
+    before = _tree(serviced.state)
+
+    ran = migrating(
+        serviced, home, "-LocalAppData", str(home.local), **{REGISTERED: "1", REFUSES: "queryex"}
+    )
+
+    failing((ran.code, ran.said), naming="has not stopped a minute after it was asked to")
+    truth(not home.state.exists(), describing="nothing copied")
+    truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
+    equal(_tree(serviced.state), before, describing="the service's state")
