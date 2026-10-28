@@ -2356,3 +2356,24 @@ def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
         for pid in _servers(program):
             shell_run(["taskkill.exe", "/F", "/PID", str(pid)], timeout=60)
         shell_run(["taskkill.exe", "/F", "/T", "/PID", str(shell)], timeout=60)
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_the_migration_given_no_destination_moves_into_the_sessions_own_profile(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """With no `-LocalAppData` and no `-User`, the copies go to the account running it."""
+    home = _home(tmp_path, "home-default")
+    before = _tree(serviced.state)
+
+    ran = migrating(serviced, home, **{REGISTERED: "1"})
+
+    passing((ran.code, ran.said), describing="the migration given no destination")
+    equal(_tree(home.state), before, describing="the record, copied under the session's own")
+    truth(home.config.is_file(), describing="the configuration, under the session's own")
+    owned = [line for line in ran.recorded if line.startswith("icacls")]
+    equal(
+        owned,
+        [f"icacls {home.local / 'printobserver'} /setowner {_account()} /T /C"],
+        describing="the copies made the account running it",
+    )

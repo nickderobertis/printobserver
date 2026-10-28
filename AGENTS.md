@@ -858,8 +858,7 @@ service or registers it to start by itself.
 `just check-repo`'s `service-install` reads this section beside the tree and
 refuses one in which the service's name or the installer's path differs from
 what is written below, or in which that installer runs anything its manager's
-rules forbid — for a service, anything that enables or starts it; for the
-per-user pair, anything an administrator's.
+rules forbid.
 What it reads for a platform is that platform's own service-manager column, so
 each service manager here is read against its own pair and its own rules —
 `repo-policy.toml`'s `service.managers.<manager>` — rather than against
