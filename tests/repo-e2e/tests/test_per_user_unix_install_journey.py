@@ -45,6 +45,13 @@ pytestmark = [DEBUG_BUILD, pytest.mark.skipif(sys.platform == "win32", reason="U
 __all__ = ["machine", "program"]
 
 
+def _uid() -> int:
+    """The logged-in host user's numeric UID, through the installer's own interface."""
+    answer = run(["id", "-u"], timeout=30)
+    passing(answer, describing="the host account query")
+    return int((answer.stdout or "").strip())
+
+
 def _tool(path: Path, body: str) -> None:
     path.write_text("#!/bin/sh\nset -eu\n" + body, encoding="utf-8")
     path.chmod(493)
@@ -64,6 +71,7 @@ def _archive(program: Path) -> bytes:
 class Host:
     """A throwaway home, release and account database, with recorded manager commands."""
 
+    # llmlint: ignore[e2e_not_mocked] Unix installer host boundary: real script and files.
     def __init__(self, root: Path, system: str, program: Path) -> None:
         self.root, self.system = (root, system)
         self.home, self.bin = (root / "home", root / "tools")
@@ -89,6 +97,7 @@ class Host:
             _tool(
                 self.bin / name,
                 f'printf "%s\\n" "{name} $*" >> "$RECORD"\n'
+                f'if [ "${{REFUSES:-}}" = "{name} $*" ]; then exit 1; fi\n'
                 'case "$*" in cat* | "print system/"*) exit "${REGISTERED:-1}" ;; esac\n'
                 f'if [ "{name}" = loginctl ]; then exit "${{LINGER_STATUS:-0}}"; fi\n',
             )
@@ -265,6 +274,7 @@ def test_unverified_upgrade_keeps_the_running_registration_and_all_files(
     equal(host.said(), operations + "systemctl cat printobserver.service\n")
 
 
+# llmlint: ignore[e2e_not_mocked] Unix migration account boundary: real copy and API.
 def _migration_host(
     tmp_path: Path, program: Path, system: str = "Linux"
 ) -> tuple[Host, Path, Path]:
@@ -302,6 +312,7 @@ def _migrate(host: Host, root: Path) -> CompletedProcess[str]:
 
 
 @pytest.mark.parametrize("system", ["Linux", "Darwin"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_migration_preserves_and_serves_the_real_record(
     tmp_path: Path, program: Path, machine: Machine, system: str
 ) -> None:
@@ -421,6 +432,7 @@ def test_migration_refusals_keep_originals_and_registration(
     elif refusal == "layout":
         config.write_text("state_dir = 42\n", encoding="utf-8")
     elif refusal == "elevation":
+        # llmlint: ignore[e2e_not_mocked] Supply an unprivileged token to the real script.
         _tool(host.bin / "id", "echo 1000\n")
     elif refusal == "user":
         host.env.pop("SUDO_USER")
@@ -441,6 +453,7 @@ def test_migration_refusals_keep_originals_and_registration(
         truth("systemctl disable" not in host.said(), describing="copy verified before removal")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     tmp_path: Path, program: Path, machine: Machine
 ) -> None:
@@ -453,6 +466,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     if sys.platform not in {"linux", "darwin"}:
         pytest.skip("systemd and launchd are Unix managers")
     older = tmp_path / "older-program"
+    # llmlint: ignore[tests_mirror_real_usage] Real server; only its version string differs.
     older.write_bytes(
         program.read_bytes().replace(_version().encode(), _older(_version()).encode())
     )
@@ -528,7 +542,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
                 or "0"
             )
         answer = checked(
-            "launchctl", "print", f"gui/{os.getuid()}/io.github.nickderobertis.printobserver"
+            "launchctl", "print", f"gui/{_uid()}/io.github.nickderobertis.printobserver"
         )
         for line in answer.splitlines():
             if line.strip().startswith("pid = "):
@@ -573,7 +587,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
             )
             installer = "/install.sh"
         else:
-            if run(["launchctl", "print", f"gui/{os.getuid()}"], timeout=30).returncode:
+            if run(["launchctl", "print", f"gui/{_uid()}"], timeout=30).returncode:
                 _unmet("the per-user LaunchAgent needs this user's GUI login session")
             installer = str(REPO_ROOT / "scripts/install.sh")
         checked("sh", installer)
@@ -610,7 +624,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
                 "launchctl",
                 "kickstart",
                 "-k",
-                f"gui/{os.getuid()}/io.github.nickderobertis.printobserver",
+                f"gui/{_uid()}/io.github.nickderobertis.printobserver",
             )
         eventually(serves)
         first_pid = pid()
@@ -655,8 +669,47 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
                 [
                     "launchctl",
                     "bootout",
-                    f"gui/{os.getuid()}/io.github.nickderobertis.printobserver",
+                    f"gui/{_uid()}/io.github.nickderobertis.printobserver",
                 ],
                 env=env,
                 timeout=30,
             )
+
+
+@pytest.mark.parametrize("system", ["Linux", "Darwin"])
+def test_an_upgrade_that_cannot_stop_reports_recovery_and_replaces_nothing(
+    tmp_path: Path, program: Path, system: str
+) -> None:
+    """A manager refusal is reported before the running program is replaced."""
+    host = Host(tmp_path, system, program)
+    passing(host.install())
+    before = _tree(host.home)
+    command = (
+        "systemctl --user stop printobserver.service"
+        if system == "Linux"
+        else f"launchctl bootout gui/{_uid()}/io.github.nickderobertis.printobserver"
+    )
+    host.env["REFUSES"] = command
+    result = host.install()
+    failing(result, naming="nothing was replaced")
+    contains(result.stderr or "", "correct its reported error and retry")
+    equal(_tree(host.home), before)
+
+
+def test_migration_stop_failure_reports_recovery_before_any_copy(
+    tmp_path: Path, program: Path
+) -> None:
+    """A stopped-service refusal retains every original and names the diagnostic command."""
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    config.write_text(
+        f'state_dir = "{state}"\n[supervisor]\n'
+        f'skill_path = "{state}/skills/printobserver/SKILL.md"\n',
+        encoding="utf-8",
+    )
+    host.env["REFUSES"] = "systemctl stop printobserver.service"
+    before = _tree(root)
+    result = _migrate(host, root)
+    failing(result, naming="nothing was copied")
+    contains(result.stderr or "", "systemctl status printobserver.service")
+    equal(_tree(root), before)

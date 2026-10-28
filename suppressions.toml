@@ -3487,3 +3487,195 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "def test_the_migration_replaces_only_the_two_values_keeping_their_comments_and_quotes("
 reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule, so each case carries its own. This case runs the committed migration over a configuration whose two rewritten lines carry inline comments and their own quoting."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix per-user layout contract"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix per-user layout contract"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Linux recommended manager pair"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Linux recommended manager pair"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "macOS recommended manager pair"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "macOS recommended manager pair"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix per-user skill destinations"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix per-user skill destinations"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Per-user harness installation commands"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Per-user harness installation commands"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix migration contract"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix migration contract"
+reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Unix installer host boundary"
+reason = "The installer script is the layer under test and runs unchanged. Only host platform/account managers are subprocess doubles so both platform branches and refusals run without changing the tester host. The separate real-manager journey drives systemd-user or LaunchAgent through install, crash recovery and upgrade."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Unix migration account boundary"
+reason = "The real migration script copies and hashes real files, including a SQLite record and image written and served by real servers. Only root/account/manager commands are substituted to drive privileged refusals on an unprivileged host; these are dependencies of the script, not a mocked migration implementation."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Supply an unprivileged token"
+reason = "The script under test remains real. Its id subprocess supplies an unprivileged token so its refusal can run on any Unix gate host without requiring another login account; no manager stop or file write is allowed."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_preserves_and_serves_the_real_record("
+reason = "The task explicitly places these journeys in tests/repo-e2e/tests beside the service-manager journey and its required-service switch. This repository has one end-to-end project, so changing its shared selection graph would change other journeys outside this task. DEBUG_BUILD serializes the shared build and host-manager boundary."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_the_user_manager_serves_restarts_after_crash_and_upgrades("
+reason = "The task explicitly places these journeys in tests/repo-e2e/tests beside the service-manager journey and its required-service switch. This repository has one end-to-end project, so changing its shared selection graph would change other journeys outside this task. DEBUG_BUILD serializes the shared build and host-manager boundary."
+
+[[suppression]]
+rule = "tests_mirror_real_usage"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "older.write_bytes("
+reason = "As in the existing Windows journey, only the embedded version string of the tree-built real executable changes. Both releases run the actual server through verified release archives. Rebuilding the whole Rust workspace to change one string duplicates the gate build; the offline tier cannot fetch a historical release."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/install.sh"
+site = "printf"
+reason = "The contract requires credential issue, the verifier paste, skill installation and sign-in to be printed. One status line and one line per required next action are actionable output, not progress chatter."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "printf"
+reason = "The contract requires unprivileged install/sign-in steps and removal instructions for retained originals and the service account. Each success-report line supplies a required next action."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix per-user layout contract"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix per-user layout contract"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Linux recommended manager pair"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Linux recommended manager pair"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "macOS recommended manager pair"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "macOS recommended manager pair"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix per-user skill destinations"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix per-user skill destinations"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Per-user harness installation commands"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Per-user harness installation commands"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix migration contract"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix migration contract"
+reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."

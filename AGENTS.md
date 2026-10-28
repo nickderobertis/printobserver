@@ -719,6 +719,7 @@ then two commands in order**, with the agent's skill installed, and the agent's
 harness installed and signed in as the service's own user, between those two
 commands.
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix per-user layout contract: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 On Linux and macOS the recommended pair is also per-user: `systemd-user` and
 `launchd-agent`. Supervision turns run as the user, with the same policy trade-off
 as Windows. Linux enables lingering with `loginctl enable-linger "$USER"` so it
@@ -934,6 +935,7 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.
 
 #### systemd-user
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Linux recommended manager pair: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 The recommended Linux pair, as yourself. Made executable by the `server` node.
 
 ```console
@@ -946,6 +948,7 @@ systemctl --user restart printobserver.service
 
 #### launchd-agent
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] macOS recommended manager pair: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 The recommended macOS pair, as yourself. Made executable by the `server` node.
 
 ```console
@@ -1021,6 +1024,7 @@ For the per-user install, as yourself, under its own state directory:
 gh skill install nickderobertis/printobserver printobserver --dir $env:LOCALAPPDATA\printobserver\state\skills
 ```
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix per-user skill destinations: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 For the per-user install on Linux:
 
 ```console
@@ -1101,6 +1105,7 @@ For the per-user install, the harness is installed and signed in as you; with no
 printobserver sign-in
 ```
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Per-user harness installation commands: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 For every per-user install, install the harness as yourself:
 
 ```console
@@ -1115,6 +1120,7 @@ npm install -g @openai/codex
 
 ### Moving a Unix service install to the per-user one
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix migration contract: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 Run the one privileged step for SUDO_USER, on Linux or macOS:
 
 ```console

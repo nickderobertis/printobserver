@@ -155,7 +155,7 @@ else
     which="the newest release"
 fi
 
-work="$(mktemp -d)"
+work="$(mktemp -d)" || die "a temporary download directory could not be created" "Free space in TMPDIR or select a writable TMPDIR, then retry."
 trap 'rm -rf "$work"' EXIT INT TERM
 
 # One way of obtaining a file, whichever kind of place the release is in. A
@@ -221,8 +221,8 @@ this script installs."
 # Downloads have verified before an upgrade interrupts the running server.
 if [ "$CLIENT_ONLY" = false ] && [ -f "$DEFINITION" ]; then
     case "$system" in
-        Linux) systemctl --user stop "$UNIT_NAME" ;;
-        Darwin) launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" ;;
+        Linux) systemctl --user stop "$UNIT_NAME" || die "the user unit could not be stopped; nothing was replaced" "Run systemctl --user status printobserver.service, correct its reported error and retry." ;;
+        Darwin) launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" || die "the LaunchAgent could not be stopped; nothing was replaced" "Run launchctl print gui/$(id -u)/$LAUNCHD_LABEL, correct its reported error and retry." ;;
     esac
 fi
 
@@ -256,10 +256,10 @@ and then start it with \`$start\`$path_note" >&2
 fi
 
 umask 077
-mkdir -p "$(dirname "$RUNTIME_CONFIG")" "$RUNTIME_STATE" "$(dirname "$DEFINITION")"
-chmod 0700 "$RUNTIME_STATE"
+mkdir -p "$(dirname "$RUNTIME_CONFIG")" "$RUNTIME_STATE" "$(dirname "$DEFINITION")" || die "the user configuration, state or manager directory could not be created" "Check ownership and free space under $HOME, then rerun this installer."
+chmod 0700 "$RUNTIME_STATE" || die "$RUNTIME_STATE could not be made private" "Make sure you own this directory, then rerun this installer."
 if [ ! -e "$RUNTIME_CONFIG" ]; then
-    cat >"$RUNTIME_CONFIG" <<CONFIG
+    cat >"$RUNTIME_CONFIG" <<CONFIG || die "$RUNTIME_CONFIG could not be written" "Check its directory ownership and free space, then rerun this installer."
 # printobserver's one configuration file.
 #
 # Every value below is validated when the service starts, and a value that
@@ -364,11 +364,11 @@ agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
 system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
           "set_tool_target_c", "set_bed_target_c", "set_fan_percent"]
 CONFIG
-    chmod 0600 "$RUNTIME_CONFIG"
+    chmod 0600 "$RUNTIME_CONFIG" || die "$RUNTIME_CONFIG could not be made private" "Run chmod 0600 on this file as its owner, then retry."
 fi
 
 if [ "$system" = Linux ]; then
-    cat >"$DEFINITION" <<UNIT
+    cat >"$DEFINITION" <<UNIT || die "$DEFINITION could not be written" "Check its directory ownership and free space, then rerun this installer."
 [Unit]
 Description=printobserver supervision
 [Service]
@@ -380,14 +380,14 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
-    chmod 0644 "$DEFINITION"
-    systemctl --user daemon-reload
+    chmod 0644 "$DEFINITION" || die "$DEFINITION could not be made readable" "Run chmod 0644 on this file as its owner, then retry."
+    systemctl --user daemon-reload || die "the user manager could not reload its units" "Run systemctl --user status and check that your user manager is running, then retry."
     if ! loginctl enable-linger "${USER:-$(id -un)}"; then
         echo "install.sh: lingering was refused; the server runs only while you are logged in. Enable it with: loginctl enable-linger \"${USER:-$(id -un)}\"" >&2
     fi
-    systemctl --user enable --now "$UNIT_NAME"
+    systemctl --user enable --now "$UNIT_NAME" || die "the user unit could not be enabled and started" "Run systemctl --user status printobserver.service, correct its reported error and rerun this installer."
 else
-    cat >"$DEFINITION" <<PLIST
+    cat >"$DEFINITION" <<PLIST || die "$DEFINITION could not be written" "Check its directory ownership and free space, then rerun this installer."
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -401,12 +401,13 @@ else
 <key>ThrottleInterval</key><integer>5</integer>
 </dict></plist>
 PLIST
-    chmod 0644 "$DEFINITION"
-    launchctl bootstrap "gui/$(id -u)" "$DEFINITION"
+    chmod 0644 "$DEFINITION" || die "$DEFINITION could not be made readable" "Run chmod 0644 on this file as its owner, then retry."
+    launchctl bootstrap "gui/$(id -u)" "$DEFINITION" || die "the LaunchAgent could not be loaded" "Run launchctl print gui/$(id -u)/$LAUNCHD_LABEL; correct its reported error in your logged-in GUI session and retry."
     echo "install.sh: the server runs only while you are logged in; auto-login covers a dedicated machine." >&2
 fi
+# llmlint: ignore[tool_output_is_signal] The install contract requires credential issue, the verifier paste, skill installation and sign-in as actionable next steps; each following line is one of those steps.
 printf '%s\n' "install.sh: installed and started $DIRECTORY/$PROGRAM; next, as yourself:" \
-    "  $DIRECTORY/$PROGRAM credential issue" \
+    "  \"$DIRECTORY/$PROGRAM\" credential issue" \
     "  Paste its api.credential_verifier line above the first table in $RUNTIME_CONFIG; edit the printer settings there." \
     "  gh skill install nickderobertis/printobserver printobserver --dir \"$RUNTIME_STATE/skills\"" \
-    "  $DIRECTORY/$PROGRAM sign-in" >&2
+    "  \"$DIRECTORY/$PROGRAM\" sign-in" >&2
