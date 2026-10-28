@@ -21,8 +21,7 @@ carries no copy of it and needs no Docker.
 
 `config::load` reads the operator's own `client.toml` under their configuration
 home (`locations::operator_client_config`), then the per-user server
-configuration when there is one (`locations::per_user_config`, Windows alone
-for now), then the service's default file — a client with no `[client]` table
+configuration when there is one (`locations::per_user_config`), then the service's default file — a client with no `[client]` table
 takes the address the server listens on. With `--config`, that one file alone.
 `sign-in` with no `--config` reads `locations::default_config`: the per-user
 file when it is there, the service's otherwise. `tests/per_user.rs` drives both
