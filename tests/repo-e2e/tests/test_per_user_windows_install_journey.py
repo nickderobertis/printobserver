@@ -1534,7 +1534,10 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
                     f"$env:{TASK_NAME} = {_quoted(task)}",
                     f"$env:{RECORDING} = {_quoted(str(root / 'recorded'))}",
                     f"$env:Path = {_quoted(str(home.program.parent))} + ';' + $env:Path",
-                    "$groups = (whoami.exe /all 2>&1 | Out-String) + "
+                    # Windows's own `whoami`, by its path: a runner puts Git's
+                    # Unix one ahead of it on PATH.
+                    "$groups = (& (Join-Path $env:SystemRoot 'System32\\whoami.exe') /all 2>&1 "
+                    "| Out-String) + "
                     "[Security.Principal.WindowsIdentity]::GetCurrent().Name",
                     f"Set-Content -LiteralPath {_quoted(str(outcome) + '-groups.txt')} "
                     "-Value $groups -Encoding utf8",
