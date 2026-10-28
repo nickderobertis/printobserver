@@ -597,6 +597,9 @@ class Recording:
         "function Set-Service {"
         ' Add-Content -LiteralPath $env:RECORD -Value "Set-Service $args";'
         " throw 'no service control manager here' }\n"
+        "function Stop-ScheduledTask {"
+        ' Add-Content -LiteralPath $env:RECORD -Value "Stop-ScheduledTask $args";'
+        " throw 'no task scheduler here' }\n"
     )
 
     def powershell_commands(self) -> None:
@@ -786,12 +789,20 @@ SHELL_INSTALLER = (
     "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
     "scripts/install-service.sh"
 )
-#: What the Windows pair records: the installer fetched and run, then the start.
+#: What the Windows pairs record: the per-user installer fetched and run, then
+#: the restart, which stops at its first half; then the service's installer and
+#: its start.
 WINDOWS_INSTALLER = (
     "https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
     "scripts/install-service.ps1"
 )
+PER_USER_INSTALLER = (
+    "https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1"
+)
 WINDOWS_PAIR = [
+    f"irm {PER_USER_INSTALLER}",
+    f"iex {PER_USER_INSTALLER}",
+    "Stop-ScheduledTask -TaskName printobserver",
     f"irm {WINDOWS_INSTALLER}",
     f"iex {WINDOWS_INSTALLER}",
     "Set-Service -Name printobserver -StartupType Automatic -Status Running",
@@ -838,9 +849,15 @@ def test_an_install_route_runs_its_familys_steps_waiving_and_reporting_what_it_m
         describing="what ran",
     )
     contains(said, "and its failure is waived", describing=said)
+    # The per-user installer's text is taken by the stand-in `iex` without a
+    # refusal, which leaves its restart the per-user pair's one failure.
+    installed, started = (
+        ("success", "failure") if platform.startswith("windows-") else ("skipped", "skipped")
+    )
     equal(
         summary.read_text(encoding="utf-8"),
-        f"{ROUTE}: service installation failure, service startup failure\n",
+        f"{ROUTE}: service installation failure, service startup failure, "
+        f"per-user installation {installed}, per-user startup {started}\n",
         describing="the summary the report step wrote",
     )
 

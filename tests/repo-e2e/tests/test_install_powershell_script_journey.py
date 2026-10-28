@@ -22,6 +22,12 @@ release, the install directory, and what a successful run says to do next.
 What only a Windows host can do — put a `.exe` in place and run it — the
 Windows cells of the gate do, over this same journey with the real program.
 
+Every case runs the script with `-ClientOnly`, which is the script as it was
+before it learned to install a per-user server: the program on the path and
+nothing else. That the switch leaves every behaviour here as it was is what
+this journey proves of it; the script with no switch, which also installs and
+starts the per-user server, is `test_per_user_windows_install_journey.py`'s.
+
 Two releases rather than one, and the older one is a stand-in program that
 reports a version of its own: what the selection assertions are about is which
 release the script chose, and two artifacts carrying the same program could not
@@ -84,6 +90,10 @@ DEFAULT_DIRECTORY = ("AppData", "Local", "Programs", "printobserver")
 #: The temporary directory a run is given, so that what the script left there
 #: is this journey's to read.
 TEMPORARY = "temp"
+
+#: The switch every case runs the script with: the program alone, as the
+#: script installed it before it learned to install a per-user server.
+CLIENT_ONLY = "-ClientOnly"
 
 
 def _machine(identifier: str) -> str:
@@ -257,10 +267,11 @@ def _environment(staged: Path, home: Path, identifier: str | None) -> dict[str, 
     return environment
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def _run(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
     """Run the committed script as a file under this host's PowerShell."""
     result = shell_run(
-        [powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT), *arguments],
+        [powershell(), "-NoProfile", "-File", str(REPO_ROOT / SCRIPT), CLIENT_ONLY, *arguments],
         cwd=home,
         env=environment,
         timeout=600,
@@ -273,6 +284,7 @@ def _script(staged: Path, home: Path, identifier: str | None, *arguments: str) -
     return _run(home, _environment(staged, home, identifier), *arguments)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def _run_in_session(
     home: Path, environment: dict[str, str], session: dict[str, str]
 ) -> tuple[int, str]:
@@ -292,7 +304,7 @@ def _run_in_session(
         for variable, value in session.items()
     )
     result = shell_run(
-        [powershell(), "-NoProfile", "-Command", f"{assignments}; & '{text}'"],
+        [powershell(), "-NoProfile", "-Command", f"{assignments}; & '{text}' {CLIENT_ONLY}"],
         cwd=home,
         env=environment,
         timeout=600,
@@ -300,18 +312,20 @@ def _run_in_session(
     return result.returncode, (result.stdout or "") + (result.stderr or "")
 
 
-def _piped(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
-    """Run the script the way the route's own command runs it: its text piped into `iex`.
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def _as_a_script_block(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
+    """Run the script as a fetched script's text is run: a script block made of it.
 
     With arguments, the way the pinned form passes them — a script block made
     of the same text. The session goes on after it and says what status the
-    script left it, which is what a caller at the prompt reads.
+    script left it, which is what a caller at the prompt reads. A piped script
+    takes no switch, so `-ClientOnly` reaches it the one way a caller can hand
+    a fetched script one: through the script block form.
     """
     text = str(REPO_ROOT / SCRIPT).replace("'", "''")
     invoked = (
-        f"& ([scriptblock]::Create((Get-Content -LiteralPath '{text}' -Raw))) {' '.join(arguments)}"
-        if arguments
-        else f"Get-Content -LiteralPath '{text}' -Raw | iex"
+        f"& ([scriptblock]::Create((Get-Content -LiteralPath '{text}' -Raw))) "
+        f"{' '.join([CLIENT_ONLY, *arguments])}"
     )
     result = shell_run(
         [
@@ -577,23 +591,25 @@ def test_the_script_is_committed_where_its_own_fetch_url_names() -> None:
     )
 
 
-def test_the_piped_form_installs_and_leaves_the_session_with_a_zero_status(
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_the_fetched_form_installs_and_leaves_the_session_with_a_zero_status(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:
-    """`irm ... | iex` is how the route states it, and a success leaves `$LASTEXITCODE` zero."""
+    """Run from its fetched text, as the route runs it, a success leaves `$LASTEXITCODE` zero."""
     home = _home(tmp_path, "home-piped")
 
-    code, said = _piped(home, _environment(staged(_first()), home, _first()))
+    code, said = _as_a_script_block(home, _environment(staged(_first()), home, _first()))
 
-    passing((code, said), describing="the session the script was piped into")
+    passing((code, said), describing="the session the script's text was run in")
     contains(said, "the session goes on, LASTEXITCODE=0", describing="what the session said after")
     contains(_reports(_default(home)), _version(), describing="what the installed program reports")
 
 
-def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_status(
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+def test_the_fetched_form_that_stopped_keeps_the_session_and_leaves_a_failing_status(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:
-    """A stop under `iex` must not close the caller's window, and must still read as one.
+    """A stop run from fetched text must not close the caller's window, and must read as one.
 
     An `exit` there would take the window and both sentences with it; what a
     caller — or a CI step's PowerShell — reads instead is `$LASTEXITCODE`.
@@ -602,7 +618,7 @@ def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_stat
     base = staged(_first())
     (base / "latest" / "download" / CHECKSUMS).unlink()
 
-    code, said = _piped(home, _environment(base, home, _first()))
+    code, said = _as_a_script_block(home, _environment(base, home, _first()))
 
     equal(code, 0, describing=f"the session's own status, which a stop must not end: {said}")
     contains(said, "cannot be verified", describing="the stop's own sentence")
@@ -617,7 +633,7 @@ def test_the_pinned_form_passes_both_options_through_a_script_block(
     home = _home(tmp_path, "home-piped-pinned")
     elsewhere = home / "pinned"
 
-    code, said = _piped(
+    code, said = _as_a_script_block(
         home,
         _environment(staged(_other()), home, _other()),
         "-Version",
@@ -635,7 +651,7 @@ def test_the_pinned_form_passes_both_options_through_a_script_block(
     )
 
 
-def test_help_says_the_two_options_and_installs_nothing(
+def test_help_names_the_options_and_installs_nothing(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:
     """`-Help` is the one run that is not an install."""
@@ -646,6 +662,8 @@ def test_help_says_the_two_options_and_installs_nothing(
     passing((code, said), describing="the script asked for help")
     contains(said, "-Version", describing="the options it names")
     contains(said, "-To", describing="the options it names")
+    contains(said, "-ClientOnly", describing="the options it names")
+    contains(said, "-ObservationIntervalSeconds", describing="the options it names")
     truth(not _default(home).exists(), describing="nothing to have been installed")
 
 

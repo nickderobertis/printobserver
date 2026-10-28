@@ -12,7 +12,7 @@ from typing import Any
 from repo_checks import install_path as ip
 from repo_checks import release_declaration
 from repo_checks.checks_release import Workflow
-from repo_checks.checks_service import installers
+from repo_checks.checks_service import service_management_scripts
 from repo_checks.checks_shards import is_shard_job, sharded_platforms
 from repo_checks.gate_shards import SHARD_RECIPE
 from repo_checks.model import (
@@ -591,6 +591,21 @@ def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
         for platform in declared
         if platform.service_manager not in ServiceManager
     )
+    # The per-user column is read off the entry's own text: `supported` answers
+    # an unknown one as none, which would otherwise pass for a platform with no
+    # per-user install.
+    findings.extend(
+        f"AGENTS.md's supported-platform list gives `{entry['id']}` the per-user manager "
+        f"`{entry['per_user_manager']}`, which is none this repository has a name for "
+        f"({', '.join(f'`{one.value}`' for one in ServiceManager)})"
+        for entry in (
+            PLATFORM_LINE.match(line)
+            for line in marker_block(repo.agents_md, "supported-platforms")
+        )
+        if entry is not None
+        and entry["per_user_manager"]
+        and entry["per_user_manager"] not in tuple(ServiceManager)
+    )
     return findings
 
 
@@ -852,15 +867,18 @@ def _gh_prerequisite_findings(repo: Repo) -> list[str]:
 
 
 def service_managers(repo: Repo) -> list[str]:
-    """Every service manager `AGENTS.md`'s supported-platform list names, in order.
+    """Every manager `AGENTS.md`'s supported-platform list names, in order.
+
+    A platform's per-user manager is one of them, beside its service manager.
 
     Raises:
         MarkerBlockMissingError: If `AGENTS.md` carries no such list.
     """
     named: list[str] = []
     for platform in platforms_of(repo):
-        if platform.service_manager not in named:
-            named.append(platform.service_manager)
+        for manager in platform.managers:
+            if manager not in named:
+                named.append(manager)
     return named
 
 
@@ -877,7 +895,10 @@ def _service_command_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
     try:
         named = service_managers(repo)
         targeted = {
-            platform.service_manager for platform in platforms_of(repo) if platform.install_path
+            manager
+            for platform in platforms_of(repo)
+            if platform.install_path
+            for manager in platform.managers
         }
     except MarkerBlockMissingError as error:
         return [str(error)]
@@ -919,7 +940,7 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
             *policy_string_list(
                 policy_table(repo, "workflows"), "install_script_paths", "workflows"
             ),
-            *installers(repo),
+            *service_management_scripts(repo),
         }
     except PolicyValueError as error:
         return [str(error)]
@@ -1184,8 +1205,9 @@ def _job_service_pairs(
     for platform in declared:
         if named and platform.id not in named:
             continue
-        if platform.service_manager not in managers:
-            managers.append(platform.service_manager)
+        for manager in platform.managers:
+            if manager not in managers:
+                managers.append(manager)
     return tuple(path.commands_for(manager) for manager in managers)
 
 

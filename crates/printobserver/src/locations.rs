@@ -21,6 +21,17 @@
 //! read from that platform's own variables by [`config_home_of`] — `XDG_CONFIG_HOME`,
 //! else `$HOME/.config`, on Linux and every other Unix;
 //! `$HOME/Library/Application Support` on macOS; `%APPDATA%` on Windows.
+//!
+//! # The per-user install
+//!
+//! On Windows the recommended install is the user's own rather than a
+//! service's: the program, its configuration and its state all under the
+//! user's local application data, with no elevation at any point.
+//! [`WINDOWS_PER_USER`] spells where, relative to `%LOCALAPPDATA%`, and
+//! [`per_user_config`] answers the file it writes when this build's platform
+//! has such an install and the variable it lives under is set. A command that
+//! names no configuration reads that file when it is there, and the service's
+//! own when it is not.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +70,31 @@ pub const WINDOWS: Locations = Locations {
     config: r"C:\ProgramData\printobserver\config.toml",
     state: r"C:\ProgramData\printobserver\state",
     home: r"C:\Program Files\printobserver",
+};
+
+/// Where a per-user install keeps the same three, relative to the user's own
+/// directory for local application data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PerUserLocations {
+    /// The variable naming the directory every path below is under.
+    pub base: &'static str,
+    /// The configuration file, as path segments under that directory.
+    pub config: &'static [&'static str],
+    /// The state directory, as path segments under that directory.
+    pub state: &'static [&'static str],
+    /// The directory the program lives in, as path segments under that
+    /// directory: where `scripts/install.ps1` puts it, so client and server are
+    /// one program.
+    pub home: &'static [&'static str],
+}
+
+/// Where a per-user install keeps them on Windows: under `%LOCALAPPDATA%`,
+/// with the profile's own permissions.
+pub const WINDOWS_PER_USER: PerUserLocations = PerUserLocations {
+    base: "LOCALAPPDATA",
+    config: &["printobserver", "config.toml"],
+    state: &["printobserver", "state"],
+    home: &["Programs", "printobserver"],
 };
 
 /// The family of platform a configuration home is resolved for.
@@ -140,6 +176,44 @@ pub fn operator_client_config() -> Option<std::path::PathBuf> {
     })
 }
 
+/// Where one family's per-user install keeps its configuration, read from that
+/// family's own variables through `read`.
+///
+/// Windows alone has a per-user install, so every other family answers none.
+/// Absent too when the variable it lives under is not set.
+#[must_use]
+pub fn per_user_config_of(
+    family: Family,
+    read: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Option<std::path::PathBuf> {
+    match family {
+        Family::Windows => set_to_something(read, WINDOWS_PER_USER.base).map(|base| {
+            WINDOWS_PER_USER
+                .config
+                .iter()
+                .fold(base, |path, segment| path.join(segment))
+        }),
+        Family::Unix | Family::MacOs => None,
+    }
+}
+
+/// This user's per-user configuration on this platform, from this process's
+/// own environment, whether or not anything has written it yet.
+#[must_use]
+pub fn per_user_config() -> Option<std::path::PathBuf> {
+    per_user_config_of(FAMILY, &|name| std::env::var_os(name))
+}
+
+/// The configuration a command reads when nothing names one and only one file
+/// is read: this user's per-user configuration when it is there, and the
+/// service's, [`HERE`]'s, when it is not.
+#[must_use]
+pub fn default_config() -> std::path::PathBuf {
+    per_user_config()
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| std::path::PathBuf::from(HERE.config))
+}
+
 /// The answer this build gives: its own platform's.
 #[cfg(windows)]
 pub const HERE: Locations = WINDOWS;
@@ -158,7 +232,10 @@ mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;
 
-    use super::{FAMILY, Family, HERE, LINUX, Locations, MACOS, WINDOWS, config_home_of};
+    use super::{
+        FAMILY, Family, HERE, LINUX, Locations, MACOS, WINDOWS, WINDOWS_PER_USER, config_home_of,
+        per_user_config_of,
+    };
 
     /// An environment holding exactly these variables.
     fn holding(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
@@ -231,6 +308,55 @@ mod tests {
             Some(PathBuf::from(r"C:\Users\op\AppData\Roaming"))
         );
         assert_eq!(config_home_of(Family::Windows, &holding(&[])), None);
+    }
+
+    /// Windows keeps a per-user install's configuration under
+    /// `%LOCALAPPDATA%`, and no other family has a per-user install.
+    #[test]
+    fn only_windows_has_a_per_user_configuration_under_local_application_data() {
+        let local = holding(&[
+            ("LOCALAPPDATA", r"C:\Users\op\AppData\Local"),
+            ("HOME", "/home/op"),
+        ]);
+        assert_eq!(
+            per_user_config_of(Family::Windows, &local),
+            Some(
+                PathBuf::from(r"C:\Users\op\AppData\Local")
+                    .join("printobserver")
+                    .join("config.toml")
+            )
+        );
+        assert_eq!(per_user_config_of(Family::Windows, &holding(&[])), None);
+        assert_eq!(per_user_config_of(Family::Unix, &local), None);
+        assert_eq!(per_user_config_of(Family::MacOs, &local), None);
+    }
+
+    /// The per-user locations, as `scripts/install.ps1` writes them.
+    #[test]
+    fn the_per_user_installer_writes_the_per_user_answer() {
+        let installer = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../scripts/install.ps1"
+        ))
+        .expect("the committed install script reads");
+        let joined = |segments: &[&str]| segments.join("', '");
+
+        for (variable, segments) in [
+            ("PerUserConfig", WINDOWS_PER_USER.config),
+            ("PerUserState", WINDOWS_PER_USER.state),
+            ("PerUserProgram", WINDOWS_PER_USER.home),
+        ] {
+            let line = format!("${variable} = @('{}')", joined(segments));
+            assert!(
+                installer.lines().any(|written| written.trim() == line),
+                "the install script carries no `{line}`"
+            );
+        }
+        assert!(
+            installer.contains(&format!("$env:{}", WINDOWS_PER_USER.base)),
+            "the install script reads no {}",
+            WINDOWS_PER_USER.base
+        );
     }
 
     /// This build resolves for its own platform's family.
@@ -337,6 +463,40 @@ mod tests {
         );
     }
 
+    /// The migration reads the service's places and writes the per-user ones
+    /// exactly as the two installers do.
+    #[test]
+    fn the_migration_reads_the_windows_answer_and_writes_the_per_user_one() {
+        let migration = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../scripts/migrate-service-to-per-user.ps1"
+        ))
+        .expect("the committed migration reads");
+
+        assert_eq!(
+            windows_installer_value(&migration, "ConfigPath"),
+            WINDOWS.config
+        );
+        assert_eq!(
+            windows_installer_value(&migration, "StateDirectory"),
+            WINDOWS.state
+        );
+        assert_eq!(
+            windows_installer_value(&migration, "ProgramDirectory"),
+            WINDOWS.home
+        );
+        for (variable, segments) in [
+            ("PerUserConfig", WINDOWS_PER_USER.config),
+            ("PerUserState", WINDOWS_PER_USER.state),
+        ] {
+            let line = format!("${variable} = @('{}')", segments.join("', '"));
+            assert!(
+                migration.lines().any(|written| written.trim() == line),
+                "the migration carries no `{line}`"
+            );
+        }
+    }
+
     /// The value one module-level assignment in the smoke test makes, as it
     /// writes it: a plain or a raw Python string literal.
     fn smoke_value(smoke: &str, constant: &str) -> String {
@@ -367,8 +527,8 @@ mod tests {
     }
 
     /// The README tells a reader where their platform's install keeps things
-    /// in a table, one row per platform, and each row is exactly the answers
-    /// here: the one place a person meets these paths is held to the one place
+    /// in a table, one row per platform and one more for Windows's isolated
+    /// install, and each row is exactly the answers here: the one place a person meets these paths is held to the one place
     /// they are declared.
     #[test]
     fn the_readme_tells_each_platforms_own_locations() {
@@ -376,19 +536,35 @@ mod tests {
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md"))
                 .expect("the committed README reads");
 
-        for (platform, locations, program) in [
-            ("Linux", LINUX, format!("{}/printobserver", LINUX.home)),
-            ("macOS", MACOS, format!("{}/printobserver", MACOS.home)),
+        let per_user =
+            |segments: &[&str]| format!("%{}%\\{}", WINDOWS_PER_USER.base, segments.join("\\"));
+        for (platform, config, state, program) in [
+            (
+                "Linux",
+                LINUX.config.to_owned(),
+                LINUX.state.to_owned(),
+                format!("{}/printobserver", LINUX.home),
+            ),
+            (
+                "macOS",
+                MACOS.config.to_owned(),
+                MACOS.state.to_owned(),
+                format!("{}/printobserver", MACOS.home),
+            ),
             (
                 "Windows",
-                WINDOWS,
+                per_user(WINDOWS_PER_USER.config),
+                per_user(WINDOWS_PER_USER.state),
+                format!("{}\\printobserver.exe", per_user(WINDOWS_PER_USER.home)),
+            ),
+            (
+                "Windows, isolated install",
+                WINDOWS.config.to_owned(),
+                WINDOWS.state.to_owned(),
                 format!("{}\\printobserver.exe", WINDOWS.home),
             ),
         ] {
-            let row = format!(
-                "| {platform} | `{}` | `{}` | `{program}` |",
-                locations.config, locations.state
-            );
+            let row = format!("| {platform} | `{config}` | `{state}` | `{program}` |");
             assert!(
                 readme.lines().any(|line| line == row),
                 "the README's table carries no row `{row}`"

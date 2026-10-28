@@ -1161,8 +1161,10 @@ def platform_names(repo: Repo) -> list[str]:
             findings.extend(
                 f"{where}:{number} states {', '.join(f'`{one}`' for one in stated)} of the "
                 f"platform `{token}`, and AGENTS.md's supported-platform list gives it "
-                f"`{known[token].service_manager}`"
+                f"{' and '.join(f'`{one}`' for one in known[token].managers)}"
                 for token in named
-                if stated and token in known and known[token].service_manager not in stated
+                if stated
+                and token in known
+                and not any(manager in stated for manager in known[token].managers)
             )
     return findings

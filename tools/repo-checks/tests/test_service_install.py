@@ -326,7 +326,8 @@ def test_a_section_stating_no_pair_at_all_is_refused(tree: Callable[[], Tree]) -
         broken.read(AGENTS)
         .replace("#### systemd", "#### initd")
         .replace("#### launchd", "#### launchpad")
-        .replace("#### windows-service", "#### scm"),
+        .replace("#### windows-service", "#### scm")
+        .replace("#### windows-scheduled-task", "#### task"),
     )
 
     findings = service_install(broken.repo)
@@ -840,3 +841,100 @@ def test_a_policy_declaring_no_launchd_table_is_refused(tree: Callable[[], Tree]
     findings = service_install(broken.repo)
 
     refused(findings, "declares no `service.managers.launchd` table")
+
+
+PER_USER_INSTALLER = "scripts/install.ps1"
+
+
+def test_the_per_user_manager_is_held_to_the_third_routes_own_script(committed: Repo) -> None:
+    """The per-user pair's installer is `install.ps1`, which the policy declares for it."""
+    equal(
+        installer_for(committed, "windows-scheduled-task"),
+        PER_USER_INSTALLER,
+        describing="the windows-scheduled-task installer",
+    )
+
+
+@pytest.mark.parametrize(
+    ("added", "naming"),
+    [
+        ("\nsc.exe create $ServiceName binPath= x\n", "runs `sc.exe create`"),
+        ("\nicacls $InstalledState /grant Everyone:F\n", "runs `icacls`"),
+        ("\nStart-Process powershell -Verb RunAs\n", "runs `Start-Process`"),
+    ],
+)
+def test_a_per_user_installer_reaching_for_an_administrators_tools_is_refused(
+    tree: Callable[[], Tree], added: str, naming: str
+) -> None:
+    """The per-user install needs no elevation, so nothing it runs may need one."""
+    broken = tree()
+    broken.write(PER_USER_INSTALLER, broken.read(PER_USER_INSTALLER) + added)
+
+    findings = service_install(broken.repo)
+
+    refused(findings, naming)
+
+
+def test_a_per_user_task_run_with_the_highest_privileges_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A task asking for an elevated token is one a limited account cannot register."""
+    broken = tree()
+    broken.write(
+        PER_USER_INSTALLER,
+        broken.read(PER_USER_INSTALLER).replace(
+            "<RunLevel>LeastPrivilege</RunLevel>", "<RunLevel>HighestAvailable</RunLevel>"
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "writes no `<RunLevel>LeastPrivilege</RunLevel>`")
+
+
+def test_a_per_user_task_that_is_never_started_again_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """Without the minute's start, a server that ended stays down."""
+    broken = tree()
+    broken.write(
+        PER_USER_INSTALLER,
+        broken.read(PER_USER_INSTALLER).replace(
+            "<Interval>PT1M</Interval>\n        <Stop", "<Stop"
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "<Repetition> <Interval>PT1M</Interval>")
+
+
+def test_a_per_user_installer_naming_another_task_is_refused(tree: Callable[[], Tree]) -> None:
+    """A task the restart the install path states cannot name."""
+    broken = tree()
+    broken.write(
+        PER_USER_INSTALLER,
+        broken.read(PER_USER_INSTALLER).replace(
+            "$TaskName = 'printobserver'", "$TaskName = 'observer'"
+        ),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, "installs the service `observer`")
+
+
+@pytest.mark.parametrize("script", [PER_USER_INSTALLER, "scripts/migrate-service-to-per-user.ps1"])
+def test_a_script_asking_after_the_service_by_another_name_is_refused(
+    tree: Callable[[], Tree], script: str
+) -> None:
+    """The per-user installer and the migration name the service the install path states."""
+    broken = tree()
+    broken.write(
+        script,
+        broken.read(script).replace("$ServiceName = 'printobserver'", "$ServiceName = 'observer'"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, f"`{script}` names the service `observer`")

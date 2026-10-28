@@ -52,6 +52,11 @@ VERIFICATION_OPTION = "--version"
 # it.
 SIGN_IN_HEADING = "between the two commands"
 
+# The subsection stating the one elevated step from a Windows service install to
+# the per-user one. Its commands are part of the section's canonical set, so the
+# README's restatement of them is held to it.
+MIGRATION_HEADING = "moving a windows service install"
+
 # What the sign-in subsection has to run to sign the harness in at all.
 SIGN_IN_COMMAND = "printobserver sign-in"
 
@@ -176,6 +181,8 @@ class InstallPath:
     #: rather than collapsed: the second subsection would otherwise replace the
     #: first, leaving a pair nobody wrote as the one every check reads.
     repeated: tuple[str, ...] = ()
+    #: The one elevated step from a Windows service install to the per-user one.
+    migration: tuple[str, ...] = ()
 
     @property
     def checked(self) -> str:
@@ -200,6 +207,7 @@ class InstallPath:
         stated.extend(self.verification)
         stated.extend(self.commands)
         stated.extend(self.sign_in)
+        stated.extend(self.migration)
         return tuple(stated)
 
 
@@ -227,6 +235,7 @@ def parse(agents_md: str) -> InstallPath:
     service_commands: dict[str, tuple[str, ...]] = {}
     repeated: list[str] = []
     sign_in: tuple[str, ...] = ()
+    migration: tuple[str, ...] = ()
     intro_lines: list[str] = []
     seen_route = False
     for level, title, parent, lines in blocks:
@@ -243,6 +252,8 @@ def parse(agents_md: str) -> InstallPath:
             verification = tuple(fenced_commands(text))
         elif title.lower().startswith(SIGN_IN_HEADING):
             sign_in = (*sign_in, *fenced_commands(text))
+        elif level == 3 and title.lower().startswith(MIGRATION_HEADING):
+            migration = (*migration, *fenced_commands(text))
         elif not seen_route:
             intro_lines.extend(lines)
     return InstallPath(
@@ -252,6 +263,7 @@ def parse(agents_md: str) -> InstallPath:
         service_commands,
         sign_in,
         tuple(repeated),
+        tuple(migration),
     )
 
 

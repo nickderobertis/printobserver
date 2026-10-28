@@ -121,6 +121,22 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
 
 
 @pytest.mark.parametrize("tier", ["affected", "all"])
+def test_five_shards_leave_non_rust_measurement_on_its_own_runner(
+    capsys: pytest.CaptureFixture[str], tier: str
+) -> None:
+    """The longest Windows measurement gets a runner without other gate tiers."""
+    second = shard_commands(capsys, tier, "2/5")
+    equal(second, [f"{OTHERS} just test {tier}", f"{OTHERS} just coverage {tier}"])
+    first = shard_commands(capsys, tier, "1/5")
+    for recipe in ("format-check", "lint", "typecheck", "build", "lint-workflows", "check-repo"):
+        contains(
+            [invoked(command)[0] for command in first],
+            recipe,
+            describing="tiers moved beside Rust measurement",
+        )
+
+
+@pytest.mark.parametrize("tier", ["affected", "all"])
 def test_two_shards_run_the_end_to_end_tier_beside_every_other_tier(
     capsys: pytest.CaptureFixture[str], tier: str
 ) -> None:
@@ -319,16 +335,16 @@ def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(tree: Callable[[]
     equal(
         [line.strip() for line in copy.read("reached").splitlines()],
         [
-            "test all lang:rust",
-            "coverage all lang:rust",
             "format-check all",
             "lint all",
             "typecheck all",
-            "test all !lang:rust",
-            "coverage all !lang:rust",
+            "test all lang:rust",
+            "coverage all lang:rust",
             "build all",
             "lint-workflows",
             "check-repo",
+            "test all !lang:rust",
+            "coverage all !lang:rust",
             "test-e2e all 1/3",
             "test-e2e all 2/3",
             "test-e2e all 3/3",
@@ -341,7 +357,7 @@ def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[]
     copy = tree()
     copy.write("justfile", recording_justfile(copy.repo, failing_recipe="typecheck"))
 
-    exited = gate_shards_main(["--root", str(copy.root), "run", "affected", f"2/{SHARDS}"])
+    exited = gate_shards_main(["--root", str(copy.root), "run", "affected", f"1/{SHARDS}"])
 
     equal(exited, 3, describing="the shard's exit")
     equal(

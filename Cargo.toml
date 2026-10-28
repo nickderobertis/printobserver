@@ -73,7 +73,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# `deny` rather than `forbid` for exactly one site: the Windows server hiding
+# the window of a console made for it alone, which is three Win32 calls nothing
+# safe wraps. That site carries its own `expect` and its entry in `suppressions.toml`;
+# every other site of every crate is still refused.
+unsafe_code = "deny"
 missing_docs = "deny"
 
 [workspace.lints.clippy]

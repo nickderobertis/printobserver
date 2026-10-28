@@ -41,9 +41,14 @@ from repo_checks.parsing import marker_block
 #: The install-path answer is a lever rather than a note: a platform answered
 #: `no` is kept out of every install-route matrix and every registry proof of a
 #: route, so it carries the reason for the opt-out on the line itself.
+#:
+#: A platform may name a per-user manager beside its service manager: the one
+#: the recommended per-user install runs the server under as the person using
+#: the machine, with no elevation, where the service is the isolated option.
 PLATFORM_LINE = re.compile(
     r"^- `(?P<id>[a-z0-9_-]+)` — runner `(?P<runner>[^`]+)`, Rust target `(?P<target>[^`]+)`, "
-    r"service manager `(?P<service_manager>[^`]+)`, install path: (?P<install>yes|no)"
+    r"service manager `(?P<service_manager>[^`]+)`"
+    r"(?:, per-user manager `(?P<per_user_manager>[^`]+)`)?, install path: (?P<install>yes|no)"
     r"(?: — (?P<reason>.+))?$"
 )
 
@@ -53,7 +58,8 @@ PLATFORM_LINE = re.compile(
 #: would otherwise be a platform silently unsupported.
 PLATFORM_SHAPE = (
     "- `<platform>` — runner `<runner>`, Rust target `<target>`, "
-    "service manager `<manager>`, install path: yes|no[ — <reason>]"
+    "service manager `<manager>`[, per-user manager `<manager>`], install path: yes|no"
+    "[ — <reason>]"
 )
 
 #: A token shaped like a platform identifier: an operating-system family and a
@@ -85,7 +91,7 @@ PLATFORM_ID_IN_TEXT = re.compile(rf"(?<![\w-]){PLATFORM_ID_PATTERN}(?![\w-])")
 class ServiceManager(StrEnum):
     """Every service manager this repository has a name for.
 
-    A closed set: it is what a supported-platform entry's own column may state,
+    A closed set: it is what a supported-platform entry's own columns may state,
     what the install path states one pair of commands per, and what a document
     is read against. One per operating-system family, and each is the manager a
     host of that family runs a service under with nothing installed.
@@ -98,6 +104,10 @@ class ServiceManager(StrEnum):
     SYSTEMD = "systemd"
     LAUNCHD = "launchd"
     WINDOWS_SERVICE = "windows-service"
+    #: The per-user manager on Windows: a Scheduled Task registered by, and run
+    #: as, the person using the machine. Named in a platform's per-user column
+    #: rather than its service-manager column.
+    WINDOWS_SCHEDULED_TASK = "windows-scheduled-task"
 
 
 #: The block `AGENTS.md` records each cell that does not run in.
@@ -248,6 +258,21 @@ class Platform:
     install_path: bool
     #: Why it does not, where it does not.
     install_path_reason: str = ""
+    #: The manager the per-user install runs the server under, where the
+    #: platform has one; none where its only install is the service.
+    per_user_manager: ServiceManager | None = None
+
+    @property
+    def managers(self) -> tuple[str, ...]:
+        """Every manager the install path states a pair for on this platform.
+
+        The per-user one first where there is one: it is the recommended
+        install, and the one whose installer refuses a host the service is
+        already on, so a host taking both takes it before the service.
+        """
+        if self.per_user_manager is not None:
+            return (self.per_user_manager.value, self.service_manager)
+        return (self.service_manager,)
 
     @property
     def no_route_proof(self) -> str | None:
@@ -393,6 +418,17 @@ def macos_tag_version(minimum: tuple[int, int]) -> tuple[int, int]:
     return major + 1, 0
 
 
+def per_user_manager(entry: re.Match[str]) -> ServiceManager | None:
+    """The per-user manager one entry names, or none where it names none or one unknown.
+
+    An unknown one is answered as none here and **refused** by
+    `checks_ci.platforms`, which reads the entry's own text, for the reason
+    `supported` passes over a line it cannot read.
+    """
+    named = entry["per_user_manager"]
+    return ServiceManager(named) if named in tuple(ServiceManager) else None
+
+
 def supported(repo: Repo) -> list[Platform]:
     """Every platform `AGENTS.md`'s own supported-platform list names.
 
@@ -419,6 +455,7 @@ def supported(repo: Repo) -> list[Platform]:
                     match["service_manager"],
                     match["install"] == "yes",
                     (match["reason"] or "").strip(),
+                    per_user_manager(match),
                 )
             )
     return found

@@ -1125,13 +1125,10 @@ mod native_boundaries {
             "stdout truncated"
         );
         let copies = if descendant && inherited { 2 } else { 1 };
-        assert_eq!(
-            ran.out
-                .lines()
-                .filter(|line| *line == "observed stdout")
-                .count(),
-            8192 * copies
-        );
+        // The descendant and its parent's libtest harness share stdout: a
+        // harness status can precede a payload on the same line. Count every
+        // complete payload, including its newline, independently of that prefix.
+        assert_eq!(ran.out.matches("observed stdout\n").count(), 8192 * copies);
         assert_eq!(ran.err, "observed stderr\n".repeat(8192 * copies));
         ran
     }

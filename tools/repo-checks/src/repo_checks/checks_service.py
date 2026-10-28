@@ -32,6 +32,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from repo_checks import install_path as ip
 from repo_checks.model import (
@@ -55,6 +56,12 @@ ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
         r"\blaunchctl\s+bootstrap\s+system\s+(?P<directory>\S*)/(?P<service>[^/\s]+)\.plist\s*$"
     ),
     ServiceManager.WINDOWS_SERVICE: re.compile(r"\bSet-Service\s+-Name\s+(?P<service>\S+)\b"),
+    # The per-user pair's second command restarts the task its installer
+    # already started: `Stop-ScheduledTask ...; Start-ScheduledTask -TaskName
+    # <task>`, whose last word is the task.
+    ServiceManager.WINDOWS_SCHEDULED_TASK: re.compile(
+        r"\bStart-ScheduledTask\s+-TaskName\s+(?P<service>[^\s;]+)\s*$"
+    ),
 }
 
 # What each manager's activation command has to look like, quoted back at a
@@ -63,6 +70,7 @@ ACTIVATION_SHAPES: dict[str, str] = {
     ServiceManager.SYSTEMD: "systemctl enable --now <unit>",
     ServiceManager.LAUNCHD: "launchctl bootstrap system <directory>/<label>.plist",
     ServiceManager.WINDOWS_SERVICE: "Set-Service -Name <service> ...",
+    ServiceManager.WINDOWS_SCHEDULED_TASK: "Start-ScheduledTask -TaskName <task>",
 }
 
 # How each manager's installer declares the name it registers: `UNIT_NAME="..."`
@@ -80,6 +88,12 @@ NAME_DECLARATIONS: dict[str, tuple[re.Pattern[str], str]] = {
     ServiceManager.WINDOWS_SERVICE: (
         re.compile(r"^\$ServiceName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
         "$ServiceName = '...'",
+    ),
+    # The per-user installer declares its task inside the function the whole
+    # route runs in, so the line is indented.
+    ServiceManager.WINDOWS_SCHEDULED_TASK: (
+        re.compile(r"^\s*\$TaskName\s*=\s*'(?P<service>[^']+)'\s*$", re.MULTILINE),
+        "$TaskName = '...'",
     ),
 }
 
@@ -143,10 +157,19 @@ class Rules:
     installer: str
     may_not_invoke: tuple[str, ...]
     may_not_set: tuple[str, ...]
-    starts_at_boot: str
+    #: What starts the service unattended, at boot or at logon, in the manager's own words.
+    starts_unattended: str
     restarts_after_crash: str
     registration_directory: str | None
     program_name: tuple[str, str] | None
+    #: When the manager starts it unattended: at boot, or at its user's logon.
+    starts_at: Literal["boot", "logon"] = "boot"
+    #: What the registration the installer writes must carry besides the two
+    #: settings above, each in the manager's own vocabulary.
+    must_carry: tuple[str, ...] = ()
+    #: Other scripts that name this manager's service, each by the same
+    #: declaration the installer makes, held to the name the pair states.
+    name_also_declared_in: tuple[str, ...] = ()
 
 
 def _rules(repo: Repo, manager: str) -> Rules:
@@ -165,7 +188,10 @@ def _rules(repo: Repo, manager: str) -> Rules:
             f"the `{manager}` installer is held to"
         )
         raise PolicyValueError(msg)
-    named = policy_strings(table, ("installer", "starts_at_boot", "restarts_after_crash"), where)
+    # A service starts at boot; a per-user install starts at its user's logon,
+    # and its table says so under the name of the moment it starts at.
+    moment = "starts_at_logon" if "starts_at_logon" in table else "starts_at_boot"
+    named = policy_strings(table, ("installer", moment, "restarts_after_crash"), where)
     may_not_set = table.get("may_not_set")
     directory = table.get("registration_directory")
     program: tuple[str, str] | None = None
@@ -176,12 +202,17 @@ def _rules(repo: Repo, manager: str) -> Rules:
         named["installer"],
         policy_string_list(table, "may_not_invoke", where),
         policy_string_list(table, "may_not_set", where) if may_not_set is not None else (),
-        named["starts_at_boot"],
+        named[moment],
         named["restarts_after_crash"],
         policy_strings(table, ("registration_directory",), where)["registration_directory"]
         if directory is not None
         else None,
         program,
+        starts_at="logon" if moment == "starts_at_logon" else "boot",
+        must_carry=policy_string_list(table, "must_carry", where) if "must_carry" in table else (),
+        name_also_declared_in=policy_string_list(table, "name_also_declared_in", where)
+        if "name_also_declared_in" in table
+        else (),
     )
 
 
@@ -194,15 +225,21 @@ def installer_for(repo: Repo, manager: str) -> str:
     return _rules(repo, manager).installer
 
 
-def installers(repo: Repo) -> list[str]:
-    """Every installer `repo-policy.toml` declares, one per manager it has rules for."""
+def service_management_scripts(repo: Repo) -> list[str]:
+    """Every script `repo-policy.toml` declares per manager it has rules for.
+
+    Each manager's installer, and the migration onto it where it has one: the
+    one elevated step that moves a service install's record to a per-user one.
+    """
     managers = policy_table(repo, "service").get("managers")
     if not isinstance(managers, dict):
         return []
     return [
-        str(table["installer"])
+        str(table[key])
         for table in managers.values()
-        if isinstance(table, dict) and isinstance(table.get("installer"), str)
+        if isinstance(table, dict)
+        for key in ("installer", "migration")
+        if isinstance(table.get(key), str)
     ]
 
 
@@ -214,8 +251,9 @@ def _service_managers(repo: Repo) -> list[str]:
     """
     named: list[str] = []
     for platform in supported(repo):
-        if platform.service_manager not in named:
-            named.append(platform.service_manager)
+        for manager in platform.managers:
+            if manager not in named:
+                named.append(manager)
     return named
 
 
@@ -458,6 +496,8 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
 
     if rules.program_name is not None:
         findings.extend(_program_name_findings(repo, named, rules.program_name))
+    if declaration is not None:
+        findings.extend(_also_declared_findings(repo, named, declaration, rules))
 
     if rules.registration_directory is not None and rules.registration_directory not in script:
         findings.append(
@@ -493,21 +533,57 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
             for number in _sets(script, setting, powershell)
         )
 
+    findings.extend(
+        f"`{named.installer}` writes no `{setting}` into the registration it makes, which "
+        f"the `{manager}` rules require of it"
+        for setting in rules.must_carry
+        if not _carries(script, setting)
+    )
     if not _carries(script, rules.restarts_after_crash):
         findings.append(
             f"`{named.installer}` writes no `{rules.restarts_after_crash}`, so the service it "
             f"registers stays down after its process ends abruptly"
         )
-    if not _carries(script, rules.starts_at_boot) and not _carries(
-        named.activation, rules.starts_at_boot
+    if not _carries(script, rules.starts_unattended) and not _carries(
+        named.activation, rules.starts_unattended
     ):
         findings.append(
             f"neither `{named.installer}` nor the `{manager}` activation command carries "
-            f"`{rules.starts_at_boot}`, so nothing makes the service start at boot once the "
-            f"operator has activated it"
+            f"`{rules.starts_unattended}`, so nothing makes the service start at "
+            f"{rules.starts_at} once the operator has activated it"
         )
 
     findings.extend(_granted_findings(repo, named.installer, script))
+    return findings
+
+
+def _also_declared_findings(
+    repo: Repo, named: Named, declaration: tuple[re.Pattern[str], str], rules: Rules
+) -> list[str]:
+    """Every other script naming the service names the one the pair states.
+
+    The per-user installer asks whether the service is there before it
+    installs a second server, and the migration stops and deletes it: a script
+    asking after a name the service no longer has would find nothing and go on.
+    """
+    pattern, shape = declaration
+    indented = re.compile(pattern.pattern.replace("^", "^\\s*", 1), re.MULTILINE)
+    findings: list[str] = []
+    for script in rules.name_also_declared_in:
+        if not repo.exists(script):
+            findings.append(f"`{script}` is absent: it names the `{named.manager}` service")
+            continue
+        declared = indented.search(repo.read(script))
+        if declared is None:
+            findings.append(
+                f"`{script}` carries no `{shape}` line, so nothing holds the service it names "
+                f"to the one the install path states"
+            )
+        elif declared["service"] != named.service:
+            findings.append(
+                f"`{script}` names the service `{declared['service']}`, and AGENTS.md's "
+                f"`{ip.SECTION_HEADING}` states `{named.service}` under `{named.manager}`"
+            )
     return findings
 
 

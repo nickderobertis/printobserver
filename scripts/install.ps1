@@ -1,4 +1,5 @@
-# Put the printobserver program on your path, already built for your platform.
+# Put the printobserver program on your path, already built for your platform,
+# and run its server as you - the recommended install on Windows.
 #
 # The Windows form of the third of the three ALTERNATIVE routes AGENTS.md's "The
 # end-user install path" section states - `scripts/install.sh` is the same route
@@ -9,35 +10,58 @@
 # runs on is the small machine beside the printer, which is the worst place to
 # build a Rust workspace.
 #
-# It does on Windows exactly what the shell script does elsewhere, against the
-# same artifact and the same checksum file. It FAILS CLOSED: where it cannot
+# It obtains the program exactly as the shell script does elsewhere, against
+# the same artifact and the same checksum file. It FAILS CLOSED: where it cannot
 # work out the platform, cannot download, or cannot verify what it downloaded,
 # it stops without installing and says both why and what to do next.
 # Verification happens before anything reaches a path: the archive is unpacked
 # into a directory of this script's own, checked against the release's own
 # checksum file, and only then moved to where you asked for it.
 #
+# With no switch it is also the installer of the `windows-scheduled-task` pair
+# that section states: the per-user install, with no elevation at any point.
+# Beside the program it writes your own server configuration under
+# %LOCALAPPDATA%\printobserver - only when none is there - and its state
+# directory, and registers a Scheduled Task, as you, that runs the server at
+# your logon and brings it back when it stops, and starts it. Unlike every
+# service installer this repository ships, it starts the server by design: it
+# installs nothing for anybody but the person running it, and running it is the
+# decision to supervise. Run again, it upgrades in place: it stops the task,
+# waits for the server to exit, replaces the program, leaves the configuration
+# and the state as they are, and starts the task again.
+#
 # Usage:
 #   irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
-#   & ([scriptblock]::Create((irm <that URL>))) [-Version vX.Y.Z] [-To DIR]
+#   & ([scriptblock]::Create((irm <that URL>))) [-Version vX.Y.Z] [-To DIR] [-ClientOnly] [-ObservationIntervalSeconds N]
 #
 #   -Version  install that release rather than the newest one.
 #   -To       install into DIR rather than into $env:LOCALAPPDATA\Programs\printobserver.
+#   -ClientOnly
+#             put the program on your path and nothing else, for a host whose
+#             server is the service `scripts/install-service.ps1` installs.
+#   -ObservationIntervalSeconds
+#             how often every active print is observed, written into a new
+#             configuration as supervisor.observation_interval_s, exactly as
+#             the service installer writes it.
 #
 # PRINTOBSERVER_RELEASE_BASE points this at somewhere other than the project's
 # own releases - a mirror, or a directory holding a release. It takes the same
 # two shapes the forge serves: `<base>/latest/download/<asset>` for the newest
 # release and `<base>/download/<tag>/<asset>` for a pinned one.
+# PRINTOBSERVER_TASK_NAME names the task something other than `printobserver`,
+# which is how a test registers a task of its own beside a real one.
 param(
     [string]$Version = '',
     [string]$To = '',
+    [switch]$ClientOnly,
+    [string]$ObservationIntervalSeconds = '',
     [switch]$Help
 )
 
 # The whole route is one function, called once at the end, so that what it sets
 # - the strict mode, the error preference, the progress preference - is scoped
 # to it and leaves the session of a caller who ran `irm ... | iex` as it was.
-function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
+function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly, [string]$ObservationIntervalSeconds, [bool]$Help) {
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
@@ -73,9 +97,11 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
 
     if ($Help) {
         Say 'Usage: irm <the fetch URL> | iex'
-        Say '       & ([scriptblock]::Create((irm <the fetch URL>))) [-Version vX.Y.Z] [-To DIR]'
+        Say '       & ([scriptblock]::Create((irm <the fetch URL>))) [-Version vX.Y.Z] [-To DIR] [-ClientOnly] [-ObservationIntervalSeconds N]'
         Say '  -Version  install that release rather than the newest one.'
         Say '  -To       install into DIR rather than into $env:LOCALAPPDATA\Programs\printobserver.'
+        Say '  -ClientOnly  put the program on your path and nothing else, for a host whose server is the service.'
+        Say '  -ObservationIntervalSeconds N  how often a new configuration has every active print observed.'
         return
     }
 
@@ -132,12 +158,216 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         $which = 'the newest release'
     }
 
+    # The per-user install's three places, under the user's own local
+    # application data, spelled once: `crates/printobserver/src/locations.rs`
+    # holds the program's own copy of them to what is written here. Every one
+    # keeps the profile's own permissions: nothing here grants anything.
+    $PerUserConfig = @('printobserver', 'config.toml')
+    $PerUserState = @('printobserver', 'state')
+    $PerUserProgram = @('Programs', 'printobserver')
+    # The task the per-user server runs under, in the root task folder, and the
+    # service whose presence means this host's server is not the user's own.
+    $TaskName = 'printobserver'
+    $ServiceName = 'printobserver'
+    $TaskFolder = '\'
+
+    function Under-LocalAppData([string[]]$Segments) {
+        $path = $env:LOCALAPPDATA
+        foreach ($segment in $Segments) {
+            $path = Join-Path $path $segment
+        }
+        return $path
+    }
+
     if (-not $To) {
         if (-not $env:LOCALAPPDATA) {
             Stop-Install 'this session has no LOCALAPPDATA, so there is no default directory to install into' `
                 'Pass -To a directory you can write to.'
         }
-        $To = Join-Path (Join-Path $env:LOCALAPPDATA 'Programs') 'printobserver'
+        $To = Under-LocalAppData $PerUserProgram
+    }
+
+    if ($ClientOnly -and $ObservationIntervalSeconds) {
+        Stop-Install '-ObservationIntervalSeconds was given with -ClientOnly, which installs no server for it to configure' `
+            'Leave out -ClientOnly to install the server as you, or leave out -ObservationIntervalSeconds.'
+    }
+    if (-not $ClientOnly) {
+        # The task runs the program by this path from Task Scheduler's own
+        # working directory, so a relative one is made whole here.
+        $To = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($To)
+    }
+    $installed = Join-Path $To $PROGRAM
+    if (-not $ClientOnly) {
+        # Everything the per-user install will write is decided, and every
+        # refusal that needs nothing fetched is made, before anything is
+        # fetched: a run refused here changes nothing on disk and nothing in
+        # Task Scheduler. A refusal after the program is in place says so.
+        if ($env:PRINTOBSERVER_TASK_NAME) {
+            $TaskName = $env:PRINTOBSERVER_TASK_NAME
+        }
+        if ($TaskName -notmatch '^[A-Za-z0-9._-]+$') {
+            Stop-Install "PRINTOBSERVER_TASK_NAME names the task ``$TaskName``, which is not a name this script registers" `
+                'Name it with letters, digits, dots, dashes and underscores alone, or leave PRINTOBSERVER_TASK_NAME unset.'
+        }
+        # The server's `supervisor.observation_interval_s`, held to what the
+        # server accepts exactly as the service installer holds it.
+        $Interval = '# observation_interval_s = 120'
+        if ($ObservationIntervalSeconds) {
+            $seconds = [long]0
+            if (-not ($ObservationIntervalSeconds -cmatch '^[1-9][0-9]*$' -and
+                    [long]::TryParse($ObservationIntervalSeconds, [ref]$seconds))) {
+                Stop-Install "-ObservationIntervalSeconds takes a whole number of seconds above zero, written in digits alone, and '$ObservationIntervalSeconds' is not one" `
+                    "Nothing was installed. Pass a positive number of seconds, or leave -ObservationIntervalSeconds out for the server's default."
+            }
+            $Interval = "observation_interval_s = $seconds"
+        }
+        if (-not $env:LOCALAPPDATA) {
+            Stop-Install "this session has no LOCALAPPDATA, so there is nowhere of your own to keep the server's configuration and state" `
+                'Nothing was installed. Run this as the user the server is to run as, or pass -ClientOnly to install the program alone.'
+        }
+        $account = ''
+        try {
+            $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        } catch {
+            if ($env:USERNAME) {
+                $account = if ($env:USERDOMAIN) { "$env:USERDOMAIN\$env:USERNAME" } else { $env:USERNAME }
+            }
+        }
+        if (-not $account) {
+            Stop-Install 'this session names no user, so there is nobody to register the server''s task for' `
+                'Nothing was installed. Run this as the user the server is to run as, in a session of their own.'
+        }
+        # Task Scheduler starts outside this shell's working directory.
+        $env:LOCALAPPDATA = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:LOCALAPPDATA)
+        $InstalledConfig = Under-LocalAppData $PerUserConfig
+        $InstalledState = Under-LocalAppData $PerUserState
+        $InstalledSkills = Join-Path $InstalledState 'skills'
+        $InstalledSkill = Join-Path (Join-Path $InstalledSkills 'printobserver') 'SKILL.md'
+        # Written into a TOML document as literal strings, which have no escape
+        # for a single quote, and into the task's command line, in which a
+        # double quote ends a path.
+        foreach ($written in @($InstalledConfig, $InstalledState, $installed)) {
+            if ($written.Contains('"') -or $written.Contains("'") -or $written.Contains("`n") -or $written.Contains("`r")) {
+                Stop-Install "$written carries a quote or a newline, which the server's configuration and its task's command line have no escape for" `
+                    'Nothing was installed. Pass -To a directory with no quote in its name, or run this as a user whose profile has none.'
+            }
+        }
+
+        # A host whose server is the service is not one a second, per-user
+        # server belongs on: both would supervise the one printer. The manager
+        # answers a query about a service it has with success, about one it
+        # does not have with 1060, and anything else is no answer at all.
+        $ServiceDoesNotExist = 1060
+        $asked = & {
+            $ErrorActionPreference = 'Continue'
+            sc.exe query $ServiceName 2>&1 | Out-String
+        }
+        $answered = $LASTEXITCODE
+        if ($answered -eq 0) {
+            Stop-Install "the $ServiceName service is installed on this machine, and a server of your own beside it would supervise the same printer twice" `
+                "Nothing was changed. Move the service's configuration and record to your own account with the one elevated step, from an elevated PowerShell: & ([scriptblock]::Create((irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/migrate-service-to-per-user.ps1))) -LocalAppData '$env:LOCALAPPDATA' -User '$account' - and then run this again. Or keep the service, and pass -ClientOnly to install the program alone."
+        }
+        if ($answered -ne $ServiceDoesNotExist) {
+            Stop-Install "asking the service control manager whether the $ServiceName service is installed failed: $("$asked".Trim())" `
+                "Nothing was installed. Run ``sc.exe query $ServiceName`` to see what it says, and run this again once it answers."
+        }
+    }
+
+    # Every process running the program at one path: the server the task
+    # started, which the upgrade waits out. Read through each process's own
+    # path, which a process of another user's answers none for.
+    function Get-Running([string]$Path) {
+        return @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+                $running = $null
+                try { $running = $_.Path } catch { $running = $null }
+                $running -and [string]::Equals($running, $Path, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+    }
+
+    # Put a task held off for an upgrade back as it was, where the upgrade
+    # stopped before it replaced anything.
+    # If either is refused, the stop that follows says so beside its own reason:
+    # a server left held off is supervision left off.
+    function Resume-Task([bool]$Paused) {
+        if (-not $Paused) {
+            return
+        }
+        try {
+            Enable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder | Out-Null
+            Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
+            Say "the task $TaskName was put back and started, running the program as it was"
+        } catch {
+            Say "the task $TaskName could not be put back ($("$_".Trim())), so nothing is supervising; run Enable-ScheduledTask -TaskName $TaskName and then Start-ScheduledTask -TaskName $TaskName"
+        }
+    }
+
+    # The task, as the document Task Scheduler reads: the installing user's own,
+    # run only while they are logged on, with their limited token. It runs the
+    # server at their logon, and every minute after it is registered starts it
+    # again if it is not running - which is what brings the server back after
+    # it exits, however it exited: the restart-on-failure setting alone covers
+    # a start that failed, not a server that ran and then ended. One instance
+    # at a time, so the minute's start of a running server does nothing; no
+    # time limit; and the same on battery power as on mains.
+    function Get-TaskDefinition([string]$Account, [string]$Program, [string]$Configuration) {
+        $user = [System.Security.SecurityElement]::Escape($Account)
+        $command = [System.Security.SecurityElement]::Escape("`"$Program`"")
+        $arguments = [System.Security.SecurityElement]::Escape("server --config `"$Configuration`"")
+        $registered = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+        return @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>printobserver, a supervision layer between a 3D printer and an agent, run as $user</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>$user</UserId>
+    </LogonTrigger>
+    <TimeTrigger>
+      <Enabled>true</Enabled>
+      <StartBoundary>$registered</StartBoundary>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>$user</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>999</Count>
+    </RestartOnFailure>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$command</Command>
+      <Arguments>$arguments</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"@
     }
 
     # A directory of this script's own, removed whatever happens below: nothing
@@ -265,14 +495,199 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
         } catch {
             Stop-Install "$To could not be created" 'Nothing was installed. Pass -To a directory you can write to.'
         }
-        $installed = Join-Path $To $PROGRAM
+        # An upgrade: the task is held off and stopped, and the server it ran
+        # waited out, before its program is replaced - a running program's file
+        # cannot be replaced on Windows. Held off first, because the task
+        # starts the server again on its own while it is enabled.
+        $paused = $false
+        if (-not $ClientOnly) {
+            # A task that is not there is the one answer that is not a
+            # failure: anything else Task Scheduler says stops the upgrade.
+            $asked = $null
+            $existing = Get-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue -ErrorVariable asked
+            $unanswered = @($asked | Where-Object { $_.CategoryInfo.Category -ne 'ObjectNotFound' })
+            if (-not $existing -and $unanswered.Count -gt 0) {
+                Stop-Install "Task Scheduler would not say whether the task $TaskName is registered: $("$($unanswered[0])".Trim())" `
+                    "Nothing was replaced. Run Get-ScheduledTask -TaskName $TaskName to see what it says, and run this again."
+            }
+            if ($existing) {
+                try {
+                    Disable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder | Out-Null
+                    $paused = $true
+                    Stop-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
+                } catch {
+                    $refused = "$_".Trim()
+                    Resume-Task $paused
+                    Stop-Install "Task Scheduler would not stop the task $TaskName for the upgrade: $refused" `
+                        'Nothing was replaced. Run this again; if it says the same, end the server with Stop-ScheduledTask first.'
+                }
+            }
+            $deadline = (Get-Date).AddSeconds(60)
+            while (@(Get-Running $installed).Count -gt 0) {
+                if ((Get-Date) -gt $deadline) {
+                    Resume-Task $paused
+                    Stop-Install "the server $installed runs is still running a minute after its task was stopped" `
+                        "Nothing was replaced. Stop it - Stop-Process -Name $NAME - and run this again."
+                }
+                Start-Sleep -Milliseconds 250
+            }
+        }
         try {
             Move-Item -LiteralPath $unpacked -Destination $installed -Force
         } catch {
+            Resume-Task $paused
             Stop-Install "$PROGRAM could not be put in $To" 'Nothing was installed. Pass -To a directory you can write to.'
         }
     } finally {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # The per-user server: its configuration, only where none is there, its
+    # state directory, and the task that runs it - registered as the user
+    # running this, which needs no elevation, and started.
+    $keptConfig = $false
+    if (-not $ClientOnly) {
+        $keptConfig = Test-Path -LiteralPath $InstalledConfig -PathType Leaf
+        foreach ($directory in @((Split-Path $InstalledConfig), $InstalledState)) {
+            try {
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            } catch {
+                Stop-Install "$directory could not be created: $("$_".Trim())" `
+                    "The program is installed at $installed, and its server is not. Make $directory writable by you, and run this again."
+            }
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+                Stop-Install "$directory could not be created: something that is not a directory is in its way" `
+                    "The program is installed at $installed, and its server is not. Move what is at $directory, and run this again."
+            }
+        }
+        if (-not $keptConfig) {
+        $configuration = @"
+# printobserver's one configuration file.
+#
+# Every value below is validated when the service starts, and a value that
+# cannot work is refused naming this file's own field for it. Fill in the three
+# marked FILL IN, then restart the server's task.
+
+state_dir = '$InstalledState'
+listen = "127.0.0.1:8420"
+
+[octoprint]
+# FILL IN: where your OctoPrint answers, and the API key it authenticates by.
+url = "http://127.0.0.1:5000"
+api_key = ""
+# "commandable" if the machine has a part-cooling fan this service may command,
+# "absent" if it has none.
+fan = "commandable"
+
+[supervisor]
+# The harness identity supervision turns run on.
+harness = "claude-code"
+# The agent's skill, which this program does not carry. Install it here, as
+# yourself and with no elevation:
+#   gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills
+skill_path = '$InstalledSkill'
+# How often every active print is looked in on, and its agent given a turn,
+# whether or not the detector has alerted. Left out, every 120 seconds: an
+# eight-hour print is 240 turns. Raise it to spend less; zero is refused.
+$Interval
+
+[ingress]
+# FILL IN: the shared secret Obico's webhook notification plugin must carry.
+# Anything that can post to the ingress can pause a printer.
+shared_secret = ""
+# The answer bound is left out on purpose. The default this program ships is
+# already below the timeout Obico posts under, and writing that number here
+# would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
+# answer bound".
+
+# The operator's credential is not written in this file, only its verifier.
+# Supervision turns run as you, so a turn could still read the credential in
+# your own client configuration: here the policy is a guard rail, not a hard
+# boundary. As yourself, run
+#   printobserver credential issue
+# which writes the credential into your own client configuration under
+# %APPDATA%, and prints one line to put here, above the first [table] header:
+#   api.credential_verifier = "sha256:..."
+# then restart the server's task. Until that line is here the server supervises
+# and refuses every operator request. Each supervision turn is handed a
+# credential of its own in its environment, so nothing else is needed for the
+# agent.
+
+# Optional: a fresh look at the print. A URL answering one still image, such as
+# go2rtc's frame.jpeg for the printer's camera. Left out, a supervising agent's
+# looks carry the printer's state but no frame.
+# [camera]
+# snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=camera"
+
+# Optional: Obico's own API, so that a print Obico paused, and the agent adjusted
+# and the supervisor resumed, is acknowledged to Obico, which re-arms its
+# detection for the rest of the print. Give both keys or neither; the token is
+# an OAuth2 access token from the Obico instance's own administration.
+# [obico]
+# url = "http://127.0.0.1:3334"
+# access_token = ""
+
+# How a start checks the spools loaded against what its file needs, by
+# OctoPrint's own analysis of it. Every key is optional; left out, a start is
+# refused while the spool on a tool holds less than the print needs plus 10%
+# (and at least 5 g), while its figure is unverified, or while OctoPrint has
+# no analysis of the file after waiting 300 seconds for one. "warn" lets such
+# a start go ahead and records that it warned; "off" checks nothing. An
+# operator may start one anyway with "--override-filament-check true".
+# [spools]
+# preflight = "refuse"
+# buffer_percent = 10.0
+# buffer_min_g = 5.0
+# analysis_wait_seconds = 300
+
+# What any actor may ask for at all. A manifest may narrow these; nothing may
+# widen them. The system resumes a print the detector paused once the agent's
+# adjustment to it is in, and puts back a bounded adjustment when it expires.
+[safety]
+agent_min_interval_s = 30
+
+[safety.allowed]
+feedrate = { min = 0.5, max = 1.5 }
+flowrate = { min = 0.9, max = 1.1 }
+fan = { min = 0.0, max = 100.0 }
+bed_target = { min = 0.0, max = 110.0 }
+"tool_target:0" = { min = 0.0, max = 260.0 }
+
+# Who may ask for what. The spool commands (registering, loading,
+# unloading, correcting and retiring a spool) and closing a print record left
+# open are the operator's, and the agent is granted none of them: a
+# configuration granting the agent close_print is refused at start.
+[safety.actions]
+operator = ["pause", "resume", "cancel", "start_print", "set_feedrate_factor",
+            "set_flowrate_factor", "set_tool_target_c", "set_bed_target_c",
+            "set_fan_percent", "acknowledge_failure", "close_print",
+            "register_spool", "load_spool", "unload_spool", "adjust_spool",
+            "retire_spool"]
+agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
+         "set_fan_percent", "acknowledge_failure"]
+system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
+          "set_tool_target_c", "set_bed_target_c", "set_fan_percent"]
+"@
+            try {
+                [IO.File]::WriteAllText($InstalledConfig, $configuration.Replace("`r`n", "`n"))
+            } catch {
+                Stop-Install "$InstalledConfig could not be written: $("$_".Trim())" `
+                    "The program is installed at $installed, and its server is not. Make $(Split-Path $InstalledConfig) writable by you, and run this again."
+            }
+        }
+        $definition = Get-TaskDefinition $account $installed $InstalledConfig
+        try {
+            Register-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -Xml $definition -Force | Out-Null
+        } catch {
+            Stop-Install "Task Scheduler would not register the task $TaskName for ${account}: $("$_".Trim())" `
+                "The program is installed at $installed and its configuration at $InstalledConfig. Run this again as $account, from a session of your own."
+        }
+        try {
+            Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
+        } catch {
+            Stop-Install "Task Scheduler registered the task $TaskName for $account and would not start it: $("$_".Trim())" `
+                "It starts the server at $account's next logon; to start it now, log on as $account and run Start-ScheduledTask -TaskName $TaskName."
+        }
     }
 
     # On the path of this session, and of every session after it: Windows has
@@ -304,15 +719,40 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
     # and from which release, that its directory is now on the path where it
     # was not, and the two commands the operator runs next - the same lines,
     # line for line, that the shell form of this route prints.
-    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     function Report-Installed {
-        Say "installed $installed from $which"
-        if ($added) {
-            Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
+        if ($ClientOnly) {
+            # llmlint: ignore-block[tool_output_is_signal] suppressions.toml has the reason.
+            Say "installed $installed from $which"
+            if ($added) {
+                Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
+            }
+            Say 'next, in an elevated PowerShell, put the service in place and then start it:'
+            [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.ps1 | iex")
+            [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
+            # llmlint: ignore-end[tool_output_is_signal]
+            return
         }
-        Say 'next, in an elevated PowerShell, put the service in place and then start it:'
-        [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.ps1 | iex")
-        [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
+        $report = @("${SCRIPT}: installed $installed from $which")
+        if ($added) {
+            $report += "${SCRIPT}: $To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
+        }
+        # What the server's install did, an interval it could not write where
+        # there was one, and the steps the operator takes next: one report,
+        # written once.
+        $configured = if ($keptConfig) { "kept $InstalledConfig and $InstalledState" } else { "wrote $InstalledConfig, whose three FILL IN values are yours to set" }
+        $report += @("${SCRIPT}: $configured; registered and started the task $TaskName, which runs the server as $account at logon; next, as yourself and not elevated:")
+        if ($keptConfig -and $ObservationIntervalSeconds) {
+            $report += "${SCRIPT}: -ObservationIntervalSeconds was not written into the configuration kept; set supervisor.observation_interval_s in $InstalledConfig yourself"
+        }
+        $report += @(
+            "  printobserver credential issue",
+            "    and put the api.credential_verifier line it prints into $InstalledConfig, above its first [table] header",
+            "  gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills",
+            "  printobserver sign-in",
+            "  Stop-ScheduledTask -TaskName $TaskName; Start-ScheduledTask -TaskName $TaskName"
+        )
+        # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+        [Console]::Error.WriteLine($report -join [Environment]::NewLine)
     }
     Report-Installed
 }
@@ -323,7 +763,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$Help) {
 # where a session reads a program's: `$LASTEXITCODE`, which is what a caller
 # checks after a native command, and what a CI step's PowerShell reads back.
 try {
-    Install-Printobserver -Version $Version -To $To -Help ([bool]$Help)
+    Install-Printobserver -Version $Version -To $To -ClientOnly ([bool]$ClientOnly) -ObservationIntervalSeconds $ObservationIntervalSeconds -Help ([bool]$Help)
     $global:LASTEXITCODE = 0
 } catch {
     # A stop of this script's own has already said why and what to do next;

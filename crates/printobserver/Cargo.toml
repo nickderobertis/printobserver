@@ -24,8 +24,9 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 # service reports is `service.rs`'s, which every platform compiles and drives.
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
-# The one error code that tells a console start from a service start.
-windows-sys = { version = "0.61", features = ["Win32_Foundation"] }
+# The one error code that tells a console start from a service start, and the
+# calls that hide the window of a console made for the server alone.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
 
 [features]
 # Test-only. Builds `printobserver-tainted`, which is this program's own library

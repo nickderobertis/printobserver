@@ -485,3 +485,27 @@ def test_a_release_build_whose_strategy_is_not_a_mapping_is_refused_rather_than_
     findings = release_automation(broken.repo)
 
     refused_naming(findings, "names `linux-x86_64`", "no committed job builds")
+
+
+#: The Windows entry the per-user column is driven over.
+WINDOWS_ENTRY = (
+    "- `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, "
+    "service manager `windows-service`, per-user manager `windows-scheduled-task`, "
+    "install path: yes"
+)
+
+
+def test_an_entry_naming_a_per_user_manager_nothing_here_has_a_name_for_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The per-user column is the same closed vocabulary as the service-manager one."""
+    broken = tree()
+    broken.edit(
+        "AGENTS.md",
+        WINDOWS_ENTRY,
+        WINDOWS_ENTRY.replace("`windows-scheduled-task`", "`windows-run-key`"),
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "`windows-x86_64`", "`windows-run-key`", "none this repository")

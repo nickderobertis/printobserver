@@ -20,9 +20,13 @@ carries no copy of it and needs no Docker.
 ## Where a client reads its server and credential from
 
 `config::load` reads the operator's own `client.toml` under their configuration
-home (`locations::operator_client_config`), then the server's default file — a
-client with no `[client]` table takes the address the server listens on. With
-`--config`, that one file alone. `PRINTOBSERVER_SERVER` and
+home (`locations::operator_client_config`), then the per-user server
+configuration when there is one (`locations::per_user_config`, Windows alone
+for now), then the service's default file — a client with no `[client]` table
+takes the address the server listens on. With `--config`, that one file alone.
+`sign-in` with no `--config` reads `locations::default_config`: the per-user
+file when it is there, the service's otherwise. `tests/per_user.rs` drives both
+through the binary. `PRINTOBSERVER_SERVER` and
 `PRINTOBSERVER_CREDENTIAL` win over any file, and with both set and no
 `--config` no file is opened at all, which is how a supervision turn runs:
 `tests/service.rs` traces the open calls to hold that order.

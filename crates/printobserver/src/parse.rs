@@ -25,7 +25,6 @@ use printobserver_server::{Located, ValueKind};
 use printobserver_types::serde_json;
 use printobserver_types::serde_json::{Map, Value, json};
 
-use crate::config::DEFAULT_CONFIG_PATH;
 use crate::surface::{
     CONFIG_OPTION, CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, CREDENTIAL_WORD, Command,
     Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, SERVE_COMMAND,
@@ -375,7 +374,7 @@ fn local(name: &str, config: Option<PathBuf>, flagged: bool, machine_readable: b
     // llmlint: ignore[cli_output_contract] suppressions.toml has the reason.
     if name == SIGN_IN_COMMAND {
         return Invocation::SignIn {
-            config: config.unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG_PATH)),
+            config: config.unwrap_or_else(crate::locations::default_config),
         };
     }
     refused(format!("`{name}` is not a command of this program."))
