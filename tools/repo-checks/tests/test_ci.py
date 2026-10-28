@@ -410,6 +410,9 @@ def test_a_tree_declaring_no_waiver_at_all_is_refused(tree: Callable[[], Tree]) 
     broken.edit(
         "repo-policy.toml",
         "waived_steps = [\n"
+        '  "install-service-unix-per-user",\n'
+        '  "start-service-systemd-user",\n'
+        '  "start-service-launchd-agent",\n'
         '  "install-service",\n'
         '  "start-service-systemd",\n'
         '  "start-service-launchd",\n'

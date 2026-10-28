@@ -287,9 +287,9 @@ eight at once. That module is the source every other copy of one of them derives
 from.
 
 [//]: # (BEGIN supported-platforms)
-- `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, install path: yes
-- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes
-- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, install path: yes
+- `linux-x86_64` — runner `ubuntu-24.04`, Rust target `x86_64-unknown-linux-gnu`, service manager `systemd`, per-user manager `systemd-user`, install path: yes
+- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target `aarch64-unknown-linux-gnu`, service manager `systemd`, per-user manager `systemd-user`, install path: yes
+- `macos-aarch64` — runner `macos-15`, Rust target `aarch64-apple-darwin`, service manager `launchd`, per-user manager `launchd-agent`, install path: yes
 - `windows-x86_64` — runner `windows-2025`, Rust target `x86_64-pc-windows-msvc`, service manager `windows-service`, per-user manager `windows-scheduled-task`, install path: yes
 - `windows-aarch64` — runner `windows-11-arm`, Rust target `aarch64-pc-windows-msvc`, service manager `windows-service`, per-user manager `windows-scheduled-task`, install path: yes
 [//]: # (END supported-platforms)
@@ -719,6 +719,39 @@ then two commands in order**, with the agent's skill installed, and the agent's
 harness installed and signed in as the service's own user, between those two
 commands.
 
+On Linux and macOS the recommended pair is also per-user: `systemd-user` and
+`launchd-agent`. Supervision turns run as the user, with the same policy trade-off
+as Windows. Linux enables lingering with `loginctl enable-linger "$USER"` so it
+runs without a login; if policy refuses, installation completes and prints that
+command, explaining that supervision then requires a login. macOS runs only while
+the user is logged in; auto-login covers a dedicated machine.
+
+Linux keeps the program at `$HOME/.local/bin/printobserver`, config at
+`${XDG_CONFIG_HOME:-$HOME/.config}/printobserver/config.toml`, state at
+`${XDG_STATE_HOME:-$HOME/.local/state}/printobserver`, and the unit at
+`${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/printobserver.service`.
+Config is `0600`, state `0700`, owned by the user. The unit runs the program with
+`server --config <config>`, uses the state as WorkingDirectory, Restart=on-failure,
+RestartSec=5 and WantedBy=default.target; installation enables and starts it with
+`systemctl --user enable --now printobserver.service`.
+
+macOS keeps the program at `$HOME/.local/bin/printobserver`, config at
+`$HOME/Library/Application Support/printobserver/config.toml`, state at
+`$HOME/Library/Application Support/printobserver/state`, and the LaunchAgent at
+`$HOME/Library/LaunchAgents/io.github.nickderobertis.printobserver.plist`.
+Its RunAtLoad, KeepAlive {SuccessfulExit = false} and ThrottleInterval 5 match the
+LaunchDaemon; installation loads it with `launchctl bootstrap gui/$(id -u)`.
+`printobserver.log` is in the state directory. Both Unix installs write
+`supervisor.skill_path` as `<state>/skills/printobserver/SKILL.md`.
+
+`scripts/install.sh` with no option verifies the program, writes the service
+installer's configuration template only when none exists, creates the private
+state and installs and starts the user's manager. Repeating it stops that manager,
+replaces the program, keeps config and state and starts it again. `--client-only`
+retains program-only installation; `--observation-interval-seconds` matches the
+service installer. With a system unit or LaunchDaemon present, it refuses before
+changing anything and names `scripts/migrate-service-to-per-user.sh`.
+
 On Windows the recommended pair is the **per-user** one, `windows-scheduled-task`:
 the server runs as the person using the machine, from their own profile, and no
 step from the first install through an upgrade, a sign-in or a configuration
@@ -899,6 +932,30 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
 ```
 
+#### systemd-user
+
+The recommended Linux pair, as yourself. Made executable by the `server` node.
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+```
+
+```console
+systemctl --user restart printobserver.service
+```
+
+#### launchd-agent
+
+The recommended macOS pair, as yourself. Made executable by the `server` node.
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+```
+
+```console
+launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
+```
+
 #### windows-scheduled-task
 
 <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file for every manager and holds the README and CI jobs to; the per-user pair is stated here beside the others. suppressions.toml has the full reasons. -->
@@ -962,6 +1019,18 @@ For the per-user install, as yourself, under its own state directory:
 
 ```powershell
 gh skill install nickderobertis/printobserver printobserver --dir $env:LOCALAPPDATA\printobserver\state\skills
+```
+
+For the per-user install on Linux:
+
+```console
+gh skill install nickderobertis/printobserver printobserver --dir "${XDG_STATE_HOME:-$HOME/.local/state}/printobserver/skills"
+```
+
+On macOS:
+
+```console
+gh skill install nickderobertis/printobserver printobserver --dir "$HOME/Library/Application Support/printobserver/state/skills"
 ```
 
 ### Between the two commands, issue the operator's credential
@@ -1031,6 +1100,40 @@ For the per-user install, the harness is installed and signed in as you; with no
 ```powershell
 printobserver sign-in
 ```
+
+For every per-user install, install the harness as yourself:
+
+```console
+npm install -g @anthropic-ai/claude-code
+```
+
+Or:
+
+```console
+npm install -g @openai/codex
+```
+
+### Moving a Unix service install to the per-user one
+
+Run the one privileged step for SUDO_USER, on Linux or macOS:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.sh | sudo sh
+```
+
+It refuses without sudo, without an invoking user, without the system registration,
+config or state, with an existing per-user config or state, with overlapping paths,
+or with a configuration whose state_dir and supervisor.skill_path are not plain
+strings in the service layout. It stops the system service before copying the
+configuration and all of /var/lib/printobserver, including database WAL/SHM, images,
+session and harness directories, skills, assets and verifier. Only state_dir and
+supervisor.skill_path change. Copies belong to the invoking user and are verified
+by SHA-256 before disabling and removing the system registration; verification
+failure removes the copies and leaves the stopped system registration and original
+files in place. It retains /etc/printobserver, /var/lib/printobserver,
+/usr/local/lib/printobserver and the service account, printing removal instructions
+and the unprivileged install and sign-in steps. `--root` stages the service layout
+and destination home below a throwaway root for journeys.
 
 ### Moving a Windows service install to the per-user one
 

@@ -25,7 +25,8 @@ CLOSURE = closure("artifact-jobs", "integration-tier", "platforms", "release-aut
 
 AARCH64 = (
     "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-    "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes"
+    "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+    "per-user manager `systemd-user`, install path: yes"
 )
 EXCLUSIONS_BEGIN = "[//]: # (BEGIN platform-exclusions)"
 INSTALL = ".github/workflows/install-path.yml"

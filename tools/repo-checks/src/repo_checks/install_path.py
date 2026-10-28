@@ -55,7 +55,7 @@ SIGN_IN_HEADING = "between the two commands"
 # The subsection stating the one elevated step from a Windows service install to
 # the per-user one. Its commands are part of the section's canonical set, so the
 # README's restatement of them is held to it.
-MIGRATION_HEADING = "moving a windows service install"
+MIGRATION_HEADING = ("moving a windows service install", "moving a unix service install")
 
 # What the sign-in subsection has to run to sign the harness in at all.
 SIGN_IN_COMMAND = "printobserver sign-in"

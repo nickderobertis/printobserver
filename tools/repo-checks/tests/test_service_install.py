@@ -938,3 +938,21 @@ def test_a_script_asking_after_the_service_by_another_name_is_refused(
     findings = service_install(broken.repo)
 
     refused(findings, f"`{script}` names the service `observer`")
+
+
+@pytest.mark.parametrize(
+    "manager,setting",
+    [
+        ("systemd-user", "RestartSec=5"),
+        ("systemd-user", "loginctl enable-linger"),
+        ("launchd-agent", "<key>ThrottleInterval</key><integer>5</integer>"),
+    ],
+)
+def test_per_user_unix_installer_cannot_drop_its_lifecycle_contract(
+    tree: Callable[[], Tree], manager: str, setting: str
+) -> None:
+    """The recommended Unix install retains every required manager setting."""
+    equal(installer_for(tree().repo, manager), "scripts/install.sh")
+    broken = tree()
+    broken.edit("scripts/install.sh", setting, "removed-setting")
+    refused(service_install(broken.repo), setting)

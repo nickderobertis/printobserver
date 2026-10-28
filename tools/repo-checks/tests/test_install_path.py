@@ -79,11 +79,16 @@ def test_the_section_states_three_routes_and_two_commands_per_manager(committed:
         ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
     )
     equal(path.routes[2].commands[1], PINNED)
-    equal(len(path.commands), 8)
+    equal(len(path.commands), 12)
     equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
     equal(path.commands[3], LAUNCHD_START)
-    equal(path.commands[5], PER_USER_RESTART)
-    equal(path.commands[7], WINDOWS_ACTIVATION)
+    equal(path.commands[5], "systemctl --user restart printobserver.service")
+    equal(
+        path.commands[7],
+        "launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver",
+    )
+    equal(path.commands[9], PER_USER_RESTART)
+    equal(path.commands[11], WINDOWS_ACTIVATION)
 
 
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
@@ -102,7 +107,14 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
 
     equal(
         sorted(path.service_commands),
-        ["launchd", "systemd", "windows-scheduled-task", "windows-service"],
+        [
+            "launchd",
+            "launchd-agent",
+            "systemd",
+            "systemd-user",
+            "windows-scheduled-task",
+            "windows-service",
+        ],
         describing="the managers stated",
     )
     equal(
@@ -466,6 +478,10 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
             SKILL_INSTALL,
             WINDOWS_SKILL_INSTALL,
             PER_USER_SKILL_INSTALL,
+            "gh skill install nickderobertis/printobserver printobserver --dir "
+            '"${XDG_STATE_HOME:-$HOME/.local/state}/printobserver/skills"',
+            "gh skill install nickderobertis/printobserver printobserver --dir "
+            '"$HOME/Library/Application Support/printobserver/state/skills"',
             "printobserver credential issue",
             WINDOWS_CREDENTIAL_ISSUE,
             "sudo npm install -g @anthropic-ai/claude-code",
@@ -473,6 +489,8 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
             SIGN_IN,
             WINDOWS_SIGN_IN,
             "printobserver sign-in",
+            "npm install -g @anthropic-ai/claude-code",
+            "npm install -g @openai/codex",
         ),
     )
     for command in path.sign_in:

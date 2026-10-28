@@ -400,6 +400,18 @@ jobs:
       # each is reported: `repo-policy.toml`'s `waived_steps` is why, and
       # `crates/printobserver/tests/service.rs` is what proves the installer
       # instead.
+      - id: install-service-unix-per-user
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+      - id: start-service-systemd-user
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: systemctl --user restart printobserver.service
+      - id: start-service-launchd-agent
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
       - id: install-service
         if: runner.os != 'Windows'
         continue-on-error: true
@@ -450,8 +462,8 @@ jobs:
         env:
           INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-service.outcome || steps.install-service.outcome }}
           STARTED: ${{ runner.os == 'Linux' && steps.start-service-systemd.outcome || runner.os == 'macOS' && steps.start-service-launchd.outcome || steps.start-service-windows-service.outcome }}
-          PER_USER_INSTALLED: ${{ steps.install-service-windows-scheduled-task.outcome }}
-          PER_USER_STARTED: ${{ steps.start-service-windows-scheduled-task.outcome }}
+          PER_USER_INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-scheduled-task.outcome || steps.install-service-unix-per-user.outcome }}
+          PER_USER_STARTED: ${{ runner.os == 'Windows' && steps.start-service-windows-scheduled-task.outcome || runner.os == 'Linux' && steps.start-service-systemd-user.outcome || steps.start-service-launchd-agent.outcome }}
         run: 'echo "install-route-pypi: service installation $INSTALLED, service startup $STARTED, per-user installation $PER_USER_INSTALLED, per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-npm:
@@ -475,6 +487,18 @@ jobs:
       - uses: actions/setup-node@v5
       - run: npm install -g printobserver-cli
       - run: printobserver --version
+      - id: install-service-unix-per-user
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+      - id: start-service-systemd-user
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: systemctl --user restart printobserver.service
+      - id: start-service-launchd-agent
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
       - id: install-service
         if: runner.os != 'Windows'
         continue-on-error: true
@@ -525,8 +549,8 @@ jobs:
         env:
           INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-service.outcome || steps.install-service.outcome }}
           STARTED: ${{ runner.os == 'Linux' && steps.start-service-systemd.outcome || runner.os == 'macOS' && steps.start-service-launchd.outcome || steps.start-service-windows-service.outcome }}
-          PER_USER_INSTALLED: ${{ steps.install-service-windows-scheduled-task.outcome }}
-          PER_USER_STARTED: ${{ steps.start-service-windows-scheduled-task.outcome }}
+          PER_USER_INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-scheduled-task.outcome || steps.install-service-unix-per-user.outcome }}
+          PER_USER_STARTED: ${{ runner.os == 'Windows' && steps.start-service-windows-scheduled-task.outcome || runner.os == 'Linux' && steps.start-service-systemd-user.outcome || steps.start-service-launchd-agent.outcome }}
         run: 'echo "install-route-npm: service installation $INSTALLED, service startup $STARTED, per-user installation $PER_USER_INSTALLED, per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"'
 
   install-route-script:
@@ -560,6 +584,18 @@ jobs:
         run: |
           irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
           printobserver --version
+      - id: install-service-unix-per-user
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        run: curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+      - id: start-service-systemd-user
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: systemctl --user restart printobserver.service
+      - id: start-service-launchd-agent
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
       - id: install-service
         if: runner.os != 'Windows'
         continue-on-error: true
@@ -610,6 +646,6 @@ jobs:
         env:
           INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-service.outcome || steps.install-service.outcome }}
           STARTED: ${{ runner.os == 'Linux' && steps.start-service-systemd.outcome || runner.os == 'macOS' && steps.start-service-launchd.outcome || steps.start-service-windows-service.outcome }}
-          PER_USER_INSTALLED: ${{ steps.install-service-windows-scheduled-task.outcome }}
-          PER_USER_STARTED: ${{ steps.start-service-windows-scheduled-task.outcome }}
+          PER_USER_INSTALLED: ${{ runner.os == 'Windows' && steps.install-service-windows-scheduled-task.outcome || steps.install-service-unix-per-user.outcome }}
+          PER_USER_STARTED: ${{ runner.os == 'Windows' && steps.start-service-windows-scheduled-task.outcome || runner.os == 'Linux' && steps.start-service-systemd-user.outcome || steps.start-service-launchd-agent.outcome }}
         run: 'echo "install-route-script: service installation $INSTALLED, service startup $STARTED, per-user installation $PER_USER_INSTALLED, per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"'

@@ -252,8 +252,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        FAMILY, Family, HERE, LINUX, Locations, MACOS, WINDOWS, WINDOWS_PER_USER, config_home_of,
-        per_user_config_of,
+        FAMILY, Family, HERE, LINUX, LINUX_PER_USER, Locations, MACOS, MACOS_PER_USER, WINDOWS,
+        WINDOWS_PER_USER, config_home_of, per_user_config_of,
     };
 
     /// An environment holding exactly these variables.
@@ -567,12 +567,24 @@ mod tests {
         for (platform, config, state, program) in [
             (
                 "Linux",
+                format!("$HOME/{}", LINUX_PER_USER.config.join("/")),
+                format!("$HOME/{}", LINUX_PER_USER.state.join("/")),
+                format!("$HOME/{}/printobserver", LINUX_PER_USER.home.join("/")),
+            ),
+            (
+                "macOS",
+                format!("$HOME/{}", MACOS_PER_USER.config.join("/")),
+                format!("$HOME/{}", MACOS_PER_USER.state.join("/")),
+                format!("$HOME/{}/printobserver", MACOS_PER_USER.home.join("/")),
+            ),
+            (
+                "Linux, isolated install",
                 LINUX.config.to_owned(),
                 LINUX.state.to_owned(),
                 format!("{}/printobserver", LINUX.home),
             ),
             (
-                "macOS",
+                "macOS, isolated install",
                 MACOS.config.to_owned(),
                 MACOS.state.to_owned(),
                 format!("{}/printobserver", MACOS.home),

@@ -40,7 +40,8 @@ RISCV64 = (
 )
 AARCH64_PLATFORM = (
     "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-    "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+    "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+    "per-user manager `systemd-user`, install path: yes\n"
 )
 NO_EXCLUSIONS = """[//]: # (BEGIN virtual-printer-exclusions)
 No platform is excluded. OctoPrint's virtual printer is a bundled pure-Python

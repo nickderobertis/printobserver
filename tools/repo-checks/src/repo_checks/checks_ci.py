@@ -1299,7 +1299,13 @@ def _checked_findings(
             f"{where} runs `{checked}` before the route it is checking, so it reads "
             f"whatever was already on the host rather than what this run installed"
         )
-    afterwards = [position for position in positions if position >= 0]
+    # A per-user installer is also the route that obtains the program. Its
+    # own --version can only run afterwards; separate service installers must
+    # still follow that verification, and so must each pair's restart.
+    obtaining = {command for route in path.routes for command in route.fetches.values()}
+    afterwards = [
+        position for position in positions if position >= 0 and commands[position] not in obtaining
+    ]
     if afterwards and at > min(afterwards):
         findings.append(
             f"{where} runs `{checked}` after the commands that put the service in "
