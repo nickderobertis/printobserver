@@ -1704,7 +1704,7 @@ reason = "The container runs systemd as PID 1 to activate, kill and restart the 
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/install.ps1"
-site = "function Report-Installed"
+site = "Say 'next, in an elevated PowerShell, put the service in place and then start it:'"
 reason = "A successful install prints what the shell form of this same route prints, line for line: where the program went and from which release, whether its directory had to be added to the path, and the two commands the operator runs next. `AGENTS.md`'s install path requires the last of those — a successful install says what the caller does after it — and `tests/repo-e2e/tests/test_install_powershell_script_journey.py` reads every one of those lines back; a run that installs nothing prints only its two sentences, why it stopped and what to do next."
 
 [[suppression]]

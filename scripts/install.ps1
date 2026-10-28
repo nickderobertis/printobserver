@@ -719,13 +719,13 @@ system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
     # and from which release, that its directory is now on the path where it
     # was not, and the two commands the operator runs next - the same lines,
     # line for line, that the shell form of this route prints.
-    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
     function Report-Installed {
         Say "installed $installed from $which"
         if ($added) {
             Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
         }
         if ($ClientOnly) {
+            # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
             Say 'next, in an elevated PowerShell, put the service in place and then start it:'
             [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.ps1 | iex")
             [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
