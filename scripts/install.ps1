@@ -191,6 +191,11 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
         Stop-Install '-ObservationIntervalSeconds was given with -ClientOnly, which installs no server for it to configure' `
             'Leave out -ClientOnly to install the server as you, or leave out -ObservationIntervalSeconds.'
     }
+    if (-not $ClientOnly) {
+        # The task runs the program by this path from Task Scheduler's own
+        # working directory, so a relative one is made whole here.
+        $To = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($To)
+    }
     $installed = Join-Path $To $PROGRAM
     if (-not $ClientOnly) {
         # Everything the per-user install will write is decided, and every
@@ -523,6 +528,10 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
                 Stop-Install "$directory could not be created" `
                     "The program is installed at $installed, and its server is not. Make $directory writable by you, and run this again."
             }
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+                Stop-Install "$directory could not be created: something that is not a directory is in its way" `
+                    "The program is installed at $installed, and its server is not. Move what is at $directory, and run this again."
+            }
         }
         if (-not $keptConfig) {
         $configuration = @"
@@ -564,16 +573,18 @@ shared_secret = ""
 # would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
 # answer bound".
 
-# The operator's credential is never written in this file: the service keeps
-# only its verifier, so nothing a supervision turn can read authenticates as the
-# operator. As yourself, run
+# The operator's credential is not written in this file, only its verifier.
+# Supervision turns run as you, so a turn could still read the credential in
+# your own client configuration: here the policy is a guard rail, not a hard
+# boundary. As yourself, run
 #   printobserver credential issue
 # which writes the credential into your own client configuration under
 # %APPDATA%, and prints one line to put here, above the first [table] header:
 #   api.credential_verifier = "sha256:..."
-# then restart the server's task. Until that line is here the server supervises and
-# refuses every operator request. Each supervision turn is handed a credential
-# of its own in its environment, so nothing else is needed for the agent.
+# then restart the server's task. Until that line is here the server supervises
+# and refuses every operator request. Each supervision turn is handed a
+# credential of its own in its environment, so nothing else is needed for the
+# agent.
 
 # Optional: a fresh look at the print. A URL answering one still image, such as
 # go2rtc's frame.jpeg for the printer's camera. Left out, a supervising agent's

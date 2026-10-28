@@ -2921,7 +2921,7 @@ reason = "The per-user Windows server is started by Task Scheduler, which gives 
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/migrate-service-to-per-user.ps1"
-site = "Say \"moved the $ServiceName"
+site = "function Report-Migrated"
 reason = "A migration that succeeded prints what it moved and where, the two directories it deliberately left behind with the one command that removes them, and the two commands the user runs next as themselves; each is a line the operator acts on, and `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads the next steps back. A refusal prints only its two sentences: why it stopped and what to do next."
 
 [[suppression]]
@@ -2977,3 +2977,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "connection = sqlite3.connect("
 reason = "A read-only look at the store the real server wrote, to learn when the alert's print and image are in it, inside a sequential journey; it is the readiness read `release_artifacts.world` makes the same way."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "The per-user Windows install: installed, upgraded"
+reason = "The same ground as this rule's entries for the other journeys in `tests/repo-e2e`: `AGENTS.md` places every end-to-end journey in that one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Its two siblings for the same scripts, `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, live there for the same reason."

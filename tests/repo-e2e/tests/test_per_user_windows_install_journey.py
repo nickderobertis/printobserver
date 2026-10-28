@@ -1,3 +1,4 @@
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 """The per-user Windows install: installed, upgraded, migrated to, and run by Task Scheduler.
 
 `scripts/install.ps1` with no switch is the `windows-scheduled-task` pair's
@@ -92,6 +93,10 @@ RECORDING = "PRINTOBSERVER_FIXTURE_RECORDING"
 REGISTERED = "PRINTOBSERVER_FIXTURE_REGISTERED"
 NOT_ELEVATED = "PRINTOBSERVER_FIXTURE_NOT_ELEVATED"
 ALTERS = "PRINTOBSERVER_FIXTURE_ALTERS"
+#: One request the stand-ins refuse: a verb of the manager's tool, `icacls`, or
+#: a Task Scheduler cmdlet by name, optionally with the exit status it answers
+#: (`stop=1062`); a refused cmdlet throws, as the real one does.
+REFUSES = "PRINTOBSERVER_FIXTURE_REFUSES"
 TASKS = "PRINTOBSERVER_FIXTURE_TASKS"
 
 #: The installer's own seam for the task's name.
@@ -212,12 +217,16 @@ function Register-ScheduledTask {{
     [CmdletBinding()]
     param([string]$TaskName, [string]$TaskPath, [string]$Xml, [switch]$Force)
     Record "Register-ScheduledTask $TaskName $TaskPath"
+    if ($env:{REFUSES} -eq 'Register-ScheduledTask') {{
+        throw 'Access is denied, says the stand-in.'
+    }}
     [IO.File]::WriteAllText("$env:{RECORDING}.task.xml", $Xml)
     [pscustomobject]@{{ TaskName = $TaskName }}
 }}
 function Start-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Start-ScheduledTask $TaskName"
+    if ($env:{REFUSES} -eq 'Start-ScheduledTask') {{ throw 'The user account is not logged on.' }}
 }}
 function Stop-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
@@ -238,9 +247,17 @@ function Enable-ScheduledTask {{
     # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reasons.
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
+function Refused([string]$Name) {{
+    $refused, $status = "$env:{REFUSES}" -split '=', 2
+    if ($refused -ne $Name) {{ return $false }}
+    [Console]::Error.WriteLine('Access is denied, says the stand-in.')
+    $global:LASTEXITCODE = if ($status) {{ [int]$status }} else {{ 5 }}
+    return $true
+}}
 function sc.exe {{
     Record ('sc.exe ' + ($args -join ' '))
     $global:LASTEXITCODE = 0
+    if (Refused $args[0]) {{ return }}
     switch ($args[0]) {{
         'query' {{ if (-not $env:{REGISTERED}) {{ $global:LASTEXITCODE = 1060 }} }}
         'queryex' {{
@@ -258,8 +275,13 @@ function whoami.exe {{
 }}
 function icacls {{
     Record ('icacls ' + ($args -join ' '))
-    if ($env:{ALTERS}) {{ Add-Content -LiteralPath $env:{ALTERS} -Value 'made to differ' }}
     $global:LASTEXITCODE = 0
+    if (Refused 'icacls') {{ return }}
+    if ("$env:{ALTERS}".StartsWith('remove:')) {{
+        Remove-Item -LiteralPath "$env:{ALTERS}".Substring(7)
+    }} elseif ($env:{ALTERS}) {{
+        Add-Content -LiteralPath $env:{ALTERS} -Value 'made to differ'
+    }}
 }}
 {tasks}
 {_PIPED if piped else _AS_A_FILE}
@@ -341,7 +363,7 @@ def _environment(home: Home, recording: Path, **extra: str) -> dict[str, str]:
         **{RECORDING: str(recording)},
         **extra,
     )
-    for name in (REGISTERED, NOT_ELEVATED, ALTERS, TASK_NAME):
+    for name in (REGISTERED, NOT_ELEVATED, ALTERS, REFUSES, TASK_NAME):
         if name not in extra:
             environment.pop(name, None)
     if not ON_WINDOWS:
@@ -349,8 +371,8 @@ def _environment(home: Home, recording: Path, **extra: str) -> dict[str, str]:
         environment["OS"] = "Windows_NT"
         environment["PROCESSOR_ARCHITECTURE"] = _machine(_windows_platform().id)
         environment.pop("PROCESSOR_ARCHITEW6432", None)
-        environment["USERDOMAIN"] = DOMAIN
-        environment["USERNAME"] = USER
+        environment["USERDOMAIN"] = extra.get("USERDOMAIN", DOMAIN)
+        environment["USERNAME"] = extra.get("USERNAME", USER)
     return environment
 
 
@@ -690,9 +712,6 @@ def test_a_task_name_that_is_not_one_is_refused_before_anything_is_written(
     equal(sorted(home.local.iterdir()), [], describing="nothing written")
 
 
-# --- The migration -----------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class Serviced:
     """A service install's root, holding a real record the real server wrote."""
@@ -767,7 +786,26 @@ def _alert(server: str, machine: Machine) -> None:
     )
 
 
-def _recorded(state: Path) -> tuple[str, str] | None:
+@dataclass(frozen=True, slots=True)
+class Recorded:
+    """The print and the image one alert opened, as the store identifies them."""
+
+    print_id: str
+    image_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class Answer:
+    """What one client command answered."""
+
+    code: int
+    #: Its standard output: the machine-readable answer.
+    out: str
+    #: Its standard error: what it said about a refusal.
+    said: str
+
+
+def _recorded(state: Path) -> Recorded | None:
     """The print and image the alert opened, once both are in the store."""
     store = state / STORE
     if not store.is_file():
@@ -783,10 +821,10 @@ def _recorded(state: Path) -> tuple[str, str] | None:
         connection.close()
     if not prints or not images:
         return None
-    return str(prints[0][0]), str(images[0][0])
+    return Recorded(str(prints[0][0]), str(images[0][0]))
 
 
-def _client(program: Path, server: str, credential: str, *arguments: str) -> tuple[int, str, str]:
+def _client(program: Path, server: str, credential: str, *arguments: str) -> Answer:
     """One client command against `server`, as the operator it authenticates as."""
     result = shell_run(
         [str(program), *arguments, "--json"],
@@ -794,7 +832,21 @@ def _client(program: Path, server: str, credential: str, *arguments: str) -> tup
         env=clean_environment(PRINTOBSERVER_SERVER=server, PRINTOBSERVER_CREDENTIAL=credential),
         timeout=120,
     )
-    return result.returncode, result.stdout or "", result.stderr or ""
+    return Answer(result.returncode, result.stdout or "", result.stderr or "")
+
+
+def _await_recorded(state: Path) -> Recorded:
+    """The alert's print and image, once a server has put both in the store at `state`."""
+    found: list[Recorded] = []
+
+    def recorded() -> bool:
+        seen = _recorded(state)
+        if seen is not None:
+            found.append(seen)
+        return seen is not None
+
+    _eventually(f"the alert's print and image in the store at {state}", recorded)
+    return found[-1]
 
 
 def _eventually(what: str, ready: Callable[[], bool]) -> None:
@@ -856,20 +908,11 @@ def serviced(tmp_path: Path, program: Path, machine: Machine) -> Serviced:
     try:
         address = _serving(server)
         _alert(address, machine)
-        found: list[tuple[str, str]] = []
-        _eventually(
-            "the alert's print and image in the service's store",
-            lambda: (
-                bool(found.append(seen) or True)
-                if (seen := _recorded(root.joinpath(*SERVICE_STATE)))
-                else False
-            ),
-        )
+        recorded = _await_recorded(root.joinpath(*SERVICE_STATE))
     finally:
         server.terminate()
         server.wait(timeout=60)
-    print_id, image_id = found[0]
-    return Serviced(root, print_id, image_id)
+    return Serviced(root, recorded.print_id, recorded.image_id)
 
 
 @dataclass
@@ -971,14 +1014,12 @@ def test_the_migration_moves_the_record_verifies_it_and_only_then_deletes_the_se
     )
     try:
         address = _serving(server)
-        code, listed, said = _client(program, address, CREDENTIAL, "prints")
-        passing((code, said), describing="`prints` from the per-user server")
-        contains(listed, serviced.print_id, describing="the print the service recorded")
-        code, image, said = _client(
-            program, address, CREDENTIAL, "image", "--image-id", serviced.image_id
-        )
-        passing((code, said), describing="`image` from the per-user server")
-        answered = json.loads(image)
+        listed = _client(program, address, CREDENTIAL, "prints")
+        passing((listed.code, listed.said), describing="`prints` from the per-user server")
+        contains(listed.out, serviced.print_id, describing="the print the service recorded")
+        image = _client(program, address, CREDENTIAL, "image", "--image-id", serviced.image_id)
+        passing((image.code, image.said), describing="`image` from the per-user server")
+        answered = json.loads(image.out)
         path = Path(str(answered.get("path", "")))
         truth(
             home.state in path.parents, describing=f"the image under the per-user state: {answered}"
@@ -1102,9 +1143,6 @@ def test_the_piped_form_installs_the_per_user_server_and_leaves_the_session_a_ze
     _holds_the_contract(_task(ran.definition), ACCOUNT, home.program, home.config)
 
 
-# --- On Windows, against the real Task Scheduler -------------------------------
-
-
 def _powershell_answer(command: str, *, check: bool = True) -> str:
     """What one PowerShell command printed, from this host's own session."""
     result = shell_run([powershell(), "-NoProfile", "-Command", command], timeout=300)
@@ -1156,8 +1194,12 @@ def _free_port() -> int:
 
 
 def _serves(program: Path, port: int) -> bool:
-    code, _, _ = _client(program, f"http://127.0.0.1:{port}", CREDENTIAL, "prints")
-    return code == 0
+    return _client(program, f"http://127.0.0.1:{port}", CREDENTIAL, "prints").code == 0
+
+
+def _kept_files(state: Path) -> list[Path]:
+    """Every file the server keeps under `state`: its store, images and turn records."""
+    return sorted(path for path in state.rglob("*") if path.is_file())
 
 
 def _restart_command(task: str) -> str:
@@ -1282,23 +1324,27 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
 
         # An image and the turn records, read as the user.
         _alert(f"http://127.0.0.1:{port}", machine)
-        found: list[tuple[str, str]] = []
-        _eventually(
-            "the alert's print and image in the per-user store",
-            lambda: bool(found.append(seen) or True) if (seen := _recorded(home.state)) else False,
+        recorded = _await_recorded(home.state)
+        image = _client(
+            home.program,
+            f"http://127.0.0.1:{port}",
+            CREDENTIAL,
+            "image",
+            "--image-id",
+            recorded.image_id,
         )
-        print_id, image_id = found[0]
-        code, image, said = _client(
-            home.program, f"http://127.0.0.1:{port}", CREDENTIAL, "image", "--image-id", image_id
-        )
-        passing((code, said), describing="`image` from the task's server")
-        path = Path(str(json.loads(image).get("path", "")))
+        passing((image.code, image.said), describing="`image` from the task's server")
+        path = Path(str(json.loads(image.out).get("path", "")))
         equal(path.read_bytes(), IMAGE, describing="the image, opened as the user")
-        for directory in (entry for entry in home.state.iterdir() if entry.is_dir()):
-            truth(
-                isinstance(sorted(directory.rglob("*")), list),
-                describing=f"{directory} readable as the user",
-            )
+        # Every file the server keeps under the state directory — the store,
+        # the images and whatever turn records the alert's turn left — opened
+        # and read as the user, with no elevation.
+        read = {path: len(path.read_bytes()) for path in _kept_files(home.state)}
+        truth(
+            any(kept.name == path.name for kept in read)
+            and any(kept.name == STORE for kept in read),
+            describing=f"the image and the store among what was read: {sorted(read)}",
+        )
 
         # A configuration change, as the user, taken by the documented restart.
         moved = _free_port()
@@ -1324,15 +1370,18 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
         )
         equal(home.config.read_bytes(), config_before, describing="the configuration, unchanged")
         _eventually("the upgraded server serving", lambda: _serves(home.program, moved))
-        code, listed, said = _client(
-            home.program, f"http://127.0.0.1:{moved}", CREDENTIAL, "prints"
+        listed = _client(home.program, f"http://127.0.0.1:{moved}", CREDENTIAL, "prints")
+        passing((listed.code, listed.said), describing="`prints` after the upgrade")
+        contains(listed.out, recorded.print_id, describing="the print recorded before the upgrade")
+        again = _client(
+            home.program,
+            f"http://127.0.0.1:{moved}",
+            CREDENTIAL,
+            "image",
+            "--image-id",
+            recorded.image_id,
         )
-        passing((code, said), describing="`prints` after the upgrade")
-        contains(listed, print_id, describing="the print recorded before the upgrade")
-        code, _, said = _client(
-            home.program, f"http://127.0.0.1:{moved}", CREDENTIAL, "image", "--image-id", image_id
-        )
-        passing((code, said), describing="`image` for the image stored before the upgrade")
+        passing((again.code, again.said), describing="`image` for an image from before the upgrade")
         equal(
             _powershell_answer(f"@(Get-ScheduledTask -TaskName {_quoted(task)}).Count"),
             "1",
@@ -1462,3 +1511,262 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
             check=False,
         )
         shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    ("extra", "naming", "asked"),
+    [
+        (
+            {REFUSES: "query"},
+            "asking the service control manager whether the printobserver service",
+            ["sc.exe query printobserver"],
+        ),
+        (
+            {REFUSES: "Register-ScheduledTask"},
+            "Task Scheduler would not register the task printobserver",
+            None,
+        ),
+        (
+            {REFUSES: "Start-ScheduledTask"},
+            "Task Scheduler registered the task printobserver for",
+            None,
+        ),
+    ],
+    ids=["an unanswered service query", "a refused registration", "a refused start"],
+)
+def test_a_refusal_of_the_host_stops_the_install_naming_it(
+    installing: Installing,
+    releases: Callable[[str], Path],
+    tmp_path: Path,
+    extra: dict[str, str],
+    naming: str,
+    asked: list[str] | None,
+) -> None:
+    """What the manager or Task Scheduler refused is said, with what to do next."""
+    home = _home(tmp_path, "home-refused-host")
+
+    ran = installing(home, releases(_version()), extra=extra)
+
+    failing((ran.code, ran.said), naming=naming)
+    if asked is not None:
+        equal(ran.recorded, asked, describing="what it asked before it stopped")
+        equal(sorted(home.local.iterdir()), [], describing="nothing written for a refused run")
+
+
+def test_a_profile_path_carrying_a_quote_is_refused_before_anything_is_written(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A path the configuration and the task's command line cannot carry is refused, not written."""
+    release = releases(_version())
+    home = Home(tmp_path / "o'brien")
+    home.local.mkdir(parents=True)
+    (home.root / "temp").mkdir()
+
+    ran = installing(home, release)
+
+    failing((ran.code, ran.said), naming="carries a quote or a newline")
+    equal(sorted(home.local.iterdir()), [], describing="nothing written")
+
+
+@pytest.mark.skipif(ON_WINDOWS, reason="a Windows session always names the user it runs as")
+def test_a_session_naming_no_user_is_refused_before_anything_is_written(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """With nobody to register the task for, nothing is installed."""
+    home = _home(tmp_path, "home-nobody")
+
+    ran = installing(home, releases(_version()), extra={"USERNAME": "", "USERDOMAIN": ""})
+
+    failing((ran.code, ran.said), naming="names no user")
+    equal(sorted(home.local.iterdir()), [], describing="nothing written")
+
+
+def test_a_state_directory_that_cannot_be_made_is_refused_naming_it(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """Something in the state directory's way stops the install before a task is registered."""
+    home = _home(tmp_path, "home-blocked")
+    home.state.parent.mkdir(parents=True)
+    home.state.write_text("a file where the state directory goes", encoding="utf-8")
+
+    ran = installing(home, releases(_version()))
+
+    failing((ran.code, ran.said), naming="could not be created")
+    truth(
+        not any(line.startswith("Register-ScheduledTask") for line in ran.recorded),
+        describing=f"no task registered over a refused install: {ran.recorded}",
+    )
+
+
+def test_a_reinstall_given_an_interval_keeps_the_configuration_and_says_so(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A configuration already there is the user's; the interval not written is named."""
+    home = _home(tmp_path, "home-reinterval")
+    first = installing(home, releases(_version()))
+    passing((first.code, first.said), describing="the first install")
+    before = home.config.read_bytes()
+
+    again = installing(
+        home, releases(_version()), "-ObservationIntervalSeconds", "60", recording=tmp_path / "r"
+    )
+
+    passing((again.code, again.said), describing="the reinstall given an interval")
+    equal(home.config.read_bytes(), before, describing="the configuration")
+    contains(again.said, "-ObservationIntervalSeconds was not written", describing="what it said")
+
+
+def test_a_relative_install_directory_is_registered_as_a_whole_path(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """Task Scheduler runs the program from its own directory, so the task names a whole path."""
+    home = _home(tmp_path, "home-relative")
+
+    ran = installing(home, releases(_version()), "-To", "relative-bin")
+
+    passing((ran.code, ran.said), describing="install.ps1 given a relative directory")
+    command = _text(_task(ran.definition), "Actions/Exec/Command").strip('"')
+    equal(
+        command,
+        str(home.root / "relative-bin" / _windows_platform().program),
+        describing="the program the task runs",
+    )
+
+
+def _service_file(serviced: Serviced, old: str, new: str) -> None:
+    serviced.config.write_text(
+        serviced.config.read_text(encoding="utf-8").replace(old, new), encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("arrange", "extra", "naming"),
+    [
+        ("none", {REFUSES: "query"}, "asking the service control manager about printobserver"),
+        ("state-without-config", {}, "already has per-user state"),
+        ("no-config", {}, "has no configuration to move"),
+        ("no-state", {}, "is not there, so the service has no record to move"),
+        ("no-skill-path", {}, "no skill_path in [supervisor]"),
+        ("computed-state", {}, "state_dir is not one plain string"),
+        ("none", {REFUSES: "stop"}, "stopping the printobserver service failed"),
+        ("bad-user", {}, "is not an account name"),
+    ],
+)
+def test_the_migration_refuses_before_it_copies_anything(
+    migrating: Migrating,
+    serviced: Serviced,
+    tmp_path: Path,
+    arrange: str,
+    extra: dict[str, str],
+    naming: str,
+) -> None:
+    """A refusal before the copy leaves the service's files and the user's profile as they were."""
+    home = _home(tmp_path, "home-before-copy")
+    user = "PRINTPC\\operator"
+    if arrange == "state-without-config":
+        home.state.mkdir(parents=True)
+    elif arrange == "no-config":
+        serviced.config.unlink()
+    elif arrange == "no-state":
+        shutil.rmtree(serviced.state)
+    elif arrange == "no-skill-path":
+        lines = serviced.config.read_text(encoding="utf-8").splitlines(keepends=True)
+        serviced.config.write_text(
+            "".join(line for line in lines if not line.startswith("skill_path")), encoding="utf-8"
+        )
+    elif arrange == "computed-state":
+        state_line = next(
+            line
+            for line in serviced.config.read_text(encoding="utf-8").splitlines()
+            if line.startswith("state_dir")
+        )
+        _service_file(serviced, state_line, "state_dir = { path = 'nowhere' }")
+    elif arrange == "bad-user":
+        user = "a/name with a slash"
+    before = _tree(serviced.state) if serviced.state.exists() else {}
+
+    ran = migrating(
+        serviced,
+        home,
+        "-LocalAppData",
+        str(home.local),
+        "-User",
+        user,
+        **{REGISTERED: "1", **extra},
+    )
+
+    failing((ran.code, ran.said), naming=naming)
+    if serviced.state.exists():
+        equal(_tree(serviced.state), before, describing="the service's state")
+    truth(not home.config.exists(), describing="no per-user configuration")
+    truth(
+        not any(line.startswith(("sc.exe delete", "icacls")) for line in ran.recorded),
+        describing=f"nothing copied, owned or deleted: {ran.recorded}",
+    )
+
+
+def test_a_stop_of_a_service_that_was_not_running_is_taken_as_stopped(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """The manager answering 1062 to a stop is a service already down, and the move goes on."""
+    home = _home(tmp_path, "home-not-running")
+
+    ran = migrating(
+        serviced, home, "-LocalAppData", str(home.local), **{REGISTERED: "1", REFUSES: "stop=1062"}
+    )
+
+    passing((ran.code, ran.said), describing="the migration of a stopped service")
+    contains(ran.recorded, "sc.exe delete printobserver", describing="the service deleted")
+
+
+@pytest.mark.parametrize(
+    ("extra", "naming", "deleted", "kept"),
+    [
+        ({REFUSES: "icacls"}, "the owner of", False, False),
+        ({REFUSES: "delete"}, "deleting the printobserver service failed", True, True),
+    ],
+    ids=["a refused owner", "a refused deletion"],
+)
+def test_a_refusal_after_the_copy_says_where_things_were_left(
+    migrating: Migrating,
+    serviced: Serviced,
+    tmp_path: Path,
+    extra: dict[str, str],
+    naming: str,
+    deleted: bool,
+    kept: bool,
+) -> None:
+    """A refused owner removes the copies and deletes nothing; a refused deletion keeps them."""
+    home = _home(tmp_path, "home-after-copy")
+    before = _tree(serviced.state)
+
+    ran = migrating(serviced, home, "-LocalAppData", str(home.local), **{REGISTERED: "1", **extra})
+
+    failing((ran.code, ran.said), naming=naming)
+    equal(
+        "sc.exe delete printobserver" in ran.recorded,
+        deleted,
+        describing=f"whether the deletion was asked for: {ran.recorded}",
+    )
+    equal(home.config.exists(), kept, describing="whether the copies were kept")
+    equal(_tree(serviced.state), before, describing="the service's state")
+
+
+def test_a_copied_file_gone_before_the_check_deletes_nothing(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A copy missing a file is caught by name, and the service is left registered."""
+    home = _home(tmp_path, "home-missing-copy")
+    gone = home.state / STORE
+
+    ran = migrating(
+        serviced,
+        home,
+        "-LocalAppData",
+        str(home.local),
+        **{REGISTERED: "1", ALTERS: f"remove:{gone}"},
+    )
+
+    failing((ran.code, ran.said), naming=f"{STORE} is missing")
+    truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
+    truth(not home.config.exists(), describing="the unverified copy removed")

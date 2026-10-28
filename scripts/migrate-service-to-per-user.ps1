@@ -131,6 +131,21 @@ if (-not $LocalAppData -or -not (Test-Path -LiteralPath $LocalAppData -PathType 
     Fail "-LocalAppData names ``$LocalAppData``, which is not a directory" `
         "Nothing was changed. Pass -LocalAppData the local application data of $User, such as C:\Users\<name>\AppData\Local."
 }
+# The account the copies will belong to, resolved before anything is stopped:
+# a name Windows cannot resolve is refused here rather than by the owner-setter
+# after the service is down. A host with no account database to ask - a test's
+# own, under -Root - takes the name as it was given.
+if ($User -notmatch '^[^\\/]+(\\[^\\/]+)?$') {
+    Fail "-User is ``$User``, which is not an account name" `
+        'Nothing was changed. Pass -User as DOMAIN\name or as a local account''s name.'
+}
+try {
+    [void](New-Object System.Security.Principal.NTAccount($User)).Translate([System.Security.Principal.SecurityIdentifier])
+} catch [System.PlatformNotSupportedException] {
+} catch {
+    Fail "-User names ``$User``, which is no account on this machine" `
+        'Nothing was changed. Pass -User the account that will run the server, as DOMAIN\name.'
+}
 foreach ($given in @($LocalAppData, $User, $Root)) {
     if ($given.Contains("'") -or $given.Contains('"') -or $given.Contains("`n") -or $given.Contains("`r")) {
         Fail "``$given`` carries a quote or a newline, which the per-user configuration has no escape for" `
@@ -139,7 +154,6 @@ foreach ($given in @($LocalAppData, $User, $Root)) {
 }
 
 $ServiceConfig = Under-Root $ConfigPath
-$ServiceState = Under-Root $StateDirectory
 $UserConfig = Under-LocalAppData $PerUserConfig
 $UserState = Under-LocalAppData $PerUserState
 $UserSkill = Join-Path (Join-Path (Join-Path $UserState 'skills') 'printobserver') 'SKILL.md'
@@ -165,14 +179,16 @@ if (-not (Test-Path -LiteralPath $ServiceConfig -PathType Leaf)) {
     Fail "$ServiceConfig is not there, so the service has no configuration to move" `
         'Nothing was changed. Run this on the machine the service was installed on.'
 }
-if (-not (Test-Path -LiteralPath $ServiceState -PathType Container)) {
-    Fail "$ServiceState is not there, so the service has no record to move" `
-        'Nothing was changed. Run this on the machine the service was installed on.'
-}
 
 # The two lines this rewrites, and nothing else: `state_dir` before the first
 # table, and `skill_path` in `[supervisor]`. Every other byte - comments, line
-# endings, the operator's own values - is carried over as it was.
+# endings, the operator's own values - is carried over as it was. Each is
+# required to be one plain string, which is what the service installer writes:
+# replacing it with another keeps the document what it was. The state directory
+# moved is the one `state_dir` names, which is the record the service kept.
+$PlainValue = '^\s*(state_dir|skill_path)\s*=\s*(''(?<value>[^'']*)''|"(?<value>[^"\\]*)")\s*(#.*)?$'
+$ServiceState = ''
+
 $original = [IO.File]::ReadAllText($ServiceConfig)
 $lines = [regex]::Split($original, '(?<=\n)')
 $table = ''
@@ -191,9 +207,18 @@ foreach ($line in $lines) {
     if ($body -match '^\s*\[([^\]]+)\]\s*(#.*)?$') {
         $table = $Matches[1].Trim()
     } elseif ($table -eq '' -and $body -match '^\s*state_dir\s*=') {
+        if ($body -notmatch $PlainValue) {
+            Fail "$ServiceConfig's state_dir is not one plain string, so this cannot tell which directory the record is in" `
+                "Nothing was changed. Write state_dir as install-service.ps1 does, such as state_dir = '$StateDirectory', and run this again."
+        }
+        $ServiceState = $Matches['value']
         $body = "state_dir = '$UserState'"
         $rewroteState = $true
     } elseif ($table -eq 'supervisor' -and $body -match '^\s*skill_path\s*=') {
+        if ($body -notmatch $PlainValue) {
+            Fail "$ServiceConfig's supervisor.skill_path is not one plain string" `
+                'Nothing was changed. Write it as install-service.ps1 does, and run this again.'
+        }
         $body = "skill_path = '$UserSkill'"
         $rewroteSkill = $true
     }
@@ -202,6 +227,10 @@ foreach ($line in $lines) {
 if (-not $rewroteState -or -not $rewroteSkill) {
     Fail "$ServiceConfig names no state_dir before its first table or no skill_path in [supervisor], so there is nothing this can point at the per-user state" `
         "Nothing was changed. Write both into $ServiceConfig as install-service.ps1 writes them, and run this again."
+}
+if (-not (Test-Path -LiteralPath $ServiceState -PathType Container)) {
+    Fail "$ServiceState, which $ServiceConfig names as state_dir, is not there, so the service has no record to move" `
+        'Nothing was changed. Run this on the machine the service was installed on.'
 }
 
 # 1. The service stopped, and its process gone, before anything is read: a
@@ -284,17 +313,23 @@ if ($differences.Count -gt 0) {
         "The service is stopped and still registered, and its files are as they were. Start it again with ``sc.exe start $ServiceName``, and run this again once nothing is writing to $ServiceState."
 }
 
-# 4. Only now is the service deleted.
 $deleted = Ask { sc.exe delete $ServiceName }
 if ($deleted.Code -ne 0) {
     Fail "deleting the $ServiceName service failed: $($deleted.Said)" `
         "The copies are in place under $LocalAppData. Delete the service yourself with ``sc.exe delete $ServiceName`` before installing the per-user server."
 }
 
-# llmlint: ignore[tool_output_is_signal] Everything this prints after a migration is what the operator does next and what it left behind for them to remove, each a line they act on; a refusal prints its two sentences alone.
-Say "moved the $ServiceName service's configuration to $UserConfig and its record to $UserState, owned by $User, verified every file, and deleted the service"
-Say "left $(Under-Root 'C:\ProgramData\printobserver') and $(Under-Root $ProgramDirectory) as they were; once the per-user server runs as you expect, remove both from an elevated PowerShell:"
-[Console]::Error.WriteLine("  Remove-Item -Recurse -Force '$(Under-Root 'C:\ProgramData\printobserver')', '$(Under-Root $ProgramDirectory)'")
-Say "next, as $User, in a PowerShell that is not elevated - the first keeps the configuration this copied and starts the server as you:"
-[Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex")
-[Console]::Error.WriteLine("  printobserver sign-in")
+# What a migration that finished says, and all of it: what moved where, what
+# it left for the operator to remove and how, and what they run next.
+# llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+function Report-Migrated {
+    $left = Under-Root 'C:\ProgramData\printobserver'
+    $program = Under-Root $ProgramDirectory
+    Say "moved the $ServiceName service's configuration to $UserConfig and its record to $UserState, owned by $User, verified every file, and deleted the service"
+    Say "left $left and $program as they were; once the per-user server runs as you expect, remove both from an elevated PowerShell:"
+    [Console]::Error.WriteLine("  Remove-Item -Recurse -Force '$left', '$program'")
+    Say "next, as $User, in a PowerShell that is not elevated - the first keeps the configuration this copied and starts the server as you:"
+    [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex")
+    [Console]::Error.WriteLine("  printobserver sign-in")
+}
+Report-Migrated

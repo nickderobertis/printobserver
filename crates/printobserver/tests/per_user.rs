@@ -198,3 +198,27 @@ fn a_client_command_without_a_per_user_configuration_falls_back_as_before() {
         );
     }
 }
+
+/// `credential issue` names the configuration its line goes into: the
+/// per-user one where the platform has one and it is there, the service's
+/// otherwise.
+#[test]
+fn credential_issue_names_the_per_user_configuration_where_the_platform_has_one() {
+    let root = TempDir::new().expect("a test's own root");
+    let local = root.path().join("Local");
+    let written = write_per_user(&local, "127.0.0.1:9");
+
+    let output = run(root.path(), &local, &["credential", "issue"]);
+
+    assert!(output.status.success(), "{}", said(&output));
+    let named = if cfg!(windows) {
+        written.display().to_string()
+    } else {
+        printobserver::DEFAULT_CONFIG_PATH.to_owned()
+    };
+    assert!(
+        said(&output).contains(&format!("the server's configuration, {named},")),
+        "credential issue did not name {named}: {}",
+        said(&output)
+    );
+}

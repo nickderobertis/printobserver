@@ -902,22 +902,13 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.
 
 #### windows-scheduled-task
 
-The recommended pair on Windows, and neither command is elevated: both run in a
-PowerShell of your own — Windows PowerShell or a newer one. The first is the
-third route's own PowerShell script, run with no switch: it puts the program in
-`%LOCALAPPDATA%\Programs\printobserver`, writes your own configuration at
-`%LOCALAPPDATA%\printobserver\config.toml` — only when none is there — and the
-state directory at `%LOCALAPPDATA%\printobserver\state`, each with your profile's
-own permissions, and registers and starts a Scheduled Task named `printobserver`,
-in the root task folder, as you. The task runs the server at your logon with your
-limited token, with no time limit, one instance at a time, and on battery power;
-every minute it starts the server again if it is not running, which is what
-brings it back after it ends however it ended. Run again, the same command
-upgrades in place: it stops the task, waits for the server to exit, replaces the
-program, leaves the configuration and the state as they are, and starts the task
-again. It refuses a machine the `printobserver` service is installed on, naming
-the migration below. The second restarts the server, which is how it reads the
-steps taken between the two, and any later configuration change. Made executable
+The recommended pair on Windows; neither command is elevated. The first is the
+third route's own PowerShell script with no switch: it installs the program, your
+own configuration and state under `%LOCALAPPDATA%`, and a Scheduled Task named
+`printobserver` that runs the server as you, and it starts that task. Run again,
+it upgrades in place, keeping the configuration and state. It refuses a machine
+the `printobserver` service is on, naming the migration below. The second
+restarts the server so it reads the steps taken between the two. Made executable
 by the `windows-scheduled-task` node.
 
 ```powershell
@@ -928,10 +919,9 @@ irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/
 Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
 ```
 
-To stop supervising until you start it again, disable the task —
-`Disable-ScheduledTask -TaskName printobserver` — rather than stopping it, which
-the next minute's start undoes. On a host whose server is the service, the third
-route with `-ClientOnly` installs the program alone.
+`Disable-ScheduledTask -TaskName printobserver` stops supervising until it is
+enabled again; on a host whose server is the service, the third route with
+`-ClientOnly` installs the program alone.
 
 #### windows-service
 
@@ -1057,20 +1047,10 @@ printobserver sign-in
 
 ### Moving a Windows service install to the per-user one
 
-One elevated step moves a host already running the `printobserver` service to
-the per-user install, keeping every print record, image and turn. Committed at
-`scripts/migrate-service-to-per-user.ps1`, it stops the service and waits for its
-process to exit; copies the service's configuration and its whole state
-directory under the named user's local application data, owned by that user
-with the profile's own permissions; rewrites only `state_dir` and
-`supervisor.skill_path` in the copy; verifies the copy — every file there, with
-the SHA-256 of each equal to its original's — before it deletes the service; and
-leaves `C:\ProgramData\printobserver` and `C:\Program Files\printobserver` as
-they were, saying how to remove them. It refuses, changing nothing, when it is not
-elevated, when `-LocalAppData` is not a directory, when no service is registered,
-or when that user already has a per-user configuration. Run it in an elevated
-PowerShell; where elevating runs it as another administrator, name the person
-the install is for with `-LocalAppData` and `-User`.
+One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service
+install's configuration and record to a user's per-user install, and deletes the
+service only once the copy has verified. Where elevating runs it as another
+administrator, `-LocalAppData` and `-User` name the person the install is for.
 
 ```powershell
 irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1 | iex
