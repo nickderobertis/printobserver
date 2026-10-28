@@ -3019,3 +3019,51 @@ rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "connection = sqlite3.connect("
 reason = "The ingress answers before its handling completes, so when the alert's print and image are in the store is something no command reports; this read-only look is the readiness read `release_artifacts.world` makes for every client journey. What the journey then asserts of them, it asserts through the public commands: `prints` and `image --image-id`."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "The recommended pair on Windows; neither command is elevated."
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` and `service-install` read every manager's pair, and the migration's commands, out of the root file, and the README and the install jobs are derived from it and held to it by `drifted_statements`. The per-user Windows pair is stated beside the other three managers' pairs under the same heading; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` and `service-install` read every manager's pair, and the migration's commands, out of the root file, and the README and the install jobs are derived from it and held to it by `drifted_statements`. The per-user Windows pair is stated beside the other three managers' pairs under the same heading; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "The recommended pair on Windows; neither command is elevated."
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` and `service-install` read every manager's pair, and the migration's commands, out of the root file, and the README and the install jobs are derived from it and held to it by `drifted_statements`. The per-user Windows pair is stated beside the other three managers' pairs under the same heading; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` and `service-install` read every manager's pair, and the migration's commands, out of the root file, and the README and the install jobs are derived from it and held to it by `drifted_statements`. The per-user Windows pair is stated beside the other three managers' pairs under the same heading; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "The recommended pair on Windows; neither command is elevated."
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "The recommended pair on Windows; neither command is elevated."
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."

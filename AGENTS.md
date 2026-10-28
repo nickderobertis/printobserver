@@ -902,6 +902,7 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.
 
 #### windows-scheduled-task
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file for every manager and holds the README and CI jobs to; the per-user pair is stated here beside the others. suppressions.toml has the full reasons. -->
 The recommended pair on Windows; neither command is elevated. The first is the
 third route's own PowerShell script with no switch: it installs the program, your
 own configuration and state under `%LOCALAPPDATA%`, and a Scheduled Task named
@@ -1047,6 +1048,7 @@ printobserver sign-in
 
 ### Moving a Windows service install to the per-user one
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads the migration's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
 One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service
 install's configuration and record to a user's per-user install, and deletes the
 service only once the copy has verified. Where elevating runs it as another
