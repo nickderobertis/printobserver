@@ -238,6 +238,15 @@ if (-not (Test-Path -LiteralPath $ServiceState -PathType Container)) {
     Fail "$ServiceState, which $ServiceConfig names as state_dir, is not there, so the service has no record to move" `
         'Nothing was changed. Run this on the machine the service was installed on.'
 }
+# The copy goes beside the record, never into it nor around it: a destination
+# inside the state directory would be copied into itself, and one holding it
+# would be the record's own directory rewritten.
+$from = [IO.Path]::GetFullPath($ServiceState).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+$to = [IO.Path]::GetFullPath($UserState).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+if ($to.StartsWith($from, [StringComparison]::OrdinalIgnoreCase) -or $from.StartsWith($to, [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "$UserState and the service's record at $ServiceState overlap, so the copy would be made into or around the record it copies" `
+        'Nothing was changed. Pass -LocalAppData the local application data of the user the install is for, which holds no part of the service''s state.'
+}
 
 # 1. The service stopped, and its process gone, before anything is read: a
 # record copied while it is being written is not the record.

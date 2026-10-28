@@ -1239,6 +1239,33 @@ def _servers(program: Path) -> list[int]:
     return [int(line) for line in listed.split() if line.isdigit()]
 
 
+#: Asks one process's console whether its window is shown: attached to that
+#: console, the console's window is the one `GetConsoleWindow` answers. Written
+#: to a file and run by path, so nothing in it is a command line's to quote.
+CONSOLE_PROBE = """$ErrorActionPreference = 'Stop'
+$signature = @'
+[DllImport("kernel32.dll", SetLastError = true)] public static extern bool FreeConsole();
+[DllImport("kernel32.dll", SetLastError = true)] public static extern bool AttachConsole(uint id);
+[DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr window);
+'@
+Add-Type -Namespace PrintObserverJourney -Name Probe -MemberDefinition $signature
+[void][PrintObserverJourney.Probe]::FreeConsole()
+if (-not [PrintObserverJourney.Probe]::AttachConsole({pid})) {{ 'no console'; exit 0 }}
+$window = [PrintObserverJourney.Probe]::GetConsoleWindow()
+if ($window -eq [System.IntPtr]::Zero) {{ 'no window' }}
+elseif ([PrintObserverJourney.Probe]::IsWindowVisible($window)) {{ 'shown' }}
+else {{ 'hidden' }}
+"""
+
+
+def _console_window_shown(pid: int, into: Path) -> str:
+    """Whether the console of process `pid` shows a window: shown, hidden, or none."""
+    probe = into / f"console-probe-{pid}.ps1"
+    probe.write_text(CONSOLE_PROBE.format(pid=pid), encoding="utf-8")
+    return _powershell_answer(f"& {_quoted(str(probe))}").splitlines()[-1].strip()
+
+
 def _free_port() -> int:
     """A port nothing listens on, for a configuration that names one."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -1349,12 +1376,11 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
 
         served = _servers(home.program)
         equal(len(served), 1, describing=f"one server process: {served}")
-        console = _powershell_answer(
-            f'@(Get-CimInstance Win32_Process -Filter "ParentProcessId={served[0]} AND '
-            "Name='conhost.exe'\").Count; (Get-Process -Id "
-            f"{served[0]}).MainWindowHandle"
-        ).split()
-        equal(console, ["0", "0"], describing="the server's console host and window")
+        equal(
+            _console_window_shown(served[0], tmp_path),
+            "hidden",
+            describing="the server's console window, asked of its own console",
+        )
 
         # Through the task: ended, then started by Task Scheduler.
         _powershell_answer(f"Stop-ScheduledTask -TaskName {_quoted(task)}")
@@ -1981,8 +2007,13 @@ def test_an_explicit_directory_with_no_local_application_data_is_refused_for_the
     [
         ("Disable-ScheduledTask", "would not stop the task printobserver", False),
         ("Stop-ScheduledTask,Enable-ScheduledTask", "could not be put back", True),
+        ("Stop-ScheduledTask,Start-ScheduledTask", "could not be put back", True),
     ],
-    ids=["a refused hold", "a refused hold and a refused restoration"],
+    ids=[
+        "a refused hold",
+        "a refused hold and a refused enable",
+        "a refused hold and a refused start",
+    ],
 )
 def test_an_upgrade_task_scheduler_will_not_pause_replaces_nothing_and_says_where_it_left_it(
     installing: Installing,
@@ -2098,6 +2129,7 @@ def test_an_upgrade_whose_server_will_not_exit_replaces_nothing_and_puts_the_tas
     passing((first.code, first.said), describing="the first install")
     sleeper = shutil.which("sleep")
     truth(sleeper is not None, describing="this host to carry a `sleep` to keep running")
+    # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
     shutil.copy2(str(sleeper), home.program)
     lingering = start([str(home.program), "300"], cwd=home.root)
     try:
@@ -2131,3 +2163,20 @@ def test_a_service_that_will_not_stop_is_left_registered_and_nothing_is_copied(
     truth(not home.state.exists(), describing="nothing copied")
     truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
     equal(_tree(serviced.state), before, describing="the service's state")
+
+
+def test_local_application_data_overlapping_the_services_record_is_refused(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A destination inside the record would be copied into itself; nothing is stopped."""
+    home = _home(tmp_path, "home-overlapping")
+    before = _tree(serviced.state)
+
+    ran = migrating(serviced, home, "-LocalAppData", str(serviced.state), **{REGISTERED: "1"})
+
+    failing((ran.code, ran.said), naming="overlap, so the copy would be made into or around")
+    equal(_tree(serviced.state), before, describing="the service's state")
+    truth(
+        not any(line.startswith("sc.exe stop") for line in ran.recorded),
+        describing=f"nothing stopped: {ran.recorded}",
+    )
