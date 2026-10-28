@@ -720,22 +720,27 @@ system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
     # was not, and the two commands the operator runs next - the same lines,
     # line for line, that the shell form of this route prints.
     function Report-Installed {
-        Say "installed $installed from $which"
-        if ($added) {
-            Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
-        }
         if ($ClientOnly) {
-            # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+            # llmlint: ignore-block[tool_output_is_signal] suppressions.toml has the reason.
+            Say "installed $installed from $which"
+            if ($added) {
+                Say "$To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
+            }
             Say 'next, in an elevated PowerShell, put the service in place and then start it:'
             [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/scripts/install-service.ps1 | iex")
             [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
+            # llmlint: ignore-end[tool_output_is_signal]
             return
+        }
+        $report = @("${SCRIPT}: installed $installed from $which")
+        if ($added) {
+            $report += "${SCRIPT}: $To was added to your PATH; open a new PowerShell for other windows to see it, or run $installed by its whole name there."
         }
         # What the server's install did, an interval it could not write where
         # there was one, and the steps the operator takes next: one report,
         # written once.
         $configured = if ($keptConfig) { "kept $InstalledConfig and $InstalledState" } else { "wrote $InstalledConfig, whose three FILL IN values are yours to set" }
-        $report = @("${SCRIPT}: $configured; registered and started the task $TaskName, which runs the server as $account at logon; next, as yourself and not elevated:")
+        $report += @("${SCRIPT}: $configured; registered and started the task $TaskName, which runs the server as $account at logon; next, as yourself and not elevated:")
         if ($keptConfig -and $ObservationIntervalSeconds) {
             $report += "${SCRIPT}: -ObservationIntervalSeconds was not written into the configuration kept; set supervisor.observation_interval_s in $InstalledConfig yourself"
         }

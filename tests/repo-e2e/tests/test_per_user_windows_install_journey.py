@@ -1730,7 +1730,11 @@ def test_a_profile_path_carrying_a_quote_is_refused_before_anything_is_written(
 @pytest.mark.skipif(ON_WINDOWS, reason="a Windows session always names the user it runs as")
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_a_session_naming_no_user_is_refused_before_anything_is_written(
-    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+    installing: Installing,
+    releases: Callable[[str], Path],
+    tmp_path: Path,
+    migrating: Migrating,
+    serviced: Serviced,
 ) -> None:
     """With nobody to register the task for, nothing is installed."""
     home = _home(tmp_path, "home-nobody")
@@ -1739,6 +1743,13 @@ def test_a_session_naming_no_user_is_refused_before_anything_is_written(
 
     failing((ran.code, ran.said), naming="names no user")
     equal(sorted(home.local.iterdir()), [], describing="nothing written")
+
+    before = _tree(serviced.state)
+    config_before = serviced.config.read_bytes()
+    ran = migrating(serviced, home, **{REGISTERED: "1", "USERNAME": "", "USERDOMAIN": ""})
+    failing((ran.code, ran.said), naming="nothing names the account")
+    _untouched(serviced, home, before, ran)
+    equal(serviced.config.read_bytes(), config_before, describing="the service's configuration")
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.

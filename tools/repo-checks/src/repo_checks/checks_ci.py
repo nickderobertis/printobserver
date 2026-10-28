@@ -12,7 +12,7 @@ from typing import Any
 from repo_checks import install_path as ip
 from repo_checks import release_declaration
 from repo_checks.checks_release import Workflow
-from repo_checks.checks_service import installers
+from repo_checks.checks_service import service_management_scripts
 from repo_checks.checks_shards import is_shard_job, sharded_platforms
 from repo_checks.gate_shards import SHARD_RECIPE
 from repo_checks.model import (
@@ -940,7 +940,7 @@ def _fetch_url_findings(repo: Repo, path: ip.InstallPath) -> list[str]:
             *policy_string_list(
                 policy_table(repo, "workflows"), "install_script_paths", "workflows"
             ),
-            *installers(repo),
+            *service_management_scripts(repo),
         }
     except PolicyValueError as error:
         return [str(error)]

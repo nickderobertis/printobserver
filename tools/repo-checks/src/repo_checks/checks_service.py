@@ -225,7 +225,7 @@ def installer_for(repo: Repo, manager: str) -> str:
     return _rules(repo, manager).installer
 
 
-def installers(repo: Repo) -> list[str]:
+def service_management_scripts(repo: Repo) -> list[str]:
     """Every script `repo-policy.toml` declares per manager it has rules for.
 
     Each manager's installer, and the migration onto it where it has one: the

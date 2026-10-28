@@ -651,7 +651,7 @@ def test_the_pinned_form_passes_both_options_through_a_script_block(
     )
 
 
-def test_help_says_the_two_options_and_installs_nothing(
+def test_help_names_the_options_and_installs_nothing(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:
     """`-Help` is the one run that is not an install."""
@@ -662,6 +662,8 @@ def test_help_says_the_two_options_and_installs_nothing(
     passing((code, said), describing="the script asked for help")
     contains(said, "-Version", describing="the options it names")
     contains(said, "-To", describing="the options it names")
+    contains(said, "-ClientOnly", describing="the options it names")
+    contains(said, "-ObservationIntervalSeconds", describing="the options it names")
     truth(not _default(home).exists(), describing="nothing to have been installed")
 
 
