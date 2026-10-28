@@ -719,15 +719,16 @@ then two commands in order**, with the agent's skill installed, and the agent's
 harness installed and signed in as the service's own user, between those two
 commands.
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix per-user layout contract: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix per-user layout contract: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 On Linux and macOS the recommended pair is also per-user: `systemd-user` and
 `launchd-agent`. Supervision turns run as the user, with the same policy trade-off
 as Windows. Linux enables lingering with `loginctl enable-linger "$USER"` so it
 runs without a login; if policy refuses, installation completes and prints that
 command, explaining that supervision then requires a login. macOS runs only while
 the user is logged in; auto-login covers a dedicated machine.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix Linux layout: Required authoritative install contract; README and check-repo derive it here. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix Linux layout: Required authoritative install contract; README and check-repo derive it here. -->
 Linux keeps the program at `$HOME/.local/bin/printobserver`, config at
 `${XDG_CONFIG_HOME:-$HOME/.config}/printobserver/config.toml`, state at
 `${XDG_STATE_HOME:-$HOME/.local/state}/printobserver`, and the unit at
@@ -736,8 +737,9 @@ Config is `0600`, state `0700`, owned by the user. The unit runs the program wit
 `server --config <config>`, uses the state as WorkingDirectory, Restart=on-failure,
 RestartSec=5 and WantedBy=default.target; installation enables and starts it with
 `systemctl --user enable --now printobserver.service`.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix macOS layout: Required authoritative install contract; README and check-repo derive it here. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix macOS layout: Required authoritative install contract; README and check-repo derive it here. -->
 macOS keeps the program at `$HOME/.local/bin/printobserver`, config at
 `$HOME/Library/Application Support/printobserver/config.toml`, state at
 `$HOME/Library/Application Support/printobserver/state`, and the LaunchAgent at
@@ -746,8 +748,9 @@ Its RunAtLoad, KeepAlive {SuccessfulExit = false} and ThrottleInterval 5 match t
 LaunchDaemon; installation loads it with `launchctl bootstrap gui/$(id -u)`.
 `printobserver.log` is in the state directory. Both Unix installs write
 `supervisor.skill_path` as `<state>/skills/printobserver/SKILL.md`.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix installer lifecycle: Required authoritative install contract; README and check-repo derive it here. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix installer lifecycle: Required authoritative install contract; README and check-repo derive it here. -->
 `scripts/install.sh` with no option verifies the program, writes the service
 installer's configuration template only when none exists, creates the private
 state and installs and starts the user's manager. Repeating it stops that manager,
@@ -755,6 +758,7 @@ replaces the program, keeps config and state and starts it again. `--client-only
 retains program-only installation; `--observation-interval-seconds` matches the
 service installer. With a system unit or LaunchDaemon present, it refuses before
 changing anything and names `scripts/migrate-service-to-per-user.sh`.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 On Windows the recommended pair is the **per-user** one, `windows-scheduled-task`:
 the server runs as the person using the machine, from their own profile, and no
@@ -938,7 +942,7 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.
 
 #### systemd-user
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Linux recommended manager pair: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Linux recommended manager pair: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 The recommended Linux pair, as yourself. Made executable by the `server` node.
 
 ```console
@@ -948,10 +952,11 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 ```console
 systemctl --user restart printobserver.service
 ```
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 #### launchd-agent
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] macOS recommended manager pair: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] macOS recommended manager pair: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 The recommended macOS pair, as yourself. Made executable by the `server` node.
 
 ```console
@@ -961,6 +966,7 @@ curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/s
 ```console
 launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
 ```
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 #### windows-scheduled-task
 
@@ -1027,7 +1033,7 @@ For the per-user install, as yourself, under its own state directory:
 gh skill install nickderobertis/printobserver printobserver --dir $env:LOCALAPPDATA\printobserver\state\skills
 ```
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix per-user skill destinations: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix per-user skill destinations: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 For the per-user install on Linux:
 
 ```console
@@ -1039,6 +1045,7 @@ On macOS:
 ```console
 gh skill install nickderobertis/printobserver printobserver --dir "$HOME/Library/Application Support/printobserver/state/skills"
 ```
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 ### Between the two commands, issue the operator's credential
 
@@ -1108,7 +1115,7 @@ For the per-user install, the harness is installed and signed in as you; with no
 printobserver sign-in
 ```
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Per-user harness installation commands: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Per-user harness installation commands: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 For every per-user install, install the harness as yourself:
 
 ```console
@@ -1120,10 +1127,11 @@ Or:
 ```console
 npm install -g @openai/codex
 ```
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 ### Moving a Unix service install to the per-user one
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix migration contract: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix migration contract: This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source. -->
 Run the one privileged step for SUDO_USER, on Linux or macOS:
 The command forwards each Linux XDG directory only when you have set it, because
 sudo otherwise strips those variables. Unset directories keep their defaults.
@@ -1131,24 +1139,27 @@ sudo otherwise strips those variables. Unset directories keep their defaults.
 ```console
 curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.sh | sudo env ${XDG_CONFIG_HOME+"XDG_CONFIG_HOME=$XDG_CONFIG_HOME"} ${XDG_STATE_HOME+"XDG_STATE_HOME=$XDG_STATE_HOME"} sh
 ```
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Configured state migration source: The root install-path section is the authoritative migration source-choice contract. It must state that configured absolute state directories are copied, matching Windows, and README and journeys derive that behavior here. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Configured state migration source: The root install-path section is the authoritative migration source-choice contract. It must state that configured absolute state directories are copied, matching Windows, and README and journeys derive that behavior here. -->
 The source record is the absolute `state_dir` named in the service configuration,
 including a nondefault location; the installed default is `/var/lib/printobserver`.
 A config with no `state_dir` is refused without inserting a field, as on Windows.
 With `--root`, that source and the per-user destinations are staged below the root.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] External skill rewrite contract: The authoritative install-path section must state the accepted external-skill case and its reinstall step, matching Windows; README and installer consumers derive this behavior from the root contract. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] External skill rewrite contract: The authoritative install-path section must state the accepted external-skill case and its reinstall step, matching Windows; README and installer consumers derive this behavior from the root contract. -->
 A plain-string `supervisor.skill_path` outside the service layout is accepted and
 rewritten too, as on Windows; the installer's next steps reinstall the skill
 under the user state directory.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
-<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] Unix migration safety contract: Required authoritative install contract; README and check-repo derive it here. -->
+<!-- llmlint: ignore-block[instruction_layer_localized, agents_md_durable_and_terse] Unix migration safety contract: Required authoritative install contract; README and check-repo derive it here. -->
 It refuses without sudo, without an invoking user, without the system registration,
 config or state, with an existing per-user config or state, with overlapping paths,
 or with a configuration whose state_dir and supervisor.skill_path are not plain
 strings in their required tables. It stops the system service before copying the
-configuration and all of /var/lib/printobserver, including database WAL/SHM, images,
+configuration and all configured state, including database WAL/SHM, images,
 session and harness directories, skills, assets and verifier. Only state_dir and
 supervisor.skill_path change. Copies belong to the invoking user and are verified
 by SHA-256 before disabling and removing the system registration; verification
@@ -1157,6 +1168,7 @@ files in place. It retains /etc/printobserver, /var/lib/printobserver,
 /usr/local/lib/printobserver and the service account, printing removal instructions
 and the unprivileged install and sign-in steps. `--root` stages the service layout
 and destination home below a throwaway root for journeys.
+<!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 ### Moving a Windows service install to the per-user one
 

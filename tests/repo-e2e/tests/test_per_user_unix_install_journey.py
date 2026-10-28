@@ -110,10 +110,12 @@ class Host:
                 'case "$*" in\n'
                 '"print system/"*) [ -f "$SYSTEM_AGENT_STATE" ] && exit 0;\n'
                 'exit "${REGISTERED:-113}" ;;\n'
-                '"bootout system/"*) rm -f "$SYSTEM_AGENT_STATE" ;;\n'
+                '"bootout system/"*) [ "${STAYS_LOADED:-0}" = 1 ] ||\n'
+                'rm -f "$SYSTEM_AGENT_STATE" ;;\n'
                 '"print gui/"*/*) [ -f "$AGENT_STATE" ] && exit 0; exit 113 ;;\n'
                 'bootstrap*) touch "$AGENT_STATE" ;;\n'
-                'bootout*) [ -f "$AGENT_STATE" ] || exit 113; rm "$AGENT_STATE" ;;\n'
+                'bootout*) [ -f "$AGENT_STATE" ] || exit 113;\n'
+                '[ "${STAYS_LOADED:-0}" = 1 ] || rm "$AGENT_STATE" ;;\n'
                 "esac; fi\n",
             )
         # llmlint: ignore[e2e_not_mocked] Reject any installer attempt to elevate this user.
@@ -769,6 +771,13 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
                 )
             finally:
                 checked("launchctl", "enable", job)
+        if container:
+            checked("mkdir", "-p", str(state.parent))
+            passing(container._as_root("mkdir", str(state)))
+            refused = user("sh", "/install.sh")
+            failing(refused, naming="could not be made private")
+            contains(refused.stderr or "", "own this directory")
+            passing(container._as_root("chown", "1000:1000", str(state)))
         checked("sh", installer)
         owns_agent = container is None
         contains(checked(str(home / ".local/bin/printobserver"), "--version"), _older(_version()))
@@ -1014,9 +1023,7 @@ def test_installer_temporary_directory_failure_has_recovery(tmp_path: Path, prog
     equal(_tree(host.home), {})
 
 
-@pytest.mark.parametrize(
-    "failure", ["parent", "config-write", "definition-write", "state-permission"]
-)
+@pytest.mark.parametrize("failure", ["parent", "config-write", "definition-write", "state-link"])
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_installer_provisioning_failure_explains_the_real_filesystem_error(
     tmp_path: Path, program: Path, failure: str
@@ -1037,19 +1044,19 @@ def test_installer_provisioning_failure_explains_the_real_filesystem_error(
         case "definition-write":
             host.definition.mkdir(parents=True)
             expected = "could not be written"
-        case "state-permission":
+        case "state-link":
             if _uid() == 0:
                 pytest.skip("permission refusal requires an unprivileged process")
             host.state.parent.mkdir(parents=True)
             host.state.symlink_to("/usr", target_is_directory=True)
-            expected = "could not be made private"
+            expected = "symbolic link"
         case _:
             raise AssertionError(failure)
     try:
         result = host.install()
         failing(result, naming=expected)
         contains(
-            result.stderr or "", "rerun" if failure != "state-permission" else "own this directory"
+            result.stderr or "", "rerun" if failure != "state-link" else "real user-owned path"
         )
     finally:
         if restricted:
@@ -1094,6 +1101,7 @@ def _minimal_service_config(config: Path, state: Path) -> None:
         "state-overlap",
         "source-ancestor-overlap",
         "bad-path",
+        "control-path",
         "source-link",
         "destination-link",
         "malformed-skill",
@@ -1121,20 +1129,39 @@ def test_migration_boundary_refusals_preserve_every_original(
         case "root-relative":
             args = ["--root", "relative"]
         case "xdg-relative":
+            if host.system != "Linux":
+                pytest.skip("XDG is Linux configuration")
             host.env["XDG_STATE_HOME"] = "relative"
         case "relative-source":
             config.write_text('state_dir = "relative"\n[supervisor]\nskill_path = "external"\n')
         case "config-overlap":
-            host.env["XDG_CONFIG_HOME"] = str(state / "destination")
+            if host.system == "Linux":
+                host.env["XDG_CONFIG_HOME"] = str(state / "destination")
+            else:
+                source = host.migrated_config.parent
+                source.mkdir(parents=True)
+                _minimal_service_config(config, source)
         case "state-overlap":
-            host.env["XDG_STATE_HOME"] = str(state / "child/../destination")
+            if host.system == "Linux":
+                host.env["XDG_STATE_HOME"] = str(state / "child/../destination")
+            else:
+                source = host.migrated_state.parent
+                source.mkdir(parents=True)
+                _minimal_service_config(config, source)
         case "source-ancestor-overlap":
             alias = root / "record-alias"
-            alias.symlink_to(state.parent, target_is_directory=True)
-            config.write_text(config.read_text().replace(str(state), str(alias / state.name)))
-            host.env["XDG_CONFIG_HOME"] = str(state / "destination")
+            if host.system == "Linux":
+                alias.symlink_to(state.parent, target_is_directory=True)
+                config.write_text(config.read_text().replace(str(state), str(alias / state.name)))
+                host.env["XDG_CONFIG_HOME"] = str(state / "destination")
+            else:
+                host.user_home.joinpath("Library").mkdir(parents=True)
+                alias.symlink_to(host.user_home, target_is_directory=True)
+                _minimal_service_config(config, alias / "Library")
         case "bad-path":
-            host.env["XDG_CONFIG_HOME"] = str(host.user_home / 'bad"quote')
+            args = ["--root", str(root) + 'bad"quote']
+        case "control-path":
+            args = ["--root", str(root) + "bad\rpath"]
         case "source-link":
             state.joinpath("link").symlink_to(state / "kept")
         case "destination-link":
@@ -1198,6 +1225,7 @@ def test_migration_boundary_refusals_preserve_every_original(
         "state-overlap": "overlap",
         "source-ancestor-overlap": "overlap",
         "bad-path": "carries a quote",
+        "control-path": "control character",
         "source-link": "contains symbolic links",
         "destination-link": "is a symbolic link",
         "malformed-skill": "not a plain string",
@@ -1371,3 +1399,79 @@ def test_migration_leaves_unrelated_client_file_ownership_untouched(
     equal(client.stat().st_gid, before.st_gid, describing="unrelated client's group")
     equal(client.stat().st_uid, before.st_uid, describing="unrelated client's owner")
     equal(client.read_bytes(), b"existing operator configuration")
+
+
+@pytest.mark.parametrize("destination", ["state", "config", "ancestor"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_installer_rejects_links_before_writing_user_files(
+    tmp_path: Path, program: Path, destination: str
+) -> None:
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.joinpath("retained").write_bytes(b"unrelated")
+    target = host.state if destination == "state" else host.config
+    if destination == "ancestor":
+        target = host.config.parent
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(outside / "absent" if destination == "config" else outside)
+    before = _tree(host.home), _tree(outside)
+    failing(host.install(), naming="symbolic link")
+    equal((_tree(host.home), _tree(outside)), before)
+    truth("--user" not in host.said(), describing="no user-manager changes")
+
+
+@pytest.mark.parametrize("location", ["source", "scan", "config", "state"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_unreadable_ancestors_and_scan_leave_originals(
+    tmp_path: Path, program: Path, location: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    state.joinpath("retained").write_bytes(b"record")
+    target = {
+        "source": state,
+        "scan": state / "unreadable",
+        "config": host.migrated_config.parent,
+        "state": host.migrated_state.parent,
+    }[location]
+    target.mkdir(parents=True, exist_ok=True)
+    before = _tree(root)
+    mode = target.stat().st_mode & 511
+    target.chmod(0)
+    try:
+        result = _migrate(host, root)
+        failing(result, naming="could not be scanned" if location == "scan" else "ancestors")
+    finally:
+        target.chmod(mode)
+    equal(_tree(root), before)
+    truth(" stop " not in host.said(), describing="refused before stopping the system service")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="native launchctl boundary")
+@pytest.mark.parametrize("scope", ["agent", "daemon"])
+@pytest.mark.parametrize("failure", ["query", "pending-stop"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_launchctl_query_and_pending_stop_preserve_the_installation(
+    tmp_path: Path, program: Path, scope: str, failure: str
+) -> None:
+    if scope == "agent":
+        host = Host(tmp_path, "Darwin", program)
+        passing(host.install())
+        root = host.home
+        query = f"launchctl print gui/{_uid()}/io.github.nickderobertis.printobserver"
+    else:
+        host, root, config = _migration_host(tmp_path, program)
+        _minimal_service_config(config, root / "var/lib/printobserver")
+        query = "launchctl print system/io.github.nickderobertis.printobserver"
+    before = _tree(root)
+    if failure == "query":
+        host.env["REFUSES"] = query
+    else:
+        host.env["STAYS_LOADED"] = "1"
+    result = host.install() if scope == "agent" else _migrate(host, root)
+    failing(result, naming="nothing was replaced" if scope == "agent" else "nothing was copied")
+    contains(result.stderr or "", "launchctl print" if failure == "query" else "stop")
+    equal(_tree(root), before)
+    truth("bootstrap" not in host.said().split(query, 1)[-1], describing="no replacement job")

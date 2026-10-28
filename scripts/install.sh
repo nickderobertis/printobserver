@@ -146,6 +146,11 @@ if [ "$CLIENT_ONLY" = false ]; then
             /*) ;;
             *) die "a configuration or state path is relative: $value" "Set HOME and XDG directories to absolute paths." ;;
         esac
+        ancestor="$value"
+        while [ "$ancestor" != / ]; do
+            [ ! -L "$ancestor" ] || die "an install path contains a symbolic link: $ancestor" "Replace that link with a real user-owned path and retry."
+            ancestor="$(dirname "$ancestor")"
+        done
     done
 fi
 

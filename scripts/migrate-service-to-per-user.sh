@@ -62,6 +62,7 @@ USER_STATE="$(under_root "$USER_STATE")"
 SERVICE_CONFIG="$ROOT/etc/printobserver/config.toml"
 SERVICE_STATE="$ROOT/var/lib/printobserver"
 for value in "$ROOT" "$USER_HOME" "$USER_CONFIG" "$USER_STATE"; do
+    printf '%s\n' "$value" | LC_ALL=C awk '/[[:cntrl:]]/ { exit 1 }' || die 'A path carries a control character; nothing was changed.' 'Use home, XDG and root paths without control characters, then retry.'
     case "$value" in *[\"\'\\]* | *"
 "*) die "A path carries a quote, backslash or newline: $value; nothing was changed." 'Use home, XDG and root paths without those characters, then retry.' ;; esac
 done
@@ -124,6 +125,7 @@ physical() (
     normalize "$base$suffix"
 )
 STATE_CANON="$(physical "$SERVICE_STATE")" || die "The service state ancestors could not be resolved; nothing was changed." "Check source-directory permissions and retry."
+# llmlint: ignore[changed_behavior_has_e2e] Config ancestor race: awk already read this same configuration successfully before resolving its parent. This exit requires concurrent ancestor replacement; real source/destination permission and scan failures are exercised without replacing filesystem tools.
 CONFIG_CANON="$(physical "$SERVICE_CONFIG")" || die "The service configuration ancestors could not be resolved; nothing was changed." "Check source-directory permissions and retry."
 USER_STATE_CANON="$(physical "$USER_STATE")" || die "The user state ancestors could not be resolved; nothing was changed." "Check destination-directory permissions and retry."
 USER_CONFIG_CANON="$(physical "$USER_CONFIG")" || die "The user configuration ancestors could not be resolved; nothing was changed." "Check destination-directory permissions and retry."

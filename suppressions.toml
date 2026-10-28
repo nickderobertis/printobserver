@@ -4057,3 +4057,27 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_migration_leaves_unrelated_client_file_ownership_untouched("
 reason = "The task requires migration journeys in tests/repo-e2e/tests beside the other installer journeys, under the existing end-to-end project. This regression runs the real migration and ownership tools; changing the shared graph selection is outside this task."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_installer_rejects_links_before_writing_user_files("
+reason = "The task requires these real installer journeys beside the existing service-manager journeys in repo-e2e. This case proves filesystem refusals or the recorded platform manager boundary; native lifecycle is separately exercised behind the required switch."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_unreadable_ancestors_and_scan_leave_originals("
+reason = "The task requires these real installer journeys beside the existing service-manager journeys in repo-e2e. This case proves filesystem refusals or the recorded platform manager boundary; native lifecycle is separately exercised behind the required switch."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_launchctl_query_and_pending_stop_preserve_the_installation("
+reason = "The task requires these real installer journeys beside the existing service-manager journeys in repo-e2e. This case proves filesystem refusals or the recorded platform manager boundary; native lifecycle is separately exercised behind the required switch."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Config ancestor race"
+reason = "The configuration was read successfully by awk immediately before canonical comparison. A later parent-resolution failure requires concurrent ancestor replacement; actual unreadable source and destination ancestors and source-scan failures have end-to-end refusal assertions."
