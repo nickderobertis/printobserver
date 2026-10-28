@@ -3121,3 +3121,111 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver/src/console.rs"
 site = "if count != 1 {"
 reason = "Both early returns leave the process exactly as every console start was before this change, and do nothing else. The shared-console return is driven end to end: the Windows journey starts the server from a shell's console and asserts its window stays shown, and `service_lifecycle.rs`'s console-break test runs a server in a console of its own. A process with no console at all, or a console Windows made without a window, is not one a journey can ask Windows for from the gate's runners; the Windows service path, which is the server with no console, returns before this function is reached."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def _as_a_script_block("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule. This helper existed before the change as `_piped`; the task required the journey's existing cases to run with `-ClientOnly`, which a fetched script takes only through a script block, so it was renamed in place."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def test_with_no_switch_it_installs_the_per_user_server_and_says_what_is_next("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule. This is the no-switch install the task requires that journey to prove, moved there from the install-script journey by the manager's ruling."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "For the per-user install, as yourself, under its own state directory:"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "For the per-user install, as yourself, under its own state directory:"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "For the per-user install, as yourself, under its own state directory:"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "For the per-user install, as yourself, under its own state directory:"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "For the per-user install, the Linux and macOS command, as yourself;"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "For the per-user install, the Linux and macOS command, as yourself;"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "For the per-user install, the Linux and macOS command, as yourself;"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "For the per-user install, the Linux and macOS command, as yourself;"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "For the per-user install, the harness is installed and signed in as you;"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "For the per-user install, the harness is installed and signed in as you;"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "For the per-user install, the harness is installed and signed in as you;"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "For the per-user install, the harness is installed and signed in as you;"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Then, as that user, the per-user pair's first command,"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Then, as that user, the per-user pair's first command,"
+reason = "`AGENTS.md`'s \"The end-user install path\" is the authoritative source of the install path by the task's own contract: `just check-repo`'s `install-path` reads every pair, the steps between them and the migration's commands out of the root file, and holds the README and the install jobs to them. The per-user Windows statement sits beside the service's in each subsection, kept to one sentence; a nested file would be a second source the checks do not read."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Then, as that user, the per-user pair's first command,"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Then, as that user, the per-user pair's first command,"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."

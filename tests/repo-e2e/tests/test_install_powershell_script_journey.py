@@ -311,6 +311,7 @@ def _run_in_session(
     return result.returncode, (result.stdout or "") + (result.stderr or "")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def _as_a_script_block(home: Path, environment: dict[str, str], *arguments: str) -> tuple[int, str]:
     """Run the script as a fetched script's text is run: a script block made of it.
 

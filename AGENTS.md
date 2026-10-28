@@ -903,14 +903,7 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.
 #### windows-scheduled-task
 
 <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file for every manager and holds the README and CI jobs to; the per-user pair is stated here beside the others. suppressions.toml has the full reasons. -->
-The recommended pair on Windows; neither command is elevated. The first is the
-third route's own PowerShell script with no switch: it installs the program, your
-own configuration and state under `%LOCALAPPDATA%`, and a Scheduled Task named
-`printobserver` that runs the server as you, and it starts that task. Run again,
-it upgrades in place, keeping the configuration and state. It refuses a machine
-the `printobserver` service is on, naming the migration below. The second
-restarts the server so it reads the steps taken between the two. Made executable
-by the `windows-scheduled-task` node.
+The recommended pair on Windows; neither command is elevated. The first, the third route's script with no switch, installs and starts the server as you under a Scheduled Task named `printobserver`, upgrades in place when run again, and refuses a host the service is on; the second restarts it. `Disable-ScheduledTask -TaskName printobserver` stops supervising, and `-ClientOnly` installs the program alone. Made executable by the `windows-scheduled-task` node.
 
 ```powershell
 irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex
@@ -919,10 +912,6 @@ irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/
 ```powershell
 Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
 ```
-
-`Disable-ScheduledTask -TaskName printobserver` stops supervising until it is
-enabled again; on a host whose server is the service, the third route with
-`-ClientOnly` installs the program alone.
 
 #### windows-service
 
@@ -969,8 +958,8 @@ On Windows:
 gh skill install nickderobertis/printobserver printobserver --dir C:\ProgramData\printobserver\state\skills
 ```
 
-On Windows, for the per-user install, as yourself and with no elevation, under
-the state directory in your own profile:
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file and holds the README and CI jobs to. suppressions.toml has the full reasons. -->
+For the per-user install, as yourself, under its own state directory:
 
 ```powershell
 gh skill install nickderobertis/printobserver printobserver --dir $env:LOCALAPPDATA\printobserver\state\skills
@@ -1000,9 +989,8 @@ On Windows, from a PowerShell that is not elevated:
 & 'C:\Program Files\printobserver\printobserver.exe' credential issue
 ```
 
-For the per-user install on Windows it is the Linux and macOS command, run as
-yourself, and the line it prints goes into your own
-`%LOCALAPPDATA%\printobserver\config.toml`, which it then names.
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file and holds the README and CI jobs to. suppressions.toml has the full reasons. -->
+For the per-user install, the Linux and macOS command, as yourself; it names the per-user configuration its line goes into.
 
 ### Between the two commands, sign in the agent's harness
 
@@ -1038,9 +1026,8 @@ with `npm install -g`, as above and without `sudo`, and then:
 & 'C:\Program Files\printobserver\printobserver.exe' sign-in
 ```
 
-The per-user install's supervision turns run as you, so the harness is
-installed with `npm install -g` as you and signed in as you, with no elevation:
-with no `--config`, `sign-in` reads your per-user configuration when it is there.
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file and holds the README and CI jobs to. suppressions.toml has the full reasons. -->
+For the per-user install, the harness is installed and signed in as you; with no `--config`, `sign-in` reads the per-user configuration:
 
 ```powershell
 printobserver sign-in
@@ -1049,10 +1036,7 @@ printobserver sign-in
 ### Moving a Windows service install to the per-user one
 
 <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path: `just check-repo` reads the migration's commands out of it and holds the README to them. suppressions.toml has the full reasons. -->
-One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service
-install's configuration and record to a user's per-user install, and deletes the
-service only once the copy has verified. Where elevating runs it as another
-administrator, `-LocalAppData` and `-User` name the person the install is for.
+One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service install's configuration and record to a user's per-user install and deletes the service once the copy verifies; `-LocalAppData` and `-User` name that user.
 
 ```powershell
 irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1 | iex
@@ -1062,9 +1046,8 @@ irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.ps1))) -LocalAppData C:\Users\operator\AppData\Local -User PRINTPC\operator
 ```
 
-Then, as that user and with no elevation, the per-user pair's first command —
-which keeps the configuration the migration copied and starts the server — and
-`printobserver sign-in`.
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This section is the authoritative source of the install path, which `just check-repo` reads out of the root file and holds the README and CI jobs to. suppressions.toml has the full reasons. -->
+Then, as that user, the per-user pair's first command, which keeps the copied configuration, and `printobserver sign-in`.
 
 ## The registry install-path proof
 

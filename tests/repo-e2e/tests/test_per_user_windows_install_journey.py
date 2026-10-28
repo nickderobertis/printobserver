@@ -152,9 +152,24 @@ def _version() -> str:
 
 
 def _older(version: str) -> str:
-    """A version of the same length as `version` that is not it."""
-    last = "0" if version[-1] != "0" else "9"
-    return version[:-1] + last
+    """A version older than `version` and spelled in as many characters.
+
+    The rightmost digit that is not zero goes down by one and every digit after
+    it becomes nine, as counting down does: `0.10.1` is `0.10.0`, `0.11.0` is
+    `0.10.9`, and `0.10.0` is `0.09.9`, which reads as 0.9.9. The length is kept
+    because the older release is the real program with its version string
+    replaced in place.
+    """
+    digits = list(version)
+    for at in range(len(digits) - 1, -1, -1):
+        if digits[at].isdigit() and digits[at] != "0":
+            digits[at] = str(int(digits[at]) - 1)
+            for after in range(at + 1, len(digits)):
+                if digits[after].isdigit():
+                    digits[after] = "9"
+            return "".join(digits)
+    message = f"{version} has no older version of its own length"
+    raise AssertionError(message)
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
@@ -554,6 +569,7 @@ def _tree(root: Path) -> dict[str, str]:
     }
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_with_no_switch_it_installs_the_per_user_server_and_says_what_is_next(
     installing: Installing, releases: Callable[[str], Path], tmp_path: Path
 ) -> None:
