@@ -26,6 +26,7 @@ pub fn hide_a_console_of_its_own() {
     // SAFETY: `attached` is a writable buffer of `length` process identifiers,
     // which is the most `GetConsoleProcessList` writes into it.
     let count = unsafe { GetConsoleProcessList(attached.as_mut_ptr(), length) };
+    // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
     if count != 1 {
         return;
     }

@@ -3103,3 +3103,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_place("
 reason = "The task requires this journey under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, and requires its Task Scheduler cases to run on the Windows gate shards, which run that project's end-to-end tier. `AGENTS.md` places every end-to-end journey in that one project, and no per-project end-to-end target exists for a narrower edge to hang from."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
+site = "def test_the_fetched_form_that_stopped_keeps_the_session_and_leaves_a_failing_status("
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule. This case existed before the change, which renamed it and, as its task required, runs it with `-ClientOnly` in place."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
+site = "def migrating(tmp_path: Path) -> Migrating:"
+reason = "The task requires the per-user journey under `tests/repo-e2e/tests/`, beside the service-installer and install-script journeys for the same two scripts, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from, and a whole-file directive is refused for this rule. The migration cases this fixture serves run the committed migration script under the stand-in session the task approved, over a record a real server wrote, and belong with the installer journeys they hand their result to."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/console.rs"
+site = "if count != 1 {"
+reason = "Both early returns leave the process exactly as every console start was before this change, and do nothing else. The shared-console return is driven end to end: the Windows journey starts the server from a shell's console and asserts its window stays shown, and `service_lifecycle.rs`'s console-break test runs a server in a console of its own. A process with no console at all, or a console Windows made without a window, is not one a journey can ask Windows for from the gate's runners; the Windows service path, which is the server with no console, returns before this function is reached."

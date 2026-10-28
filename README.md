@@ -146,10 +146,9 @@ names the [one elevated step that moves it](#moving-from-the-windows-service-to-
 
 On Linux and macOS, choose one of these three routes. Each installs a program
 already built for your platform and needs no Rust toolchain on the printer host.
-The routes are stated once, in
-[`AGENTS.md`'s install path](./AGENTS.md#the-end-user-install-path), and a
-check holds the commands here to the ones stated there. The first two install
-the program alone on Windows too.
+These commands are held by a check to the one statement of the install path the
+repository keeps, so they cannot drift from it. The first two install the
+program alone on Windows too.
 
 With Python, on Linux, macOS or Windows:
 

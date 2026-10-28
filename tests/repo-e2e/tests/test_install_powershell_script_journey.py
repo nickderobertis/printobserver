@@ -603,6 +603,7 @@ def test_the_fetched_form_installs_and_leaves_the_session_with_a_zero_status(
     contains(_reports(_default(home)), _version(), describing="what the installed program reports")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_the_fetched_form_that_stopped_keeps_the_session_and_leaves_a_failing_status(
     staged: Callable[[str], Path], tmp_path: Path
 ) -> None:

@@ -991,6 +991,7 @@ class Migrating:
         )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @pytest.fixture
 def migrating(tmp_path: Path) -> Migrating:
     """The committed migration under the stand-in session."""
