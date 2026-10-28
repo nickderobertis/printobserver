@@ -370,7 +370,8 @@ def test_an_install_job_that_swallows_the_service_commands_silently_is_refused(
     broken.edit(
         INSTALL,
         "        run: 'echo \"install-route-pypi: service installation $INSTALLED, "
-        'service startup $STARTED" >> "$GITHUB_STEP_SUMMARY"\'',
+        "service startup $STARTED, per-user installation $PER_USER_INSTALLED, "
+        'per-user startup $PER_USER_STARTED" >> "$GITHUB_STEP_SUMMARY"\'',
         "        run: true",
     )
 
@@ -414,6 +415,8 @@ def test_a_tree_declaring_no_waiver_at_all_is_refused(tree: Callable[[], Tree]) 
         '  "start-service-launchd",\n'
         '  "install-service-windows-service",\n'
         '  "start-service-windows-service",\n'
+        '  "install-service-windows-scheduled-task",\n'
+        '  "start-service-windows-scheduled-task",\n'
         "]\n",
         "waived_steps = []\n",
     )
