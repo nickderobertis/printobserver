@@ -1534,12 +1534,17 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
                     f"$env:{TASK_NAME} = {_quoted(task)}",
                     f"$env:{RECORDING} = {_quoted(str(root / 'recorded'))}",
                     f"$env:Path = {_quoted(str(home.program.parent))} + ';' + $env:Path",
-                    "whoami.exe /groups | Out-File -LiteralPath "
-                    f"{_quoted(str(outcome) + '-groups.txt')}",
-                    f"& {_quoted(powershell())} -NoProfile -File {_quoted(str(session))} "
-                    f"{_quoted(str(INSTALLER))} *> {_quoted(str(outcome) + '-said.txt')}",
+                    "$groups = (whoami.exe /all 2>&1 | Out-String) + "
+                    "[Security.Principal.WindowsIdentity]::GetCurrent().Name",
+                    f"Set-Content -LiteralPath {_quoted(str(outcome) + '-groups.txt')} "
+                    "-Value $groups -Encoding utf8",
+                    f"$said = & {_quoted(powershell())} -NoProfile -File {_quoted(str(session))} "
+                    f"{_quoted(str(INSTALLER))} 2>&1 | Out-String",
+                    "$code = $LASTEXITCODE",
+                    f"Set-Content -LiteralPath {_quoted(str(outcome) + '-said.txt')} "
+                    "-Value $said -Encoding utf8",
                     f"Set-Content -LiteralPath {_quoted(str(outcome) + '-code.txt')} "
-                    "-Value $LASTEXITCODE",
+                    "-Value $code -Encoding utf8",
                 ]
             ),
             encoding="utf-8",
@@ -1552,12 +1557,13 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
             f"@('-NoProfile', '-File', {_quoted(str(wrapper))}) -Credential $credential "
             f"-WorkingDirectory {_quoted(str(root))} -LoadUserProfile -Wait"
         )
-        groups = Path(f"{outcome}-groups.txt").read_text(encoding="utf-16", errors="replace")
+        groups = Path(f"{outcome}-groups.txt").read_text(encoding="utf-8-sig", errors="replace")
+        contains(groups, name, describing="the identity the install ran as")
         absent(groups, "S-1-16-12288", describing="a high-integrity token")
         contains(groups, "S-1-16-8192", describing="the account's medium-integrity token")
-        said = Path(f"{outcome}-said.txt").read_text(encoding="utf-16", errors="replace")
+        said = Path(f"{outcome}-said.txt").read_text(encoding="utf-8-sig", errors="replace")
         code = int(
-            Path(f"{outcome}-code.txt").read_text(encoding="utf-16", errors="replace").strip()
+            Path(f"{outcome}-code.txt").read_text(encoding="utf-8-sig", errors="replace").strip()
             or "1"
         )
 
