@@ -3005,7 +3005,7 @@ reason = "The same ground as this rule's entry for this file's `def _built_here`
 [[suppression]]
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
-site = "shutil.copy2(str(sleeper), home.program)"
+site = "shutil.copy(str(sleeper), home.program)"
 reason = "What the case needs is a process still running the installed program's file a minute after its task was stopped, which a server that ended its task's stop cleanly never is; a long-running program at that path is the one way to put the installer's wait in front of it on a host with no Task Scheduler. The installer reads nothing of the process but its path, which is what this gives it, and the Windows case drives the real server through its real task."
 
 [[suppression]]

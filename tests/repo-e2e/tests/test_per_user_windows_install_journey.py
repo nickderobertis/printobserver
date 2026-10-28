@@ -997,7 +997,9 @@ def test_the_migration_moves_the_record_verifies_it_and_only_then_deletes_the_se
 ) -> None:
     """Every file identical, two lines rewritten, the service deleted last, the record served."""
     home = _home(tmp_path, "home-migrated")
-    owner = "PRINTPC\\the-person-who-started-it"
+    # An account this host resolves: on Windows the migration asks it of the
+    # host's own account database, before anything is stopped.
+    owner = _account()
     state_before = _tree(serviced.state)
     config_before = serviced.config.read_text(encoding="utf-8")
 
@@ -1487,7 +1489,9 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
     """
     suffix = f"{os.getpid() % 100000}"
     name = f"pojourney{suffix}"
-    password = "Aa1!" + secrets.token_hex(12)
+    # Fourteen characters: `net user` asks before taking a longer one, and
+    # nothing here can answer it.
+    password = "Aa1!" + secrets.token_hex(5)
     root = (
         Path(os.environ.get("SYSTEMDRIVE", "C:") + "\\")
         / "printobserver-journeys"
@@ -1755,7 +1759,7 @@ def test_the_migration_refuses_before_it_copies_anything(
 ) -> None:
     """A refusal before the copy leaves the service's files and the user's profile as they were."""
     home = _home(tmp_path, "home-before-copy")
-    user = "PRINTPC\\operator"
+    user = _account()
     match arrange:
         case "state-without-config":
             home.state.mkdir(parents=True)
@@ -2133,7 +2137,8 @@ def test_an_upgrade_whose_server_will_not_exit_replaces_nothing_and_puts_the_tas
     sleeper = shutil.which("sleep")
     truth(sleeper is not None, describing="this host to carry a `sleep` to keep running")
     # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
-    shutil.copy2(str(sleeper), home.program)
+    shutil.copy(str(sleeper), home.program)
+    home.program.chmod(0o755)
     lingering = start([str(home.program), "300"], cwd=home.root)
     try:
         again = installing(home, releases(_version()), recording=tmp_path / "recorded-1")
@@ -2247,9 +2252,11 @@ def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
     # which then starts the server in it: the console a person's own window is.
     shell = int(
         _powershell_answer(
+            # One argument, the whole command in a pair of quotes of its own:
+            # `cmd /s /k` strips exactly that outer pair and runs the rest.
             "(Start-Process -FilePath cmd.exe -PassThru -ArgumentList "
-            f"'/k', {_quoted(chr(34) + str(program) + chr(34))}, 'server', '--config', "
-            f"{_quoted(chr(34) + str(home.config) + chr(34))}).Id"
+            + _quoted(f'/s /k ""{program}" server --config "{home.config}""')
+            + ").Id"
         )
     )
     try:
