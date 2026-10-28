@@ -2977,9 +2977,3 @@ rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "connection = sqlite3.connect("
 reason = "A read-only look at the store the real server wrote, to learn when the alert's print and image are in it, inside a sequential journey; it is the readiness read `release_artifacts.world` makes the same way."
-
-[[suppression]]
-rule = "plan_criteria_require_realistic_tests"
-file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
-site = "equal("
-reason = "A hosted Windows runner cannot perform an interactive logon, so the journey asserts the registered at-logon trigger names the installing user and starts the server through that same task definition with `Start-ScheduledTask`; starting it through a real interactive logon is checked on a real Windows host."

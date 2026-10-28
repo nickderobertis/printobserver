@@ -1223,7 +1223,9 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
             "[System.Security.Principal.WindowsIdentity]::GetCurrent().Name"
         )
         task_xml = _exported(task)
-        # llmlint: ignore[plan_criteria_require_realistic_tests] suppressions.toml has the reason.
+        # A hosted runner cannot perform an interactive logon: the logon trigger is
+        # asserted from the registered definition, and the server is started through
+        # that same definition below; a real logon is checked on a real Windows host.
         equal(
             _sid(_text(task_xml, "Triggers/LogonTrigger/UserId")),
             _sid(account),
