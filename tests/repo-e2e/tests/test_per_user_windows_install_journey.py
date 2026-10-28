@@ -32,6 +32,7 @@ Task Scheduler and a service control manager. So the journey keeps the split
 
 from __future__ import annotations
 
+import functools
 import gzip
 import hashlib
 import html
@@ -105,6 +106,15 @@ TASK_NAME = "PRINTOBSERVER_TASK_NAME"
 #: The account the stand-in session runs as.
 DOMAIN, USER = "PRINTPC", "operator"
 ACCOUNT = f"{DOMAIN}\\{USER}"
+
+
+@functools.cache
+def _account() -> str:
+    """The account the installer registers the task for: the stand-in's, or this Windows host's."""
+    if not ON_WINDOWS:
+        return ACCOUNT
+    return _powershell_answer("[System.Security.Principal.WindowsIdentity]::GetCurrent().Name")
+
 
 #: One element of a task definition, read by its tag: a definition is a fixed
 #: document of Task Scheduler's own shape, in which each element named here
@@ -538,7 +548,7 @@ def test_with_no_switch_it_installs_the_per_user_server_and_says_what_is_next(
         ran.recorded.index(registered[0]) < ran.recorded.index("Start-ScheduledTask printobserver"),
         describing=f"the task started after it was registered: {ran.recorded}",
     )
-    _holds_the_contract(_task(ran.definition), ACCOUNT, home.program, home.config)
+    _holds_the_contract(_task(ran.definition), _account(), home.program, home.config)
     for elevated in ("icacls", "sc.exe create", "sc.exe config", "whoami.exe"):
         truth(
             not any(line.startswith(elevated) for line in ran.recorded),
@@ -623,7 +633,7 @@ def test_with_the_service_registered_it_refuses_naming_the_migration_and_changes
     contains(
         ran.said,
         "scripts/migrate-service-to-per-user.ps1))) -LocalAppData "
-        f"'{home.local}' -User '{ACCOUNT}'",
+        f"'{home.local}' -User '{_account()}'",
         describing="the migration command it named, for this user",
     )
     contains(ran.said, "-ClientOnly", describing="the other way on it named")
@@ -1141,7 +1151,7 @@ def test_the_piped_form_installs_the_per_user_server_and_leaves_the_session_a_ze
     contains(ran.said, "the session goes on, LASTEXITCODE=0", describing="the session after")
     truth(home.config.is_file(), describing="the per-user configuration")
     contains(ran.recorded, "Start-ScheduledTask printobserver", describing="the task started")
-    _holds_the_contract(_task(ran.definition), ACCOUNT, home.program, home.config)
+    _holds_the_contract(_task(ran.definition), _account(), home.program, home.config)
 
 
 def _powershell_answer(command: str, *, check: bool = True) -> str:
@@ -1153,6 +1163,14 @@ def _powershell_answer(command: str, *, check: bool = True) -> str:
             describing=f"`{command}`",
         )
     return (result.stdout or "").strip()
+
+
+def _powershell_status(command: str) -> int:
+    """The status one PowerShell command exits with, printing what it said when it fails."""
+    result = shell_run([powershell(), "-NoProfile", "-Command", command], timeout=300)
+    if result.returncode != 0:
+        sys.stderr.write((result.stdout or "") + (result.stderr or ""))
+    return result.returncode
 
 
 def _quoted(text: str) -> str:
@@ -1420,14 +1438,22 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
     before = {str(path): path.exists() for path in stray}
     try:
         passing(
-            (shell_run(["net", "user", name, password, "/add"], timeout=120).returncode, ""),
+            (
+                _powershell_status(
+                    f"& net.exe user {_quoted(name)} {_quoted(password)} /add; exit $LASTEXITCODE"
+                ),
+                f"net.exe user {name} /add",
+            ),
             describing=f"creating the ordinary account {name}",
         )
         home.local.mkdir(parents=True)
         (home.root / "temp").mkdir()
         release = _stage(root / "release", program.read_bytes())
         session = _session(root, stand_in_tasks=False)
-        shell_run(["icacls", str(root), "/grant", f"{name}:(OI)(CI)F"], timeout=120)
+        _powershell_answer(
+            f"& icacls.exe {_quoted(str(root))} /grant {_quoted(name + ':(OI)(CI)F')}; "
+            "exit $LASTEXITCODE"
+        )
         outcome = root / "outcome"
         wrapper = root / "as-the-account.ps1"
         wrapper.write_text(
@@ -1505,7 +1531,7 @@ def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
         )
     finally:
         _remove_task(task, home.program)
-        shell_run(["net", "user", name, "/delete"], timeout=120)
+        _powershell_status(f"& net.exe user {_quoted(name)} /delete; exit $LASTEXITCODE")
         _powershell_answer(
             "Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "
             f"{_quoted('*' + chr(92) + name)} }} | Remove-CimInstance",
