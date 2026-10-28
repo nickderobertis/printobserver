@@ -724,3 +724,14 @@ def test_a_migration_fetched_from_a_path_the_policy_does_not_declare_is_refused(
     findings = install_path_section(broken.repo)
 
     refused(findings, "fetches `scripts/migrate.ps1`")
+
+
+def test_readme_cannot_change_the_recommended_unix_restart(tree: Callable[[], Tree]) -> None:
+    """The README's recommended manager command comes from the authoritative section."""
+    broken = tree()
+    broken.edit(
+        "README.md",
+        "systemctl --user restart printobserver.service",
+        "systemctl --user restart other.service",
+    )
+    refused(install_path_section(broken.repo), "other.service")

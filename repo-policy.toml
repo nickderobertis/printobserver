@@ -331,6 +331,7 @@ command_schema = "schemas/printobserver-core/SpoolCommand.json"
 installer = "scripts/install-service.sh"
 # Where the installer writes the unit: the directory the manager reads units from.
 registration_directory = "/etc/systemd/system"
+name_also_declared_in = ["scripts/migrate-service-to-per-user.sh"]
 may_not_invoke = ["systemctl", "service", "systemd-run"]
 starts_at_boot = "WantedBy=multi-user.target"
 restarts_after_crash = "Restart=on-failure"
@@ -343,6 +344,7 @@ restarts_after_crash = "Restart=on-failure"
 [service.managers.launchd]
 installer = "scripts/install-service.sh"
 registration_directory = "/Library/LaunchDaemons"
+name_also_declared_in = ["scripts/migrate-service-to-per-user.sh"]
 may_not_invoke = ["launchctl"]
 starts_at_boot = "<key>RunAtLoad</key> <true/>"
 restarts_after_crash = "<key>KeepAlive</key> <dict> <key>SuccessfulExit</key> <false/> </dict>"

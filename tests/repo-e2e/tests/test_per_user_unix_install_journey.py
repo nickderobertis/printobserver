@@ -1,7 +1,8 @@
 """The real Unix installer and migration against staged releases and manager subprocesses.
 
-The subprocess doubles record only service-manager effects. Files and SHA-256
-verification are real, and migrated records are written and read by real servers.
+Only service-manager and privilege boundaries are substituted. Files, SHA-256,
+account lookup and ownership commands are real; copy faults are injected after
+the ownership command. Migrated records are written and read by real servers.
 The host managers' lifecycle is exercised separately under the required switch.
 """
 
@@ -25,13 +26,15 @@ from subprocess import CompletedProcess
 import pytest
 from journey import DEBUG_BUILD, REPO_ROOT, clean_environment, install_the_skill
 from release_artifacts.world import Machine
+from repo_checks import install_path
 from repo_checks.expect import contains, equal, failing, passing, truth
+from repo_checks.model import Repo
+from repo_checks.platforms import host as host_platform
 from repo_checks.shell import run, start
 from test_per_user_windows_install_journey import (
     CREDENTIAL,
     IMAGE,
     _alert,
-    _await_recorded,
     _client,
     _fill_in,
     _older,
@@ -40,6 +43,9 @@ from test_per_user_windows_install_journey import (
     machine,
     program,
 )
+
+PLATFORM = host_platform(Repo(REPO_ROOT)).id
+NATIVE_SYSTEM = "Darwin" if sys.platform == "darwin" else "Linux"
 
 pytestmark = [DEBUG_BUILD, pytest.mark.skipif(sys.platform == "win32", reason="Unix scripts")]
 __all__ = ["machine", "program"]
@@ -69,12 +75,16 @@ def _archive(program: Path) -> bytes:
 
 
 class Host:
-    """A throwaway home, release and account database, with recorded manager commands."""
+    """A throwaway home and release, with recorded host-manager commands."""
 
-    # llmlint: ignore[e2e_not_mocked] Unix installer host boundary: real script and files.
     def __init__(self, root: Path, system: str, program: Path) -> None:
+        native = NATIVE_SYSTEM
+        if system != native:
+            pytest.skip(f"{system} behavior runs in its native platform context")
         self.root, self.system = (root, system)
         self.home, self.bin = (root / "home", root / "tools")
+        self.user_home = self.home
+        self.system_definition = root / "unregistered"
         self.home.mkdir()
         self.bin.mkdir()
         self.log = root / "manager.log"
@@ -83,24 +93,30 @@ class Host:
         release.mkdir(parents=True)
         archive = _archive(program)
         checksums = []
-        for platform in ("linux-x86_64", "linux-aarch64", "macos-aarch64"):
+        for platform in (PLATFORM,):
             name = f"printobserver-{platform}.tar.gz"
             (release / name).write_bytes(archive)
             checksums.append(f"{hashlib.sha256(archive).hexdigest()}  {name}\n")
         (release / "SHA256SUMS").write_text("".join(checksums), encoding="utf-8")
-        architecture = "arm64" if system == "Darwin" else "x86_64"
-        _tool(
-            self.bin / "uname",
-            f"""case "$1" in -s) echo {system} ;; -m) echo {architecture} ;; esac\n""",
-        )
         for name in ("systemctl", "launchctl", "loginctl"):
+            # llmlint: ignore[e2e_not_mocked] Manager boundary; native lifecycle has a journey.
             _tool(
                 self.bin / name,
                 f'printf "%s\\n" "{name} $*" >> "$RECORD"\n'
                 f'if [ "${{REFUSES:-}}" = "{name} $*" ]; then exit 1; fi\n'
-                'case "$*" in cat* | "print system/"*) exit "${REGISTERED:-1}" ;; esac\n'
-                f'if [ "{name}" = loginctl ]; then exit "${{LINGER_STATUS:-0}}"; fi\n',
+                'case "$*" in cat*) exit "${REGISTERED:-1}" ;; esac\n'
+                f'if [ "{name}" = loginctl ]; then exit "${{LINGER_STATUS:-0}}"; fi\n'
+                f'if [ "{name}" = launchctl ]; then\n'
+                'case "$*" in\n'
+                '"print system/"*) [ -f "$SYSTEM_AGENT_STATE" ] && exit 0;\n'
+                'exit "${REGISTERED:-113}" ;;\n'
+                '"bootout system/"*) rm -f "$SYSTEM_AGENT_STATE" ;;\n'
+                '"print gui/"*/*) [ -f "$AGENT_STATE" ] && exit 0; exit 113 ;;\n'
+                'bootstrap*) touch "$AGENT_STATE" ;;\n'
+                'bootout*) [ -f "$AGENT_STATE" ] || exit 113; rm "$AGENT_STATE" ;;\n'
+                "esac; fi\n",
             )
+        # llmlint: ignore[e2e_not_mocked] Reject any installer attempt to elevate this user.
         _tool(self.bin / "sudo", 'echo "unexpected sudo" >> "$RECORD"; exit 99\n')
         self.env = clean_environment(
             HOME=str(self.home),
@@ -108,6 +124,8 @@ class Host:
             PATH=f"{self.bin}:{os.environ['PATH']}",
             PRINTOBSERVER_RELEASE_BASE=str(self.release),
             RECORD=str(self.log),
+            AGENT_STATE=str(self.bin / "agent-registered"),
+            SYSTEM_AGENT_STATE=str(self.bin / "system-agent-registered"),
         )
         self.env.pop("XDG_CONFIG_HOME", None)
         self.env.pop("XDG_STATE_HOME", None)
@@ -133,6 +151,22 @@ class Host:
             else "Library/LaunchAgents/io.github.nickderobertis.printobserver.plist"
         )
 
+    @property
+    def migrated_config(self) -> Path:
+        return self.user_home / (
+            ".config/printobserver/config.toml"
+            if self.system == "Linux"
+            else "Library/Application Support/printobserver/config.toml"
+        )
+
+    @property
+    def migrated_state(self) -> Path:
+        return self.user_home / (
+            ".local/state/printobserver"
+            if self.system == "Linux"
+            else "Library/Application Support/printobserver/state"
+        )
+
     def install(self, *args: str) -> CompletedProcess[str]:
         return run(
             ["sh", str(REPO_ROOT / "scripts/install.sh"), *args],
@@ -154,9 +188,22 @@ def _tree(path: Path) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("system", ["Linux", "Darwin"])
-def test_install_upgrade_and_client_only(tmp_path: Path, program: Path, system: str) -> None:
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_install_and_upgrade_preserve_user_files(
+    tmp_path: Path, program: Path, system: str
+) -> None:
     host = Host(tmp_path, system, program)
-    passing(host.install("--observation-interval-seconds", "71"))
+    installed = host.install("--observation-interval-seconds", "71")
+    passing(installed)
+    for instruction in (
+        "credential issue",
+        "api.credential_verifier",
+        str(host.config),
+        "gh skill install",
+        str(host.state / "skills"),
+        "sign-in",
+    ):
+        contains(installed.stderr or "", instruction)
     config = tomllib.loads(host.config.read_text(encoding="utf-8"))
     equal(config["state_dir"], str(host.state), describing="the user's state")
     equal(config["supervisor"]["skill_path"], str(host.state / "skills/printobserver/SKILL.md"))
@@ -181,6 +228,7 @@ def test_install_upgrade_and_client_only(tmp_path: Path, program: Path, system: 
         contains(host.said(), "systemctl --user enable --now printobserver.service")
         contains(host.said(), "loginctl enable-linger operator")
     else:
+        contains(installed.stderr or "", "only while you are logged in")
         definition = plistlib.loads(host.definition.read_bytes())
         equal(definition["RunAtLoad"], True)
         equal(definition["KeepAlive"], {"SuccessfulExit": False})
@@ -206,7 +254,8 @@ def test_install_upgrade_and_client_only(tmp_path: Path, program: Path, system: 
     )
 
 
-@pytest.mark.parametrize("value", ["0", "01", "-1", "1.5", "9223372036854775808"])
+@pytest.mark.parametrize("value", ["", "0", "01", "-1", "1.5", "9223372036854775808", "1" * 20])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_invalid_interval_changes_nothing(tmp_path: Path, program: Path, value: str) -> None:
     host = Host(tmp_path, "Linux", program)
     failing(
@@ -217,6 +266,7 @@ def test_invalid_interval_changes_nothing(tmp_path: Path, program: Path, value: 
 
 
 @pytest.mark.parametrize("system", ["Linux", "Darwin"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_system_install_refusal_and_client_only(tmp_path: Path, program: Path, system: str) -> None:
     host = Host(tmp_path, system, program)
     host.env["REGISTERED"] = "0"
@@ -232,6 +282,7 @@ def test_system_install_refusal_and_client_only(tmp_path: Path, program: Path, s
     truth(not host.config.exists(), describing="the per-user install contract")
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_lingering_refusal_completes_and_explains(tmp_path: Path, program: Path) -> None:
     host = Host(tmp_path, "Linux", program)
     host.env["LINGER_STATUS"] = "1"
@@ -241,6 +292,7 @@ def test_lingering_refusal_completes_and_explains(tmp_path: Path, program: Path)
     contains(result.stderr or "", 'loginctl enable-linger "operator"')
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_linux_honors_xdg_directories(tmp_path: Path, program: Path) -> None:
     """The user manager and server agree on nondefault XDG config and state."""
     host = Host(tmp_path, "Linux", program)
@@ -259,6 +311,7 @@ def test_linux_honors_xdg_directories(tmp_path: Path, program: Path) -> None:
     )
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_unverified_upgrade_keeps_the_running_registration_and_all_files(
     tmp_path: Path, program: Path
 ) -> None:
@@ -267,16 +320,15 @@ def test_unverified_upgrade_keeps_the_running_registration_and_all_files(
     passing(host.install())
     before, operations = _tree(host.home), host.said()
     (host.release / "latest/download/SHA256SUMS").write_text(
-        "0" * 64 + "  printobserver-linux-x86_64.tar.gz\n", encoding="utf-8"
+        "0" * 64 + f"  printobserver-{PLATFORM}.tar.gz\n", encoding="utf-8"
     )
     failing(host.install(), naming="does not match the digest")
     equal(_tree(host.home), before)
     equal(host.said(), operations + "systemctl cat printobserver.service\n")
 
 
-# llmlint: ignore[e2e_not_mocked] Unix migration account boundary: real copy and API.
 def _migration_host(
-    tmp_path: Path, program: Path, system: str = "Linux"
+    tmp_path: Path, program: Path, system: str = NATIVE_SYSTEM
 ) -> tuple[Host, Path, Path]:
     host = Host(tmp_path, system, program)
     root = tmp_path / "isolated"
@@ -291,16 +343,46 @@ def _migration_host(
     )
     definition.parent.mkdir(parents=True)
     definition.write_text("system registration", encoding="utf-8")
-    _tool(host.bin / "id", 'case "$1" in -u) echo 0 ;; -gn) echo operator ;; *) exit 0 ;; esac\n')
-    _tool(host.bin / "dscl", 'echo "NFSHomeDirectory: /home/operator"\n')
-    _tool(host.bin / "getent", 'echo "operator:x:1000:1000::/home/operator:/bin/sh"\n')
+    host.system_definition = definition
+    if system == "Darwin":
+        Path(host.env["SYSTEM_AGENT_STATE"]).touch()
+    owner = run(["id", "-un"], timeout=30).stdout.strip()
+    real_id = shutil.which("id")
+    real_chown = shutil.which("chown")
+    truth(real_id and real_chown, describing="the real host identity and ownership tools")
+    host.env.update(REAL_ID=str(real_id), REAL_CHOWN=str(real_chown), SUDO_USER=owner)
+    if system == "Linux":
+        home = run(["getent", "passwd", owner], timeout=30).stdout.split(":")[5]
+    else:
+        home = (
+            run(["dscl", ".", "-read", f"/Users/{owner}", "NFSHomeDirectory"], timeout=30)
+            .stdout.split(": ", 1)[1]
+            .strip()
+        )
+    host.user_home = root / Path(home).relative_to("/")
+    # llmlint: ignore[e2e_not_mocked] Only the root token is supplied; account queries run real id.
+    _tool(
+        host.bin / "id",
+        'if [ "$#" = 1 ] && [ "$1" = -u ]; then echo 0; else exec "$REAL_ID" "$@"; fi\n',
+    )
+
+    return (host, root, config)
+
+
+def _fault_copied_file(host: Host, path: Path, effect: str) -> None:
+    """Inject a verification fault only after the real ownership operation succeeds."""
+    host.env.update(ALTER_COPY=str(path), COPY_EFFECT=effect)
+    # llmlint: ignore[e2e_not_mocked] Real chown runs; only a copied file is altered.
     _tool(
         host.bin / "chown",
+        '"$REAL_CHOWN" "$@"\n'
         'if [ -n "${ALTER_COPY:-}" ] && [ -f "$ALTER_COPY" ]; then\n'
-        'echo corrupted >> "$ALTER_COPY"; fi\n',
+        'case "${COPY_EFFECT:-corrupt}" in\n'
+        'corrupt) echo corrupted >> "$ALTER_COPY" ;;\n'
+        'missing) rm "$ALTER_COPY" ;;\n'
+        'unreadable) chmod 000 "$ALTER_COPY" ;;\n'
+        "esac; fi\n",
     )
-    host.env["SUDO_USER"] = "operator"
-    return (host, root, config)
 
 
 def _migrate(host: Host, root: Path) -> CompletedProcess[str]:
@@ -311,13 +393,37 @@ def _migrate(host: Host, root: Path) -> CompletedProcess[str]:
     )
 
 
+def _await_public_record(program: Path, address: str) -> tuple[str, str]:
+    """Discover the alert's record through prints and context, without reading private tables."""
+    import time
+
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        listed = _client(program, address, CREDENTIAL, "prints")
+        passing((listed.code, listed.said))
+        for record in json.loads(listed.out)["prints"]:
+            print_id = str(record["id"])
+            context = _client(program, address, CREDENTIAL, "context", "--print-id", print_id)
+            passing((context.code, context.said))
+            image = json.loads(context.out)["context"].get("latest_image")
+            if image:
+                return print_id, str(image["id"])
+        time.sleep(0.05)
+    raise AssertionError("the public commands did not report the alert image within the hang guard")
+
+
 @pytest.mark.parametrize("system", ["Linux", "Darwin"])
+@pytest.mark.parametrize("source_nondefault", [False, True])
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_migration_preserves_and_serves_the_real_record(
-    tmp_path: Path, program: Path, machine: Machine, system: str
+    tmp_path: Path, program: Path, machine: Machine, system: str, source_nondefault: bool
 ) -> None:
     host, root, config = _migration_host(tmp_path, program, system)
     state = root / "var/lib/printobserver"
+    if source_nondefault:
+        state.joinpath("unrelated").write_bytes(b"not the configured record")
+        state = root / "srv/printobserver-record"
+        state.mkdir(parents=True)
     source = (
         (REPO_ROOT / "scripts/install-service.sh")
         .read_text(encoding="utf-8")
@@ -331,27 +437,46 @@ def test_migration_preserves_and_serves_the_real_record(
     config.write_text(source, encoding="utf-8")
     _fill_in(config, machine, CREDENTIAL, "127.0.0.1:0")
     install_the_skill(config)
-    server = start([str(program), "server", "--config", str(config)], env=clean_environment())
+    no_harness = tmp_path / "no-harness"
+    no_harness.mkdir()
+    server = start(
+        [str(program), "server", "--config", str(config)],
+        env=clean_environment(PATH=str(no_harness)),
+    )
     try:
         address = _serving(server)
+        # llmlint: ignore[async_typed_clients_at_boundaries] One sequential real ingress post.
         _alert(address, machine)
-        recorded = _await_recorded(state)
+        print_id, image_id = _await_public_record(program, address)
     finally:
         server.terminate()
         server.wait(timeout=60)
     before, original = (_tree(state), config.read_text(encoding="utf-8"))
-    passing(_migrate(host, root))
-    copied_state = root / (
-        "home/operator/.local/state/printobserver"
+    migrated = _migrate(host, root)
+    passing(migrated)
+    for instruction in (
+        "scripts/install.sh",
+        "printobserver sign-in",
+        "sudo rm -rf",
+        str(state),
+        "service user",
+    ):
+        contains(migrated.stderr or "", instruction)
+    copied_state = host.user_home / (
+        ".local/state/printobserver"
         if system == "Linux"
-        else "home/operator/Library/Application Support/printobserver/state"
+        else "Library/Application Support/printobserver/state"
     )
-    copied_config = root / (
-        "home/operator/.config/printobserver/config.toml"
+    copied_config = host.user_home / (
+        ".config/printobserver/config.toml"
         if system == "Linux"
-        else "home/operator/Library/Application Support/printobserver/config.toml"
+        else "Library/Application Support/printobserver/config.toml"
     )
     equal(_tree(copied_state), before)
+    equal(copied_state.stat().st_uid, _uid())
+    equal(copied_config.stat().st_uid, _uid())
+    equal(copied_state.stat().st_mode & 0o777, 0o700)
+    equal(copied_config.stat().st_mode & 0o777, 0o600)
     equal(_tree(state), before)
     equal(config.read_text(encoding="utf-8"), original)
     equal(
@@ -372,14 +497,15 @@ def test_migration_preserves_and_serves_the_real_record(
         describing="the per-user install contract",
     )
     server = start(
-        [str(program), "server", "--config", str(copied_config)], env=clean_environment()
+        [str(program), "server", "--config", str(copied_config)],
+        env=clean_environment(PATH=str(no_harness)),
     )
     try:
         address = _serving(server)
         listed = _client(program, address, CREDENTIAL, "prints")
         passing((listed.code, listed.said))
-        contains(listed.out, recorded.print_id)
-        image = _client(program, address, CREDENTIAL, "image", "--image-id", recorded.image_id)
+        contains(listed.out, print_id)
+        image = _client(program, address, CREDENTIAL, "image", "--image-id", image_id)
         passing((image.code, image.said))
         path = Path(json.loads(image.out)["path"])
         truth(copied_state in path.parents, describing="the per-user install contract")
@@ -401,8 +527,12 @@ def test_migration_preserves_and_serves_the_real_record(
         "elevation",
         "user",
         "verification",
+        "verification-missing",
+        "verification-unreadable",
+        "verification-config",
     ],
 )
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_migration_refusals_keep_originals_and_registration(
     tmp_path: Path, program: Path, refusal: str
 ) -> None:
@@ -414,42 +544,59 @@ def test_migration_refusals_keep_originals_and_registration(
         f'skill_path = "{state}/skills/printobserver/SKILL.md"\n',
         encoding="utf-8",
     )
-    destination = root / "home/operator"
-    if refusal in {"config", "state"}:
-        target = destination / (
-            ".config/printobserver/config.toml"
-            if refusal == "config"
-            else ".local/state/printobserver"
-        )
-        target.parent.mkdir(parents=True)
-        target.write_bytes(b"already here")
-    elif refusal == "registration":
-        root.joinpath("etc/systemd/system/printobserver.service").unlink()
-    elif refusal == "source-config":
-        config.unlink()
-    elif refusal == "source-state":
-        shutil.rmtree(state)
-    elif refusal == "layout":
-        config.write_text("state_dir = 42\n", encoding="utf-8")
-    elif refusal == "elevation":
-        # llmlint: ignore[e2e_not_mocked] Supply an unprivileged token to the real script.
-        _tool(host.bin / "id", "echo 1000\n")
-    elif refusal == "user":
-        host.env.pop("SUDO_USER")
-    elif refusal == "verification":
-        host.env["ALTER_COPY"] = str(destination / ".local/state/printobserver/database-wal")
+    match refusal:
+        case "config" | "state":
+            target = host.migrated_config if refusal == "config" else host.migrated_state
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"already here")
+        case "registration":
+            host.system_definition.unlink()
+        case "source-config":
+            config.unlink()
+        case "source-state":
+            shutil.rmtree(state)
+        case "layout":
+            config.write_text("state_dir = 42\n", encoding="utf-8")
+        case "elevation":
+            (host.bin / "id").unlink()
+        case "user":
+            host.env.pop("SUDO_USER")
+        case (
+            "verification"
+            | "verification-missing"
+            | "verification-unreadable"
+            | "verification-config"
+        ):
+            target = (
+                host.migrated_config
+                if refusal == "verification-config"
+                else host.migrated_state / "database-wal"
+            )
+            effect = {
+                "verification-missing": "missing",
+                "verification-unreadable": "unreadable",
+            }.get(refusal, "corrupt")
+            _fault_copied_file(host, target, effect)
     before = _tree(root)
     result = _migrate(host, root)
-    failing(result, naming="did not verify" if refusal == "verification" else "nothing was changed")
+    failing(
+        result,
+        naming="did not verify" if refusal.startswith("verification") else "nothing was changed",
+    )
     equal(
         _tree(root),
         before,
         describing="the refused move leaves all original files and registration",
     )
-    if refusal != "verification":
+    if not refusal.startswith("verification"):
         truth("systemctl stop" not in host.said(), describing="refused before stopping")
     else:
-        contains(host.said(), "systemctl stop printobserver.service")
+        contains(
+            host.said(),
+            "systemctl stop printobserver.service"
+            if host.system == "Linux"
+            else "launchctl bootout system/io.github.nickderobertis.printobserver",
+        )
         truth("systemctl disable" not in host.said(), describing="copy verified before removal")
 
 
@@ -461,7 +608,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     import socket
     import time
 
-    from test_service_manager_journey import Systemd, _unmet
+    from test_service_manager_journey import Systemd, _disabled_services, _unmet
 
     if sys.platform not in {"linux", "darwin"}:
         pytest.skip("systemd and launchd are Unix managers")
@@ -470,6 +617,11 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     older.write_bytes(
         program.read_bytes().replace(_version().encode(), _older(_version()).encode())
     )
+    if sys.platform == "darwin":
+        passing(
+            run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(older)], timeout=30),
+            describing="ad-hoc signing the modified macOS release fixture",
+        )
     staged = Host(tmp_path, "Darwin" if sys.platform == "darwin" else "Linux", older)
     container = Systemd("printobserver.service", program) if sys.platform == "linux" else None
     home = Path("/home/operator") if container else staged.home
@@ -549,6 +701,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
                 return int(line.split("=", 1)[1].strip())
         return 0
 
+    owns_agent = False
     try:
         if container:
             container.prepare()
@@ -589,8 +742,35 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
         else:
             if run(["launchctl", "print", f"gui/{_uid()}"], timeout=30).returncode:
                 _unmet("the per-user LaunchAgent needs this user's GUI login session")
+            job = f"gui/{_uid()}/io.github.nickderobertis.printobserver"
+            if run(["launchctl", "print", job], timeout=30).returncode == 0:
+                _unmet(
+                    "a pre-existing printobserver LaunchAgent belongs to this user; "
+                    "leave it untouched"
+                )
             installer = str(REPO_ROOT / "scripts/install.sh")
+        if container is None:
+            domain = f"gui/{_uid()}"
+            job = f"{domain}/io.github.nickderobertis.printobserver"
+            disabled = _disabled_services(checked("launchctl", "print-disabled", domain))
+            if disabled is None or "io.github.nickderobertis.printobserver" in disabled:
+                _unmet(
+                    "the existing LaunchAgent disabled preference is not this journey's to change"
+                )
+            checked("launchctl", "disable", job)
+            try:
+                refused = user("sh", installer)
+                failing(refused, naming="the LaunchAgent could not be loaded")
+                truth(config.is_file(), describing="the failed bootstrap retained the config")
+                equal(
+                    user("launchctl", "print", job).returncode,
+                    113,
+                    describing="the real manager's absent-job status",
+                )
+            finally:
+                checked("launchctl", "enable", job)
         checked("sh", installer)
+        owns_agent = container is None
         contains(checked(str(home / ".local/bin/printobserver"), "--version"), _older(_version()))
         # Fill the configuration and install the real skill exactly as the
         # installer tells the operator to do, then restart through the manager.
@@ -664,7 +844,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     finally:
         if container:
             container._discard()
-        else:
+        elif owns_agent:
             run(
                 [
                     "launchctl",
@@ -677,6 +857,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
 
 
 @pytest.mark.parametrize("system", ["Linux", "Darwin"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_an_upgrade_that_cannot_stop_reports_recovery_and_replaces_nothing(
     tmp_path: Path, program: Path, system: str
 ) -> None:
@@ -696,6 +877,7 @@ def test_an_upgrade_that_cannot_stop_reports_recovery_and_replaces_nothing(
     equal(_tree(host.home), before)
 
 
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_migration_stop_failure_reports_recovery_before_any_copy(
     tmp_path: Path, program: Path
 ) -> None:
@@ -707,9 +889,485 @@ def test_migration_stop_failure_reports_recovery_before_any_copy(
         f'skill_path = "{state}/skills/printobserver/SKILL.md"\n',
         encoding="utf-8",
     )
-    host.env["REFUSES"] = "systemctl stop printobserver.service"
+    host.env["REFUSES"] = (
+        "systemctl stop printobserver.service"
+        if host.system == "Linux"
+        else "launchctl bootout system/io.github.nickderobertis.printobserver"
+    )
     before = _tree(root)
     result = _migrate(host, root)
     failing(result, naming="nothing was copied")
-    contains(result.stderr or "", "systemctl status printobserver.service")
+    contains(
+        result.stderr or "",
+        "systemctl status printobserver.service"
+        if host.system == "Linux"
+        else "launchctl print system/io.github.nickderobertis.printobserver",
+    )
     equal(_tree(root), before)
+
+
+@pytest.mark.parametrize("custom", [False, True])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_documented_migration_forwards_custom_xdg_directories(
+    tmp_path: Path, program: Path, custom: bool
+) -> None:
+    """The documented privileged command preserves custom directories, including spaces."""
+    host, root, config = _migration_host(tmp_path, program, "Linux")
+    state = root / "var/lib/printobserver"
+    state.joinpath("retained").write_bytes(b"existing state")
+    config.write_text(
+        f'state_dir = "{state}"\n[supervisor]\n'
+        f'skill_path = "{state}/skills/printobserver/SKILL.md"\n',
+        encoding="utf-8",
+    )
+    custom_config = host.user_home / ("custom configuration" if custom else ".config")
+    custom_state = host.user_home / ("custom state" if custom else ".local/state")
+    host.env.update(
+        MIGRATION_ROOT=str(root),
+        MIGRATION_SCRIPT=str(REPO_ROOT / "scripts/migrate-service-to-per-user.sh"),
+    )
+    if custom:
+        host.env.update(XDG_CONFIG_HOME=str(custom_config), XDG_STATE_HOME=str(custom_state))
+    # llmlint: ignore[e2e_not_mocked] Only elevation is substituted; env and migration run real.
+    _tool(host.bin / "sudo", 'printf "%s\n" "sudo $*" >> "$RECORD"; exec "$@"\n')
+    declared = install_path.parse((REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8"))
+    command = next(line for line in declared.migration if "migrate-service-to-per-user.sh" in line)
+    command = command.replace(
+        command.split()[2], (REPO_ROOT / "scripts/migrate-service-to-per-user.sh").as_uri()
+    )
+    result = run(
+        ["sh", "-c", command + ' -s -- --root "$MIGRATION_ROOT"'], env=host.env, timeout=120
+    )
+    passing(result)
+    copied_state = custom_state / "printobserver"
+    copied_config = custom_config / "printobserver/config.toml"
+    equal(_tree(copied_state), _tree(state))
+    parsed = tomllib.loads(copied_config.read_text(encoding="utf-8"))
+    equal(parsed["state_dir"], str(copied_state))
+    equal(parsed["supervisor"]["skill_path"], str(copied_state / "skills/printobserver/SKILL.md"))
+    if custom:
+        contains(
+            host.said(),
+            f"sudo env XDG_CONFIG_HOME={custom_config} XDG_STATE_HOME={custom_state} sh",
+        )
+        truth(
+            not host.user_home.joinpath(".config/printobserver").exists(),
+            describing="no fallback configuration when XDG is set",
+        )
+    else:
+        contains(host.said(), "sudo env sh -s -- --root")
+        truth("XDG_CONFIG_HOME=" not in host.said(), describing="unset XDG variables stay unset")
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_interval_boundaries_and_missing_value(tmp_path: Path, program: Path) -> None:
+    """Missing interval is refused; the largest TOML integer is accepted."""
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    failing(host.install("--observation-interval-seconds"), naming="takes a number")
+    equal(_tree(host.home), {})
+    passing(host.install("--observation-interval-seconds", "9223372036854775807"))
+    equal(
+        tomllib.loads(host.config.read_text())["supervisor"]["observation_interval_s"],
+        9223372036854775807,
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "relative",
+        'bad"quote',
+        "bad\\slash",
+        "bad%specifier",
+        "bad$VARIABLE",
+        "bad&xml",
+        "bad\nline",
+        "bad\rline",
+        "bad\tline",
+        "bad\x01line",
+        "bad\x7fline",
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_installer_refuses_unrepresentable_paths_without_writes(
+    tmp_path: Path, program: Path, value: str
+) -> None:
+    """Unsafe or relative manager paths cannot become a different ExecStart."""
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    host.env["HOME"] = value if value == "relative" else str(host.home / value)
+    result = host.install()
+    failing(result, naming="path")
+    contains(
+        result.stderr or "", "absolute paths" if value == "relative" else "without those characters"
+    )
+    equal(_tree(host.home), {})
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_installer_temporary_directory_failure_has_recovery(tmp_path: Path, program: Path) -> None:
+    """A real ENOTDIR from mktemp leaves installation untouched."""
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    temporary = tmp_path / "not-a-directory"
+    temporary.write_bytes(b"not a temporary directory")
+    host.env["TMPDIR"] = str(temporary)
+    failing(host.install(), naming="select a writable TMPDIR")
+    equal(_tree(host.home), {})
+
+
+@pytest.mark.parametrize(
+    "failure", ["parent", "config-write", "definition-write", "state-permission"]
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_installer_provisioning_failure_explains_the_real_filesystem_error(
+    tmp_path: Path, program: Path, failure: str
+) -> None:
+    """Real files and permissions drive provisioning refusals without replacing filesystem tools."""
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    restricted: Path | None = None
+    match failure:
+        case "parent":
+            host.config.parent.parent.mkdir(parents=True)
+            host.config.parent.write_bytes(b"not a directory")
+            expected = "could not be created"
+        case "config-write":
+            host.config.parent.mkdir(parents=True)
+            restricted = host.config.parent
+            restricted.chmod(0o500)
+            expected = "could not be written"
+        case "definition-write":
+            host.definition.mkdir(parents=True)
+            expected = "could not be written"
+        case "state-permission":
+            if _uid() == 0:
+                pytest.skip("permission refusal requires an unprivileged process")
+            host.state.parent.mkdir(parents=True)
+            host.state.symlink_to("/usr", target_is_directory=True)
+            expected = "could not be made private"
+        case _:
+            raise AssertionError(failure)
+    try:
+        result = host.install()
+        failing(result, naming=expected)
+        contains(
+            result.stderr or "", "rerun" if failure != "state-permission" else "own this directory"
+        )
+    finally:
+        if restricted:
+            restricted.chmod(0o700)
+
+
+@pytest.mark.parametrize("operation", ["reload", "enable", "bootstrap"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_manager_start_failure_has_a_diagnostic_and_can_be_retried(
+    tmp_path: Path, program: Path, operation: str
+) -> None:
+    """An actual installer can recover after its host manager refuses setup."""
+    system = "Darwin" if operation == "bootstrap" else "Linux"
+    host = Host(tmp_path, system, program)
+    commands = {
+        "reload": "systemctl --user daemon-reload",
+        "enable": "systemctl --user enable --now printobserver.service",
+        "bootstrap": f"launchctl bootstrap gui/{_uid()} {host.definition}",
+    }
+    host.env["REFUSES"] = commands[operation]
+    failing(host.install(), naming="retry" if operation != "enable" else "rerun this installer")
+    config = host.config.read_bytes()
+    host.env.pop("REFUSES")
+    passing(host.install())
+    equal(host.config.read_bytes(), config)
+
+
+def _minimal_service_config(config: Path, state: Path) -> None:
+    config.write_text(
+        f'state_dir = "{state}"\n[supervisor]\n'
+        f'skill_path = "{state}/skills/printobserver/SKILL.md"\n'
+    )
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        "root-relative",
+        "xdg-relative",
+        "relative-source",
+        "config-overlap",
+        "state-overlap",
+        "source-ancestor-overlap",
+        "bad-path",
+        "source-link",
+        "destination-link",
+        "malformed-skill",
+        "missing-skill",
+        "missing-state",
+        "root-user",
+        "unknown-user",
+        "temporary",
+        "missing-root-argument",
+        "unknown-option",
+        "no-hash",
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_boundary_refusals_preserve_every_original(
+    tmp_path: Path, program: Path, refusal: str
+) -> None:
+    """Normalization and real account/filesystem queries precede any stop or copy."""
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    state.joinpath("kept").write_bytes(b"original state")
+    _minimal_service_config(config, state)
+    args = ["--root", str(root)]
+    match refusal:
+        case "root-relative":
+            args = ["--root", "relative"]
+        case "xdg-relative":
+            host.env["XDG_STATE_HOME"] = "relative"
+        case "relative-source":
+            config.write_text('state_dir = "relative"\n[supervisor]\nskill_path = "external"\n')
+        case "config-overlap":
+            host.env["XDG_CONFIG_HOME"] = str(state / "destination")
+        case "state-overlap":
+            host.env["XDG_STATE_HOME"] = str(state / "child/../destination")
+        case "source-ancestor-overlap":
+            alias = root / "record-alias"
+            alias.symlink_to(state.parent, target_is_directory=True)
+            config.write_text(config.read_text().replace(str(state), str(alias / state.name)))
+            host.env["XDG_CONFIG_HOME"] = str(state / "destination")
+        case "bad-path":
+            host.env["XDG_CONFIG_HOME"] = str(host.user_home / 'bad"quote')
+        case "source-link":
+            state.joinpath("link").symlink_to(state / "kept")
+        case "destination-link":
+            host.user_home.mkdir(parents=True)
+            host.user_home.joinpath(".config" if host.system == "Linux" else "Library").symlink_to(
+                root, target_is_directory=True
+            )
+        case "malformed-skill":
+            config.write_text(f'state_dir = "{state}"\n[supervisor]\nskill_path = 42\n')
+        case "missing-skill":
+            config.write_text(f'state_dir = "{state}"\n[supervisor]\n')
+        case "missing-state":
+            config.write_text(
+                f'[supervisor]\nskill_path = "{state}/skills/printobserver/SKILL.md"\n'
+            )
+        case "root-user":
+            host.env["SUDO_USER"] = "root"
+        case "unknown-user":
+            host.env["SUDO_USER"] = "printobserver-account-that-does-not-exist"
+        case "temporary":
+            temporary = tmp_path / "not-temporary"
+            temporary.write_bytes(b"a file")
+            host.env["TMPDIR"] = str(temporary)
+        case "missing-root-argument":
+            args = ["--root"]
+        case "unknown-option":
+            args = ["--unknown"]
+        case "no-hash":
+            for name in (
+                "uname",
+                "getent",
+                "dscl",
+                "cut",
+                "sed",
+                "dirname",
+                "mktemp",
+                "basename",
+                "cat",
+                "rm",
+                "find",
+                "awk",
+                "sh",
+            ):
+                real = shutil.which(name)
+                if real:
+                    (host.bin / name).symlink_to(real)
+            host.env["PATH"] = str(host.bin)
+        case _:
+            raise AssertionError(refusal)
+    before = _tree(root)
+    result = run(
+        ["sh", str(REPO_ROOT / "scripts/migrate-service-to-per-user.sh"), *args],
+        env=host.env,
+        timeout=30,
+    )
+    expected = {
+        "root-relative": "No system unit or LaunchDaemon",
+        "xdg-relative": "not an absolute path",
+        "relative-source": "not an absolute path",
+        "config-overlap": "overlap",
+        "state-overlap": "overlap",
+        "source-ancestor-overlap": "overlap",
+        "bad-path": "carries a quote",
+        "source-link": "contains symbolic links",
+        "destination-link": "is a symbolic link",
+        "malformed-skill": "not a plain string",
+        "missing-skill": "not a plain string",
+        "missing-state": "not a plain string",
+        "root-user": "SUDO_USER must name",
+        "unknown-user": "SUDO_USER is not an account",
+        "temporary": "Temporary staging could not be created",
+        "missing-root-argument": "--root takes a directory",
+        "unknown-option": "unknown option",
+        "no-hash": "Install sha256sum or shasum",
+    }
+    failing(result, naming=expected[refusal])
+    equal(_tree(root), before)
+    truth(" stop " not in host.said(), describing="refused before stopping any system service")
+
+
+@pytest.mark.parametrize("ending", [b"", b"\n", b"\r\n"])
+@pytest.mark.parametrize("external", [False, True])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_preserves_quotes_comments_and_line_endings(
+    tmp_path: Path, program: Path, ending: bytes, external: bool
+) -> None:
+    """Only the two path values change, including when the last newline is absent."""
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    skill_source = (
+        root / "external/SKILL.md" if external else state / "skills/printobserver/SKILL.md"
+    )
+    if external:
+        skill_source.parent.mkdir()
+        skill_source.write_bytes(b"# externally installed skill")
+    newline = b"\r\n" if ending == b"\r\n" else b"\n"
+    original = (
+        newline.join(
+            [
+                f"state_dir = '{state}' # state comment".encode(),
+                b"[supervisor] # table comment",
+                f'  skill_path = "{skill_source}" # skill comment'.encode(),
+            ]
+        )
+        + ending
+    )
+    config.write_bytes(original)
+    if host.system == "Darwin" and not ending:
+        # An installed but unloaded daemon has no process left to stop.
+        Path(host.env["SYSTEM_AGENT_STATE"]).unlink()
+    passing(_migrate(host, root))
+    expected = original.replace(
+        f"state_dir = '{state}'".encode(), f"state_dir = '{host.migrated_state}'".encode()
+    ).replace(
+        f'skill_path = "{skill_source}"'.encode(),
+        f'skill_path = "{host.migrated_state}/skills/printobserver/SKILL.md"'.encode(),
+    )
+    equal(host.migrated_config.read_bytes(), expected)
+    equal(config.read_bytes(), original)
+    if external:
+        equal(skill_source.read_bytes(), b"# externally installed skill")
+
+
+@pytest.mark.parametrize("failure", ["parent", "copy", "disable", "remove", "reload"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_failures_report_the_retained_registration_and_copies(
+    tmp_path: Path, program: Path, failure: str
+) -> None:
+    """Actual filesystem failures and manager refusals retain the documented recoverable state."""
+    host, root, config = _migration_host(tmp_path, program)
+    if failure in {"disable", "reload"} and host.system != "Linux":
+        pytest.skip("systemd has these separate deregistration operations")
+    state = root / "var/lib/printobserver"
+    content = state / "kept"
+    content.write_bytes(b"original state")
+    _minimal_service_config(config, state)
+    before_config, before_state = config.read_bytes(), _tree(state)
+    restricted: Path | None = None
+    match failure:
+        case "parent":
+            host.user_home.mkdir(parents=True)
+            restricted = host.user_home
+            restricted.chmod(0o500)
+        case "copy":
+            restricted = content
+            restricted.chmod(0o000)
+        case "disable":
+            host.env["REFUSES"] = "systemctl disable printobserver.service"
+        case "remove":
+            restricted = host.system_definition.parent
+            restricted.chmod(0o500)
+        case "reload":
+            host.env["REFUSES"] = "systemctl daemon-reload"
+        case _:
+            raise AssertionError(failure)
+    try:
+        result = _migrate(host, root)
+        failing(
+            result,
+            naming="copy failed"
+            if failure in {"parent", "copy"}
+            else "copy verified"
+            if failure in {"disable", "remove"}
+            else "registration was removed",
+        )
+    finally:
+        if restricted:
+            restricted.chmod(0o700 if restricted.is_dir() else 0o600)
+    equal(config.read_bytes(), before_config)
+    equal(_tree(state), before_state)
+    equal(host.system_definition.exists(), failure != "reload")
+    equal(host.migrated_state.exists(), failure in {"disable", "remove", "reload"})
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_local_help_is_read_only(tmp_path: Path, program: Path) -> None:
+    """Both local scripts explain their options without provisioning anything."""
+    host, root, _config = _migration_host(tmp_path, program)
+    before = _tree(root)
+    passing(host.install("--help"))
+    passing(
+        run(
+            ["sh", str(REPO_ROOT / "scripts/migrate-service-to-per-user.sh"), "--help"],
+            env=host.env,
+            timeout=30,
+        )
+    )
+    equal(_tree(root), before)
+    equal(_tree(host.home), {})
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_relative_migration_root_is_normalized(tmp_path: Path, program: Path) -> None:
+    """A relative --root resolves against the invocation directory, as on Windows."""
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    state.joinpath("kept").write_bytes(b"record")
+    _minimal_service_config(config, state)
+    passing(
+        run(
+            [
+                "sh",
+                str(REPO_ROOT / "scripts/migrate-service-to-per-user.sh"),
+                "--root",
+                str(root.relative_to(tmp_path)),
+            ],
+            cwd=tmp_path,
+            env=host.env,
+            timeout=30,
+        )
+    )
+    equal(_tree(host.migrated_state), _tree(state))
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_leaves_unrelated_client_file_ownership_untouched(
+    tmp_path: Path, program: Path
+) -> None:
+    """An existing client file's distinct group is not transferred with the new config."""
+    host, root, config = _migration_host(tmp_path, program)
+    primary = int(run(["id", "-g"], timeout=30).stdout.strip())
+    groups = [int(group) for group in run(["id", "-G"], timeout=30).stdout.split()]
+    other = next((group for group in groups if group != primary), None)
+    if other is None:
+        pytest.skip("the host has no secondary group to distinguish unrelated ownership")
+    state = root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    host.migrated_config.parent.mkdir(parents=True)
+    client = host.migrated_config.parent / "client.toml"
+    client.write_bytes(b"existing operator configuration")
+    passing(run(["chgrp", str(other), str(client)], timeout=30))
+    before = client.stat()
+    passing(_migrate(host, root))
+    equal(client.stat().st_gid, before.st_gid, describing="unrelated client's group")
+    equal(client.stat().st_uid, before.st_uid, describing="unrelated client's owner")
+    equal(client.read_bytes(), b"existing operator configuration")

@@ -153,6 +153,7 @@ def staged(tmp_path: Path) -> Path:
 def _script(staged: Path, home: Path, *arguments: str) -> tuple[int, str]:
     """Run the script under a home of this journey's own, against a staged release."""
     environment = clean_environment(HOME=str(home), PRINTOBSERVER_RELEASE_BASE=str(staged))
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required client-only location.
     result = shell_run(
         ["sh", str(REPO_ROOT / SCRIPT), "--client-only", *arguments],
         cwd=home,

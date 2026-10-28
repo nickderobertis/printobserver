@@ -610,10 +610,21 @@ that can move the machine — at install, or at the next reboot.
 ## Moving from a Linux or macOS system service
 
 Run this one privileged step from your account:
+The command forwards each Linux XDG directory only when you have set it, because
+sudo otherwise strips those variables. Unset directories keep their defaults.
 
 ```console
-curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.sh | sudo env ${XDG_CONFIG_HOME+"XDG_CONFIG_HOME=$XDG_CONFIG_HOME"} ${XDG_STATE_HOME+"XDG_STATE_HOME=$XDG_STATE_HOME"} sh
 ```
+
+The source record is the absolute `state_dir` named in the service configuration,
+including a nondefault location; the installed default is `/var/lib/printobserver`.
+A config with no `state_dir` is refused without inserting a field, as on Windows.
+With `--root`, that source and the per-user destinations are staged below the root.
+
+A plain-string `supervisor.skill_path` outside the service layout is accepted and
+rewritten too, as on Windows; the installer's next steps reinstall the skill
+under the user state directory.
 
 It uses `SUDO_USER`, stops the system service, copies configuration and all state
 (database and WAL/SHM, images, sessions, harness sign-ins, skills, assets and

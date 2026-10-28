@@ -169,7 +169,9 @@ pub fn config_home_of(
         // same on a Windows host resolving it — where `/srv` has no drive.
         Family::Unix => set_to_something(read, "XDG_CONFIG_HOME")
             .filter(|home| home.has_root())
-            .or_else(|| set_to_something(read, "HOME").map(|home| home.join(".config"))),
+            .or_else(|| {
+                set_to_something(read, "HOME").map(|home| home.join(LINUX_PER_USER.config[0]))
+            }),
         Family::MacOs => set_to_something(read, "HOME")
             .map(|home| home.join("Library").join("Application Support")),
         Family::Windows => set_to_something(read, "APPDATA"),
@@ -210,9 +212,19 @@ pub fn per_user_config_of(
                 .iter()
                 .fold(base, |path, segment| path.join(segment))
         }),
-        Family::Unix | Family::MacOs => {
-            config_home_of(family, read).map(|base| base.join("printobserver").join("config.toml"))
-        }
+        Family::Unix => config_home_of(family, read).map(|base| {
+            LINUX_PER_USER
+                .config
+                .iter()
+                .skip(1)
+                .fold(base, |path, segment| path.join(segment))
+        }),
+        Family::MacOs => set_to_something(read, MACOS_PER_USER.base).map(|base| {
+            MACOS_PER_USER
+                .config
+                .iter()
+                .fold(base, |path, segment| path.join(segment))
+        }),
     }
 }
 
@@ -406,6 +418,56 @@ mod tests {
             .and_then(|rest| rest.strip_suffix('"'))
             .unwrap_or_else(|| panic!("the installer assigns no {variable}"))
             .replace("$PROGRAM", "printobserver")
+    }
+
+    /// Reconcile the public layout with the actual shell assignments too.
+    #[test]
+    fn unix_per_user_layouts_match_the_installer() {
+        let installer = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../scripts/install.sh"
+        ))
+        .expect("the installer reads");
+        let assignments = |name: &str| -> Vec<String> {
+            let prefix = format!("{name}=\"");
+            installer
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix(&prefix))
+                .filter_map(|value| value.strip_suffix('"'))
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(
+            assignments("DEFAULT_DIRECTORY"),
+            [format!("$HOME/{}", LINUX_PER_USER.home.join("/"))]
+        );
+        assert_eq!(LINUX_PER_USER.home, MACOS_PER_USER.home);
+        assert_eq!(
+            assignments("CONFIG_HOME"),
+            [
+                format!("${{XDG_CONFIG_HOME:-$HOME/{}}}", LINUX_PER_USER.config[0]),
+                format!("$HOME/{}", MACOS_PER_USER.config[..2].join("/")),
+            ]
+        );
+        assert_eq!(LINUX_PER_USER.config[1..], MACOS_PER_USER.config[2..]);
+        assert_eq!(
+            assignments("RUNTIME_CONFIG"),
+            [format!(
+                "$CONFIG_HOME/{}",
+                LINUX_PER_USER.config[1..].join("/")
+            )]
+        );
+        assert_eq!(
+            assignments("RUNTIME_STATE"),
+            [
+                format!(
+                    "${{XDG_STATE_HOME:-$HOME/{}}}/{}",
+                    LINUX_PER_USER.state[..2].join("/"),
+                    LINUX_PER_USER.state[2]
+                ),
+                format!("$CONFIG_HOME/{}", MACOS_PER_USER.state[2..].join("/")),
+            ]
+        );
     }
 
     /// Linux keeps the answers this program has always given.

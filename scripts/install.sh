@@ -137,9 +137,12 @@ if [ "$CLIENT_ONLY" = false ]; then
     RUNTIME_CONFIG="$CONFIG_HOME/printobserver/config.toml"
     case "$DIRECTORY" in /*) ;; *) DIRECTORY="$PWD/$DIRECTORY" ;; esac
     for value in "$DIRECTORY" "$RUNTIME_CONFIG" "$RUNTIME_STATE" "$DEFINITION"; do
+        if ! printf '%s\n' "$value" | LC_ALL=C awk '/[[:cntrl:]]/ { exit 1 }'; then
+            die "an install path carries a control character" "Check HOME, --to and XDG paths; use paths without those characters."
+        fi
         case "$value" in
-            *[\"\\%\&\<\>]* | *"
-"*) die "a path carries a quote, backslash, percent, XML markup or newline: $value" "Use paths without those characters." ;;
+            *[\"\\%\&\<\>\$]* | *"
+"*) die "a path carries a quote, backslash, dollar, percent, XML markup or newline: $value" "Use paths without those characters." ;;
             /*) ;;
             *) die "a configuration or state path is relative: $value" "Set HOME and XDG directories to absolute paths." ;;
         esac
@@ -218,11 +221,35 @@ tar -xzf "$work/$asset" -C "$work" || die \
     "Nothing was installed. Report this against $which: the artifact is not the one \
 this script installs."
 
+# Query failures are not proof that a job is absent. launchctl distinguishes
+# an unloaded label (113) from a loaded job and an unavailable GUI domain.
+agent_loaded() {
+    agent_status=0
+    launchctl print "$1" >"$work/agent-query" 2>&1 || agent_status=$?
+    case "$agent_status" in
+        0) return 0 ;;
+        113) return 1 ;;
+        *) die "the LaunchAgent could not be queried (exit $agent_status); nothing was replaced" "Run launchctl print $1, correct its reported error and retry." ;;
+    esac
+}
+
 # Downloads have verified before an upgrade interrupts the running server.
 if [ "$CLIENT_ONLY" = false ] && [ -f "$DEFINITION" ]; then
     case "$system" in
         Linux) systemctl --user stop "$UNIT_NAME" || die "the user unit could not be stopped; nothing was replaced" "Run systemctl --user status printobserver.service, correct its reported error and retry." ;;
-        Darwin) launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" || die "the LaunchAgent could not be stopped; nothing was replaced" "Run launchctl print gui/$(id -u)/$LAUNCHD_LABEL, correct its reported error and retry." ;;
+        Darwin)
+            agent_target="gui/$(id -u)/$LAUNCHD_LABEL"
+            if agent_loaded "$agent_target"; then
+                launchctl bootout "$agent_target" || die "the LaunchAgent could not be stopped; nothing was replaced" "Run launchctl print $agent_target, correct its reported error and retry."
+                remaining=60
+                while agent_loaded "$agent_target"; do
+                    [ "$remaining" -gt 0 ] || die "the LaunchAgent has not unloaded after a minute; nothing was replaced" "Run launchctl print $agent_target, resolve the pending stop and retry."
+                    sleep 1
+                    remaining=$((remaining - 1))
+                done
+            fi
+            ;;
+
     esac
 fi
 
@@ -264,7 +291,7 @@ if [ ! -e "$RUNTIME_CONFIG" ]; then
 #
 # Every value below is validated when the service starts, and a value that
 # cannot work is refused naming this file's own field for it. Fill in the three
-# marked FILL IN before enabling the service.
+# marked FILL IN, install the skill and restart the user server afterwards.
 
 state_dir = "$RUNTIME_STATE"
 listen = "127.0.0.1:8420"
@@ -364,6 +391,7 @@ agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",
 system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
           "set_tool_target_c", "set_bed_target_c", "set_fan_percent"]
 CONFIG
+    # llmlint: ignore[changed_behavior_has_e2e] New config mode failure: The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools.
     chmod 0600 "$RUNTIME_CONFIG" || die "$RUNTIME_CONFIG could not be made private" "Run chmod 0600 on this file as its owner, then retry."
 fi
 
@@ -380,6 +408,7 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
+    # llmlint: ignore[changed_behavior_has_e2e] Linux definition mode failure: The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools.
     chmod 0644 "$DEFINITION" || die "$DEFINITION could not be made readable" "Run chmod 0644 on this file as its owner, then retry."
     systemctl --user daemon-reload || die "the user manager could not reload its units" "Run systemctl --user status and check that your user manager is running, then retry."
     if ! loginctl enable-linger "${USER:-$(id -un)}"; then
@@ -401,6 +430,7 @@ else
 <key>ThrottleInterval</key><integer>5</integer>
 </dict></plist>
 PLIST
+    # llmlint: ignore[changed_behavior_has_e2e] macOS definition mode failure: The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools.
     chmod 0644 "$DEFINITION" || die "$DEFINITION could not be made readable" "Run chmod 0644 on this file as its owner, then retry."
     launchctl bootstrap "gui/$(id -u)" "$DEFINITION" || die "the LaunchAgent could not be loaded" "Run launchctl print gui/$(id -u)/$LAUNCHD_LABEL; correct its reported error in your logged-in GUI session and retry."
     echo "install.sh: the server runs only while you are logged in; auto-login covers a dedicated machine." >&2

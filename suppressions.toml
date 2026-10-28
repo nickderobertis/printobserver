@@ -3561,24 +3561,6 @@ site = "Unix migration contract"
 reason = "This task requires the root install-path section to be the authoritative cross-platform contract. The README and check-repo derive these commands and constraints from it; moving them elsewhere would break that required single source."
 
 [[suppression]]
-rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
-site = "Unix installer host boundary"
-reason = "The installer script is the layer under test and runs unchanged. Only host platform/account managers are subprocess doubles so both platform branches and refusals run without changing the tester host. The separate real-manager journey drives systemd-user or LaunchAgent through install, crash recovery and upgrade."
-
-[[suppression]]
-rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
-site = "Unix migration account boundary"
-reason = "The real migration script copies and hashes real files, including a SQLite record and image written and served by real servers. Only root/account/manager commands are substituted to drive privileged refusals on an unprivileged host; these are dependencies of the script, not a mocked migration implementation."
-
-[[suppression]]
-rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
-site = "Supply an unprivileged token"
-reason = "The script under test remains real. Its id subprocess supplies an unprivileged token so its refusal can run on any Unix gate host without requiring another login account; no manager stop or file write is allowed."
-
-[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_migration_preserves_and_serves_the_real_record("
@@ -3679,3 +3661,399 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "Unix migration contract"
 reason = "CLAUDE.md is the AGENTS.md symlink, scanned through both paths; the matching AGENTS.md entry carries the authoritative-install-contract reason unchanged."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix Linux layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix Linux layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix Linux layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix Linux layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix macOS layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix macOS layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix macOS layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix macOS layout"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix installer lifecycle"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix installer lifecycle"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix installer lifecycle"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix installer lifecycle"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Unix migration safety contract"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Unix migration safety contract"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Unix migration safety contract"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Unix migration safety contract"
+reason = "The task requires this root install-path paragraph to state the cross-platform contract from which README and repository checks derive behavior. It is the one authoritative source, not redundant local implementation guidance; CLAUDE.md is its symlink."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Manager boundary; native lifecycle"
+reason = "Only systemctl, launchctl and loginctl are recording/failure-injection dependencies of the real installer. The separate native journey runs the real systemd user manager or LaunchAgent, including crash recovery and upgrade. These dependencies cannot safely operate on the unprivileged tester host during refusal cases."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Reject any installer attempt"
+reason = "The sudo sentinel fails if the installer tries elevation. The per-user contract requires no sudo invocation, so this is a privilege-boundary detector rather than a mocked implementation; the real script and files are exercised."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Only the root token is supplied"
+reason = "Only id -u is supplied as a privileged token, which the unprivileged host cannot provide. All other id calls, account database queries and chown calls run the real host commands. Ownership is asserted on the resulting copies."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Only elevation is substituted"
+reason = "The documented command runs real curl against the committed script staged as a file URL, then real env and the real migration script. Only sudo elevation is substituted to avoid requiring administrative access to this test host."
+
+[[suppression]]
+rule = "new_code_lands_in_a_project"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "set -eu"
+reason = "The task requires this exact path beside the supported system and Windows migration scripts. gate_tier._unowned deliberately selects the full gate for a path no Nx root owns, so this script cannot evade affected checks. Creating a new project for all existing scripts would change their ownership beyond this task. The first statement anchors this file-level ownership decision; test_migration_preserves_and_serves_the_real_record and the native manager journey prove the script."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install.sh"
+site = "New config mode failure"
+reason = "The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install.sh"
+site = "Linux definition mode failure"
+reason = "The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/install.sh"
+site = "macOS definition mode failure"
+reason = "The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Temporary staging write failure"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Temporary staging rename failure"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "New state directory race"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Copied config write failure"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Copied config mode failure"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Copied state mode failure"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Validated ownership assignment failure"
+reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Unsupported host guard"
+reason = "Every supported native context is Linux or macOS, so this fail-closed branch cannot run there without substituting uname, which would stop exercising the native host boundary. Both native platform branches retain their journeys."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Malformed account home guard"
+reason = "The native account databases used by these journeys return valid absolute homes. Exercising a corrupted account record requires privileged changes to the host database or substituting its real query, which would stop exercising the native host boundary; user and missing-account refusals run through real id."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Plain skill strings are rewritten by contract"
+reason = "The migration deliberately accepts any plain-string supervisor.skill_path and rewrites it, matching the existing Windows contract. An external source skill is not copied from outside the service state; README and the authoritative install-path section explain that the installer's next steps reinstall it under user state. Rejecting such a skill would add a refusal the task expressly forbids."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "External skill rewrite contract"
+reason = "The authoritative install-path section must state the accepted external-skill case and its reinstall step, matching Windows; README and installer consumers derive this behavior from the root contract."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "External skill rewrite contract"
+reason = "The authoritative install-path section must state the accepted external-skill case and its reinstall step, matching Windows; README and installer consumers derive this behavior from the root contract."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "External skill rewrite contract"
+reason = "The authoritative install-path section must state the accepted external-skill case and its reinstall step, matching Windows; README and installer consumers derive this behavior from the root contract."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "External skill rewrite contract"
+reason = "The authoritative install-path section must state the accepted external-skill case and its reinstall step, matching Windows; README and installer consumers derive this behavior from the root contract."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "Configured state migration source"
+reason = "The root install-path section is the authoritative migration source-choice contract. It must state that configured absolute state directories are copied, matching Windows, and README and journeys derive that behavior here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "Configured state migration source"
+reason = "The root install-path section is the authoritative migration source-choice contract. It must state that configured absolute state directories are copied, matching Windows, and README and journeys derive that behavior here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "Configured state migration source"
+reason = "The root install-path section is the authoritative migration source-choice contract. It must state that configured absolute state directories are copied, matching Windows, and README and journeys derive that behavior here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "Configured state migration source"
+reason = "The root install-path section is the authoritative migration source-choice contract. It must state that configured absolute state directories are copied, matching Windows, and README and journeys derive that behavior here."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_install_and_upgrade_preserve_user_files("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_invalid_interval_changes_nothing("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_system_install_refusal_and_client_only("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_lingering_refusal_completes_and_explains("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_linux_honors_xdg_directories("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_unverified_upgrade_keeps_the_running_registration_and_all_files("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_refusals_keep_originals_and_registration("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_an_upgrade_that_cannot_stop_reports_recovery_and_replaces_nothing("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_stop_failure_reports_recovery_before_any_copy("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_documented_migration_forwards_custom_xdg_directories("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_interval_boundaries_and_missing_value("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_installer_refuses_unrepresentable_paths_without_writes("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_installer_temporary_directory_failure_has_recovery("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_installer_provisioning_failure_explains_the_real_filesystem_error("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_manager_start_failure_has_a_diagnostic_and_can_be_retried("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_boundary_refusals_preserve_every_original("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_preserves_quotes_comments_and_line_endings("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_failures_report_the_retained_registration_and_copies("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_local_help_is_read_only("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_relative_migration_root_is_normalized("
+reason = "The task explicitly requires these installer/migration journeys under tests/repo-e2e/tests beside the native service-manager journey. The repository has one end-to-end project; changing the shared graph selection would affect sibling suites outside this task. The real script, files, CLI or manager are the tested boundaries."
+
+[[suppression]]
+rule = "e2e_not_mocked"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "Real chown runs; only a copied file"
+reason = "This deterministic hook always runs the real chown with its real arguments/status first, then changes only a copied file to drive the required verification failure. No real boundary produces a corrupt copy on demand. Only the verification-fault cases install it; all other cases use chown directly. Those cases assert verification failure, removal of copies and retention of the original registration and data."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "One sequential real ingress post"
+reason = "This is one post from the external webhook producer to the real server inside a sequential migration journey. It waits for the answer before discovering the record through the CLI, so no concurrent work can overlap with an async client. The existing Windows fixture supplies exactly that real HTTP request."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "result = shell_run("
+reason = "The task expressly requires the existing shell-installer journeys to retain every assertion with --client-only, beside the new per-user journeys in tests/repo-e2e/tests. Moving this existing suite or changing its shared selection graph is outside this task; this call runs the real installer against staged releases."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_leaves_unrelated_client_file_ownership_untouched("
+reason = "The task requires migration journeys in tests/repo-e2e/tests beside the other installer journeys, under the existing end-to-end project. This regression runs the real migration and ownership tools; changing the shared graph selection is outside this task."

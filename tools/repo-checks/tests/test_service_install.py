@@ -956,3 +956,21 @@ def test_per_user_unix_installer_cannot_drop_its_lifecycle_contract(
     broken = tree()
     broken.edit("scripts/install.sh", setting, "removed-setting")
     refused(service_install(broken.repo), setting)
+
+
+@pytest.mark.parametrize(
+    "variable,before,after",
+    [
+        ("UNIT_NAME", "printobserver.service", "other.service"),
+        ("LAUNCHD_LABEL", "io.github.nickderobertis.printobserver", "io.github.other"),
+    ],
+)
+def test_unix_migration_cannot_name_another_system_service(
+    tree: Callable[[], Tree], variable: str, before: str, after: str
+) -> None:
+    """Both migration names are reconciled against the authoritative isolated pairs."""
+    broken = tree()
+    broken.edit(
+        "scripts/migrate-service-to-per-user.sh", f'{variable}="{before}"', f'{variable}="{after}"'
+    )
+    refused(service_install(broken.repo), after)
