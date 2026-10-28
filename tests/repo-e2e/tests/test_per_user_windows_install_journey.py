@@ -52,6 +52,7 @@ import tomllib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NewType
 from urllib.parse import urlsplit
 
 import pytest
@@ -94,9 +95,10 @@ RECORDING = "PRINTOBSERVER_FIXTURE_RECORDING"
 REGISTERED = "PRINTOBSERVER_FIXTURE_REGISTERED"
 NOT_ELEVATED = "PRINTOBSERVER_FIXTURE_NOT_ELEVATED"
 ALTERS = "PRINTOBSERVER_FIXTURE_ALTERS"
-#: One request the stand-ins refuse: a verb of the manager's tool, `icacls`, or
-#: a Task Scheduler cmdlet by name, optionally with the exit status it answers
-#: (`stop=1062`); a refused cmdlet throws, as the real one does.
+#: The requests the stand-ins refuse, comma-separated: a verb of the manager's
+#: tool, `icacls`, or a Task Scheduler cmdlet by name, a verb optionally with
+#: the exit status it answers (`stop=1062`); a refused cmdlet throws, as the
+#: real one does.
 REFUSES = "PRINTOBSERVER_FIXTURE_REFUSES"
 TASKS = "PRINTOBSERVER_FIXTURE_TASKS"
 
@@ -227,7 +229,7 @@ function Register-ScheduledTask {{
     [CmdletBinding()]
     param([string]$TaskName, [string]$TaskPath, [string]$Xml, [switch]$Force)
     Record "Register-ScheduledTask $TaskName $TaskPath"
-    if ($env:{REFUSES} -eq 'Register-ScheduledTask') {{
+    if (Refused 'Register-ScheduledTask') {{
         throw 'Access is denied, says the stand-in.'
     }}
     [IO.File]::WriteAllText("$env:{RECORDING}.task.xml", $Xml)
@@ -236,20 +238,22 @@ function Register-ScheduledTask {{
 function Start-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Start-ScheduledTask $TaskName"
-    if ($env:{REFUSES} -eq 'Start-ScheduledTask') {{ throw 'The user account is not logged on.' }}
+    if (Refused 'Start-ScheduledTask') {{ throw 'The user account is not logged on.' }}
 }}
 function Stop-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Stop-ScheduledTask $TaskName"
-    if ($env:{REFUSES} -eq 'Stop-ScheduledTask') {{ throw 'The task is busy, says the stand-in.' }}
+    if (Refused 'Stop-ScheduledTask') {{ throw 'The task is busy, says the stand-in.' }}
 }}
 function Disable-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Disable-ScheduledTask $TaskName"
+    if (Refused 'Disable-ScheduledTask') {{ throw 'Access is denied, says the stand-in.' }}
 }}
 function Enable-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Enable-ScheduledTask $TaskName"
+    if (Refused 'Enable-ScheduledTask') {{ throw 'Access is denied, says the stand-in.' }}
 }}
 """
         if stand_in_tasks
@@ -259,8 +263,10 @@ function Enable-ScheduledTask {{
     script = f"""
 function Record([string]$Line) {{ Add-Content -LiteralPath $env:{RECORDING} -Value $Line }}
 function Refused([string]$Name) {{
-    $refused, $status = "$env:{REFUSES}" -split '=', 2
-    if ($refused -ne $Name) {{ return $false }}
+    $named = @("$env:{REFUSES}" -split ',' | Where-Object {{ ($_ -split '=', 2)[0] -eq $Name }})
+    if ($named.Count -eq 0) {{ return $false }}
+    $parts = @($named[0] -split '=', 2)
+    $status = if ($parts.Count -gt 1) {{ $parts[1] }} else {{ '' }}
     [Console]::Error.WriteLine('Access is denied, says the stand-in.')
     $global:LASTEXITCODE = if ($status) {{ [int]$status }} else {{ 5 }}
     return $true
@@ -295,7 +301,7 @@ function icacls {{
     }}
 }}
 {tasks}
-{_PIPED if piped else _AS_A_FILE}
+{"" if piped else _AS_A_FILE}
 """
     name = "tasks-session" if stand_in_tasks else "host-session"
     path = into / (f"{name}-piped.ps1" if piped else f"{name}.ps1")
@@ -303,19 +309,21 @@ function icacls {{
     return path
 
 
-#: How a session runs the script it is handed: as a file, whose exit is the
-#: session's, or as the install path's own command runs it — its text piped
-#: into `iex`, after which the session goes on and says what status it read.
+#: How a session runs the script it is handed as a file, whose exit is the
+#: session's. A piped session carries the stand-ins alone: it is dot-sourced at
+#: a prompt of `pwsh -Command`, where the install path's own command pipes the
+#: script's text into `iex` — a prompt, unlike a file, being what that command
+#: is typed at — and the session goes on and says what status it read.
 _AS_A_FILE = """
 $target = $args[0]
 $rest = @($args | Select-Object -Skip 1)
 & $target @rest
 exit $LASTEXITCODE
 """
-_PIPED = """
-Get-Content -LiteralPath $args[0] -Raw | iex
-Write-Output "the session goes on, LASTEXITCODE=$LASTEXITCODE"
-"""
+_PIPED = (
+    ". '{session}'; Get-Content -LiteralPath '{script}' -Raw | iex; "
+    'Write-Output "the session goes on, LASTEXITCODE=$LASTEXITCODE"'
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,11 +399,19 @@ def _run_script(
     session: Path, script: Path, cwd: Path, environment: dict[str, str], *arguments: str
 ) -> Ran:
     recording = Path(environment[RECORDING])
+    piped = session.stem.endswith("-piped")
+    invoked = (
+        [
+            "-Command",
+            _PIPED.format(
+                session=str(session).replace("'", "''"), script=str(script).replace("'", "''")
+            ),
+        ]
+        if piped
+        else ["-File", str(session), str(script), *arguments]
+    )
     result = shell_run(
-        [powershell(), "-NoProfile", "-File", str(session), str(script), *arguments],
-        cwd=cwd,
-        env=environment,
-        timeout=600,
+        [powershell(), "-NoProfile", *invoked], cwd=cwd, env=environment, timeout=600
     )
     recorded = recording.read_text(encoding="utf-8").splitlines() if recording.exists() else []
     definition = Path(f"{recording}.task.xml")
@@ -613,7 +629,7 @@ def test_an_observation_interval_is_written_and_one_the_server_refuses_is_refuse
     written = tomllib.loads(home.config.read_text(encoding="utf-8"))
     equal(written["supervisor"]["observation_interval_s"], 60, describing="the interval written")
 
-    for refused in ("0", "060", "sixty"):
+    for refused in ("0", "060", "sixty", "9223372036854775808"):
         elsewhere = _home(tmp_path, f"home-interval-{refused}")
         ran = installing(elsewhere, release, "-ObservationIntervalSeconds", refused)
         failing((ran.code, ran.said), naming=f"'{refused}' is not one")
@@ -728,8 +744,8 @@ class Serviced:
     """A service install's root, holding a real record the real server wrote."""
 
     root: Path
-    print_id: str
-    image_id: str
+    print_id: PrintId
+    image_id: ImageId
 
     @property
     def config(self) -> Path:
@@ -797,12 +813,19 @@ def _alert(server: str, machine: Machine) -> None:
     )
 
 
+#: A print's identifier, as the store mints it.
+PrintId = NewType("PrintId", str)
+
+#: An image's identifier, as the store mints it.
+ImageId = NewType("ImageId", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Recorded:
     """The print and the image one alert opened, as the store identifies them."""
 
-    print_id: str
-    image_id: str
+    print_id: PrintId
+    image_id: ImageId
 
 
 @dataclass(frozen=True, slots=True)
@@ -832,7 +855,7 @@ def _recorded(state: Path) -> Recorded | None:
         connection.close()
     if not prints or not images:
         return None
-    return Recorded(str(prints[0][0]), str(images[0][0]))
+    return Recorded(PrintId(str(prints[0][0])), ImageId(str(images[0][0])))
 
 
 def _client(program: Path, server: str, credential: str, *arguments: str) -> Answer:
@@ -1675,6 +1698,8 @@ def _service_file(serviced: Serviced, old: str, new: str) -> None:
         ("no-state", {}, "is not there, so the service has no record to move"),
         ("no-skill-path", {}, "no skill_path in [supervisor]"),
         ("computed-state", {}, "state_dir is not one plain string"),
+        ("computed-skill", {}, "supervisor.skill_path is not one plain string"),
+        ("quoted-local", {}, "carries a quote or a newline"),
         ("none", {REFUSES: "stop"}, "stopping the printobserver service failed"),
         ("bad-user", {}, "is not an account name"),
     ],
@@ -1703,6 +1728,13 @@ def test_the_migration_refuses_before_it_copies_anything(
                 "".join(line for line in lines if not line.startswith("skill_path")),
                 encoding="utf-8",
             )
+        case "computed-skill":
+            skill_line = next(
+                line
+                for line in serviced.config.read_text(encoding="utf-8").splitlines()
+                if line.startswith("skill_path")
+            )
+            _service_file(serviced, skill_line, 'skill_path = "a\\u0020path"')
         case "computed-state":
             state_line = next(
                 line
@@ -1712,6 +1744,8 @@ def test_the_migration_refuses_before_it_copies_anything(
             _service_file(serviced, state_line, "state_dir = { path = 'nowhere' }")
         case "bad-user":
             user = "a/name with a slash"
+        case "quoted-local":
+            home = _home(tmp_path, "o'brien")
         case _:
             pass
     before = _tree(serviced.state) if serviced.state.exists() else {}
@@ -1910,3 +1944,106 @@ def test_a_copied_configuration_made_to_differ_deletes_nothing(
     failing((ran.code, ran.said), naming="differs from what was written")
     truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
     truth(not home.config.exists(), describing="the unverified copy removed")
+
+
+def test_an_explicit_directory_with_no_local_application_data_is_refused_for_the_server(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """`-To` names where the program goes; the server's own files still need the profile's."""
+    home = _home(tmp_path, "home-no-local")
+    release = releases(_version())
+    recording = tmp_path / "recorded-no-local"
+    environment = _environment(home, recording, PRINTOBSERVER_RELEASE_BASE=str(release))
+    del environment["LOCALAPPDATA"]
+
+    ran = _run_script(
+        installing.session, INSTALLER, home.root, environment, "-To", str(home.root / "bin")
+    )
+
+    failing((ran.code, ran.said), naming="nowhere of your own to keep the server")
+    truth(not (home.root / "bin").exists(), describing="nothing installed")
+
+
+@pytest.mark.parametrize(
+    ("refuses", "naming", "put_back"),
+    [
+        ("Disable-ScheduledTask", "would not stop the task printobserver", False),
+        ("Stop-ScheduledTask,Enable-ScheduledTask", "could not be put back", True),
+    ],
+    ids=["a refused hold", "a refused hold and a refused restoration"],
+)
+def test_an_upgrade_task_scheduler_will_not_pause_replaces_nothing_and_says_where_it_left_it(
+    installing: Installing,
+    releases: Callable[[str], Path],
+    tmp_path: Path,
+    refuses: str,
+    naming: str,
+    put_back: bool,
+) -> None:
+    """A task never held off is not touched again; one that cannot be put back is named."""
+    home = _home(tmp_path, "home-unpausable")
+    first = installing(home, releases(_older(_version())))
+    passing((first.code, first.said), describing="the first install")
+    before = home.program.read_bytes()
+
+    again = installing(
+        home, releases(_version()), recording=tmp_path / "recorded-1", extra={REFUSES: refuses}
+    )
+
+    failing((again.code, again.said), naming=naming)
+    equal(home.program.read_bytes(), before, describing="the program, left as it was")
+    upgrade = again.recorded[len(first.recorded) :]
+    equal(
+        "Enable-ScheduledTask printobserver" in upgrade,
+        put_back,
+        describing=f"whether it tried to put the task back: {upgrade}",
+    )
+
+
+def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_status(
+    releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A refusal under `irm ... | iex` keeps the caller's window, and reads as a failure."""
+    home = _home(tmp_path, "home-piped-refused")
+    environment = _environment(
+        home,
+        tmp_path / "recorded-piped-refused",
+        PRINTOBSERVER_RELEASE_BASE=str(releases(_version())),
+        **{REGISTERED: "1"},
+    )
+
+    ran = _run_script(
+        _session(tmp_path, stand_in_tasks=True, piped=True), INSTALLER, home.root, environment
+    )
+
+    contains(
+        ran.said,
+        "the session goes on, LASTEXITCODE=1",
+        describing="the session after the stop, which a stop must not end",
+    )
+    contains(ran.said, "migrate-service-to-per-user.ps1", describing="the migration it named")
+    equal(sorted(home.local.iterdir()), [], describing="nothing written")
+
+
+@WINDOWS_ONLY
+def test_on_windows_the_migration_refuses_an_account_this_machine_does_not_have(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A name Windows cannot resolve is refused before the service is stopped."""
+    home = _home(tmp_path, "home-nobody-here")
+
+    ran = migrating(
+        serviced,
+        home,
+        "-LocalAppData",
+        str(home.local),
+        "-User",
+        f"{os.environ.get('COMPUTERNAME', 'HOST')}\\nobody-{secrets.token_hex(4)}",
+        **{REGISTERED: "1"},
+    )
+
+    failing((ran.code, ran.said), naming="which is no account on this machine")
+    truth(
+        not any(line.startswith("sc.exe stop") for line in ran.recorded),
+        describing=f"nothing stopped: {ran.recorded}",
+    )

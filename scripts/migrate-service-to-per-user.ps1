@@ -63,8 +63,9 @@ $PerUserState = @('printobserver', 'state')
 $ServiceDoesNotExist = 1060
 $ServiceNotActive = 1062
 
-# Every refusal says why and what to do next, and exits non-zero having changed
-# nothing it had not already put back.
+# Every refusal says why and what to do next, and exits non-zero. One made
+# before the service is stopped changes nothing; one after says in its own
+# words what it left stopped, copied or removed.
 function Fail([string]$Why, [string]$Next) {
     [Console]::Error.WriteLine("${Script}: $Why")
     [Console]::Error.WriteLine("${Script}: $Next")
@@ -189,7 +190,12 @@ if (-not (Test-Path -LiteralPath $ServiceConfig -PathType Leaf)) {
 $PlainValue = '^\s*(state_dir|skill_path)\s*=\s*(''(?<value>[^'']*)''|"(?<value>[^"\\]*)")\s*(#.*)?$'
 $ServiceState = ''
 
-$original = [IO.File]::ReadAllText($ServiceConfig)
+try {
+    $original = [IO.File]::ReadAllText($ServiceConfig)
+} catch {
+    Fail "$ServiceConfig could not be read: $("$_".Trim())" `
+        'Nothing was changed. Run this from an elevated PowerShell, which the service''s configuration is readable from.'
+}
 $lines = [regex]::Split($original, '(?<=\n)')
 $table = ''
 $rewroteState = $false
@@ -297,21 +303,25 @@ if ($owned.Code -ne 0) {
 # there in the copy with the same SHA-256, and the configuration is the
 # original but for the two lines this rewrote.
 $differences = @()
-foreach ($file in Get-ChildItem -LiteralPath $ServiceState -Recurse -File -Force) {
-    $relative = $file.FullName.Substring($ServiceState.Length).TrimStart('\', '/')
-    $copy = Join-Path $UserState $relative
-    if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) {
-        $differences += "$relative is missing"
-        continue
+try {
+    foreach ($file in Get-ChildItem -LiteralPath $ServiceState -Recurse -File -Force) {
+        $relative = $file.FullName.Substring($ServiceState.Length).TrimStart('\', '/')
+        $copy = Join-Path $UserState $relative
+        if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) {
+            $differences += "$relative is missing"
+            continue
+        }
+        $want = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+        $got = (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash
+        if ($want -ne $got) {
+            $differences += "$relative differs"
+        }
     }
-    $want = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
-    $got = (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash
-    if ($want -ne $got) {
-        $differences += "$relative differs"
+    if ([IO.File]::ReadAllText($UserConfig) -ne $rewritten.ToString()) {
+        $differences += "$UserConfig differs from what was written"
     }
-}
-if ([IO.File]::ReadAllText($UserConfig) -ne $rewritten.ToString()) {
-    $differences += "$UserConfig differs from what was written"
+} catch {
+    $differences += "the copy could not be read back ($("$_".Trim()))"
 }
 if ($differences.Count -gt 0) {
     Remove-Copies

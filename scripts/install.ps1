@@ -199,8 +199,9 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
     $installed = Join-Path $To $PROGRAM
     if (-not $ClientOnly) {
         # Everything the per-user install will write is decided, and every
-        # refusal it can make is made, before anything is fetched: a refused
-        # run changes nothing on disk and nothing in Task Scheduler.
+        # refusal that needs nothing fetched is made, before anything is
+        # fetched: a run refused here changes nothing on disk and nothing in
+        # Task Scheduler. A refusal after the program is in place says so.
         if ($env:PRINTOBSERVER_TASK_NAME) {
             $TaskName = $env:PRINTOBSERVER_TASK_NAME
         }
@@ -498,7 +499,16 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
         # starts the server again on its own while it is enabled.
         $paused = $false
         if (-not $ClientOnly) {
-            if (Get-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue) {
+            # A task that is not there is the one answer that is not a
+            # failure: anything else Task Scheduler says stops the upgrade.
+            $asked = $null
+            $existing = Get-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue -ErrorVariable asked
+            $unanswered = @($asked | Where-Object { $_.CategoryInfo.Category -ne 'ObjectNotFound' })
+            if (-not $existing -and $unanswered.Count -gt 0) {
+                Stop-Install "Task Scheduler would not say whether the task $TaskName is registered: $("$($unanswered[0])".Trim())" `
+                    "Nothing was replaced. Run Get-ScheduledTask -TaskName $TaskName to see what it says, and run this again."
+            }
+            if ($existing) {
                 try {
                     Disable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder | Out-Null
                     $paused = $true
@@ -540,7 +550,7 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
             try {
                 New-Item -ItemType Directory -Path $directory -Force | Out-Null
             } catch {
-                Stop-Install "$directory could not be created" `
+                Stop-Install "$directory could not be created: $("$_".Trim())" `
                     "The program is installed at $installed, and its server is not. Make $directory writable by you, and run this again."
             }
             if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
@@ -659,7 +669,7 @@ system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
             try {
                 [IO.File]::WriteAllText($InstalledConfig, $configuration.Replace("`r`n", "`n"))
             } catch {
-                Stop-Install "$InstalledConfig could not be written" `
+                Stop-Install "$InstalledConfig could not be written: $("$_".Trim())" `
                     "The program is installed at $installed, and its server is not. Make $(Split-Path $InstalledConfig) writable by you, and run this again."
             }
         }
