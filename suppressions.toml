@@ -2921,14 +2921,14 @@ reason = "The per-user Windows server is started by Task Scheduler, which gives 
 [[suppression]]
 rule = "tool_output_is_signal"
 file = "scripts/migrate-service-to-per-user.ps1"
-site = "function Report-Migrated"
-reason = "A migration that succeeded prints what it moved and where, the two directories it deliberately left behind with the one command that removes them, and the two commands the user runs next as themselves; each is a line the operator acts on, and `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads the next steps back. A refusal prints only its two sentences: why it stopped and what to do next."
+site = "Say \"moved the configuration to $UserConfig"
+reason = "A migration that finished prints one status line and then exactly the commands the operator runs next: the two the task requires as the user, non-elevated (`install.ps1`, which keeps the copied configuration and starts the server, and `printobserver sign-in`), and the removal of the two directories it deliberately left, which the task requires it to print. Each line is one the operator acts on; a refusal prints only its two sentences. `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads the next steps back."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "def program"
-reason = "The same ground as this rule's entry for `tests/repo-e2e/tests/test_windows_service_installer_journey.py`'s `def program`: the end-to-end tier is one project by design, and this is the same debug build of the repository root that group's journeys already share, which the tier's own `printobserver:build` has made before any journey asks, so the build here finds nothing to do."
+reason = "The task that added this journey requires it under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, which drive the same two installers, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from. The build is the same debug program the `repo-root-debug-build` group already shares, made by the tier's own `printobserver:build` before any journey asks, so the build here finds nothing to do."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -2982,7 +2982,7 @@ reason = "A read-only look at the store the real server wrote, to learn when the
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "The per-user Windows install: installed, upgraded"
-reason = "The same ground as this rule's entries for the other journeys in `tests/repo-e2e`: `AGENTS.md` places every end-to-end journey in that one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Its two siblings for the same scripts, `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, live there for the same reason."
+reason = "The task that added this journey requires it under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, which drive the same two installers, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from. Its Windows-only cases need the real Task Scheduler and run on the Windows gate shards, which is where this project's end-to-end tier runs on Windows."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -3000,7 +3000,7 @@ reason = "The older release is the real program this tree builds, its version st
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
 site = "def _run("
-reason = "The same ground as this rule's entry for this file's `def _built_here`: `AGENTS.md` places every end-to-end journey in the one `repo-e2e` project by design, and no per-project end-to-end target exists for a narrower edge to hang from. This change adds `-ClientOnly` to the run it already made."
+reason = "This journey predates the change and stays where it is: the change's task required its existing cases to run with `-ClientOnly`, in place, and `AGENTS.md` places every end-to-end journey in the one `repo-e2e` project, beside the per-user and service-installer journeys for the same scripts; no per-project end-to-end target exists for a narrower edge to hang from."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -3067,3 +3067,27 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "One elevated step, `scripts/migrate-service-to-per-user.ps1`, moves a service"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "tool_output_is_signal"
+file = "scripts/install.ps1"
+site = "Say \"$configured; registered and started the task"
+reason = "The per-user install's success output is one status line and then the next steps the task requires it to print, non-elevated: `printobserver credential issue` with where its verifier line goes, the skill install into this install's state directory, `printobserver sign-in`, and the task restart that reads them. A run that kept a configuration and was given an interval adds one line saying the interval was not written. Each line is one the operator acts on, and `tests/repo-e2e/tests/test_per_user_windows_install_journey.py` reads every next step back."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.ps1"
+site = "$stopped = Ask { sc.exe stop $ServiceName }"
+reason = "`tests/repo-e2e/tests/test_per_user_windows_install_journey.py` proves this script under the contract the task approved for it: run against a `-Root` throwaway root, with `sc.exe`, `whoami.exe` and `icacls` as recorded stand-ins, on every host including the Windows gate, so a journey never stops, re-owns or deletes a real service on the machine running it. The stop and the wait for the process to exit are driven through that stand-in: a stop it accepts, a stop answered 1062 for a service already down, a refused stop, and a service that never reaches STOPPED, each with what the script then copies or leaves."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.ps1"
+site = "$owned = Ask { icacls $parent /setowner $User /T /C }"
+reason = "`tests/repo-e2e/tests/test_per_user_windows_install_journey.py` proves this script under the contract the task approved for it: run against a `-Root` throwaway root, with `sc.exe`, `whoami.exe` and `icacls` as recorded stand-ins, on every host including the Windows gate, so a journey never stops, re-owns or deletes a real service on the machine running it. The owner-setter is the stand-in: the journey asserts the call names the `-User` given and the per-user directory, that a refusal removes the copies and deletes nothing, and the real server then serves the copied record from the per-user configuration. Real ownership needs a second account's real profile, which the contract leaves to a real host."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.ps1"
+site = "Say \"$path, copied by this run, could not be removed"
+reason = "`tests/repo-e2e/tests/test_per_user_windows_install_journey.py` proves this script under the contract the task approved for it: run against a `-Root` throwaway root, with `sc.exe`, `whoami.exe` and `icacls` as recorded stand-ins, on every host including the Windows gate, so a journey never stops, re-owns or deletes a real service on the machine running it. This branch runs only when the filesystem refuses to delete files this same run created, which no journey can cause without also making the copy itself fail first; the copy, verification and ownership refusals that reach `Remove-Copies` are each driven, and assert the copies are gone."

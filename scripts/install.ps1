@@ -729,16 +729,14 @@ system = ["resume", "set_feedrate_factor", "set_flowrate_factor",
             [Console]::Error.WriteLine("  Set-Service -Name $NAME -StartupType Automatic -Status Running")
             return
         }
-        if ($keptConfig) {
-            Say "kept $InstalledConfig and $InstalledState as they were"
-            if ($ObservationIntervalSeconds) {
-                Say "so -ObservationIntervalSeconds was not written; set supervisor.observation_interval_s in $InstalledConfig yourself"
-            }
-        } else {
-            Say "wrote $InstalledConfig; fill in the three values marked FILL IN"
+        # One line of what the server's install did, an interval it could not
+        # write where there was one, and the steps the operator takes next.
+        $configured = if ($keptConfig) { "kept $InstalledConfig and $InstalledState" } else { "wrote $InstalledConfig, whose three FILL IN values are yours to set" }
+        # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+        Say "$configured; registered and started the task $TaskName, which runs the server as $account at logon; next, as yourself and not elevated:"
+        if ($keptConfig -and $ObservationIntervalSeconds) {
+            Say "-ObservationIntervalSeconds was not written into the configuration kept; set supervisor.observation_interval_s in $InstalledConfig yourself"
         }
-        Say "registered the task $TaskName, which runs the server as $account at your logon and brings it back when it stops, and started it"
-        Say 'next, as yourself, in a PowerShell that is not elevated:'
         [Console]::Error.WriteLine("  printobserver credential issue")
         [Console]::Error.WriteLine("    and put the api.credential_verifier line it prints into $InstalledConfig, above its first [table] header")
         [Console]::Error.WriteLine("  gh skill install nickderobertis/printobserver printobserver --dir $InstalledSkills")

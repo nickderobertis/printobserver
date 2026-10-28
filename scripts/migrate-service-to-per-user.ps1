@@ -250,6 +250,7 @@ if ($to.StartsWith($from, [StringComparison]::OrdinalIgnoreCase) -or $from.Start
 
 # 1. The service stopped, and its process gone, before anything is read: a
 # record copied while it is being written is not the record.
+# llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
 $stopped = Ask { sc.exe stop $ServiceName }
 if ($stopped.Code -ne 0 -and $stopped.Code -ne $ServiceNotActive) {
     Fail "stopping the $ServiceName service failed: $($stopped.Said)" `
@@ -279,6 +280,7 @@ function Remove-Copies {
         try {
             Remove-Item -LiteralPath $path -Recurse -Force
         } catch {
+            # llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
             Say "$path, copied by this run, could not be removed ($("$_".Trim())); remove it before running this again"
         }
     }
@@ -301,6 +303,7 @@ try {
     Fail "copying the service's configuration and record failed: $("$_".Trim())" `
         "The service is stopped and still registered, and its files are as they were. Start it again with ``sc.exe start $ServiceName``, or free space under $LocalAppData and run this again."
 }
+# llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
 $owned = Ask { icacls $parent /setowner $User /T /C }
 if ($owned.Code -ne 0) {
     Remove-Copies
@@ -344,17 +347,16 @@ if ($deleted.Code -ne 0) {
         "The copies are in place under $LocalAppData. Delete the service yourself with ``sc.exe delete $ServiceName`` before installing the per-user server."
 }
 
-# What a migration that finished says, and all of it: what moved where, what
-# it left for the operator to remove and how, and what they run next.
-# llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+# What a migration that finished says, and all of it: one line of what moved
+# where and what was left, then the commands the operator runs - the two next
+# steps as themselves, and the removal once they are satisfied.
 function Report-Migrated {
     $left = Under-Root 'C:\ProgramData\printobserver'
     $program = Under-Root $ProgramDirectory
-    Say "moved the $ServiceName service's configuration to $UserConfig and its record to $UserState, owned by $User, verified every file, and deleted the service"
-    Say "left $left and $program as they were; once the per-user server runs as you expect, remove both from an elevated PowerShell:"
-    [Console]::Error.WriteLine("  Remove-Item -Recurse -Force '$left', '$program'")
-    Say "next, as $User, in a PowerShell that is not elevated - the first keeps the configuration this copied and starts the server as you:"
+    # llmlint: ignore[tool_output_is_signal] suppressions.toml has the reason.
+    Say "moved the configuration to $UserConfig and the record to $UserState, owned by $User and verified, deleted the $ServiceName service, and left $left and $program; next, as $User and not elevated, then elevated once satisfied:"
     [Console]::Error.WriteLine("  irm https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.ps1 | iex")
     [Console]::Error.WriteLine("  printobserver sign-in")
+    [Console]::Error.WriteLine("  Remove-Item -Recurse -Force '$left', '$program'")
 }
 Report-Migrated
