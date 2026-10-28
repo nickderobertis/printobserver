@@ -132,6 +132,8 @@ if (-not $LocalAppData -or -not (Test-Path -LiteralPath $LocalAppData -PathType 
     Fail "-LocalAppData names ``$LocalAppData``, which is not a directory" `
         "Nothing was changed. Pass -LocalAppData the local application data of $User, such as C:\Users\<name>\AppData\Local."
 }
+# Persist paths independently of the elevated shell's working directory.
+$LocalAppData = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LocalAppData)
 # The account the copies will belong to, resolved before anything is stopped:
 # a name Windows cannot resolve is refused here rather than by the owner-setter
 # after the service is down. A host with no account database to ask - a test's

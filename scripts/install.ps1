@@ -237,6 +237,8 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
             Stop-Install 'this session names no user, so there is nobody to register the server''s task for' `
                 'Nothing was installed. Run this as the user the server is to run as, in a session of their own.'
         }
+        # Task Scheduler starts outside this shell's working directory.
+        $env:LOCALAPPDATA = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:LOCALAPPDATA)
         $InstalledConfig = Under-LocalAppData $PerUserConfig
         $InstalledState = Under-LocalAppData $PerUserState
         $InstalledSkills = Join-Path $InstalledState 'skills'

@@ -407,7 +407,7 @@ def _environment(home: Home, recording: Path, **extra: str) -> dict[str, str]:
     """A Windows session of one user: their local application data, their temp, their name."""
     temporary = str(home.root / "temp")
     environment = clean_environment(
-        LOCALAPPDATA=str(home.local),
+        LOCALAPPDATA=extra.pop("LOCALAPPDATA", str(home.local)),
         TMPDIR=temporary,
         TMP=temporary,
         TEMP=temporary,
@@ -570,15 +570,17 @@ def _tree(root: Path) -> dict[str, str]:
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+@pytest.mark.parametrize("relative", [False, True])
 def test_with_no_switch_it_installs_the_per_user_server_and_says_what_is_next(
-    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path, relative: bool
 ) -> None:
     """The program, the configuration, the state, the task registered as the user and started."""
     home = _home(tmp_path, "home")
     release = releases(_version())
     outside = {path for path in tmp_path.rglob("*") if home.root not in path.parents}
 
-    ran = installing(home, release)
+    local = str(home.local.relative_to(home.root)) if relative else str(home.local)
+    ran = installing(home, release, extra={"LOCALAPPDATA": local})
 
     passing((ran.code, ran.said), describing="install.ps1 with no switch")
     truth(home.program.is_file(), describing=f"{home.program} to be the program")
@@ -1021,8 +1023,14 @@ def migrating(tmp_path: Path) -> Migrating:
 
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+@pytest.mark.parametrize("relative", [False, True])
 def test_the_migration_moves_the_record_verifies_it_and_only_then_deletes_the_service(
-    migrating: Migrating, serviced: Serviced, program: Path, tmp_path: Path, machine: Machine
+    migrating: Migrating,
+    serviced: Serviced,
+    program: Path,
+    tmp_path: Path,
+    machine: Machine,
+    relative: bool,
 ) -> None:
     """Every file identical, two lines rewritten, the service deleted last, the record served."""
     home = _home(tmp_path, "home-migrated")
@@ -1032,9 +1040,8 @@ def test_the_migration_moves_the_record_verifies_it_and_only_then_deletes_the_se
     state_before = _tree(serviced.state)
     config_before = serviced.config.read_text(encoding="utf-8")
 
-    ran = migrating(
-        serviced, home, "-LocalAppData", str(home.local), "-User", owner, **{REGISTERED: "1"}
-    )
+    local = str(home.local.relative_to(tmp_path)) if relative else str(home.local)
+    ran = migrating(serviced, home, "-LocalAppData", local, "-User", owner, **{REGISTERED: "1"})
 
     passing((ran.code, ran.said), describing="the migration")
     equal(_tree(home.state), state_before, describing="every copied file, by SHA-256")
