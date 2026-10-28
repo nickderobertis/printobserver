@@ -283,10 +283,18 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
 
     # Put a task held off for an upgrade back as it was, where the upgrade
     # stopped before it replaced anything.
+    # If either is refused, the stop that follows says so beside its own reason:
+    # a server left held off is supervision left off.
     function Resume-Task([bool]$Paused) {
-        if ($Paused) {
-            Enable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue | Out-Null
-            Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue
+        if (-not $Paused) {
+            return
+        }
+        try {
+            Enable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder | Out-Null
+            Start-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
+            Say "the task $TaskName was put back and started, running the program as it was"
+        } catch {
+            Say "the task $TaskName could not be put back ($("$_".Trim())), so nothing is supervising; run Enable-ScheduledTask -TaskName $TaskName and then Start-ScheduledTask -TaskName $TaskName"
         }
     }
 
@@ -491,9 +499,16 @@ function Install-Printobserver([string]$Version, [string]$To, [bool]$ClientOnly,
         $paused = $false
         if (-not $ClientOnly) {
             if (Get-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue) {
-                Disable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder | Out-Null
-                Stop-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
-                $paused = $true
+                try {
+                    Disable-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder | Out-Null
+                    $paused = $true
+                    Stop-ScheduledTask -TaskName $TaskName -TaskPath $TaskFolder
+                } catch {
+                    $refused = "$_".Trim()
+                    Resume-Task $paused
+                    Stop-Install "Task Scheduler would not stop the task $TaskName for the upgrade: $refused" `
+                        'Nothing was replaced. Run this again; if it says the same, end the server with Stop-ScheduledTask first.'
+                }
             }
             $deadline = (Get-Date).AddSeconds(60)
             while (@(Get-Running $installed).Count -gt 0) {

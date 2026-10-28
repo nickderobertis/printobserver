@@ -257,9 +257,15 @@ while ($true) {
 # under the user's own profile, so each inherits that profile's permissions
 # rather than the service's private ones.
 $created = @()
+# Removing what this copied before a refusal: what could not be removed is
+# named, because an unverified copy left in place is one the next run refuses.
 function Remove-Copies {
     foreach ($path in $created) {
-        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+        try {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        } catch {
+            Say "$path, copied by this run, could not be removed ($("$_".Trim())); remove it before running this again"
+        }
     }
 }
 try {

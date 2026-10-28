@@ -163,6 +163,9 @@ class Rules:
     #: What the registration the installer writes must carry besides the two
     #: settings above, each in the manager's own vocabulary.
     must_carry: tuple[str, ...] = ()
+    #: Other scripts that name this manager's service, each by the same
+    #: declaration the installer makes, held to the name the pair states.
+    name_also_declared_in: tuple[str, ...] = ()
 
 
 def _rules(repo: Repo, manager: str) -> Rules:
@@ -199,6 +202,9 @@ def _rules(repo: Repo, manager: str) -> Rules:
         else None,
         program,
         policy_string_list(table, "must_carry", where) if "must_carry" in table else (),
+        policy_string_list(table, "name_also_declared_in", where)
+        if "name_also_declared_in" in table
+        else (),
     )
 
 
@@ -482,6 +488,8 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
 
     if rules.program_name is not None:
         findings.extend(_program_name_findings(repo, named, rules.program_name))
+    if declaration is not None:
+        findings.extend(_also_declared_findings(repo, named, declaration, rules))
 
     if rules.registration_directory is not None and rules.registration_directory not in script:
         findings.append(
@@ -538,6 +546,36 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
         )
 
     findings.extend(_granted_findings(repo, named.installer, script))
+    return findings
+
+
+def _also_declared_findings(
+    repo: Repo, named: Named, declaration: tuple[re.Pattern[str], str], rules: Rules
+) -> list[str]:
+    """Every other script naming the service names the one the pair states.
+
+    The per-user installer asks whether the service is there before it
+    installs a second server, and the migration stops and deletes it: a script
+    asking after a name the service no longer has would find nothing and go on.
+    """
+    pattern, shape = declaration
+    indented = re.compile(pattern.pattern.replace("^", "^\\s*", 1), re.MULTILINE)
+    findings: list[str] = []
+    for script in rules.name_also_declared_in:
+        if not repo.exists(script):
+            findings.append(f"`{script}` is absent: it names the `{named.manager}` service")
+            continue
+        declared = indented.search(repo.read(script))
+        if declared is None:
+            findings.append(
+                f"`{script}` carries no `{shape}` line, so nothing holds the service it names "
+                f"to the one the install path states"
+            )
+        elif declared["service"] != named.service:
+            findings.append(
+                f"`{script}` names the service `{declared['service']}`, and AGENTS.md's "
+                f"`{ip.SECTION_HEADING}` states `{named.service}` under `{named.manager}`"
+            )
     return findings
 
 

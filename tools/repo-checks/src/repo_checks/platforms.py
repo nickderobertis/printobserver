@@ -259,8 +259,8 @@ class Platform:
     #: Why it does not, where it does not.
     install_path_reason: str = ""
     #: The manager the per-user install runs the server under, where the
-    #: platform has one; empty where its only install is the service.
-    per_user_manager: str = ""
+    #: platform has one; none where its only install is the service.
+    per_user_manager: ServiceManager | None = None
 
     @property
     def managers(self) -> tuple[str, ...]:
@@ -270,8 +270,8 @@ class Platform:
         install, and the one whose installer refuses a host the service is
         already on, so a host taking both takes it before the service.
         """
-        if self.per_user_manager:
-            return (self.per_user_manager, self.service_manager)
+        if self.per_user_manager is not None:
+            return (self.per_user_manager.value, self.service_manager)
         return (self.service_manager,)
 
     @property
@@ -418,6 +418,17 @@ def macos_tag_version(minimum: tuple[int, int]) -> tuple[int, int]:
     return major + 1, 0
 
 
+def per_user_manager(entry: re.Match[str]) -> ServiceManager | None:
+    """The per-user manager one entry names, or none where it names none or one unknown.
+
+    An unknown one is answered as none here and **refused** by
+    `checks_ci.platforms`, which reads the entry's own text, for the reason
+    `supported` passes over a line it cannot read.
+    """
+    named = entry["per_user_manager"]
+    return ServiceManager(named) if named in tuple(ServiceManager) else None
+
+
 def supported(repo: Repo) -> list[Platform]:
     """Every platform `AGENTS.md`'s own supported-platform list names.
 
@@ -444,7 +455,7 @@ def supported(repo: Repo) -> list[Platform]:
                     match["service_manager"],
                     match["install"] == "yes",
                     (match["reason"] or "").strip(),
-                    match["per_user_manager"] or "",
+                    per_user_manager(match),
                 )
             )
     return found

@@ -586,11 +586,25 @@ def _entry_findings(repo: Repo, declared: list[Platform]) -> list[str]:
     )
     findings.extend(
         f"AGENTS.md's supported-platform list gives `{platform.id}` the service manager "
-        f"`{manager}`, which is none this repository has a name for "
+        f"`{platform.service_manager}`, which is none this repository has a name for "
         f"({', '.join(f'`{one.value}`' for one in ServiceManager)})"
         for platform in declared
-        for manager in platform.managers
-        if manager not in ServiceManager
+        if platform.service_manager not in ServiceManager
+    )
+    # The per-user column is read off the entry's own text: `supported` answers
+    # an unknown one as none, which would otherwise pass for a platform with no
+    # per-user install.
+    findings.extend(
+        f"AGENTS.md's supported-platform list gives `{entry['id']}` the per-user manager "
+        f"`{entry['per_user_manager']}`, which is none this repository has a name for "
+        f"({', '.join(f'`{one.value}`' for one in ServiceManager)})"
+        for entry in (
+            PLATFORM_LINE.match(line)
+            for line in marker_block(repo.agents_md, "supported-platforms")
+        )
+        if entry is not None
+        and entry["per_user_manager"]
+        and entry["per_user_manager"] not in tuple(ServiceManager)
     )
     return findings
 

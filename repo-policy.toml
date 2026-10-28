@@ -372,6 +372,10 @@ restarts_after_crash = "actions= restart"
 # to dispatch by: held to the name the pair states, like the installer's.
 program_source = "crates/printobserver/src/windows_service.rs"
 program_constant = "SERVICE_NAME"
+# The two scripts that ask after the service rather than register it: the
+# per-user installer, which refuses a host it is on, and the migration, which
+# stops and deletes it. Each declares the name as the installer does.
+name_also_declared_in = ["scripts/install.ps1", "scripts/migrate-service-to-per-user.ps1"]
 
 # The per-user manager on Windows, named in a platform's per-user column: a
 # Scheduled Task the person using the machine registers for themselves, with no

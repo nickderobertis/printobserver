@@ -231,6 +231,7 @@ function Start-ScheduledTask {{
 function Stop-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
     Record "Stop-ScheduledTask $TaskName"
+    if ($env:{REFUSES} -eq 'Stop-ScheduledTask') {{ throw 'The task is busy, says the stand-in.' }}
 }}
 function Disable-ScheduledTask {{
     [CmdletBinding()] param([string]$TaskName, [string]$TaskPath)
@@ -1663,26 +1664,30 @@ def test_the_migration_refuses_before_it_copies_anything(
     """A refusal before the copy leaves the service's files and the user's profile as they were."""
     home = _home(tmp_path, "home-before-copy")
     user = "PRINTPC\\operator"
-    if arrange == "state-without-config":
-        home.state.mkdir(parents=True)
-    elif arrange == "no-config":
-        serviced.config.unlink()
-    elif arrange == "no-state":
-        shutil.rmtree(serviced.state)
-    elif arrange == "no-skill-path":
-        lines = serviced.config.read_text(encoding="utf-8").splitlines(keepends=True)
-        serviced.config.write_text(
-            "".join(line for line in lines if not line.startswith("skill_path")), encoding="utf-8"
-        )
-    elif arrange == "computed-state":
-        state_line = next(
-            line
-            for line in serviced.config.read_text(encoding="utf-8").splitlines()
-            if line.startswith("state_dir")
-        )
-        _service_file(serviced, state_line, "state_dir = { path = 'nowhere' }")
-    elif arrange == "bad-user":
-        user = "a/name with a slash"
+    match arrange:
+        case "state-without-config":
+            home.state.mkdir(parents=True)
+        case "no-config":
+            serviced.config.unlink()
+        case "no-state":
+            shutil.rmtree(serviced.state)
+        case "no-skill-path":
+            lines = serviced.config.read_text(encoding="utf-8").splitlines(keepends=True)
+            serviced.config.write_text(
+                "".join(line for line in lines if not line.startswith("skill_path")),
+                encoding="utf-8",
+            )
+        case "computed-state":
+            state_line = next(
+                line
+                for line in serviced.config.read_text(encoding="utf-8").splitlines()
+                if line.startswith("state_dir")
+            )
+            _service_file(serviced, state_line, "state_dir = { path = 'nowhere' }")
+        case "bad-user":
+            user = "a/name with a slash"
+        case _:
+            pass
     before = _tree(serviced.state) if serviced.state.exists() else {}
 
     ran = migrating(
@@ -1768,5 +1773,114 @@ def test_a_copied_file_gone_before_the_check_deletes_nothing(
     )
 
     failing((ran.code, ran.said), naming=f"{STORE} is missing")
+    truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
+    truth(not home.config.exists(), describing="the unverified copy removed")
+
+
+def test_an_upgrade_whose_stop_is_refused_puts_the_task_back_and_replaces_nothing(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A task Task Scheduler will not stop is enabled again, and the program left as it was."""
+    home = _home(tmp_path, "home-unstoppable")
+    first = installing(home, releases(_older(_version())))
+    passing((first.code, first.said), describing="the first install")
+    before = home.program.read_bytes()
+
+    again = installing(
+        home,
+        releases(_version()),
+        recording=tmp_path / "recorded-1",
+        extra={REFUSES: "Stop-ScheduledTask"},
+    )
+
+    failing((again.code, again.said), naming="would not stop the task printobserver")
+    equal(home.program.read_bytes(), before, describing="the program, left as it was")
+    upgrade = again.recorded[len(first.recorded) :]
+    contains(upgrade, "Enable-ScheduledTask printobserver", describing="the task put back")
+    contains(again.said, "was put back and started", describing="what it said of the task")
+
+
+UNWRITABLE = pytest.mark.skipif(
+    ON_WINDOWS, reason="an administrator writes anywhere, so nothing here can refuse the write"
+)
+
+
+@UNWRITABLE
+def test_an_upgrade_that_cannot_replace_the_program_puts_the_task_back(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A program that cannot be replaced leaves the old one running under its task again."""
+    home = _home(tmp_path, "home-unreplaceable")
+    first = installing(home, releases(_older(_version())))
+    passing((first.code, first.said), describing="the first install")
+    home.program.parent.chmod(0o555)
+    try:
+        again = installing(home, releases(_version()), recording=tmp_path / "recorded-1")
+    finally:
+        home.program.parent.chmod(0o755)
+
+    failing((again.code, again.said), naming="could not be put in")
+    upgrade = again.recorded[len(first.recorded) :]
+    equal(
+        [line for line in upgrade if "Enable" in line or "Start" in line],
+        ["Enable-ScheduledTask printobserver", "Start-ScheduledTask printobserver"],
+        describing="the task put back and started",
+    )
+
+
+@UNWRITABLE
+def test_a_configuration_that_cannot_be_written_is_refused_before_a_task_is_registered(
+    installing: Installing, releases: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """A configuration directory refusing the write stops the install, saying what is in place."""
+    home = _home(tmp_path, "home-unwritable")
+    home.state.mkdir(parents=True)
+    home.config.parent.chmod(0o555)
+    try:
+        ran = installing(home, releases(_version()))
+    finally:
+        home.config.parent.chmod(0o755)
+
+    failing((ran.code, ran.said), naming="could not be written")
+    contains(ran.said, "The program is installed at", describing="what it said is in place")
+    truth(
+        not any(line.startswith("Register-ScheduledTask") for line in ran.recorded),
+        describing=f"no task registered: {ran.recorded}",
+    )
+
+
+@UNWRITABLE
+def test_a_copy_that_cannot_be_made_leaves_the_service_registered(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """A profile refusing the copy stops it: the service stays registered, its files unchanged."""
+    home = _home(tmp_path, "home-refusing-copy")
+    before = _tree(serviced.state)
+    home.local.chmod(0o555)
+    try:
+        ran = migrating(serviced, home, "-LocalAppData", str(home.local), **{REGISTERED: "1"})
+    finally:
+        home.local.chmod(0o755)
+
+    failing((ran.code, ran.said), naming="copying the service's configuration and record failed")
+    truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
+    equal(_tree(serviced.state), before, describing="the service's state")
+
+
+def test_a_copied_configuration_made_to_differ_deletes_nothing(
+    migrating: Migrating, serviced: Serviced, tmp_path: Path
+) -> None:
+    """The configuration is checked too: one that is not what was written is caught."""
+    home = _home(tmp_path, "home-config-differs")
+
+    ran = migrating(
+        serviced,
+        home,
+        "-LocalAppData",
+        str(home.local),
+        **{REGISTERED: "1", ALTERS: str(home.config)},
+    )
+
+    failing((ran.code, ran.said), naming="differs from what was written")
     truth("sc.exe delete printobserver" not in ran.recorded, describing="no deletion requested")
     truth(not home.config.exists(), describing="the unverified copy removed")

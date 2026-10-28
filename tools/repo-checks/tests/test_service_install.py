@@ -922,3 +922,19 @@ def test_a_per_user_installer_naming_another_task_is_refused(tree: Callable[[], 
     findings = service_install(broken.repo)
 
     refused(findings, "installs the service `observer`")
+
+
+@pytest.mark.parametrize("script", [PER_USER_INSTALLER, "scripts/migrate-service-to-per-user.ps1"])
+def test_a_script_asking_after_the_service_by_another_name_is_refused(
+    tree: Callable[[], Tree], script: str
+) -> None:
+    """The per-user installer and the migration name the service the install path states."""
+    broken = tree()
+    broken.write(
+        script,
+        broken.read(script).replace("$ServiceName = 'printobserver'", "$ServiceName = 'observer'"),
+    )
+
+    findings = service_install(broken.repo)
+
+    refused(findings, f"`{script}` names the service `observer`")
