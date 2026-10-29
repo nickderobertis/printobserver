@@ -87,7 +87,42 @@ trap 'rm -rf "$work"' EXIT INT TERM
 # Preserve every byte except the values of these two plain-string settings.
 # The configured source state is copied, including a nondefault absolute path.
 awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_STATE/skills/printobserver/SKILL.md" '
-    BEGIN { table=""; states=0; skills=0 }
+    # Strings and container values cannot select tables or supply settings.
+    function scan_context(text, i, ordinary, ch, three) {
+        i=1; ordinary=""
+        while (i <= length(text)) {
+            ch=substr(text,i,1); three=substr(text,i,3)
+            if (multi != "") {
+                if (multi == "\042" && ch == "\\") i+=2
+                else if (three == (multi multi multi)) { multi=""; i+=3 }
+                else i++
+                continue
+            }
+            if (ordinary != "") {
+                if (ordinary == "\042" && ch == "\\") i+=2
+                else { if (ch == ordinary) ordinary=""; i++ }
+                continue
+            }
+            if (ch == "#") break
+            if (ch == "\042" || ch == "\047") {
+                if (three == (ch ch ch)) { multi=ch; opened=NR; i+=3 }
+                else { ordinary=ch; i++ }
+                continue
+            }
+            if (ch == "[") arrays++
+            else if (ch == "]") arrays--
+            else if (ch == "{") objects++
+            else if (ch == "}") objects--
+            i++
+        }
+        if (ordinary != "" && !bad_string) bad_string=NR
+    }
+    BEGIN { table=""; states=0; skills=0; multi=""; arrays=0; objects=0 }
+    {
+        opaque=(multi != "" || arrays != 0 || objects != 0)
+        scan_context($0)
+        if (opaque) { print; next }
+    }
     /^[[:space:]]*\[/ { table=$0; sub(/^[[:space:]]*\[/,"",table); sub(/\].*$/,"",table); gsub(/^[[:space:]]+|[[:space:]]+$/,"",table) }
     (table == "" && /^[[:space:]]*state_dir[[:space:]]*=/) || (table == "supervisor" && /^[[:space:]]*skill_path[[:space:]]*=/) {
         line=$0; lead=line; sub(/=.*/,"=",lead); tail=substr(line,length(lead)+1)
@@ -112,8 +147,13 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
         $0=lead spaces quote replacement quote suffix
     }
     { print }
-    END { if (states != 1 || skills != 1) exit 1 }
-' "$SERVICE_CONFIG" >"$work/config.toml" || die 'state_dir or supervisor.skill_path is not a plain string in its required table; nothing was changed. Restore those settings before migrating.'
+    END {
+        if (bad_string) print "Invalid TOML string context at line " bad_string > "/dev/stderr"
+        if (multi != "") print "Unclosed TOML string context opened at line " opened > "/dev/stderr"
+        if (arrays != 0 || objects != 0) print "Unbalanced TOML container context" > "/dev/stderr"
+        if (bad_string || multi != "" || arrays != 0 || objects != 0 || states != 1 || skills != 1) exit 1
+    }
+' "$SERVICE_CONFIG" >"$work/config.toml" || die 'The configuration has invalid TOML context, or state_dir or supervisor.skill_path is not a plain string in its required table; nothing was changed. Restore the configuration before migrating.'
 # The existing source must retain symlink/.. semantics until physical resolves it.
 SERVICE_STATE="$(rooted_path "$(cat "$work/source-state")")"
 [ -d "$SERVICE_STATE" ] || die "$SERVICE_STATE is missing; nothing was changed." 'Restore the service state from backup before migrating.'

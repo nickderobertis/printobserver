@@ -1723,3 +1723,123 @@ def test_migration_rejects_malformed_and_duplicate_path_settings_before_stop(
     failing(_migrate(host, root), naming="not a plain string")
     equal(_tree(root), before)
     truth(" stop " not in host.said(), describing="malformed settings refuse before stopping")
+
+
+def _opaque_note(kind: str, payload: str) -> str:
+    match kind:
+        case "multiline-basic" | "escaped-multiline":
+            delimiter = '"' * 3
+            if kind == "escaped-multiline":
+                payload = r'\""" is string data' + "\n" + payload
+            return f"notes = {delimiter}\n{payload}\n{delimiter}\n"
+        case "multiline-literal":
+            delimiter = "'" * 3
+            return f"notes = {delimiter}\n{payload}\n{delimiter}\n"
+        case "quoted-basic":
+            return "notes = " + json.dumps('""" and ' + "'" * 3 + " and # [] {} are text") + "\n"
+        case "quoted-literal":
+            return 'notes = \'""" and # [] {} are text\'\n'
+        case "comment":
+            return 'notes = "ordinary" # ' + '"' * 3 + " and " + "'" * 3 + " are comments\n"
+        case "array":
+            return "notes = [\n []\n]\n"
+        case "inline":
+            return 'notes = { value = "[] {} # are text", state_dir = "/decoy" }\n'
+        case _:
+            raise AssertionError(kind)
+
+
+@pytest.mark.parametrize("scope", ["root", "supervisor"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "multiline-basic",
+        "multiline-literal",
+        "escaped-multiline",
+        "quoted-basic",
+        "quoted-literal",
+        "comment",
+        "array",
+        "inline",
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_preserves_opaque_toml_context_around_real_settings(
+    tmp_path: Path, program: Path, scope: str, kind: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    state.joinpath("record").write_bytes(b"actual record")
+    state_line = f'state_dir = "{state}"\n'
+    skill_line = 'skill_path = "/external/SKILL.md"\n'
+    note = _opaque_note(kind, '# string data\nstate_dir = "/decoy"\n[decoy]\nskill_path = "/decoy"')
+    original = (
+        note + state_line + "[supervisor]\n" + skill_line
+        if scope == "root"
+        else state_line + "[supervisor]\n" + note + skill_line
+    )
+    tomllib.loads(original)
+    config.write_text(original)
+    passing(_migrate(host, root))
+    expected = original.replace(state_line, f'state_dir = "{host.migrated_state}"\n').replace(
+        skill_line, f'skill_path = "{host.migrated_state}/skills/printobserver/SKILL.md"\n'
+    )
+    equal(host.migrated_config.read_text(), expected)
+    tomllib.loads(expected)
+    equal((host.migrated_state / "record").read_bytes(), b"actual record")
+    equal(config.read_text(), original)
+
+
+@pytest.mark.parametrize(
+    ("kind", "missing"),
+    [
+        ("multiline-basic", "state_dir"),
+        ("multiline-literal", "state_dir"),
+        ("multiline-basic", "skill_path"),
+        ("multiline-literal", "skill_path"),
+        ("array", "state_dir"),
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_toml_string_or_container_text_cannot_supply_a_missing_setting(
+    tmp_path: Path, program: Path, kind: str, missing: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    state.joinpath("record").write_bytes(b"actual record")
+    state_line = f'state_dir = "{state}"\n'
+    skill_line = 'skill_path = "/external/SKILL.md"\n'
+    if kind == "array":
+        original = "[supervisor]\n" + skill_line + _opaque_note(kind, "") + state_line
+    elif missing == "state_dir":
+        original = _opaque_note(kind, state_line.rstrip()) + "[supervisor]\n" + skill_line
+    else:
+        original = state_line + "[supervisor]\n" + _opaque_note(kind, skill_line.rstrip())
+    parsed = tomllib.loads(original)
+    truth(
+        missing not in (parsed if missing == "state_dir" else parsed["supervisor"]),
+        describing="the required setting is genuinely absent",
+    )
+    config.write_text(original)
+    before = _tree(root)
+    failing(_migrate(host, root), naming="not a plain string")
+    equal(_tree(root), before)
+    equal(host.said(), "", describing="no service-manager operation before refusal")
+
+
+@pytest.mark.parametrize("opening", ['"""', "'''", '"', "'", "[", "{"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_refuses_unclosed_string_and_container_context(
+    tmp_path: Path, program: Path, opening: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    with config.open("a") as target:
+        target.write(f"notes = {opening}unterminated\n")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        tomllib.loads(config.read_text())
+    before = _tree(root)
+    failing(_migrate(host, root), naming="context")
+    equal(_tree(root), before)
+    equal(host.said(), "", describing="no service-manager operation before refusal")

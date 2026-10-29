@@ -4124,3 +4124,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_migration_rejects_malformed_and_duplicate_path_settings_before_stop("
 reason = "The task requires real migration journeys in repo-e2e. This case drives the script against actual source directories and configuration bytes, proving configured-path resolution or malformed-input refusal before service stop; no parser or filesystem layer is mocked."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_preserves_opaque_toml_context_around_real_settings("
+reason = "The task requires real migration journeys in repo-e2e. This case drives actual configuration files through the real script, with standard-library TOML as an independent fixture oracle, proving that opaque string/container data cannot supply paths and that malformed context refuses before stop without any parser or filesystem mock."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_toml_string_or_container_text_cannot_supply_a_missing_setting("
+reason = "The task requires real migration journeys in repo-e2e. This case drives actual configuration files through the real script, with standard-library TOML as an independent fixture oracle, proving that opaque string/container data cannot supply paths and that malformed context refuses before stop without any parser or filesystem mock."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_refuses_unclosed_string_and_container_context("
+reason = "The task requires real migration journeys in repo-e2e. This case drives actual configuration files through the real script, with standard-library TOML as an independent fixture oracle, proving that opaque string/container data cannot supply paths and that malformed context refuses before stop without any parser or filesystem mock."
