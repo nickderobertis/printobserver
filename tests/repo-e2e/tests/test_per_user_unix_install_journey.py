@@ -462,6 +462,8 @@ def test_migration_preserves_and_serves_the_real_record(
     )
     config.write_text(source, encoding="utf-8")
     _fill_in(config, machine, CREDENTIAL, "127.0.0.1:0")
+    verifier_line, rest = config.read_text().split("\n", 1)
+    config.write_text(rest + "\n[api]\n" + verifier_line.removeprefix("api.") + "\n")
     install_the_skill(config)
     no_harness = tmp_path / "no-harness"
     no_harness.mkdir()
@@ -2006,3 +2008,142 @@ def test_generated_bare_and_dotted_tables_survive_migration(
     equal(host.migrated_config.read_text(), expected)
     tomllib.loads(expected)
     equal(config.read_text(), original)
+
+
+@pytest.mark.parametrize(
+    ("extra", "valid_toml"),
+    [
+        ('"state_dir" = "/decoy"', False),
+        ("unrelated = INVALID", False),
+        ("unrelated = 01", False),
+        ('unrelated = "bad\\q"', False),
+        ("unrelated = [1,,2]", False),
+        ("unrelated = { value = INVALID }", False),
+        ("unrelated = { value = 1, value = 2 }", False),
+        ("unrelated = { value = 1,\n other = 2 }", False),
+        ('unrelated = "\\ud800"', False),
+        ('unrelated = "\\U00110000"', False),
+        ("unrelated = 9223372036854775808", True),
+        ("unrelated = -9223372036854775809", True),
+        ("unrelated = 0x8000000000000000", True),
+        ("unrelated = 0o1000000000000000000000", True),
+        ("unrelated = 0b1000000000000000000000000000000000000000000000000000000000000000", True),
+        ('"unrelated" = 1', True),
+        ("unrelated.nested = 1", True),
+        ("unrelated = 2026-10-28", True),
+        (
+            "unrelated = " + "[" * 65 + "0" + "]" * 65,
+            True,
+        ),
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_refuses_unsupported_keys_and_invalid_values_before_stop(
+    tmp_path: Path, program: Path, extra: str, valid_toml: bool
+) -> None:
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
+    state = root / "var/lib/printobserver"
+    state.joinpath("record").write_bytes(b"existing record")
+    _minimal_service_config(config, state)
+    original = config.read_text()
+    config.write_text(extra + "\n" + original)
+    if valid_toml:
+        tomllib.loads(config.read_text())
+    else:
+        with pytest.raises(tomllib.TOMLDecodeError):
+            tomllib.loads(config.read_text())
+    before = _tree(root)
+    result = _migrate(host, root)
+    failing(result, naming="line 1")
+    equal(_tree(root), before, describing="source config, state and service registration unchanged")
+    truth(not host.migrated_config.exists(), describing="no destination config created")
+    truth(not host.migrated_state.exists(), describing="no destination state created")
+    equal(host.said(), "", describing="no service-manager operation before refusal")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "true",
+        "false",
+        "+inf",
+        "-nan",
+        "0",
+        "+1",
+        "-9223372036854775808",
+        "9223372036854775807",
+        "0x7fff_ffff_ffff_ffff",
+        "0o777777777777777777777",
+        "0b1111",
+        "1_234",
+        "1.25",
+        "-0.5e+2",
+        "1e-3",
+        '[true, 1, "text", { nested = [2, 3] },]',
+        '"escaped\\ntext\\u0061\\U0001F600"',
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_preserves_supported_values(tmp_path: Path, program: Path, value: str) -> None:
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    config = migration.service_config
+    state = migration.service_root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    original = "unrelated = " + value + "\n" + config.read_text()
+    tomllib.loads(original)
+    config.write_text(original)
+    passing(_migrate(host, migration.service_root))
+    equal(host.migrated_config.read_text(), original.replace(str(state), str(host.migrated_state)))
+    equal(config.read_text(), original)
+
+
+@pytest.mark.parametrize(
+    ("scope", "key", "supported"),
+    [
+        ("safety.allowed", '"tool_target:0"', True),
+        ("safety.allowed", '"tool_target:12"', True),
+        ("safety.allowed", '"tool_target:-1"', False),
+        ("safety.allowed", "'tool_target:0'", False),
+        ("safety.allowed", '"feedrate"', False),
+        ("supervisor", '"tool_target:0"', False),
+        ("other", '"tool_target:0"', False),
+        ("", '"tool_target:0"', False),
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_accepts_only_factory_quoted_tool_keys(
+    tmp_path: Path, program: Path, scope: str, key: str, supported: bool
+) -> None:
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    config = migration.service_config
+    root = migration.service_root
+    state = root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    extra = f"{key} = {{ min = 0.0, max = 260.0 }}\n"
+    original = config.read_text()
+    if scope == "supervisor":
+        original += extra
+    elif scope:
+        original += f"[{scope}]\n" + extra
+    else:
+        original = extra + original
+    tomllib.loads(original)
+    config.write_text(original)
+    before = _tree(root)
+    result = _migrate(host, root)
+    if supported:
+        passing(result)
+        equal(
+            host.migrated_config.read_text(), original.replace(str(state), str(host.migrated_state))
+        )
+    else:
+        failing(result, naming="key/value at line")
+        equal(_tree(root), before)
+        equal(host.said(), "", describing="unsupported quoted key refuses before service effects")
+        truth(not host.migrated_config.exists(), describing="no config destination created")
+        truth(not host.migrated_state.exists(), describing="no state destination created")

@@ -87,6 +87,105 @@ trap 'rm -rf "$work"' EXIT INT TERM
 # Preserve every byte except the values of these two plain-string settings.
 # The configured source state is copied, including a nondefault absolute path.
 awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_STATE/skills/printobserver/SKILL.md" '
+    function invalid(line) {
+        print "Unsupported or malformed TOML key/value at line " line > "/dev/stderr"
+        print "Use generated bare keys with supported TOML values, or migrate by hand." > "/dev/stderr"
+        exit 1
+    }
+    function whitespace(    ch) {
+        while (position <= length(input)) {
+            ch=substr(input,position,1)
+            if (ch ~ /[ \t\r\n]/) position++
+            else if (ch == "#") {
+                while (position <= length(input) && substr(input,position,1) != "\n") position++
+            } else break
+        }
+    }
+    function string_value(    quote, triple, ch, escape, digits, count) {
+        quote=substr(input,position,1)
+        triple=(substr(input,position,3) == quote quote quote)
+        position+=triple ? 3 : 1
+        while (position <= length(input)) {
+            ch=substr(input,position,1)
+            if (ch == quote) {
+                if (!triple) { position++; return 1 }
+                if (substr(input,position,3) == quote quote quote) { position+=3; return 1 }
+            }
+            if (ch ~ /[[:cntrl:]]/ && ch != "\t" && !(triple && ch ~ /[\r\n]/)) return 0
+            if (quote == "\042" && ch == "\\") {
+                position++; escape=substr(input,position,1)
+                if (triple && escape ~ /[ \t\r\n]/) {
+                    digits=substr(input,position); sub(/[^ \t\r\n].*$/, "", digits)
+                    if (digits !~ /\n/) return 0
+                    position+=length(digits); continue
+                }
+                if (escape == "u" || escape == "U") {
+                    count=escape == "u" ? 4 : 8
+                    digits=substr(input,position+1,count)
+                    if (length(digits) != count || digits ~ /[^0-9a-fA-F]/) return 0
+                    digits=tolower(digits)
+                    if ((count == 4 && digits ~ /^d[89a-f]/) || (count == 8 && (substr(digits,1,2) != "00" || substr(digits,3,6) > "10ffff" || digits ~ /^0000d[89a-f]/))) return 0
+                    position+=count
+                } else if (escape == "" || index("btnfr\042\\", escape) == 0) return 0
+            }
+            position++
+        }
+        return 0
+    }
+    function parse_value(depth,    ch, start, token, group, key, integer, limit) {
+        if (depth > 64) return 0
+        whitespace(); ch=substr(input,position,1)
+        if (ch == "\042" || ch == "\047") return string_value()
+        if (ch == "[" || ch == "{") {
+            group=++groups; position++; start=position; whitespace()
+            if (ch == "{" && substr(input,start,position-start) ~ /[\r\n#]/) return 0
+            if (substr(input,position,1) == (ch == "[" ? "]" : "}")) { position++; return 1 }
+            while (position <= length(input)) {
+                if (ch == "{") {
+                    start=position
+                    while (substr(input,position,1) ~ /^[A-Za-z0-9_-]$/) position++
+                    key=substr(input,start,position-start)
+                    if (key == "" || (group SUBSEP key) in inline_keys) return 0
+                    inline_keys[group,key]=1
+                    start=position; whitespace()
+                    if (substr(input,start,position-start) ~ /[\r\n#]/) return 0
+                    if (substr(input,position++,1) != "=") return 0
+                }
+                if (!parse_value(depth+1)) return 0
+                start=position; whitespace()
+                if (ch == "{" && substr(input,start,position-start) ~ /[\r\n#]/) return 0
+                token=substr(input,position++,1)
+                if (token == (ch == "[" ? "]" : "}")) return 1
+                if (token != ",") return 0
+                start=position; whitespace()
+                if (ch == "{" && substr(input,start,position-start) ~ /[\r\n#]/) return 0
+                if (ch == "[" && substr(input,position,1) == "]") { position++; return 1 }
+            }
+            return 0
+        }
+        start=position
+        while (position <= length(input) && substr(input,position,1) !~ /[ \t\r\n,#\]}]/) position++
+        token=substr(input,start,position-start)
+        if (token ~ /^(true|false|[+-]?(inf|nan))$/) return 1
+        if (token ~ /^[+-]?(0|[1-9](_?[0-9])*)$/) {
+            integer=token; gsub(/_/, "", integer); sub(/^[+-]/, "", integer)
+            limit=token ~ /^-/ ? "9223372036854775808" : "9223372036854775807"
+            return length(integer) < 19 || (length(integer) == 19 && "x" integer <= "x" limit)
+        }
+        if (token ~ /^0x[0-9a-fA-F](_?[0-9a-fA-F])*$/ || token ~ /^0o[0-7](_?[0-7])*$/ || token ~ /^0b[01](_?[01])*$/) {
+            integer=substr(token,3); gsub(/_/, "", integer); sub(/^0+/, "", integer)
+            if (token ~ /^0b/) return length(integer) <= 63
+            if (token ~ /^0o/) return length(integer) <= 21
+            return length(integer) < 16 || (length(integer) == 16 && substr(integer,1,1) ~ /^[1-7]$/)
+        }
+        return token ~ /^[+-]?(0|[1-9](_?[0-9])*)\.[0-9](_?[0-9])*([eE][+-]?[0-9](_?[0-9])*)?$/ || token ~ /^[+-]?(0|[1-9](_?[0-9])*)[eE][+-]?[0-9](_?[0-9])*$/
+    }
+    function validate(text, line) {
+        input=text; position=1
+        if (!parse_value(0)) invalid(line)
+        whitespace()
+        if (position <= length(input)) invalid(line)
+    }
     # Strings and container values cannot select tables or supply settings.
     function scan_context(text, i, ordinary, ch, three) {
         i=1; ordinary=""
@@ -121,7 +220,22 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
     {
         opaque=(multi != "" || arrays != 0 || objects != 0)
         scan_context($0)
-        if (opaque) { print; next }
+        if (opaque) {
+            pending=pending "\n" $0
+            if (multi == "" && arrays == 0 && objects == 0) { validate(pending, pending_line); pending="" }
+            print; next
+        }
+        if ($0 !~ /^[ \t\r]*(#|$)/ && $0 !~ /^[ \t]*\[/) {
+            factory_tool=(table == "safety.allowed" && $0 ~ /^[ \t]*\042tool_target:[0-9]+\042[ \t]*=/)
+            if (!factory_tool && $0 !~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) invalid(NR)
+            key=$0; sub(/=.*/, "", key); gsub(/[ \t]/, "", key)
+            if (factory_tool) gsub(/\042/, "", key)
+            full_key=(table == "" ? key : table "." key)
+            if (full_key in declared_keys || full_key in declared_tables) invalid(NR)
+            declared_keys[full_key]=1
+            pending=$0; sub(/^[^=]*=/, "", pending); pending_line=NR
+            if (multi == "" && arrays == 0 && objects == 0) { validate(pending, pending_line); pending="" }
+        }
     }
     /^[[:space:]]*\[/ {
         header=$0; sub(/\r$/,"",header)
@@ -136,6 +250,11 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
             print "Duplicate TOML table header at line " NR ": [" table "]" > "/dev/stderr"
             print "Edit the source config into the generated bare/dotted header form, or migrate by hand." > "/dev/stderr"
             exit 1
+        }
+        prefix=""; count=split(table, parts, /[.]/)
+        for (part=1; part<=count; part++) {
+            prefix=prefix (prefix == "" ? "" : ".") parts[part]
+            if (prefix in declared_keys) invalid(NR)
         }
         declared_tables[table]=1
     }
@@ -165,7 +284,7 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
     END {
         if (bad_string) print "Invalid TOML string context at line " bad_string > "/dev/stderr"
         if (multi != "") print "Unclosed TOML string context opened at line " opened > "/dev/stderr"
-        if (arrays != 0 || objects != 0) print "Unbalanced TOML container context" > "/dev/stderr"
+        if (arrays != 0 || objects != 0) print "Unbalanced TOML container context at line " pending_line > "/dev/stderr"
         if (bad_string || multi != "" || arrays != 0 || objects != 0 || states != 1 || skills != 1) exit 1
     }
 ' "$SERVICE_CONFIG" >"$work/config.toml" || die 'The configuration has invalid TOML context, or state_dir or supervisor.skill_path is not a plain string in its required table; nothing was changed. Restore the configuration before migrating.'

@@ -468,7 +468,7 @@ systemctl --user restart printobserver.service
 On macOS:
 
 ```console
-launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
+launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"
 ```
 
 On Windows:

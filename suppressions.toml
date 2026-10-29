@@ -4178,3 +4178,22 @@ rule = "changed_behavior_has_e2e"
 file = "scripts/migrate-service-to-per-user.sh"
 site = "Migration deregistration"
 reason = "The migration journeys use recorded systemctl and launchctl stand-ins and registration files in a --root throwaway layout, matching the approved Windows migration seam: a journey must never disable or deregister a real system service on the machine running it. They assert deregistration occurs only after successful SHA-256 verification and that verification failures retain registration and originals."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_refuses_unsupported_keys_and_invalid_values_before_stop("
+reason = "The task requires migration refusal and preservation journeys beside the existing install journeys. These run the real script with actual configuration and state files, independent standard-library TOML fixture validation, and recorded service-manager boundaries; no parser or filesystem layer is mocked."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_preserves_supported_values("
+reason = "The task requires migration refusal and preservation journeys beside the existing install journeys. These run the real script with actual configuration and state files, independent standard-library TOML fixture validation, and recorded service-manager boundaries; no parser or filesystem layer is mocked."
+
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_accepts_only_factory_quoted_tool_keys("
+reason = "The task requires migration journeys here. This drives the real script on native files with the factory safety-key spelling and unsupported quoted-key forms, checking preservation or refusal before any service or destination change; the parser and filesystem are real."

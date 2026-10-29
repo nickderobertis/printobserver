@@ -974,3 +974,25 @@ def test_unix_migration_cannot_name_another_system_service(
         "scripts/migrate-service-to-per-user.sh", f'{variable}="{before}"', f'{variable}="{after}"'
     )
     refused(service_install(broken.repo), after)
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+def test_launch_agent_activation_accepts_only_the_stated_label_and_verb(
+    tree: Callable[[], Tree], quoted: bool
+) -> None:
+    """Shell-equivalent quoting preserves the exact activation operation and label."""
+    current = 'launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"'
+    spelling = current if quoted else current.replace('"', "")
+    valid = tree()
+    valid.edit(AGENTS, current, spelling)
+    accepted(service_install(valid.repo))
+    for wrong, expected in [
+        (
+            spelling.replace("io.github.nickderobertis.printobserver", "io.github.other"),
+            "io.github.other",
+        ),
+        (spelling.replace("kickstart", "bootout"), "states no"),
+    ]:
+        broken = tree()
+        broken.edit(AGENTS, current, wrong)
+        refused(service_install(broken.repo), expected)

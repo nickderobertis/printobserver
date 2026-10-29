@@ -68,7 +68,8 @@ ACTIVATION_NAMES[ServiceManager.SYSTEMD_USER] = re.compile(
     r"\bsystemctl\s+--user\s+restart\s+(?P<service>\S+)\s*$"
 )
 ACTIVATION_NAMES[ServiceManager.LAUNCHD_AGENT] = re.compile(
-    r"\blaunchctl\s+kickstart\s+-k\s+gui/\$\(id -u\)/(?P<service>[^/\s]+)\s*$"
+    r'\blaunchctl\s+kickstart\s+-k\s+(?P<quote>"?)gui/\$\(id -u\)/'
+    r'(?P<service>[^/\s"]+)(?P=quote)\s*$'
 )
 
 # What each manager's activation command has to look like, quoted back at a

@@ -411,7 +411,7 @@ jobs:
       - id: start-service-launchd-agent
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
+        run: launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"
       - id: install-service
         if: runner.os != 'Windows'
         continue-on-error: true
@@ -498,7 +498,7 @@ jobs:
       - id: start-service-launchd-agent
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
+        run: launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"
       - id: install-service
         if: runner.os != 'Windows'
         continue-on-error: true
@@ -595,7 +595,7 @@ jobs:
       - id: start-service-launchd-agent
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver
+        run: launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"
       - id: install-service
         if: runner.os != 'Windows'
         continue-on-error: true

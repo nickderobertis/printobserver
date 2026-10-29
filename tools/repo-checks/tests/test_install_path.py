@@ -85,7 +85,7 @@ def test_the_section_states_three_routes_and_two_commands_per_manager(committed:
     equal(path.commands[5], "systemctl --user restart printobserver.service")
     equal(
         path.commands[7],
-        "launchctl kickstart -k gui/$(id -u)/io.github.nickderobertis.printobserver",
+        'launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"',
     )
     equal(path.commands[9], PER_USER_RESTART)
     equal(path.commands[11], WINDOWS_ACTIVATION)
