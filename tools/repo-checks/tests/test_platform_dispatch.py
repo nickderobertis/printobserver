@@ -785,6 +785,10 @@ SHELL_PAIR = {
         "io.github.nickderobertis.printobserver.plist",
     ],
 }
+SHELL_PER_USER_INSTALLER = (
+    "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
+    "scripts/install.sh"
+)
 SHELL_INSTALLER = (
     "curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/"
     "scripts/install-service.sh"
@@ -812,8 +816,26 @@ WINDOWS_PAIR = [
 @pytest.mark.parametrize(
     ("platform", "pair"),
     [
-        ("linux-x86_64", [SHELL_INSTALLER, *SHELL_PAIR["systemctl"]]),
-        ("macos-aarch64", [SHELL_INSTALLER, *SHELL_PAIR["launchctl"]]),
+        (
+            "linux-x86_64",
+            [
+                SHELL_PER_USER_INSTALLER,
+                "sh",
+                "systemctl --user restart printobserver.service",
+                SHELL_INSTALLER,
+                *SHELL_PAIR["systemctl"],
+            ],
+        ),
+        (
+            "macos-aarch64",
+            [
+                SHELL_PER_USER_INSTALLER,
+                "sh",
+                "launchctl kickstart -k gui/1234/io.github.nickderobertis.printobserver",
+                SHELL_INSTALLER,
+                *SHELL_PAIR["launchctl"],
+            ],
+        ),
         ("windows-x86_64", WINDOWS_PAIR),
     ],
     ids=["systemd", "launchd", "windows-service"],
@@ -835,6 +857,11 @@ def test_an_install_route_runs_its_familys_steps_waiving_and_reporting_what_it_m
     for name in ("pip", "printobserver", "curl"):
         recording.program(name)
     recording.powershell_commands()
+    recording.pipe_reader("sh")
+    recording.pipe_reader("systemctl", exit_code=1)
+    recording.pipe_reader("launchctl", exit_code=1)
+    (recording.programs / "id").write_text("#!/bin/sh\necho 1234\n", encoding="utf-8")
+    (recording.programs / "id").chmod(0o755)
     # `sudo` fails whatever it is asked: neither the installer nor the start
     # command can succeed unattended, which is why the source waives them.
     recording.pipe_reader("sudo", exit_code=1)
@@ -849,11 +876,9 @@ def test_an_install_route_runs_its_familys_steps_waiving_and_reporting_what_it_m
         describing="what ran",
     )
     contains(said, "and its failure is waived", describing=said)
-    # The per-user installer's text is taken by the stand-in `iex` without a
-    # refusal, which leaves its restart the per-user pair's one failure.
-    installed, started = (
-        ("success", "failure") if platform.startswith("windows-") else ("skipped", "skipped")
-    )
+    # The per-user installer is read by `sh` or `iex` successfully;
+    # its manager refuses the restart on every platform.
+    installed, started = "success", "failure"
     equal(
         summary.read_text(encoding="utf-8"),
         f"{ROUTE}: service installation failure, service startup failure, "

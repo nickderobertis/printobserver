@@ -23,7 +23,7 @@ done
 # Normalize absolute paths before any ancestor walk or overlap comparison.
 normalize() {
     case "$1" in /*) ;; *) die "$1 is not an absolute path; nothing was changed." "Use absolute --root and XDG directory paths, then retry." ;; esac
-    printf '%s\n' "$1" | awk -F/ '{ n=0; for(i=1;i<=NF;i++) { if($i=="" || $i==".") continue; if($i=="..") {if(n>0)n--; continue} a[++n]=$i } printf "/"; for(i=1;i<=n;i++)printf "%s%s",a[i],i<n?"/":""; printf "\n" }'
+    printf '%s\n' "$1" | awk -F/ '{ n=0; for(i=1;i<=NF;i++) { if($i=="" || $i==".") continue; if($i=="..") {if(n>0)n--; continue} a[++n]=$i } printf "/"; for(i=1;i<=n;i++)printf "%s%s",a[i],(i<n?"/":""); printf "\n" }'
 }
 if [ -n "$ROOT" ]; then
     case "$ROOT" in /*) ;; *) ROOT="$PWD/$ROOT" ;; esac
