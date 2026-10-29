@@ -193,9 +193,9 @@ make_parent() {
 }
 make_parent "$(dirname "$USER_CONFIG")" || copy_failed
 make_parent "$(dirname "$USER_STATE")" || copy_failed
-created=true
-# llmlint: ignore[changed_behavior_has_e2e] New state directory race: This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs.
+# A destination created by the operator during stop is not ours to clean.
 mkdir "$USER_STATE" || copy_failed
+created=true
 cp -Rp "$SERVICE_STATE/." "$USER_STATE/" || copy_failed
 # llmlint: ignore[changed_behavior_has_e2e] Copied config write failure: This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs.
 cp "$work/config.toml" "$USER_CONFIG" || copy_failed

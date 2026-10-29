@@ -108,6 +108,8 @@ class Host:
                 'case "$*" in "show --property=LoadState --value "*)\n'
                 'if [ "${REGISTERED:-1}" = 0 ]; then\n'
                 "echo loaded; else echo not-found; fi; exit 0 ;; esac\n"
+                'case "$*" in "stop printobserver.service" | "bootout system/"*)\n'
+                'if [ -n "${STOP_GATE:-}" ]; then IFS= read -r release < "$STOP_GATE"; fi ;; esac\n'
                 f'if [ "{name}" = loginctl ]; then exit "${{LINGER_STATUS:-0}}"; fi\n'
                 f'if [ "{name}" = launchctl ]; then\n'
                 'case "$*" in\n'
@@ -1584,3 +1586,65 @@ def test_per_user_relative_program_directory_is_resolved_from_the_callers_direct
             plistlib.loads(host.definition.read_bytes())["ProgramArguments"],
             [str(executable), "server", "--config", str(host.config)],
         )
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_preserves_a_destination_created_while_the_service_stops(
+    tmp_path: Path, program: Path
+) -> None:
+    """An operator can create state while stop waits; cleanup owns only its own copy."""
+    import threading
+    import time
+
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    state.joinpath("record").write_bytes(b"service record")
+    _minimal_service_config(config, state)
+    before = _tree(state), config.read_bytes()
+    gate = tmp_path / "stop-gate"
+    passing(run(["mkfifo", str(gate)], timeout=30))
+    host.env["STOP_GATE"] = str(gate)
+    stop = (
+        "systemctl stop printobserver.service"
+        if host.system == "Linux"
+        else "launchctl bootout system/io.github.nickderobertis.printobserver"
+    )
+    kept = host.migrated_state / "operator-record"
+    errors: list[BaseException] = []
+
+    def operator() -> None:
+        stopped = False
+        try:
+            deadline = time.monotonic() + 20
+            while stop not in host.said():
+                if time.monotonic() >= deadline:
+                    raise AssertionError("stop did not reach the rendezvous within the hang guard")
+                time.sleep(0.01)
+            stopped = True
+            kept.parent.mkdir(parents=True)
+            kept.parent.chmod(0o750)
+            kept.write_bytes(b"operator record")
+            kept.chmod(0o640)
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            if stopped:
+                with gate.open("w", encoding="utf-8") as release:
+                    release.write("continue\n")
+
+    actor = threading.Thread(target=operator, daemon=True)
+    actor.start()
+    try:
+        result = _migrate(host, root)
+    finally:
+        actor.join(timeout=40)
+    truth(not actor.is_alive(), describing="the actual operator actor finished")
+    equal(errors, [])
+    failing(result, naming="did not verify")
+    truth(kept.is_file(), describing="cleanup preserves the operator's concurrent destination")
+    equal(kept.read_bytes(), b"operator record")
+    equal(kept.parent.stat().st_mode & 0o777, 0o750)
+    equal(kept.stat().st_mode & 0o777, 0o640)
+    equal((_tree(state), config.read_bytes()), before)
+    truth(host.system_definition.is_file(), describing="the system registration remains installed")
+    truth("systemctl disable" not in host.said(), describing="no unverified removal")

@@ -3818,11 +3818,6 @@ file = "scripts/migrate-service-to-per-user.sh"
 site = "Temporary staging rename failure"
 reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
 
-[[suppression]]
-rule = "changed_behavior_has_e2e"
-file = "scripts/migrate-service-to-per-user.sh"
-site = "New state directory race"
-reason = "This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
@@ -4105,3 +4100,9 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_per_user_relative_program_directory_is_resolved_from_the_callers_directory("
 reason = "The task requires real installer journeys beside the existing service-manager journeys in repo-e2e. This case drives the real per-user --to option, executes the installed artifact, checks the manager's absolute executable path and proves refusal of an unsafe relative path before writes."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_preserves_a_destination_created_while_the_service_stops("
+reason = "The task requires real migration journeys in repo-e2e. The existing manager boundary only synchronizes an external stop on a FIFO; a real operator actor creates a destination and retained file using actual filesystem calls. This proves the migration never cleans a destination it did not create, without replacing mkdir, cp or chown."
