@@ -828,6 +828,96 @@ def install_path_section(repo: Repo) -> list[str]:
     findings.extend(_gh_prerequisite_findings(repo))
 
     findings.extend(ip.drifted_statements(path, _restatements(repo)))
+    findings.extend(_migration_contract_findings(repo))
+    return findings
+
+
+def _per_user_paths(source: str, constant: str) -> dict[str, tuple[str, ...]]:
+    """Read the literal configuration and state segments from the Rust layout authority."""
+    declaration = re.search(
+        rf"pub const {constant}: PerUserLocations = PerUserLocations \{{(.*?)\n\}};",
+        source,
+        re.DOTALL,
+    )
+    if declaration is None or not re.search(r'\bbase:\s*"HOME"\s*,', declaration[1]):
+        return {}
+    paths: dict[str, tuple[str, ...]] = {}
+    for field in ("config", "state"):
+        array = re.search(rf"\b{field}:\s*&\[(.*?)\]", declaration[1], re.DOTALL)
+        if array is None or not re.fullmatch(
+            r'\s*"[^"\n]+"\s*(?:,\s*"[^"\n]+"\s*)*,?\s*', array[1]
+        ):
+            return {}
+        segments = tuple(re.findall(r'"([^"\n]+)"', array[1]))
+        if len(segments) < 2:
+            return {}
+        paths[field] = segments
+    return paths
+
+
+def _migration_contract_findings(repo: Repo) -> list[str]:
+    """Reconcile the migration scanner and destinations with their existing authorities."""
+    migration = "scripts/migrate-service-to-per-user.sh"
+    locations = "crates/printobserver/src/locations.rs"
+    missing = [path for path in (migration, locations) if not repo.exists(path)]
+    if missing:
+        return [f"`{path}` is absent: migration contracts cannot be reconciled" for path in missing]
+    script = repo.read(migration)
+    source = repo.read(locations)
+    findings: list[str] = []
+    for platform, constant in (("Linux", "LINUX_PER_USER"), ("Darwin", "MACOS_PER_USER")):
+        paths = _per_user_paths(source, constant)
+        if not paths:
+            findings.append(f"`{locations}` carries no readable HOME-relative `{constant}` layout")
+            continue
+        config, state = paths["config"], paths["state"]
+        if platform == "Linux":
+            expected = {
+                "USER_CONFIG": "${XDG_CONFIG_HOME:-$USER_HOME/"
+                + config[0]
+                + "}/"
+                + "/".join(config[1:]),
+                "USER_STATE": "${XDG_STATE_HOME:-$USER_HOME/"
+                + "/".join(state[:-1])
+                + "}/"
+                + state[-1],
+            }
+        else:
+            expected = {
+                "USER_CONFIG": "$USER_HOME/" + "/".join(config),
+                "USER_STATE": "$USER_HOME/" + "/".join(state),
+            }
+        branches = re.findall(
+            rf"(?m)^[ \t]*{platform}\)[ \t]*([^\n]*(?:USER_CONFIG|USER_STATE)=[^\n]*);;[ \t]*$",
+            script,
+        )
+        assignments = (
+            re.findall(r'\b(USER_CONFIG|USER_STATE)="([^"\n]*)"', branches[0])
+            if len(branches) == 1
+            else []
+        )
+        for field, value in expected.items():
+            carried = [assigned for name, assigned in assignments if name == field]
+            if carried != [value]:
+                findings.append(
+                    f"`{migration}` migration destination `{platform} {field}` is {carried!r}; "
+                    f"`{locations}` `{constant}` requires {value!r}"
+                )
+    install_section = section(repo.agents_md, ip.SECTION_HEADING)
+    tables = re.search(
+        r"The Unix migration accepts only the factory config's tables:"
+        r"(.*?)Each may be declared once",
+        install_section,
+        re.DOTALL,
+    )
+    stated = re.findall(r"`\[([A-Za-z0-9_.-]+)\]`", tables[1]) if tables else []
+    scanners = re.findall(r'\bsplit\("([^"\n]*)", names, " "\)', script)
+    carried_tables = scanners[0].split() if len(scanners) == 1 else []
+    if not stated or not carried_tables or sorted(stated) != sorted(carried_tables):
+        findings.append(
+            f"`{migration}` migration accepted tables differ from AGENTS.md: "
+            f"scanner {sorted(carried_tables)!r}; install-path contract {sorted(stated)!r}"
+        )
     return findings
 
 
