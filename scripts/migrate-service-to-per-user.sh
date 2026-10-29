@@ -158,8 +158,8 @@ case "$SYSTEM" in
     Linux) systemctl stop "$UNIT_NAME" || die "The system unit could not be stopped; nothing was copied." "Run systemctl status $UNIT_NAME as administrator, resolve its reported error and retry." ;;
     Darwin)
         daemon_loaded() {
-            if launchctl print "system/$LAUNCHD_LABEL" >/dev/null 2>&1; then return 0; else status=$?; fi
-            [ "$status" -eq 113 ] || die "The LaunchDaemon status could not be read; nothing was copied." "Run launchctl print system/$LAUNCHD_LABEL as administrator, resolve its reported error and retry."
+            if daemon_answer="$(launchctl print "system/$LAUNCHD_LABEL" 2>&1)"; then return 0; else status=$?; fi
+            [ "$status" -eq 113 ] || die "The LaunchDaemon status could not be read (exit $status): $daemon_answer; nothing was copied." "Run launchctl print system/$LAUNCHD_LABEL as administrator, resolve its reported error and retry."
             return 1
         }
         if daemon_loaded; then
@@ -178,6 +178,7 @@ cleanup_copy() {
     if [ "$created" = true ]; then rm -rf "$USER_STATE"; rm -f "$USER_CONFIG"; fi
 }
 copy_failed() {
+    if [ "$#" -gt 0 ]; then echo "migrate-service-to-per-user.sh: $1" >&2; fi
     cleanup_copy
     die 'The copy failed or did not verify. The service is stopped and still installed; originals are untouched. Restart the system service before retrying.'
 }
@@ -218,10 +219,31 @@ manifest() (
     ' sh {} + >"$work/files" || exit 1
     LC_ALL=C sort "$work/files"
 )
-manifest "$SERVICE_STATE" >"$work/original.sha256" || copy_failed
-manifest "$USER_STATE" >"$work/copy.sha256" || copy_failed
-cmp -s "$work/original.sha256" "$work/copy.sha256" || copy_failed
-cmp -s "$work/config.toml" "$USER_CONFIG" || copy_failed
+manifest "$SERVICE_STATE" >"$work/original.sha256" || copy_failed 'Source state SHA-256 manifest could not be read.'
+manifest "$USER_STATE" >"$work/copy.sha256" || copy_failed 'Copied state SHA-256 manifest could not be read.'
+if ! cmp -s "$work/original.sha256" "$work/copy.sha256"; then
+    # Report the first differing entry, without dumping the entire record.
+    # This is diagnostic only: verification failed, and cleanup follows even
+    # if reading the diagnostic itself fails.
+    awk '
+        FILENAME == ARGV[1] { expected[FNR]=$0; count=FNR; next }
+        {
+            seen=FNR
+            if ($0 != expected[FNR]) {
+                print "Expected state entry: " expected[FNR]
+                print "Copied state entry: " $0
+                reported=1; exit
+            }
+        }
+        END { if (!reported && count > seen) print "Missing copied state entry: " expected[seen+1] }
+    ' "$work/original.sha256" "$work/copy.sha256" >&2 || :
+    copy_failed 'State SHA-256 verification failed.'
+fi
+if ! cmp -s "$work/config.toml" "$USER_CONFIG"; then
+    # cmp identifies the file, byte and line without printing config secrets.
+    cmp "$work/config.toml" "$USER_CONFIG" >&2 || :
+    copy_failed 'Configuration verification failed.'
+fi
 # Removing the system registration is the last mutation, after verification.
 case "$SYSTEM" in
     Linux) systemctl disable "$UNIT_NAME" || die "The copy verified but the system unit could not be disabled." "Disable $UNIT_NAME as administrator before installing the per-user server; both copies remain." ;;

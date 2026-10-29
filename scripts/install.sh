@@ -241,11 +241,11 @@ this script installs."
 # an unloaded label (113) from a loaded job and an unavailable GUI domain.
 agent_loaded() {
     agent_status=0
-    launchctl print "$1" >"$work/agent-query" 2>&1 || agent_status=$?
+    agent_answer="$(launchctl print "$1" 2>&1)" || agent_status=$?
     case "$agent_status" in
         0) return 0 ;;
         113) return 1 ;;
-        *) die "the LaunchAgent could not be queried (exit $agent_status); nothing was replaced" "Run launchctl print $1, correct its reported error and retry." ;;
+        *) die "the LaunchAgent could not be queried (exit $agent_status): $agent_answer; nothing was replaced" "Run launchctl print $1, correct its reported error and retry." ;;
     esac
 }
 

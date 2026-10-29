@@ -591,6 +591,11 @@ def test_migration_refusals_keep_originals_and_registration(
         result,
         naming="did not verify" if refusal.startswith("verification") else "nothing was changed",
     )
+    if refusal == "verification-config":
+        contains(result.stderr or "", "Configuration verification failed")
+    elif refusal in {"verification", "verification-missing"}:
+        contains(result.stderr or "", "State SHA-256 verification failed")
+        contains(result.stderr or "", "database-wal")
     equal(
         _tree(root),
         before,
@@ -616,7 +621,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     import socket
     import time
 
-    from test_service_manager_journey import Systemd, _disabled_services, _unmet
+    from test_service_manager_journey import Launchd, Systemd, _disabled_services, _unmet
 
     if sys.platform not in {"linux", "darwin"}:
         pytest.skip("systemd and launchd are Unix managers")
@@ -757,6 +762,50 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
                     "leave it untouched"
                 )
             installer = str(REPO_ROOT / "scripts/install.sh")
+        # Real isolated definitions exercise the filesystem refusal before
+        # either user manager has been installed or started.
+        if container:
+            container.install()
+            for vendor in (False, True):
+                if vendor:
+                    passing(
+                        container._as_root(
+                            "mount", "-t", "tmpfs", "tmpfs", "/usr/lib/systemd/system"
+                        )
+                    )
+                    passing(
+                        container._as_root(
+                            "mv",
+                            "/etc/systemd/system/printobserver.service",
+                            "/usr/lib/systemd/system/printobserver.service",
+                        )
+                    )
+                try:
+                    refused = user("sh", installer)
+                    failing(refused, naming="the system printobserver.service is installed")
+                    contains(refused.stderr or "", "migrate-service-to-per-user.sh")
+                    for path in (home / ".local/bin/printobserver", config, state):
+                        checked("test", "!", "-e", str(path))
+                finally:
+                    if vendor:
+                        passing(container._as_root("umount", "/usr/lib/systemd/system"))
+            passing(container._as_root("systemctl", "daemon-reload"))
+        else:
+            isolated = Launchd(program, None)
+            isolated.prepare()
+            try:
+                isolated.install()
+                refused = user("sh", installer)
+                failing(refused, naming="the LaunchDaemon is installed")
+                contains(refused.stderr or "", "migrate-service-to-per-user.sh")
+                truth(
+                    not any(
+                        path.exists() for path in (home / ".local/bin/printobserver", config, state)
+                    ),
+                    describing="the filesystem refusal wrote no per-user files",
+                )
+            finally:
+                isolated.remove()
         if container is None:
             domain = f"gui/{_uid()}"
             job = f"{domain}/io.github.nickderobertis.printobserver"
@@ -1479,6 +1528,9 @@ def test_launchctl_query_and_pending_stop_preserve_the_installation(
     result = host.install() if scope == "agent" else _migrate(host, root)
     failing(result, naming="nothing was replaced" if scope == "agent" else "nothing was copied")
     contains(result.stderr or "", "launchctl print" if failure == "query" else "stop")
+    if failure == "query":
+        contains(result.stderr or "", "manager query refused")
+        contains(result.stderr or "", "exit 1")
     equal(_tree(root), before)
     truth("bootstrap" not in host.said().split(query, 1)[-1], describing="no replacement job")
 
@@ -1506,3 +1558,29 @@ def test_initial_registration_query_failure_changes_no_user_files(
     truth(
         "--user stop" not in host.said(), describing="refused before interrupting the user server"
     )
+
+
+@pytest.mark.parametrize("directory", ["relative/bin", 'relative"unsafe'])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_per_user_relative_program_directory_is_resolved_from_the_callers_directory(
+    tmp_path: Path, program: Path, directory: str
+) -> None:
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    result = host.install("--to", directory)
+    if '"' in directory:
+        failing(result, naming="path carries")
+        equal(_tree(host.home), {})
+        return
+    passing(result)
+    executable = host.home / directory / "printobserver"
+    passing(run([str(executable), "--version"], timeout=30))
+    if host.system == "Linux":
+        contains(
+            host.definition.read_text(),
+            f'ExecStart="{executable}" server --config "{host.config}"',
+        )
+    else:
+        equal(
+            plistlib.loads(host.definition.read_bytes())["ProgramArguments"],
+            [str(executable), "server", "--config", str(host.config)],
+        )

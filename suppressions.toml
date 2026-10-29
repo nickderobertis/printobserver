@@ -4087,3 +4087,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_initial_registration_query_failure_changes_no_user_files("
 reason = "The task requires real installer journeys beside the existing service-manager journeys in repo-e2e. This case drives the real installer against a refused manager query before both first installation and upgrade, proving no files or running registration are replaced."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "Required platform e2e"
+reason = "The task requires preserving these client-only installer journeys in repo-e2e beside the per-user and isolated-service journeys. This direct real-script invocation cannot inherit the helper call suppression; moving the shared graph edge is outside the installer task."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_install_script_journey.py"
+site = "Required absent-host e2e"
+reason = "The task requires preserving these client-only installer journeys in repo-e2e beside the per-user and isolated-service journeys. This direct real-script invocation cannot inherit the helper call suppression; moving the shared graph edge is outside the installer task."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_per_user_relative_program_directory_is_resolved_from_the_callers_directory("
+reason = "The task requires real installer journeys beside the existing service-manager journeys in repo-e2e. This case drives the real per-user --to option, executes the installed artifact, checks the manager's absolute executable path and proves refusal of an unsafe relative path before writes."
