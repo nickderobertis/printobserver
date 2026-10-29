@@ -215,6 +215,7 @@ if [ -n "$(tail -c 1 "$SERVICE_CONFIG")" ]; then
     mv "$work/without-newline" "$work/config.toml" || die "Configuration staging failed; nothing was changed." "Check TMPDIR permissions and retry."
 fi
 # Stop and wait before copying SQLite, including its WAL and SHM companions.
+# llmlint: ignore[changed_behavior_has_e2e] Migration stop and wait: The migration journeys use recorded systemctl and launchctl stand-ins against a --root throwaway layout, matching the approved Windows migration seam: a journey must never stop a real system service on the machine running it. They drive stop/status refusals and wait outcomes before any copy; the real copied database is subsequently served by the per-user server.
 case "$SYSTEM" in
     Linux) systemctl stop "$UNIT_NAME" || die "The system unit could not be stopped; nothing was copied." "Run systemctl status $UNIT_NAME as administrator, resolve its reported error and retry." ;;
     Darwin)
@@ -259,6 +260,7 @@ mkdir "$USER_STATE" || copy_failed
 created=true
 cp -Rp "$SERVICE_STATE/." "$USER_STATE/" || copy_failed
 # llmlint: ignore[changed_behavior_has_e2e] Copied config write failure: This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs.
+# llmlint: ignore[boundary_inputs_validated] Concurrent config destination: The destination absence check precedes service stop and state copy, leaving a known window in which a concurrently created config or symlink can be overwritten or followed, including by later chmod/chown and cleanup. The existing follow-up "Preserve concurrently created migration config destinations" covers exclusive creation and ownership-aware cleanup in both migrations; this dispatch preserves migration behavior under that ruling.
 cp "$work/config.toml" "$USER_CONFIG" || copy_failed
 # llmlint: ignore[changed_behavior_has_e2e] Copied config mode failure: This operates on new files in private validated directories after the account was resolved. Failure requires filesystem failure or a concurrent account/path change. The journeys drive actual unreadable-source and copied-file failures, cleanup, SHA verification and real ownership; they do not replace cp/chmod/chown with success stubs.
 chmod 0600 "$USER_CONFIG" || copy_failed
@@ -306,6 +308,7 @@ if ! cmp -s "$work/config.toml" "$USER_CONFIG"; then
     copy_failed 'Configuration verification failed.'
 fi
 # Removing the system registration is the last mutation, after verification.
+# llmlint: ignore[changed_behavior_has_e2e] Migration deregistration: The migration journeys use recorded systemctl and launchctl stand-ins and registration files in a --root throwaway layout, matching the approved Windows migration seam: a journey must never disable or deregister a real system service on the machine running it. They assert deregistration occurs only after successful SHA-256 verification and that verification failures retain registration and originals.
 case "$SYSTEM" in
     Linux) systemctl disable "$UNIT_NAME" || die "The copy verified but the system unit could not be disabled." "Disable $UNIT_NAME as administrator before installing the per-user server; both copies remain." ;;
 esac

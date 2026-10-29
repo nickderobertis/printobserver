@@ -4160,3 +4160,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_generated_bare_and_dotted_tables_survive_migration("
 reason = "The task requires real migration journeys in repo-e2e. This case drives actual generated-form or explicitly unsupported headers through the real script, verifies syntax independently with standard TOML, and checks preservation or refusal before stop without parser or filesystem mocks."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Migration stop and wait"
+reason = "The migration journeys use recorded systemctl and launchctl stand-ins against a --root throwaway layout, matching the approved Windows migration seam: a journey must never stop a real system service on the machine running it. They drive stop/status refusals and wait outcomes before any copy; the real copied database is subsequently served by the per-user server."
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Concurrent config destination"
+reason = "The destination absence check precedes service stop and state copy, leaving a known window in which a concurrently created config or symlink can be overwritten or followed, including by later chmod/chown and cleanup. The existing follow-up \"Preserve concurrently created migration config destinations\" covers exclusive creation and ownership-aware cleanup in both migrations; this dispatch preserves migration behavior under that ruling."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "scripts/migrate-service-to-per-user.sh"
+site = "Migration deregistration"
+reason = "The migration journeys use recorded systemctl and launchctl stand-ins and registration files in a --root throwaway layout, matching the approved Windows migration seam: a journey must never disable or deregister a real system service on the machine running it. They assert deregistration occurs only after successful SHA-256 verification and that verification failures retain registration and originals."
