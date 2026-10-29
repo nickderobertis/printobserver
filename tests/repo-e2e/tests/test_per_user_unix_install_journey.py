@@ -1129,6 +1129,9 @@ def test_installer_provisioning_failure_explains_the_real_filesystem_error(
             expected = "could not be created"
         case "config-write":
             host.config.parent.mkdir(parents=True)
+            # macOS keeps state inside the config directory; let directory setup
+            # finish before refusing the subsequent config-file write.
+            host.state.mkdir(parents=True)
             restricted = host.config.parent
             restricted.chmod(0o500)
             expected = "could not be written"

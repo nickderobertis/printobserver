@@ -82,7 +82,7 @@ for destination in "$(dirname "$USER_CONFIG")" "$(dirname "$USER_STATE")"; do
         ancestor="$(dirname "$ancestor")"
     done
 done
-work="$(mktemp -d)" || die "Temporary staging could not be created; nothing was changed." "Free space in TMPDIR or select a writable TMPDIR, then retry."
+work="$(mktemp -d "${TMPDIR:-/tmp}/printobserver.XXXXXXXXXX")" || die "Temporary staging could not be created; nothing was changed." "Free space in TMPDIR or select a writable TMPDIR, then retry."
 trap 'rm -rf "$work"' EXIT INT TERM
 # Preserve every byte except the values of these two plain-string settings.
 # The configured source state is copied, including a nondefault absolute path.

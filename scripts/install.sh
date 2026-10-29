@@ -174,7 +174,7 @@ else
     which="the newest release"
 fi
 
-work="$(mktemp -d)" || die "a temporary download directory could not be created" "Free space in TMPDIR or select a writable TMPDIR, then retry."
+work="$(mktemp -d "${TMPDIR:-/tmp}/printobserver.XXXXXXXXXX")" || die "a temporary download directory could not be created" "Free space in TMPDIR or select a writable TMPDIR, then retry."
 trap 'rm -rf "$work"' EXIT INT TERM
 
 # One way of obtaining a file, whichever kind of place the release is in. A
