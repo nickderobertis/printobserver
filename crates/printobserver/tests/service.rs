@@ -831,7 +831,8 @@ fn each_managers_definition_says_what_the_install_path_and_the_policy_state() {
         // manager, and the installer names that manager's own start command.
         assert!(
             agents.lines().any(|line| line.starts_with("- `")
-                && line.contains(&format!("service manager `{spelled}`, install path: yes"))),
+                && line.contains(&format!("service manager `{spelled}`"))
+                && line.ends_with("install path: yes")),
             "AGENTS.md's supported-platform list targets no `{spelled}` platform"
         );
         let pair = manager.pair();

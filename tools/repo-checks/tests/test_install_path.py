@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
 from closures import closure
 from repo_checks import install_path as ip
 from repo_checks.checks_ci import install_path_section
@@ -79,11 +80,16 @@ def test_the_section_states_three_routes_and_two_commands_per_manager(committed:
         ["pip install printobserver-cli", "npm install -g printobserver-cli", FETCH],
     )
     equal(path.routes[2].commands[1], PINNED)
-    equal(len(path.commands), 8)
+    equal(len(path.commands), 12)
     equal(path.commands[1], "sudo systemctl enable --now printobserver.service")
     equal(path.commands[3], LAUNCHD_START)
-    equal(path.commands[5], PER_USER_RESTART)
-    equal(path.commands[7], WINDOWS_ACTIVATION)
+    equal(path.commands[5], "systemctl --user restart printobserver.service")
+    equal(
+        path.commands[7],
+        'launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"',
+    )
+    equal(path.commands[9], PER_USER_RESTART)
+    equal(path.commands[11], WINDOWS_ACTIVATION)
 
 
 def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
@@ -102,7 +108,14 @@ def test_the_two_commands_are_read_through_the_platforms_own_service_manager(
 
     equal(
         sorted(path.service_commands),
-        ["launchd", "systemd", "windows-scheduled-task", "windows-service"],
+        [
+            "launchd",
+            "launchd-agent",
+            "systemd",
+            "systemd-user",
+            "windows-scheduled-task",
+            "windows-service",
+        ],
         describing="the managers stated",
     )
     equal(
@@ -466,6 +479,10 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
             SKILL_INSTALL,
             WINDOWS_SKILL_INSTALL,
             PER_USER_SKILL_INSTALL,
+            "gh skill install nickderobertis/printobserver printobserver --dir "
+            '"${XDG_STATE_HOME:-$HOME/.local/state}/printobserver/skills"',
+            "gh skill install nickderobertis/printobserver printobserver --dir "
+            '"$HOME/Library/Application Support/printobserver/state/skills"',
             "printobserver credential issue",
             WINDOWS_CREDENTIAL_ISSUE,
             "sudo npm install -g @anthropic-ai/claude-code",
@@ -473,6 +490,8 @@ def test_the_section_states_how_the_harness_is_signed_in(committed: Repo) -> Non
             SIGN_IN,
             WINDOWS_SIGN_IN,
             "printobserver sign-in",
+            "npm install -g @anthropic-ai/claude-code",
+            "npm install -g @openai/codex",
         ),
     )
     for command in path.sign_in:
@@ -706,3 +725,204 @@ def test_a_migration_fetched_from_a_path_the_policy_does_not_declare_is_refused(
     findings = install_path_section(broken.repo)
 
     refused(findings, "fetches `scripts/migrate.ps1`")
+
+
+def test_readme_cannot_change_the_recommended_unix_restart(tree: Callable[[], Tree]) -> None:
+    """The README's recommended manager command comes from the authoritative section."""
+    broken = tree()
+    broken.edit(
+        "README.md",
+        "systemctl --user restart printobserver.service",
+        "systemctl --user restart other.service",
+    )
+    refused(install_path_section(broken.repo), "other.service")
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "platform", "field"),
+    [
+        (
+            'config: &[".config", "printobserver", "config.toml"]',
+            'config: &[".settings", "printobserver", "config.toml"]',
+            "Linux",
+            "USER_CONFIG",
+        ),
+        (
+            'state: &[".local", "state", "printobserver"]',
+            'state: &[".local", "record", "printobserver"]',
+            "Linux",
+            "USER_STATE",
+        ),
+        (
+            'config: &[\n        "Library",\n        "Application Support",',
+            'config: &[\n        "Library",\n        "Preferences",',
+            "Darwin",
+            "USER_CONFIG",
+        ),
+        (
+            'state: &["Library", "Application Support", "printobserver", "state"]',
+            'state: &["Library", "Application Support", "printobserver", "record"]',
+            "Darwin",
+            "USER_STATE",
+        ),
+    ],
+)
+def test_migration_layout_authority_changes_require_matching_destinations(
+    tree: Callable[[], Tree], before: str, after: str, platform: str, field: str
+) -> None:
+    """Changing either platform's authoritative config or state invalidates the old migration."""
+    changed = tree()
+    source = "crates/printobserver/src/locations.rs"
+    changed.edit(source, before, after)
+    refused(install_path_section(changed.repo), f"migration destination `{platform} {field}`")
+    changed.edit(source, after, before)
+    accepted(install_path_section(changed.repo))
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "platform", "field"),
+    [
+        (
+            'USER_CONFIG="${XDG_CONFIG_HOME:-$USER_HOME/.config}/printobserver/config.toml"',
+            'USER_CONFIG="${XDG_CONFIG_HOME:-$USER_HOME/.settings}/printobserver/config.toml"',
+            "Linux",
+            "USER_CONFIG",
+        ),
+        (
+            'USER_STATE="${XDG_STATE_HOME:-$USER_HOME/.local/state}/printobserver"',
+            'USER_STATE="${XDG_STATE_HOME:-$USER_HOME/.local/record}/printobserver"',
+            "Linux",
+            "USER_STATE",
+        ),
+        (
+            'USER_CONFIG="$USER_HOME/Library/Application Support/printobserver/config.toml"',
+            'USER_CONFIG="$USER_HOME/Library/Preferences/printobserver/config.toml"',
+            "Darwin",
+            "USER_CONFIG",
+        ),
+        (
+            'USER_STATE="$USER_HOME/Library/Application Support/printobserver/state"',
+            'USER_STATE="$USER_HOME/Library/Application Support/printobserver/record"',
+            "Darwin",
+            "USER_STATE",
+        ),
+    ],
+)
+def test_migration_destination_changes_must_follow_the_layout_authority(
+    tree: Callable[[], Tree], before: str, after: str, platform: str, field: str
+) -> None:
+    """Independently drifting either destination is refused, rather than blessed by fixtures."""
+    changed = tree()
+    script = "scripts/migrate-service-to-per-user.sh"
+    changed.edit(script, before, after)
+    refused(install_path_section(changed.repo), f"migration destination `{platform} {field}`")
+    changed.edit(script, after, before)
+    accepted(install_path_section(changed.repo))
+
+
+@pytest.mark.parametrize(
+    ("place", "before", "after"),
+    [
+        ("AGENTS.md", "optional `[camera]`, `[obico]`", "optional `[photos]`, `[obico]`"),
+        (
+            "scripts/migrate-service-to-per-user.sh",
+            "safety.actions camera obico spools api",
+            "safety.actions photos obico spools api",
+        ),
+    ],
+)
+def test_migration_tables_must_match_the_authoritative_install_path(
+    tree: Callable[[], Tree], place: str, before: str, after: str
+) -> None:
+    """Changing the stated table set or its scanner restatement independently is refused."""
+    changed = tree()
+    changed.edit(place, before, after)
+    refused(install_path_section(changed.repo), "migration accepted tables differ")
+    changed.edit(place, after, before)
+    accepted(install_path_section(changed.repo))
+
+
+@pytest.mark.parametrize(
+    "place",
+    ["scripts/migrate-service-to-per-user.sh", "crates/printobserver/src/locations.rs"],
+)
+def test_migration_contract_sources_cannot_disappear(tree: Callable[[], Tree], place: str) -> None:
+    """Missing either input refuses reconciliation rather than silently skipping it."""
+    changed = tree()
+    original = changed.read(place)
+    changed.remove(place)
+    refused(install_path_section(changed.repo), f"`{place}` is absent")
+    changed.write(place, original)
+    accepted(install_path_section(changed.repo))
+
+
+@pytest.mark.parametrize(
+    ("place", "before", "after", "finding"),
+    [
+        (
+            "crates/printobserver/src/locations.rs",
+            "pub const LINUX_PER_USER:",
+            "pub const RENAMED_PER_USER:",
+            "no readable HOME-relative `LINUX_PER_USER`",
+        ),
+        (
+            "crates/printobserver/src/locations.rs",
+            'base: "HOME",',
+            'base: "OTHER",',
+            "no readable HOME-relative",
+        ),
+        (
+            "crates/printobserver/src/locations.rs",
+            'config: &[".config", "printobserver", "config.toml"]',
+            'config: &[".config"]',
+            "no readable HOME-relative `LINUX_PER_USER`",
+        ),
+        (
+            "crates/printobserver/src/locations.rs",
+            'config: &[".config", "printobserver", "config.toml"]',
+            'config: &[CONFIG_HOME, "printobserver", "config.toml"]',
+            "no readable HOME-relative `LINUX_PER_USER`",
+        ),
+        (
+            "crates/printobserver/src/locations.rs",
+            'config: &[".config", "printobserver", "config.toml"]',
+            'configuration: &[".config", "printobserver", "config.toml"]',
+            "no readable HOME-relative `LINUX_PER_USER`",
+        ),
+        (
+            "scripts/migrate-service-to-per-user.sh",
+            "Linux) USER_CONFIG=",
+            "Other) USER_CONFIG=",
+            "migration destination `Linux USER_CONFIG`",
+        ),
+        (
+            "AGENTS.md",
+            "The Unix migration accepts only the factory config's tables:",
+            "The accepted tables are:",
+            "migration accepted tables differ",
+        ),
+        (
+            "scripts/migrate-service-to-per-user.sh",
+            ', names, " ")',
+            ', renamed, " ")',
+            "migration accepted tables differ",
+        ),
+        (
+            "scripts/migrate-service-to-per-user.sh",
+            "octoprint supervisor ingress safety safety.allowed safety.actions "
+            "camera obico spools api",
+            "",
+            "migration accepted tables differ",
+        ),
+    ],
+)
+def test_migration_contract_readers_fail_closed_on_unsupported_declarations(
+    tree: Callable[[], Tree], place: str, before: str, after: str, finding: str
+) -> None:
+    """A source rewrite that the reconciliation cannot read must not disable its verdict."""
+    changed = tree()
+    original = changed.read(place)
+    changed.edit(place, before, after)
+    refused(install_path_section(changed.repo), finding)
+    changed.write(place, original)
+    accepted(install_path_section(changed.repo))

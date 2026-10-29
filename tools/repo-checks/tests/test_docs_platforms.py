@@ -70,9 +70,11 @@ def test_a_document_naming_a_platform_the_list_gained_is_accepted(
     grown.edit(
         "AGENTS.md",
         "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
+        "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+        "per-user manager `systemd-user`, install path: yes\n",
         "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+        "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+        "per-user manager `systemd-user`, install path: yes\n"
         "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
         "`riscv64gc-unknown-linux-gnu`, service manager `systemd`, install path: no — "
         "brought up in a later change\n",

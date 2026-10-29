@@ -28,7 +28,11 @@ fn run(arguments: &[&str]) -> (Option<i32>, String) {
 
 /// One invocation of the built program under the environment given.
 fn running(arguments: &[&str], environment: &[(&str, &str)]) -> (Option<i32>, String) {
+    let home = tempfile::TempDir::new().expect("an invocation's own configuration home");
     let mut process = Command::new(env!("CARGO_BIN_EXE_printobserver"));
+    for name in ["HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA"] {
+        process.env(name, home.path());
+    }
     process
         .args(arguments)
         .env_remove("PRINTOBSERVER_SERVER")

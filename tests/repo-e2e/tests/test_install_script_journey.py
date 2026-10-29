@@ -153,8 +153,9 @@ def staged(tmp_path: Path) -> Path:
 def _script(staged: Path, home: Path, *arguments: str) -> tuple[int, str]:
     """Run the script under a home of this journey's own, against a staged release."""
     environment = clean_environment(HOME=str(home), PRINTOBSERVER_RELEASE_BASE=str(staged))
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required client-only location.
     result = shell_run(
-        ["sh", str(REPO_ROOT / SCRIPT), *arguments],
+        ["sh", str(REPO_ROOT / SCRIPT), "--client-only", *arguments],
         cwd=home,
         env=environment,
         timeout=600,
@@ -297,7 +298,10 @@ def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_star
         PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
     )
 
-    result = shell_run(["sh", str(REPO_ROOT / SCRIPT)], cwd=home, env=environment, timeout=600)
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required platform e2e
+    result = shell_run(
+        ["sh", str(REPO_ROOT / SCRIPT), "--client-only"], cwd=home, env=environment, timeout=600
+    )
     said = (result.stdout or "") + (result.stderr or "")
 
     passing((result.returncode, said), describing=f"the install script on {system}/{machine}")
@@ -330,7 +334,10 @@ def test_a_platform_it_publishes_nothing_for_stops_with_a_next_action(
         PRINTOBSERVER_RELEASE_BASE=str(staged),
         PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
     )
-    result = shell_run(["sh", str(REPO_ROOT / SCRIPT)], cwd=home, env=environment, timeout=600)
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required absent-host e2e
+    result = shell_run(
+        ["sh", str(REPO_ROOT / SCRIPT), "--client-only"], cwd=home, env=environment, timeout=600
+    )
     said = (result.stdout or "") + (result.stderr or "")
 
     failing((result.returncode, said), naming="publishes no program for")

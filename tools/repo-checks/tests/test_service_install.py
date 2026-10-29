@@ -938,3 +938,61 @@ def test_a_script_asking_after_the_service_by_another_name_is_refused(
     findings = service_install(broken.repo)
 
     refused(findings, f"`{script}` names the service `observer`")
+
+
+@pytest.mark.parametrize(
+    "manager,setting",
+    [
+        ("systemd-user", "RestartSec=5"),
+        ("systemd-user", "loginctl enable-linger"),
+        ("launchd-agent", "<key>ThrottleInterval</key><integer>5</integer>"),
+    ],
+)
+def test_per_user_unix_installer_cannot_drop_its_lifecycle_contract(
+    tree: Callable[[], Tree], manager: str, setting: str
+) -> None:
+    """The recommended Unix install retains every required manager setting."""
+    equal(installer_for(tree().repo, manager), "scripts/install.sh")
+    broken = tree()
+    broken.edit("scripts/install.sh", setting, "removed-setting")
+    refused(service_install(broken.repo), setting)
+
+
+@pytest.mark.parametrize(
+    "variable,before,after",
+    [
+        ("UNIT_NAME", "printobserver.service", "other.service"),
+        ("LAUNCHD_LABEL", "io.github.nickderobertis.printobserver", "io.github.other"),
+    ],
+)
+def test_unix_migration_cannot_name_another_system_service(
+    tree: Callable[[], Tree], variable: str, before: str, after: str
+) -> None:
+    """Both migration names are reconciled against the authoritative isolated pairs."""
+    broken = tree()
+    broken.edit(
+        "scripts/migrate-service-to-per-user.sh", f'{variable}="{before}"', f'{variable}="{after}"'
+    )
+    refused(service_install(broken.repo), after)
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+def test_launch_agent_activation_accepts_only_the_stated_label_and_verb(
+    tree: Callable[[], Tree], quoted: bool
+) -> None:
+    """Shell-equivalent quoting preserves the exact activation operation and label."""
+    current = 'launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"'
+    spelling = current if quoted else current.replace('"', "")
+    valid = tree()
+    valid.edit(AGENTS, current, spelling)
+    accepted(service_install(valid.repo))
+    for wrong, expected in [
+        (
+            spelling.replace("io.github.nickderobertis.printobserver", "io.github.other"),
+            "io.github.other",
+        ),
+        (spelling.replace("kickstart", "bootout"), "states no"),
+    ]:
+        broken = tree()
+        broken.edit(AGENTS, current, wrong)
+        refused(service_install(broken.repo), expected)

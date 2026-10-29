@@ -24,14 +24,10 @@
 //!
 //! # The per-user install
 //!
-//! On Windows the recommended install is the user's own rather than a
-//! service's: the program, its configuration and its state all under the
-//! user's local application data, with no elevation at any point.
-//! [`WINDOWS_PER_USER`] spells where, relative to `%LOCALAPPDATA%`, and
-//! [`per_user_config`] answers the file it writes when this build's platform
-//! has such an install and the variable it lives under is set. A command that
-//! names no configuration reads that file when it is there, and the service's
-//! own when it is not.
+//! The recommended install runs as the operator on every platform. Commands
+//! read its configuration when present, then fall back to the isolated service.
+//! [`LINUX_PER_USER`] and [`MACOS_PER_USER`] spell the HOME-relative defaults;
+//! Linux additionally honors `XDG_CONFIG_HOME` and `XDG_STATE_HOME`.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +83,28 @@ pub struct PerUserLocations {
     /// one program.
     pub home: &'static [&'static str],
 }
+
+/// HOME-relative defaults for Linux; configuration and state honor the XDG
+/// base directories when set.
+pub const LINUX_PER_USER: PerUserLocations = PerUserLocations {
+    base: "HOME",
+    config: &[".config", "printobserver", "config.toml"],
+    state: &[".local", "state", "printobserver"],
+    home: &[".local", "bin"],
+};
+
+/// HOME-relative locations for the macOS `LaunchAgent` install.
+pub const MACOS_PER_USER: PerUserLocations = PerUserLocations {
+    base: "HOME",
+    config: &[
+        "Library",
+        "Application Support",
+        "printobserver",
+        "config.toml",
+    ],
+    state: &["Library", "Application Support", "printobserver", "state"],
+    home: &[".local", "bin"],
+};
 
 /// Where a per-user install keeps them on Windows: under `%LOCALAPPDATA%`,
 /// with the profile's own permissions.
@@ -151,7 +169,9 @@ pub fn config_home_of(
         // same on a Windows host resolving it — where `/srv` has no drive.
         Family::Unix => set_to_something(read, "XDG_CONFIG_HOME")
             .filter(|home| home.has_root())
-            .or_else(|| set_to_something(read, "HOME").map(|home| home.join(".config"))),
+            .or_else(|| {
+                set_to_something(read, "HOME").map(|home| home.join(LINUX_PER_USER.config[0]))
+            }),
         Family::MacOs => set_to_something(read, "HOME")
             .map(|home| home.join("Library").join("Application Support")),
         Family::Windows => set_to_something(read, "APPDATA"),
@@ -179,8 +199,7 @@ pub fn operator_client_config() -> Option<std::path::PathBuf> {
 /// Where one family's per-user install keeps its configuration, read from that
 /// family's own variables through `read`.
 ///
-/// Windows alone has a per-user install, so every other family answers none.
-/// Absent too when the variable it lives under is not set.
+/// Absent when the configuration home cannot be resolved.
 #[must_use]
 pub fn per_user_config_of(
     family: Family,
@@ -193,7 +212,19 @@ pub fn per_user_config_of(
                 .iter()
                 .fold(base, |path, segment| path.join(segment))
         }),
-        Family::Unix | Family::MacOs => None,
+        Family::Unix => config_home_of(family, read).map(|base| {
+            LINUX_PER_USER
+                .config
+                .iter()
+                .skip(1)
+                .fold(base, |path, segment| path.join(segment))
+        }),
+        Family::MacOs => set_to_something(read, MACOS_PER_USER.base).map(|base| {
+            MACOS_PER_USER
+                .config
+                .iter()
+                .fold(base, |path, segment| path.join(segment))
+        }),
     }
 }
 
@@ -233,8 +264,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{
-        FAMILY, Family, HERE, LINUX, Locations, MACOS, WINDOWS, WINDOWS_PER_USER, config_home_of,
-        per_user_config_of,
+        FAMILY, Family, HERE, LINUX, LINUX_PER_USER, Locations, MACOS, MACOS_PER_USER, WINDOWS,
+        WINDOWS_PER_USER, config_home_of, per_user_config_of,
     };
 
     /// An environment holding exactly these variables.
@@ -310,10 +341,9 @@ mod tests {
         assert_eq!(config_home_of(Family::Windows, &holding(&[])), None);
     }
 
-    /// Windows keeps a per-user install's configuration under
-    /// `%LOCALAPPDATA%`, and no other family has a per-user install.
+    /// Every family resolves the per-user configuration from its own home.
     #[test]
-    fn only_windows_has_a_per_user_configuration_under_local_application_data() {
+    fn each_family_resolves_its_per_user_configuration() {
         let local = holding(&[
             ("LOCALAPPDATA", r"C:\Users\op\AppData\Local"),
             ("HOME", "/home/op"),
@@ -327,8 +357,16 @@ mod tests {
             )
         );
         assert_eq!(per_user_config_of(Family::Windows, &holding(&[])), None);
-        assert_eq!(per_user_config_of(Family::Unix, &local), None);
-        assert_eq!(per_user_config_of(Family::MacOs, &local), None);
+        assert_eq!(
+            per_user_config_of(Family::Unix, &local),
+            Some(PathBuf::from("/home/op/.config/printobserver/config.toml"))
+        );
+        assert_eq!(
+            per_user_config_of(Family::MacOs, &local),
+            Some(PathBuf::from(
+                "/home/op/Library/Application Support/printobserver/config.toml"
+            ))
+        );
     }
 
     /// The per-user locations, as `scripts/install.ps1` writes them.
@@ -380,6 +418,56 @@ mod tests {
             .and_then(|rest| rest.strip_suffix('"'))
             .unwrap_or_else(|| panic!("the installer assigns no {variable}"))
             .replace("$PROGRAM", "printobserver")
+    }
+
+    /// Reconcile the public layout with the actual shell assignments too.
+    #[test]
+    fn unix_per_user_layouts_match_the_installer() {
+        let installer = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../scripts/install.sh"
+        ))
+        .expect("the installer reads");
+        let assignments = |name: &str| -> Vec<String> {
+            let prefix = format!("{name}=\"");
+            installer
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix(&prefix))
+                .filter_map(|value| value.strip_suffix('"'))
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(
+            assignments("DEFAULT_DIRECTORY"),
+            [format!("$HOME/{}", LINUX_PER_USER.home.join("/"))]
+        );
+        assert_eq!(LINUX_PER_USER.home, MACOS_PER_USER.home);
+        assert_eq!(
+            assignments("CONFIG_HOME"),
+            [
+                format!("${{XDG_CONFIG_HOME:-$HOME/{}}}", LINUX_PER_USER.config[0]),
+                format!("$HOME/{}", MACOS_PER_USER.config[..2].join("/")),
+            ]
+        );
+        assert_eq!(LINUX_PER_USER.config[1..], MACOS_PER_USER.config[2..]);
+        assert_eq!(
+            assignments("RUNTIME_CONFIG"),
+            [format!(
+                "$CONFIG_HOME/{}",
+                LINUX_PER_USER.config[1..].join("/")
+            )]
+        );
+        assert_eq!(
+            assignments("RUNTIME_STATE"),
+            [
+                format!(
+                    "${{XDG_STATE_HOME:-$HOME/{}}}/{}",
+                    LINUX_PER_USER.state[..2].join("/"),
+                    LINUX_PER_USER.state[2]
+                ),
+                format!("$CONFIG_HOME/{}", MACOS_PER_USER.state[2..].join("/")),
+            ]
+        );
     }
 
     /// Linux keeps the answers this program has always given.
@@ -541,12 +629,24 @@ mod tests {
         for (platform, config, state, program) in [
             (
                 "Linux",
+                format!("$HOME/{}", LINUX_PER_USER.config.join("/")),
+                format!("$HOME/{}", LINUX_PER_USER.state.join("/")),
+                format!("$HOME/{}/printobserver", LINUX_PER_USER.home.join("/")),
+            ),
+            (
+                "macOS",
+                format!("$HOME/{}", MACOS_PER_USER.config.join("/")),
+                format!("$HOME/{}", MACOS_PER_USER.state.join("/")),
+                format!("$HOME/{}/printobserver", MACOS_PER_USER.home.join("/")),
+            ),
+            (
+                "Linux, isolated install",
                 LINUX.config.to_owned(),
                 LINUX.state.to_owned(),
                 format!("{}/printobserver", LINUX.home),
             ),
             (
-                "macOS",
+                "macOS, isolated install",
                 MACOS.config.to_owned(),
                 MACOS.state.to_owned(),
                 format!("{}/printobserver", MACOS.home),

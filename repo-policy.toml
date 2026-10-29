@@ -331,6 +331,7 @@ command_schema = "schemas/printobserver-core/SpoolCommand.json"
 installer = "scripts/install-service.sh"
 # Where the installer writes the unit: the directory the manager reads units from.
 registration_directory = "/etc/systemd/system"
+name_also_declared_in = ["scripts/migrate-service-to-per-user.sh"]
 may_not_invoke = ["systemctl", "service", "systemd-run"]
 starts_at_boot = "WantedBy=multi-user.target"
 restarts_after_crash = "Restart=on-failure"
@@ -343,6 +344,7 @@ restarts_after_crash = "Restart=on-failure"
 [service.managers.launchd]
 installer = "scripts/install-service.sh"
 registration_directory = "/Library/LaunchDaemons"
+name_also_declared_in = ["scripts/migrate-service-to-per-user.sh"]
 may_not_invoke = ["launchctl"]
 starts_at_boot = "<key>RunAtLoad</key> <true/>"
 restarts_after_crash = "<key>KeepAlive</key> <dict> <key>SuccessfulExit</key> <false/> </dict>"
@@ -376,6 +378,26 @@ program_constant = "SERVICE_NAME"
 # per-user installer, which refuses a host it is on, and the migration, which
 # stops and deletes it. Each declares the name as the installer does.
 name_also_declared_in = ["scripts/install.ps1", "scripts/migrate-service-to-per-user.ps1"]
+
+# Recommended Unix installs start the server as the invoking user. The system
+# installers above retain their separate activation and isolation contracts.
+[service.managers.systemd-user]
+installer = "scripts/install.sh"
+may_not_invoke = ["sudo", "useradd", "chown"]
+starts_at_boot = "WantedBy=default.target"
+restarts_after_crash = "Restart=on-failure"
+must_carry = ["RestartSec=5", "--client-only"]
+must_invoke = ["systemctl --user enable --now", "loginctl enable-linger"]
+migration = "scripts/migrate-service-to-per-user.sh"
+
+[service.managers.launchd-agent]
+installer = "scripts/install.sh"
+may_not_invoke = ["sudo", "dscl", "chown"]
+starts_at_logon = "<key>RunAtLoad</key><true/>"
+restarts_after_crash = "<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>"
+must_carry = ["<key>ThrottleInterval</key><integer>5</integer>", "--client-only"]
+must_invoke = ["launchctl bootstrap"]
+migration = "scripts/migrate-service-to-per-user.sh"
 
 # The per-user manager on Windows, named in a platform's per-user column: a
 # Scheduled Task the person using the machine registers for themselves, with no
@@ -808,6 +830,9 @@ install_script_paths = ["scripts/install.sh", "scripts/install.ps1"]
 # failed, so a report reading it would say every route's service came up every
 # time.
 waived_steps = [
+  "install-service-unix-per-user",
+  "start-service-systemd-user",
+  "start-service-launchd-agent",
   "install-service",
   "start-service-systemd",
   "start-service-launchd",

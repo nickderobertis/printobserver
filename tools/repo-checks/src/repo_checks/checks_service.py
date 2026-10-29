@@ -64,6 +64,14 @@ ACTIVATION_NAMES: dict[str, re.Pattern[str]] = {
     ),
 }
 
+ACTIVATION_NAMES[ServiceManager.SYSTEMD_USER] = re.compile(
+    r"\bsystemctl\s+--user\s+restart\s+(?P<service>\S+)\s*$"
+)
+ACTIVATION_NAMES[ServiceManager.LAUNCHD_AGENT] = re.compile(
+    r'\blaunchctl\s+kickstart\s+-k\s+(?P<quote>"?)gui/\$\(id -u\)/'
+    r'(?P<service>[^/\s"]+)(?P=quote)\s*$'
+)
+
 # What each manager's activation command has to look like, quoted back at a
 # section that states none of that shape.
 ACTIVATION_SHAPES: dict[str, str] = {
@@ -72,6 +80,9 @@ ACTIVATION_SHAPES: dict[str, str] = {
     ServiceManager.WINDOWS_SERVICE: "Set-Service -Name <service> ...",
     ServiceManager.WINDOWS_SCHEDULED_TASK: "Start-ScheduledTask -TaskName <task>",
 }
+
+ACTIVATION_SHAPES[ServiceManager.SYSTEMD_USER] = "systemctl --user restart <unit>"
+ACTIVATION_SHAPES[ServiceManager.LAUNCHD_AGENT] = "launchctl kickstart -k gui/$(id -u)/<label>"
 
 # How each manager's installer declares the name it registers: `UNIT_NAME="..."`
 # and `LAUNCHD_LABEL="..."` in the shell installer, which serves both of those
@@ -96,6 +107,9 @@ NAME_DECLARATIONS: dict[str, tuple[re.Pattern[str], str]] = {
         "$TaskName = '...'",
     ),
 }
+
+NAME_DECLARATIONS[ServiceManager.SYSTEMD_USER] = NAME_DECLARATIONS[ServiceManager.SYSTEMD]
+NAME_DECLARATIONS[ServiceManager.LAUNCHD_AGENT] = NAME_DECLARATIONS[ServiceManager.LAUNCHD]
 
 # A shell line that only assigns one double-quoted string with no command
 # substitution in it. It runs nothing, whatever words its value spells: the
@@ -170,6 +184,7 @@ class Rules:
     #: Other scripts that name this manager's service, each by the same
     #: declaration the installer makes, held to the name the pair states.
     name_also_declared_in: tuple[str, ...] = ()
+    must_invoke: tuple[str, ...] = ()
 
 
 def _rules(repo: Repo, manager: str) -> Rules:
@@ -208,6 +223,9 @@ def _rules(repo: Repo, manager: str) -> Rules:
         if directory is not None
         else None,
         program,
+        must_invoke=policy_string_list(table, "must_invoke", where)
+        if "must_invoke" in table
+        else (),
         starts_at="logon" if moment == "starts_at_logon" else "boot",
         must_carry=policy_string_list(table, "must_carry", where) if "must_carry" in table else (),
         name_also_declared_in=policy_string_list(table, "name_also_declared_in", where)
@@ -314,7 +332,8 @@ def _executes(script: str, program: str) -> list[int]:
     for number, command in _commands(script):
         if command.startswith(("#", "echo ", "printf ")) or PLAIN_ASSIGNMENT.match(command):
             continue
-        if re.search(rf"(^|[;&|]\s*|\bsudo\s+){re.escape(program)}\b", command):
+        words = r"\s+".join(re.escape(word) for word in program.split())
+        if re.search(rf"(^|[;&|]\s*|\b(?:sudo|if|then|else|do)\s+|!\s*){words}\b", command):
             found.append(number)
     return found
 
@@ -525,6 +544,11 @@ def _one_manager(repo: Repo, manager: str, pair: tuple[str, ...]) -> list[str]:
             f"start a process that can move a machine"
             for number in executes(script, program)
         )
+    for program in rules.must_invoke:
+        if not executes(script, program):
+            findings.append(
+                f"`{named.installer}` does not invoke `{program}`, required by `{manager}`"
+            )
     for setting in rules.may_not_set:
         findings.extend(
             f"{named.installer}:{number} writes `{setting}`, which registers a service the "

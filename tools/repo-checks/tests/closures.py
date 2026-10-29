@@ -66,7 +66,16 @@ CHECKS: dict[str, Closure] = {
     "unmatrixed-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "platform-dispatch": Closure((WORKFLOWS, AGENTS, POLICY)),
     "sharded-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
-    "install-path": Closure((WORKFLOWS, AGENTS, "README.md", POLICY)),
+    "install-path": Closure(
+        (
+            WORKFLOWS,
+            AGENTS,
+            "README.md",
+            POLICY,
+            "scripts/migrate-service-to-per-user.sh",
+            "crates/printobserver/src/locations.rs",
+        )
+    ),
     "ci": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "artifact-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, RELEASE_TARGETS, POLICY)),
     "install-script": Closure((AGENTS, "scripts/")),

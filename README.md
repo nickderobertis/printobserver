@@ -23,14 +23,12 @@ camera → Obico → failure webhook → printobserver → supervising agent
 printer ← OctoPrint ← allowed action ← policy ← agent decision
 ```
 
-`printobserver server` is the supervisor. On an installed Linux or macOS machine
-it runs as a service under that machine's own service manager — a systemd unit
-on Linux, a launchd daemon on macOS — started at boot and started again after a
-crash. On Windows the recommended install runs it as you: a Scheduled Task of
-your own starts it at your logon and starts it again whenever it is not running,
-from a program, configuration and state in your own profile. The
-[isolated install](#isolated-install-on-windows-the-service) runs it as a
-Windows service instead, under an account of its own. It reads printer and job state through
+`printobserver server` is the supervisor. The recommended install runs it as
+you: a systemd user unit on Linux, a LaunchAgent on macOS and a Scheduled Task
+on Windows. Linux lingering covers boot without login; macOS and Windows need
+a logged-in user. Each manager brings it back after a crash. The
+[isolated install](#isolated-install) runs it under a system account instead.
+It reads printer and job state through
 OctoPrint's API using the configured address and API key. It also exposes an
 ingress for alerts posted by Obico's webhook notification plugin; when an alert
 arrives, it immediately fetches the snapshot named by that alert.
@@ -111,6 +109,27 @@ printobserver machine that Obico can reach and use it in the webhook URL.
 
 ### 3. Install printobserver
 
+On Linux and macOS, the recommended install runs as you, with no administrator
+step for installation, upgrades, configuration changes or harness sign-in:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install.sh | sh
+```
+
+It installs the program in `~/.local/bin`, writes your configuration only when
+absent, and starts a systemd user unit on Linux or a LaunchAgent on macOS.
+Run it again to upgrade in place, keeping your configuration and state.
+`--client-only` installs only the program; `--observation-interval-seconds N`
+sets the observation interval for a new configuration.
+
+Linux enables lingering so supervision resumes after reboot without a login.
+If the host refuses it, the installer completes, explains that supervision then
+requires a login, and prints `loginctl enable-linger "$USER"` to enable it.
+On macOS supervision runs only while you are logged in; auto-login covers a
+dedicated machine. On every platform supervision turns run as you: the agent
+can read your client configuration, so policy is a guard rail rather than an
+OS isolation boundary. Choose the [isolated install](#isolated-install) for that.
+
 On Windows, one command from a PowerShell of your own — not an elevated one —
 installs the program and runs its server as you. This is the recommended
 install, and no step of it, nor any upgrade, sign-in or configuration change
@@ -129,7 +148,7 @@ again upgrades in place: it stops the task, waits for the server to exit,
 replaces the program, keeps your configuration and state, and starts it again.
 It also takes `-ObservationIntervalSeconds`, as the service installer does, and
 `-ClientOnly` installs the program alone, for a machine whose server is the
-[isolated install](#isolated-install-on-windows-the-service).
+[isolated install](#isolated-install).
 
 Two trade-offs come with running the server as you, and they are why the
 isolated install exists:
@@ -189,19 +208,11 @@ which is the one thing the install commands cannot tell you:
 printobserver --version
 ```
 
-### 4. Install the service files
+### 4. Locate your configuration
 
-On Windows, step 3 already did this, as you: skip to step 5.
-
-On Linux and macOS, this puts four things in place — the program, a private
-state directory, a configuration template, and the service definition your
-platform's service manager reads — and deliberately starts nothing. The
-installer writes a systemd unit or a launchd property list, whichever the host
-runs services under:
-
-```console
-curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
-```
+The bundled installer in step 3 already installed and started the per-user
+server. If you chose Python or Node, run the bundled installer now to set up
+the server for your account.
 
 Where the installer puts things differs by platform. The rest of this guide
 names the three places by role — the configuration file, the state directory,
@@ -209,17 +220,19 @@ the program — and this table is what each role means on your machine:
 
 | Platform | Configuration file | State directory | Program |
 | --- | --- | --- | --- |
-| Linux | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
-| macOS | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
+| Linux | `$HOME/.config/printobserver/config.toml` | `$HOME/.local/state/printobserver` | `$HOME/.local/bin/printobserver` |
+| Linux, isolated install | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
+| macOS | `$HOME/Library/Application Support/printobserver/config.toml` | `$HOME/Library/Application Support/printobserver/state` | `$HOME/.local/bin/printobserver` |
+| macOS, isolated install | `/etc/printobserver/config.toml` | `/var/lib/printobserver` | `/usr/local/lib/printobserver/printobserver` |
 | Windows | `%LOCALAPPDATA%\printobserver\config.toml` | `%LOCALAPPDATA%\printobserver\state` | `%LOCALAPPDATA%\Programs\printobserver\printobserver.exe` |
 | Windows, isolated install | `C:\ProgramData\printobserver\config.toml` | `C:\ProgramData\printobserver\state` | `C:\Program Files\printobserver\printobserver.exe` |
 
 These are the program's own answers, from `crates/printobserver/src/locations.rs`;
 each installer writes exactly them, and a test holds this table to that module.
-On Linux and macOS the configuration file and the state directory are private,
-readable by root and by the service's own user. On Windows they are yours, with
-your profile's own permissions, so you read and edit them, and open the images
-and turn records the agent was given, with no elevation.
+Linux honors `XDG_CONFIG_HOME` and `XDG_STATE_HOME` instead of the defaults
+above when set. Configuration is `0600` and state `0700`, owned by you.
+The per-user configuration and state on every platform are yours to edit and
+read, including the images and turn records, without elevation.
 
 ### 5. Configure the supervisor
 
@@ -345,7 +358,7 @@ because a verifier of a short or guessable credential can be searched offline.
 
 From then on every command you run reads your own configuration first. With no
 `--config`, a command reads `printobserver/client.toml` under your configuration
-home, then, on Windows, your per-user server configuration when it is there,
+home, then your per-user server configuration when it is there,
 and then the service's own configuration file for whatever those left unnamed
 (it is private to the service, so from your own account that read is passed
 over). `--config <path>` reads that one file instead. `PRINTOBSERVER_SERVER` and
@@ -373,27 +386,26 @@ too: it can read your own client configuration, and the environment of another
 turn running at the same time — through `/proc/<pid>/environ` on Linux, or
 `ps -E` on macOS. That is the recommended Windows install, by design: the agent
 could act beyond its own grant through your credential, so there the per-actor
-policy is a guard rail rather than a hard boundary. Full isolation needs the
-server to run as an OS user of its own. The installer gives it one when it runs
-as root, as the steps above have it on Linux and macOS: it creates the
-`printobserver` system user (or runs the service as the user `--user` names). On
-Windows the [isolated install](#isolated-install-on-windows-the-service) runs it
-as its own virtual account, `NT SERVICE\printobserver`. Issue your credential as
-your own user, not as the service's.
+policy is a guard rail rather than a hard boundary. Full isolation needs the server to run as an OS user of its own; the
+[isolated install](#isolated-install) provides that on every platform.
 
 ### 6. Install the agent's skill
 
 The agent's skill is not part of the program: it is the Agent Skill this
 repository publishes, and the service reads it from `supervisor.skill_path`.
-Install it under the state directory, where the service can read it — as root
-on Linux and macOS, and as yourself on Windows. It needs GitHub CLI 2.100.0 or later, the first release with
-`gh skill`, and no GitHub sign-in: the repository is public. The installer's
-comment above `skill_path` names the same command.
+Install it under your state directory as yourself. It needs GitHub CLI 2.100.0 or later
+and no GitHub sign-in: the repository is public.
 
-On Linux and macOS:
+On Linux:
 
 ```console
-sudo gh skill install nickderobertis/printobserver printobserver --dir /var/lib/printobserver/skills
+gh skill install nickderobertis/printobserver printobserver --dir "${XDG_STATE_HOME:-$HOME/.local/state}/printobserver/skills"
+```
+
+On macOS:
+
+```console
+gh skill install nickderobertis/printobserver printobserver --dir "$HOME/Library/Application Support/printobserver/state/skills"
 ```
 
 On Windows:
@@ -408,35 +420,25 @@ skill is read when the service starts.
 ### 7. Install and sign in the agent's harness
 
 There is no separate agent endpoint: when an event arrives, the server runs the
-harness `supervisor.harness` selects, as the service's own account. That
-account has no home directory of its own to keep a sign-in in, so the harness
-keeps it under the state directory instead, in `harness/<harness>` there.
+harness `supervisor.harness` selects, as your account. The harness keeps its sign-in under the state directory,
+in `harness/<harness>` there.
 printobserver can sign in `claude-code` and `codex`.
 
-Install the harness program system-wide, so that the service account's path
-finds it. On Linux and macOS:
+Install the harness into your own account, with its program on your path:
 
 ```console
-sudo npm install -g @anthropic-ai/claude-code
+npm install -g @anthropic-ai/claude-code
 ```
 
 For `codex`, install its program instead:
 
 ```console
-sudo npm install -g @openai/codex
+npm install -g @openai/codex
 ```
 
-Then sign it in once, as the service user:
+Then sign in as yourself. With no `--config`, this reads your per-user config:
 
 ```console
-sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
-```
-
-On Windows the server runs as you, so install the harness with the same
-`npm install -g` command, without `sudo`, as yourself, and sign it in as
-yourself. With no `--config`, `sign-in` reads your per-user configuration:
-
-```powershell
 printobserver sign-in
 ```
 
@@ -454,36 +456,31 @@ skill, and every action the agent requests goes through the policy. Run the
 sign-in again if the harness's sign-in expires, or after changing
 `supervisor.harness`.
 
-### 8. Enable and start the service
+### 8. Restart the server
 
-One command, and which one is your platform's service manager's. On Linux:
+After editing configuration and installing the skill and harness, restart it.
+On Linux:
 
 ```console
-sudo systemctl enable --now printobserver.service
+systemctl --user restart printobserver.service
 ```
 
 On macOS:
 
 ```console
-sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
+launchctl kickstart -k "gui/$(id -u)/io.github.nickderobertis.printobserver"
 ```
 
-On Windows the server is already running as you, from step 3; restart its task
-so it reads what steps 5 to 7 put in place. This is also the command for every
-later change to your configuration:
+On Windows:
 
 ```powershell
 Stop-ScheduledTask -TaskName printobserver; Start-ScheduledTask -TaskName printobserver
 ```
 
-On Linux and macOS the service manager starts it again at every boot, and again
-if it ends abruptly. On Windows the task starts it at your logon, and starts it
-again within a minute whenever it is not running; to stop supervising until you
-start it again, run `Disable-ScheduledTask -TaskName printobserver`.
-
-Starting is separate because this service commands a 3D printer. Installing
-software must not start a process that can move the machine — at install, or at
-the next reboot.
+Linux's lingering user unit runs without a login. On macOS and Windows it runs
+while you are logged in; auto-login covers a dedicated machine. Every manager
+brings the server back after a crash. On Windows use
+`Disable-ScheduledTask -TaskName printobserver` to stop supervising.
 
 ### 9. Verify the installation
 
@@ -524,7 +521,37 @@ Make the first read with that ID in place of `PRINT_ID`:
 printobserver context --print-id PRINT_ID
 ```
 
-## Isolated install on Windows: the service
+## Isolated install
+
+On Linux and macOS, take the bundled program installer with `--client-only`,
+then install the isolated service, which deliberately starts nothing:
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/install-service.sh | sudo sh
+```
+
+Configure `/etc/printobserver/config.toml` as above. Issue your credential as
+yourself, paste its verifier there, and install the skill and harness for the
+service account:
+
+```console
+sudo gh skill install nickderobertis/printobserver printobserver --dir /var/lib/printobserver/skills
+sudo npm install -g @anthropic-ai/claude-code
+sudo -u printobserver /usr/local/lib/printobserver/printobserver sign-in
+```
+
+The systemd unit on Linux and LaunchDaemon on macOS run at boot as the
+`printobserver` system user. Start the Linux unit:
+
+```console
+sudo systemctl enable --now printobserver.service
+```
+
+Or load the macOS LaunchDaemon:
+
+```console
+sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.nickderobertis.printobserver.plist
+```
 
 For a machine that wants an operating-system boundary between the agent and the
 person using it, the server runs as a Windows service instead, under its own
@@ -579,6 +606,41 @@ The service control manager starts it at every boot, whether or not anybody
 logs in, and again if it ends abruptly. Starting is a command of its own because
 this service commands a 3D printer: installing software must not start a process
 that can move the machine — at install, or at the next reboot.
+
+## Moving from a Linux or macOS system service
+
+Run this one privileged step from your account:
+The command forwards each Linux XDG directory only when you have set it, because
+sudo otherwise strips those variables. Unset directories keep their defaults.
+
+```console
+curl -fsSL https://raw.githubusercontent.com/nickderobertis/printobserver/main/scripts/migrate-service-to-per-user.sh | sudo env ${XDG_CONFIG_HOME+"XDG_CONFIG_HOME=$XDG_CONFIG_HOME"} ${XDG_STATE_HOME+"XDG_STATE_HOME=$XDG_STATE_HOME"} sh
+```
+
+The source record is the absolute `state_dir` named in the service configuration,
+including a nondefault location; the installed default is `/var/lib/printobserver`.
+A config with no `state_dir` is refused without inserting a field, as on Windows.
+With `--root`, that source and the per-user destinations are staged below the root.
+
+A plain-string `supervisor.skill_path` outside the service layout is accepted and
+rewritten too, as on Windows; the installer's next steps reinstall the skill
+under the user state directory.
+
+It uses `SUDO_USER`, stops the system service, copies configuration and all state
+(database and WAL/SHM, images, sessions, harness sign-ins, skills, assets and
+verifier), changes only `state_dir` and `supervisor.skill_path`, and verifies
+the copy by SHA-256 before disabling and removing the system registration.
+It refuses an existing per-user configuration or state and leaves originals
+untouched on a failed copy. The old `/etc/printobserver`, `/var/lib/printobserver`,
+`/usr/local/lib/printobserver` and service account remain; the script prints how
+to remove them once satisfied. Then run step 3 and `printobserver sign-in` as
+yourself, without sudo.
+
+The Unix migration accepts bare and dotted table headers, such as `[supervisor]`,
+in the form the generated config uses. Spaces around names/dots and trailing
+comments are allowed. It refuses malformed or duplicate headers and quoted,
+escaped or array-of-tables headers before stopping the service. Edit the source
+config into that generated form or migrate by hand.
 
 ## Moving from the Windows service to the per-user install
 

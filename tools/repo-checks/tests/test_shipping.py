@@ -362,7 +362,8 @@ def test_the_committed_tree_has_narrowed_nothing(tmp_path: Path) -> None:
 #: The platform line one of the two narrowings deletes.
 DELETED_PLATFORM = (
     "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-    "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+    "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+    "per-user manager `systemd-user`, install path: yes\n"
 )
 
 

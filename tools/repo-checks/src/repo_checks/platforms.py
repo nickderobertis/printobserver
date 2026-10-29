@@ -101,6 +101,8 @@ class ServiceManager(StrEnum):
     a conversion that could fail on the way.
     """
 
+    SYSTEMD_USER = "systemd-user"
+    LAUNCHD_AGENT = "launchd-agent"
     SYSTEMD = "systemd"
     LAUNCHD = "launchd"
     WINDOWS_SERVICE = "windows-service"

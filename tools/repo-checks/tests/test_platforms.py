@@ -29,7 +29,8 @@ CLOSURE = closure("platforms", "integration-tier")
 EMPTY_BLOCK = "[//]: # (BEGIN supported-platforms)\n[//]: # (END supported-platforms)"
 AARCH64 = (
     "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-    "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+    "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+    "per-user manager `systemd-user`, install path: yes\n"
 )
 
 
@@ -261,7 +262,8 @@ def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
         AARCH64
         + (
             "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
-            "`riscv64gc-unknown-linux-gnu`, service manager `systemd`, install path: yes\n"
+            "`riscv64gc-unknown-linux-gnu`, service manager `systemd`, "
+            "per-user manager `systemd-user`, install path: yes\n"
         ),
     )
 

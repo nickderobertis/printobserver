@@ -1,12 +1,8 @@
 //! Which configuration a command reads when nothing names one, with and
 //! without a per-user install, driven as the real binary.
 //!
-//! A per-user install on Windows keeps the server's configuration under
-//! `%LOCALAPPDATA%\printobserver\config.toml`. With that file there, `sign-in`
-//! reads it rather than the service's, and a client command reads it after the
-//! operator's own `client.toml` and before the service's file. Without it —
-//! and on every platform that has no per-user install, whatever
-//! `LOCALAPPDATA` says — both fall back exactly as they did before.
+//! With the per-user configuration present, sign-in and client commands read
+//! it with no --config. Without it, both fall back to the isolated default.
 //!
 //! What a command read is observed from outside it: `sign-in`'s refusal names
 //! the file it read, and a client command connects to the address that file
@@ -56,7 +52,17 @@ fn said(output: &Output) -> String {
 
 /// Where a per-user install under `local` keeps its configuration.
 fn per_user_config(local: &Path) -> PathBuf {
-    local.join("printobserver").join("config.toml")
+    let base = if cfg!(windows) {
+        local.to_path_buf()
+    } else if cfg!(target_os = "macos") {
+        local
+            .parent()
+            .expect("root")
+            .join("homes/Library/Application Support")
+    } else {
+        local.parent().expect("root").join("homes")
+    };
+    base.join("printobserver").join("config.toml")
 }
 
 /// A per-user configuration under `local`: its state directory, the harness
@@ -89,8 +95,7 @@ fn listening() -> (String, mpsc::Receiver<()>) {
     (address, received)
 }
 
-/// On Windows a per-user configuration is what `sign-in` reads with no
-/// `--config`; on every other platform the service's still is.
+/// Sign-in reads the per-user configuration with no --config.
 #[test]
 fn sign_in_reads_the_per_user_configuration_where_the_platform_has_one() {
     let root = TempDir::new().expect("a test's own root");
@@ -105,27 +110,14 @@ fn sign_in_reads_the_per_user_configuration_where_the_platform_has_one() {
         "{}",
         said(&output)
     );
-    if cfg!(windows) {
-        assert!(
-            said(&output).contains(&format!(
-                "`supervisor.harness` in {} is `{UNKNOWN_HARNESS}`",
-                written.display()
-            )),
-            "sign-in did not read the per-user configuration: {}",
-            said(&output)
-        );
-    } else {
-        assert!(
-            !said(&output).contains(&written.display().to_string()),
-            "sign-in read a per-user configuration on a platform with none: {}",
-            said(&output)
-        );
-        assert!(
-            said(&output).contains(printobserver::DEFAULT_CONFIG_PATH),
-            "sign-in did not fall back to the service's configuration: {}",
-            said(&output)
-        );
-    }
+    assert!(
+        said(&output).contains(&format!(
+            "`supervisor.harness` in {} is `{UNKNOWN_HARNESS}`",
+            written.display()
+        )),
+        "sign-in did not read the per-user configuration: {}",
+        said(&output)
+    );
 }
 
 /// With no per-user configuration, `sign-in` reads the service's, as before.
@@ -150,9 +142,8 @@ fn sign_in_falls_back_to_the_services_configuration_without_a_per_user_one() {
     );
 }
 
-/// On Windows a client command with nothing else configured reaches the
+/// A client command with nothing else configured reaches the
 /// server the per-user configuration listens on.
-#[cfg(windows)]
 #[test]
 fn a_client_command_reaches_the_server_the_per_user_configuration_names() {
     let root = TempDir::new().expect("a test's own root");
@@ -169,18 +160,13 @@ fn a_client_command_reaches_the_server_the_per_user_configuration_names() {
     );
 }
 
-/// On every platform without a per-user install, and on Windows without the
-/// file, a client command has no server unless something else names one.
+/// Without a per-user file, the client falls back to the service default.
 #[test]
 fn a_client_command_without_a_per_user_configuration_falls_back_as_before() {
     let root = TempDir::new().expect("a test's own root");
     let local = root.path().join("Local");
     let (address, connected) = listening();
-    if cfg!(windows) {
-        std::fs::create_dir_all(&local).expect("an empty local application data");
-    } else {
-        write_per_user(&local, &address);
-    }
+    std::fs::create_dir_all(&local).expect("an empty local application data");
 
     let output = run(root.path(), &local, &["prints"]);
 
@@ -211,11 +197,7 @@ fn credential_issue_names_the_per_user_configuration_where_the_platform_has_one(
     let output = run(root.path(), &local, &["credential", "issue"]);
 
     assert!(output.status.success(), "{}", said(&output));
-    let named = if cfg!(windows) {
-        written.display().to_string()
-    } else {
-        printobserver::DEFAULT_CONFIG_PATH.to_owned()
-    };
+    let named = written.display().to_string();
     assert!(
         said(&output).contains(&format!("the server's configuration, {named},")),
         "credential issue did not name {named}: {}",

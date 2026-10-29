@@ -374,7 +374,8 @@ def test_a_platform_the_launcher_cannot_be_asked_about_is_refused(
     broken.edit(
         "AGENTS.md",
         "- `linux-aarch64` — runner `ubuntu-24.04-arm`, Rust target "
-        "`aarch64-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
+        "`aarch64-unknown-linux-gnu`, service manager `systemd`, "
+        "per-user manager `systemd-user`, install path: yes\n",
         "- `linux-riscv64` — runner `ubuntu-24.04-riscv`, Rust target "
         "`riscv64gc-unknown-linux-gnu`, service manager `systemd`, install path: yes\n",
     )
