@@ -27,7 +27,7 @@
 //! The recommended install runs as the operator on every platform. Commands
 //! read its configuration when present, then fall back to the isolated service.
 //! [`LINUX_PER_USER`] and [`MACOS_PER_USER`] spell the HOME-relative defaults;
-//! Linux additionally honors XDG_CONFIG_HOME and XDG_STATE_HOME.
+//! Linux additionally honors `XDG_CONFIG_HOME` and `XDG_STATE_HOME`.
 
 /// The three places one platform's install keeps this program and what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +93,7 @@ pub const LINUX_PER_USER: PerUserLocations = PerUserLocations {
     home: &[".local", "bin"],
 };
 
-/// HOME-relative locations for the macOS LaunchAgent install.
+/// HOME-relative locations for the macOS `LaunchAgent` install.
 pub const MACOS_PER_USER: PerUserLocations = PerUserLocations {
     base: "HOME",
     config: &[
