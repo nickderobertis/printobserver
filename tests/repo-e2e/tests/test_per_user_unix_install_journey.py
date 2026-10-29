@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tomllib
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -34,6 +35,9 @@ from repo_checks.shell import run, start
 from test_per_user_windows_install_journey import (
     CREDENTIAL,
     IMAGE,
+    ImageId,
+    PrintId,
+    Recorded,
     _alert,
     _client,
     _fill_in,
@@ -337,9 +341,18 @@ def test_unverified_upgrade_keeps_the_running_registration_and_all_files(
     )
 
 
-def _migration_host(
+@dataclass(frozen=True, slots=True)
+class MigrationFixture:
+    """An isolated service layout and the user's host that will receive its record."""
+
+    host: Host
+    service_root: Path
+    service_config: Path
+
+
+def _migration_fixture(
     tmp_path: Path, program: Path, system: str = NATIVE_SYSTEM
-) -> tuple[Host, Path, Path]:
+) -> MigrationFixture:
     host = Host(tmp_path, system, program)
     root = tmp_path / "isolated"
     state = root / "var/lib/printobserver"
@@ -376,7 +389,7 @@ def _migration_host(
         'if [ "$#" = 1 ] && [ "$1" = -u ]; then echo 0; else exec "$REAL_ID" "$@"; fi\n',
     )
 
-    return (host, root, config)
+    return MigrationFixture(host=host, service_root=root, service_config=config)
 
 
 def _fault_copied_file(host: Host, path: Path, effect: str) -> None:
@@ -403,7 +416,7 @@ def _migrate(host: Host, root: Path) -> CompletedProcess[str]:
     )
 
 
-def _await_public_record(program: Path, address: str) -> tuple[str, str]:
+def _await_public_record(program: Path, address: str) -> Recorded:
     """Discover the alert's record through prints and context, without reading private tables."""
     import time
 
@@ -412,12 +425,12 @@ def _await_public_record(program: Path, address: str) -> tuple[str, str]:
         listed = _client(program, address, CREDENTIAL, "prints")
         passing((listed.code, listed.said))
         for record in json.loads(listed.out)["prints"]:
-            print_id = str(record["id"])
+            print_id = PrintId(str(record["id"]))
             context = _client(program, address, CREDENTIAL, "context", "--print-id", print_id)
             passing((context.code, context.said))
             image = json.loads(context.out)["context"].get("latest_image")
             if image:
-                return print_id, str(image["id"])
+                return Recorded(print_id=print_id, image_id=ImageId(str(image["id"])))
         time.sleep(0.05)
     raise AssertionError("the public commands did not report the alert image within the hang guard")
 
@@ -428,7 +441,10 @@ def _await_public_record(program: Path, address: str) -> tuple[str, str]:
 def test_migration_preserves_and_serves_the_real_record(
     tmp_path: Path, program: Path, machine: Machine, system: str, source_nondefault: bool
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program, system)
+    migration = _migration_fixture(tmp_path, program, system)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     if source_nondefault:
         state.joinpath("unrelated").write_bytes(b"not the configured record")
@@ -457,7 +473,7 @@ def test_migration_preserves_and_serves_the_real_record(
         address = _serving(server)
         # llmlint: ignore[async_typed_clients_at_boundaries] One sequential real ingress post.
         _alert(address, machine)
-        print_id, image_id = _await_public_record(program, address)
+        recorded = _await_public_record(program, address)
     finally:
         server.terminate()
         server.wait(timeout=60)
@@ -514,8 +530,8 @@ def test_migration_preserves_and_serves_the_real_record(
         address = _serving(server)
         listed = _client(program, address, CREDENTIAL, "prints")
         passing((listed.code, listed.said))
-        contains(listed.out, print_id)
-        image = _client(program, address, CREDENTIAL, "image", "--image-id", image_id)
+        contains(listed.out, recorded.print_id)
+        image = _client(program, address, CREDENTIAL, "image", "--image-id", recorded.image_id)
         passing((image.code, image.said))
         path = Path(json.loads(image.out)["path"])
         truth(copied_state in path.parents, describing="the per-user install contract")
@@ -546,7 +562,10 @@ def test_migration_preserves_and_serves_the_real_record(
 def test_migration_refusals_keep_originals_and_registration(
     tmp_path: Path, program: Path, refusal: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("database-wal").write_bytes(b"retained")
     config.write_text(
@@ -948,7 +967,10 @@ def test_migration_stop_failure_reports_recovery_before_any_copy(
     tmp_path: Path, program: Path
 ) -> None:
     """A stopped-service refusal retains every original and names the diagnostic command."""
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     config.write_text(
         f'state_dir = "{state}"\n[supervisor]\n'
@@ -978,7 +1000,10 @@ def test_documented_migration_forwards_custom_xdg_directories(
     tmp_path: Path, program: Path, custom: bool
 ) -> None:
     """The documented privileged command preserves custom directories, including spaces."""
-    host, root, config = _migration_host(tmp_path, program, "Linux")
+    migration = _migration_fixture(tmp_path, program, "Linux")
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("retained").write_bytes(b"existing state")
     config.write_text(
@@ -1177,7 +1202,10 @@ def test_migration_boundary_refusals_preserve_every_original(
     tmp_path: Path, program: Path, refusal: str
 ) -> None:
     """Normalization and real account/filesystem queries precede any stop or copy."""
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("kept").write_bytes(b"original state")
     _minimal_service_config(config, state)
@@ -1307,7 +1335,10 @@ def test_migration_preserves_quotes_comments_and_line_endings(
     tmp_path: Path, program: Path, ending: bytes, external: bool
 ) -> None:
     """Only the two path values change, including when the last newline is absent."""
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     skill_source = (
         root / "external/SKILL.md" if external else state / "skills/printobserver/SKILL.md"
@@ -1349,7 +1380,10 @@ def test_migration_failures_report_the_retained_registration_and_copies(
     tmp_path: Path, program: Path, failure: str
 ) -> None:
     """Actual filesystem failures and manager refusals retain the documented recoverable state."""
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     if failure in {"disable", "reload"} and host.system != "Linux":
         pytest.skip("systemd has these separate deregistration operations")
     state = root / "var/lib/printobserver"
@@ -1397,7 +1431,10 @@ def test_migration_failures_report_the_retained_registration_and_copies(
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_local_help_is_read_only(tmp_path: Path, program: Path) -> None:
     """Both local scripts explain their options without provisioning anything."""
-    host, root, _config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    _config = migration.service_config
     before = _tree(root)
     passing(host.install("--help"))
     passing(
@@ -1414,7 +1451,10 @@ def test_local_help_is_read_only(tmp_path: Path, program: Path) -> None:
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_relative_migration_root_is_normalized(tmp_path: Path, program: Path) -> None:
     """A relative --root resolves against the invocation directory, as on Windows."""
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("kept").write_bytes(b"record")
     _minimal_service_config(config, state)
@@ -1439,7 +1479,10 @@ def test_migration_leaves_unrelated_client_file_ownership_untouched(
     tmp_path: Path, program: Path
 ) -> None:
     """An existing client file's distinct group is not transferred with the new config."""
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     primary = int(run(["id", "-g"], timeout=30).stdout.strip())
     groups = [int(group) for group in run(["id", "-G"], timeout=30).stdout.split()]
     other = next((group for group in groups if group != primary), None)
@@ -1483,7 +1526,10 @@ def test_installer_rejects_links_before_writing_user_files(
 def test_migration_unreadable_ancestors_and_scan_leave_originals(
     tmp_path: Path, program: Path, location: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     _minimal_service_config(config, state)
     state.joinpath("retained").write_bytes(b"record")
@@ -1519,7 +1565,10 @@ def test_launchctl_query_and_pending_stop_preserve_the_installation(
         root = host.home
         query = f"launchctl print gui/{_uid()}/io.github.nickderobertis.printobserver"
     else:
-        host, root, config = _migration_host(tmp_path, program)
+        migration = _migration_fixture(tmp_path, program)
+        host = migration.host
+        root = migration.service_root
+        config = migration.service_config
         _minimal_service_config(config, root / "var/lib/printobserver")
         query = "launchctl print system/io.github.nickderobertis.printobserver"
     before = _tree(root)
@@ -1596,7 +1645,13 @@ def test_migration_preserves_a_destination_created_while_the_service_stops(
     import threading
     import time
 
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+
+    host = migration.host
+
+    root = migration.service_root
+
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("record").write_bytes(b"service record")
     _minimal_service_config(config, state)
@@ -1654,7 +1709,10 @@ def test_migration_preserves_a_destination_created_while_the_service_stops(
 def test_migration_uses_the_filesystem_meaning_of_a_symlink_followed_by_parent(
     tmp_path: Path, program: Path
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     physical = root / "physical/state"
     lexical = root / "spelled/state"
     physical.mkdir(parents=True)
@@ -1677,7 +1735,10 @@ def test_migration_uses_the_filesystem_meaning_of_a_symlink_followed_by_parent(
 def test_migration_decodes_basic_backslashes_and_preserves_literal_backslashes(
     tmp_path: Path, program: Path, quote: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "record\\archive"
     state.mkdir()
     state.joinpath("record").write_bytes(b"backslash path record")
@@ -1696,7 +1757,10 @@ def test_migration_decodes_basic_backslashes_and_preserves_literal_backslashes(
 def test_migration_rejects_malformed_and_duplicate_path_settings_before_stop(
     tmp_path: Path, program: Path, field: str, malformed: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("record").write_bytes(b"existing record")
     values = {"state_dir": f'"{state}"', "skill_path": '"/external/SKILL.md"'}
@@ -1767,7 +1831,10 @@ def _opaque_note(kind: str, payload: str) -> str:
 def test_migration_preserves_opaque_toml_context_around_real_settings(
     tmp_path: Path, program: Path, scope: str, kind: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("record").write_bytes(b"actual record")
     state_line = f'state_dir = "{state}"\n'
@@ -1804,7 +1871,10 @@ def test_migration_preserves_opaque_toml_context_around_real_settings(
 def test_toml_string_or_container_text_cannot_supply_a_missing_setting(
     tmp_path: Path, program: Path, kind: str, missing: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     state.joinpath("record").write_bytes(b"actual record")
     state_line = f'state_dir = "{state}"\n'
@@ -1832,7 +1902,10 @@ def test_toml_string_or_container_text_cannot_supply_a_missing_setting(
 def test_migration_refuses_unclosed_string_and_container_context(
     tmp_path: Path, program: Path, opening: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     _minimal_service_config(config, state)
     with config.open("a") as target:
@@ -1852,7 +1925,10 @@ def test_migration_refuses_unclosed_string_and_container_context(
 def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
     tmp_path: Path, program: Path, malformed: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     _minimal_service_config(config, state)
     original = config.read_text()
@@ -1883,7 +1959,10 @@ def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
 def test_unsupported_table_key_forms_refuse_without_any_mutation(
     tmp_path: Path, program: Path, header: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     _minimal_service_config(config, root / "var/lib/printobserver")
     with config.open("a") as target:
         target.write(header + '\nvalue = "retained"\n')
@@ -1912,7 +1991,10 @@ def test_unsupported_table_key_forms_refuse_without_any_mutation(
 def test_generated_bare_and_dotted_tables_survive_migration(
     tmp_path: Path, program: Path, headers: str
 ) -> None:
-    host, root, config = _migration_host(tmp_path, program)
+    migration = _migration_fixture(tmp_path, program)
+    host = migration.host
+    root = migration.service_root
+    config = migration.service_config
     state = root / "var/lib/printobserver"
     _minimal_service_config(config, state)
     with config.open("a") as target:
