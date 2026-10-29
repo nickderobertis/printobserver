@@ -636,6 +636,12 @@ untouched on a failed copy. The old `/etc/printobserver`, `/var/lib/printobserve
 to remove them once satisfied. Then run step 3 and `printobserver sign-in` as
 yourself, without sudo.
 
+The Unix migration accepts bare and dotted table headers, such as `[supervisor]`,
+in the form the generated config uses. Spaces around names/dots and trailing
+comments are allowed. It refuses malformed or duplicate headers and quoted,
+escaped or array-of-tables headers before stopping the service. Edit the source
+config into that generated form or migrate by hand.
+
 ## Moving from the Windows service to the per-user install
 
 One elevated step moves a machine that runs the service to the per-user

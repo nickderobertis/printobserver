@@ -123,7 +123,22 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
         scan_context($0)
         if (opaque) { print; next }
     }
-    /^[[:space:]]*\[/ { table=$0; sub(/^[[:space:]]*\[/,"",table); sub(/\].*$/,"",table); gsub(/^[[:space:]]+|[[:space:]]+$/,"",table) }
+    /^[[:space:]]*\[/ {
+        header=$0; sub(/\r$/,"",header)
+        if (header !~ /^[ \t]*\[[ \t]*[A-Za-z0-9_-]+([ \t]*\.[ \t]*[A-Za-z0-9_-]+)*[ \t]*\][ \t]*(#.*)?$/) {
+            shown=header; sub(/\].*$/,"]",shown)
+            print "Unsupported or malformed TOML table header at line " NR ": " shown > "/dev/stderr"
+            print "Edit the source config into the generated bare/dotted header form, or migrate by hand." > "/dev/stderr"
+            exit 1
+        }
+        table=header; sub(/^[ \t]*\[/,"",table); sub(/\].*$/,"",table); gsub(/[ \t]/,"",table)
+        if (table in declared_tables) {
+            print "Duplicate TOML table header at line " NR ": [" table "]" > "/dev/stderr"
+            print "Edit the source config into the generated bare/dotted header form, or migrate by hand." > "/dev/stderr"
+            exit 1
+        }
+        declared_tables[table]=1
+    }
     (table == "" && /^[[:space:]]*state_dir[[:space:]]*=/) || (table == "supervisor" && /^[[:space:]]*skill_path[[:space:]]*=/) {
         line=$0; lead=line; sub(/=.*/,"=",lead); tail=substr(line,length(lead)+1)
         spaces=tail; sub(/[^[:space:]].*$/,"",spaces); tail=substr(tail,length(spaces)+1)

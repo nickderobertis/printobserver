@@ -1843,3 +1843,81 @@ def test_migration_refuses_unclosed_string_and_container_context(
     failing(_migrate(host, root), naming="context")
     equal(_tree(root), before)
     equal(host.said(), "", describing="no service-manager operation before refusal")
+
+
+@pytest.mark.parametrize(
+    "malformed", ["trailing", "duplicate", "spaced-duplicate", "dotted-duplicate"]
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
+    tmp_path: Path, program: Path, malformed: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    original = config.read_text()
+    if malformed == "trailing":
+        original = original.replace("[supervisor]", "[supervisor] trailing-garbage")
+    elif malformed == "duplicate":
+        original += "[supervisor]\n"
+    elif malformed == "spaced-duplicate":
+        original += "[ supervisor ]\n"
+    else:
+        original += "[extra.nested]\nvalue = 1\n[ extra . nested ]\n"
+    with pytest.raises(tomllib.TOMLDecodeError):
+        tomllib.loads(original)
+    config.write_text(original)
+    before = _tree(root)
+    failing(_migrate(host, root), naming="table")
+    equal(_tree(root), before)
+    equal(host.said(), "", describing="table errors refuse before stopping the service")
+
+
+@pytest.mark.parametrize(
+    "header", ['["extra"]', "['extra']", r'["\u0065xtra"]', '[extra."nested"]', "[[extra]]"]
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_unsupported_table_key_forms_refuse_without_any_mutation(
+    tmp_path: Path, program: Path, header: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    _minimal_service_config(config, root / "var/lib/printobserver")
+    with config.open("a") as target:
+        target.write(header + '\nvalue = "retained"\n')
+    tomllib.loads(config.read_text())
+    before = _tree(root)
+    result = _migrate(host, root)
+    failing(result, naming="table header")
+    contains(result.stderr or "", header.rstrip("]"))
+    contains(result.stderr or "", "generated bare/dotted header form")
+    contains(result.stderr or "", "migrate by hand")
+    equal(_tree(root), before)
+    equal(host.said(), "", describing="unsupported forms refuse before stopping")
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        "[extra]\nvalue = 1\n",
+        "[extra.nested]\nvalue = 1\n",
+        "[ extra . nested-key ] # retained\nvalue = 1\n",
+        "[extra__2.sub-3]\nvalue = 1\n",
+        "[extra.nested]\nvalue = 1\n[extra]\nother = 2\n",
+    ],
+)
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_generated_bare_and_dotted_tables_survive_migration(
+    tmp_path: Path, program: Path, headers: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    _minimal_service_config(config, state)
+    with config.open("a") as target:
+        target.write(headers)
+    original = config.read_text()
+    tomllib.loads(original)
+    passing(_migrate(host, root))
+    expected = original.replace(str(state), str(host.migrated_state))
+    equal(host.migrated_config.read_text(), expected)
+    tomllib.loads(expected)
+    equal(config.read_text(), original)

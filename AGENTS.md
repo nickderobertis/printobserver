@@ -1168,6 +1168,12 @@ files in place. It retains /etc/printobserver, /var/lib/printobserver,
 /usr/local/lib/printobserver and the service account, printing removal instructions
 and the unprivileged install and sign-in steps. `--root` stages the service layout
 and destination home below a throwaway root for journeys.
+
+The Unix migration accepts bare and dotted table headers, such as `[supervisor]`,
+in the form the generated config uses. Spaces around names/dots and trailing
+comments are allowed. It refuses malformed or duplicate headers and quoted,
+escaped or array-of-tables headers before stopping the service. Edit the source
+config into that generated form or migrate by hand.
 <!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 ### Moving a Windows service install to the per-user one

@@ -4142,3 +4142,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_migration_refuses_unclosed_string_and_container_context("
 reason = "The task requires real migration journeys in repo-e2e. This case drives actual configuration files through the real script, with standard-library TOML as an independent fixture oracle, proving that opaque string/container data cannot supply paths and that malformed context refuses before stop without any parser or filesystem mock."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_refuses_malformed_or_duplicate_tables_before_stop("
+reason = "The task requires real migration journeys in repo-e2e. This case uses the standard TOML parser to establish malformed fixture syntax, then drives the real script and proves refusal before any service-manager operation while retaining the original config, state and registration."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_unsupported_table_key_forms_refuse_without_any_mutation("
+reason = "The task requires real migration journeys in repo-e2e. This case drives actual generated-form or explicitly unsupported headers through the real script, verifies syntax independently with standard TOML, and checks preservation or refusal before stop without parser or filesystem mocks."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_generated_bare_and_dotted_tables_survive_migration("
+reason = "The task requires real migration journeys in repo-e2e. This case drives actual generated-form or explicitly unsupported headers through the real script, verifies syntax independently with standard TOML, and checks preservation or refusal before stop without parser or filesystem mocks."
