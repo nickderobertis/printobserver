@@ -4081,3 +4081,9 @@ rule = "changed_behavior_has_e2e"
 file = "scripts/migrate-service-to-per-user.sh"
 site = "Config ancestor race"
 reason = "The configuration was read successfully by awk immediately before canonical comparison. A later parent-resolution failure requires concurrent ancestor replacement; actual unreadable source and destination ancestors and source-scan failures have end-to-end refusal assertions."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_initial_registration_query_failure_changes_no_user_files("
+reason = "The task requires real installer journeys beside the existing service-manager journeys in repo-e2e. This case drives the real installer against a refused manager query before both first installation and upgrade, proving no files or running registration are replaced."

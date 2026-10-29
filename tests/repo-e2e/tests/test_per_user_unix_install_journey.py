@@ -103,8 +103,11 @@ class Host:
             _tool(
                 self.bin / name,
                 f'printf "%s\\n" "{name} $*" >> "$RECORD"\n'
-                f'if [ "${{REFUSES:-}}" = "{name} $*" ]; then exit 1; fi\n'
-                'case "$*" in cat*) exit "${REGISTERED:-1}" ;; esac\n'
+                f'if [ "${{REFUSES:-}}" = "{name} $*" ]; then\n'
+                'echo "manager query refused" >&2; exit 1; fi\n'
+                'case "$*" in "show --property=LoadState --value "*)\n'
+                'if [ "${REGISTERED:-1}" = 0 ]; then\n'
+                "echo loaded; else echo not-found; fi; exit 0 ;; esac\n"
                 f'if [ "{name}" = loginctl ]; then exit "${{LINGER_STATUS:-0}}"; fi\n'
                 f'if [ "{name}" = launchctl ]; then\n'
                 'case "$*" in\n'
@@ -326,7 +329,10 @@ def test_unverified_upgrade_keeps_the_running_registration_and_all_files(
     )
     failing(host.install(), naming="does not match the digest")
     equal(_tree(host.home), before)
-    equal(host.said(), operations + "systemctl cat printobserver.service\n")
+    equal(
+        host.said(),
+        operations + "systemctl show --property=LoadState --value printobserver.service\n",
+    )
 
 
 def _migration_host(
@@ -1475,3 +1481,28 @@ def test_launchctl_query_and_pending_stop_preserve_the_installation(
     contains(result.stderr or "", "launchctl print" if failure == "query" else "stop")
     equal(_tree(root), before)
     truth("bootstrap" not in host.said().split(query, 1)[-1], describing="no replacement job")
+
+
+@pytest.mark.parametrize("upgrading", [False, True])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_initial_registration_query_failure_changes_no_user_files(
+    tmp_path: Path, program: Path, upgrading: bool
+) -> None:
+    host = Host(tmp_path, NATIVE_SYSTEM, program)
+    if upgrading:
+        passing(host.install())
+    before = _tree(host.home)
+    command = (
+        "systemctl show --property=LoadState --value printobserver.service"
+        if host.system == "Linux"
+        else "launchctl print system/io.github.nickderobertis.printobserver"
+    )
+    host.env["REFUSES"] = command
+    result = host.install()
+    failing(result, naming="registration could not be queried")
+    contains(result.stderr or "", command)
+    contains(result.stderr or "", "manager query refused")
+    equal(_tree(host.home), before)
+    truth(
+        "--user stop" not in host.said(), describing="refused before interrupting the user server"
+    )

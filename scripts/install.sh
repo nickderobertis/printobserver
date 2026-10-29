@@ -118,16 +118,27 @@ esac
 if [ "$CLIENT_ONLY" = false ]; then
     case "$system" in
         Linux)
-            if [ -e /etc/systemd/system/printobserver.service ] || [ -e /usr/lib/systemd/system/printobserver.service ] || systemctl cat "$UNIT_NAME" >/dev/null 2>&1; then
+            if [ -e /etc/systemd/system/printobserver.service ] || [ -e /usr/lib/systemd/system/printobserver.service ]; then
                 die "the system printobserver.service is installed" "Run sudo sh scripts/migrate-service-to-per-user.sh before installing per-user, or use --client-only."
+            fi
+            if registration="$(systemctl show --property=LoadState --value "$UNIT_NAME" 2>&1)"; then
+                [ "$registration" = not-found ] || die "the system printobserver.service registration is not absent (LoadState: $registration)" "Run sudo sh scripts/migrate-service-to-per-user.sh before installing per-user, or use --client-only."
+            else
+                die "the system unit registration could not be queried: $registration" "Run systemctl show --property=LoadState --value $UNIT_NAME, correct its reported error and retry."
             fi
             CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
             RUNTIME_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/printobserver"
             DEFINITION="$CONFIG_HOME/systemd/user/$UNIT_NAME"
             ;;
         Darwin)
-            if [ -e "/Library/LaunchDaemons/$LAUNCHD_LABEL.plist" ] || launchctl print "system/$LAUNCHD_LABEL" >/dev/null 2>&1; then
+            if [ -e "/Library/LaunchDaemons/$LAUNCHD_LABEL.plist" ]; then
                 die "the LaunchDaemon is installed" "Run sudo sh scripts/migrate-service-to-per-user.sh before installing per-user, or use --client-only."
+            fi
+            if registration="$(launchctl print "system/$LAUNCHD_LABEL" 2>&1)"; then
+                die "the LaunchDaemon is installed" "Run sudo sh scripts/migrate-service-to-per-user.sh before installing per-user, or use --client-only."
+            else
+                registration_status=$?
+                [ "$registration_status" -eq 113 ] || die "the LaunchDaemon registration could not be queried (exit $registration_status): $registration" "Run launchctl print system/$LAUNCHD_LABEL, correct its reported error and retry."
             fi
             CONFIG_HOME="$HOME/Library/Application Support"
             RUNTIME_STATE="$CONFIG_HOME/printobserver/state"
