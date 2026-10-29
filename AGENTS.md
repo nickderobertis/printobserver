@@ -1169,19 +1169,23 @@ files in place. It retains /etc/printobserver, /var/lib/printobserver,
 and the unprivileged install and sign-in steps. `--root` stages the service layout
 and destination home below a throwaway root for journeys.
 
-The Unix migration accepts bare and dotted table headers, such as `[supervisor]`,
-in the form the generated config uses. Spaces around names/dots and trailing
-comments are allowed. It refuses malformed or duplicate headers and quoted,
-escaped or array-of-tables headers before stopping the service. Edit the source
-config into that generated form or migrate by hand. Keys must use the generated
-bare form, except the factory's double-quoted `"tool_target:<nonnegative integer>"`
-keys under `[safety.allowed]`. Every other quoted key, dotted key and duplicate
-key is refused. Values may be
-strings (including multiline strings), booleans, signed 64-bit integers, floats,
-arrays, or inline tables with bare keys; inline tables must keep their separators
-on one line. Dates, times and nesting deeper than 64 containers are unsupported.
-Every non-comment line must belong to one of these forms. Unsupported or malformed
-keys/values refuse with a line number before any service or destination change.
+The Unix migration accepts only the factory config's tables: `[octoprint]`,
+`[supervisor]`, `[ingress]`, `[safety]`, `[safety.allowed]`, `[safety.actions]`,
+optional `[camera]`, `[obico]`, `[spools]`, and the credential's `[api]` form.
+Each may be declared once, including a parent after its children. Spaces around
+names/dots and trailing comments are allowed. Unknown, malformed, duplicate,
+quoted, escaped or array-of-tables headers refuse before stopping the service.
+At the root, only `state_dir`, `listen` and the factory's exact dotted
+`api.credential_verifier` key are accepted. That dotted form cannot be combined
+with `[api]`. Inside a table, keys must be bare, except the factory's double-quoted
+`"tool_target:<nonnegative integer>"` keys under `[safety.allowed]`. Every other
+quoted key, dotted key and duplicate key is refused. Values may be strings
+(including multiline strings), booleans, signed 64-bit integers, floats, arrays,
+or inline tables with bare keys; inline tables must keep their separators on one
+line. Dates, times and nesting deeper than 64 containers are unsupported. Every
+non-comment line must belong to one of these forms. Unsupported or malformed
+headers, keys and values refuse with a line number before any service or
+destination change. Edit the source into that generated form or migrate by hand.
 <!-- llmlint: ignore-end[instruction_layer_localized, agents_md_durable_and_terse] -->
 
 ### Moving a Windows service install to the per-user one

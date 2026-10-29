@@ -437,9 +437,15 @@ def _await_public_record(program: Path, address: str) -> Recorded:
 
 @pytest.mark.parametrize("system", ["Linux", "Darwin"])
 @pytest.mark.parametrize("source_nondefault", [False, True])
+@pytest.mark.parametrize("api_form", ["dotted", "table"])
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_migration_preserves_and_serves_the_real_record(
-    tmp_path: Path, program: Path, machine: Machine, system: str, source_nondefault: bool
+    tmp_path: Path,
+    program: Path,
+    machine: Machine,
+    system: str,
+    source_nondefault: bool,
+    api_form: str,
 ) -> None:
     migration = _migration_fixture(tmp_path, program, system)
     host = migration.host
@@ -462,8 +468,9 @@ def test_migration_preserves_and_serves_the_real_record(
     )
     config.write_text(source, encoding="utf-8")
     _fill_in(config, machine, CREDENTIAL, "127.0.0.1:0")
-    verifier_line, rest = config.read_text().split("\n", 1)
-    config.write_text(rest + "\n[api]\n" + verifier_line.removeprefix("api.") + "\n")
+    if api_form == "table":
+        verifier_line, rest = config.read_text().split("\n", 1)
+        config.write_text(rest + "\n[api]\n" + verifier_line.removeprefix("api.") + "\n")
     install_the_skill(config)
     no_harness = tmp_path / "no-harness"
     no_harness.mkdir()
@@ -1797,20 +1804,20 @@ def _opaque_note(kind: str, payload: str) -> str:
             delimiter = '"' * 3
             if kind == "escaped-multiline":
                 payload = r'\""" is string data' + "\n" + payload
-            return f"notes = {delimiter}\n{payload}\n{delimiter}\n"
+            return f"listen = {delimiter}\n{payload}\n{delimiter}\n"
         case "multiline-literal":
             delimiter = "'" * 3
-            return f"notes = {delimiter}\n{payload}\n{delimiter}\n"
+            return f"listen = {delimiter}\n{payload}\n{delimiter}\n"
         case "quoted-basic":
-            return "notes = " + json.dumps('""" and ' + "'" * 3 + " and # [] {} are text") + "\n"
+            return "listen = " + json.dumps('""" and ' + "'" * 3 + " and # [] {} are text") + "\n"
         case "quoted-literal":
-            return 'notes = \'""" and # [] {} are text\'\n'
+            return 'listen = \'""" and # [] {} are text\'\n'
         case "comment":
-            return 'notes = "ordinary" # ' + '"' * 3 + " and " + "'" * 3 + " are comments\n"
+            return 'listen = "ordinary" # ' + '"' * 3 + " and " + "'" * 3 + " are comments\n"
         case "array":
-            return "notes = [\n []\n]\n"
+            return "listen = [\n []\n]\n"
         case "inline":
-            return 'notes = { value = "[] {} # are text", state_dir = "/decoy" }\n'
+            return 'listen = { value = "[] {} # are text", state_dir = "/decoy" }\n'
         case _:
             raise AssertionError(kind)
 
@@ -1921,7 +1928,8 @@ def test_migration_refuses_unclosed_string_and_container_context(
 
 
 @pytest.mark.parametrize(
-    "malformed", ["trailing", "duplicate", "spaced-duplicate", "dotted-duplicate"]
+    "malformed",
+    ["trailing", "duplicate", "spaced-duplicate", "dotted-duplicate", "implicit-parent"],
 )
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
@@ -1942,7 +1950,9 @@ def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
         case "spaced-duplicate":
             original += "[ supervisor ]\n"
         case "dotted-duplicate":
-            original += "[extra.nested]\nvalue = 1\n[ extra . nested ]\n"
+            original += "[safety.allowed]\nvalue = 1\n[ safety . allowed ]\n"
+        case "implicit-parent":
+            original += "[extra.nested.child]\nvalue = 1\n[extra]\nnested = 2\n"
         case _:
             raise AssertionError(malformed)
     with pytest.raises(tomllib.TOMLDecodeError):
@@ -1952,10 +1962,21 @@ def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
     failing(_migrate(host, root), naming="table")
     equal(_tree(root), before)
     equal(host.said(), "", describing="table errors refuse before stopping the service")
+    truth(not host.migrated_config.exists(), describing="no destination config created")
+    truth(not host.migrated_state.exists(), describing="no destination state created")
 
 
 @pytest.mark.parametrize(
-    "header", ['["extra"]', "['extra']", r'["\u0065xtra"]', '[extra."nested"]', "[[extra]]"]
+    "header",
+    [
+        '["extra"]',
+        "['extra']",
+        r'["\u0065xtra"]',
+        '[extra."nested"]',
+        "[[extra]]",
+        "[extra]",
+        "[extra.nested.child]",
+    ],
 )
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
 def test_unsupported_table_key_forms_refuse_without_any_mutation(
@@ -1982,11 +2003,17 @@ def test_unsupported_table_key_forms_refuse_without_any_mutation(
 @pytest.mark.parametrize(
     "headers",
     [
-        "[extra]\nvalue = 1\n",
-        "[extra.nested]\nvalue = 1\n",
-        "[ extra . nested-key ] # retained\nvalue = 1\n",
-        "[extra__2.sub-3]\nvalue = 1\n",
-        "[extra.nested]\nvalue = 1\n[extra]\nother = 2\n",
+        "[safety]\nvalue = 1\n",
+        "[safety.allowed]\nvalue = 1\n",
+        "[ safety . allowed ] # retained\nvalue = 1\n",
+        "[safety.allowed]\nvalue = 1\n[safety]\nother = 2\n",
+        "[safety.allowed]\nvalue = 1\n[safety.actions]\nother = 2\n[safety]\nother = 3\n",
+        "[camera]\nvalue = 1\n",
+        "[obico]\nvalue = 1\n",
+        "[spools]\nvalue = 1\n",
+        "[api]\nvalue = 1\n",
+        "[octoprint]\nvalue = 1\n",
+        "[ingress]\nvalue = 1\n",
     ],
 )
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
@@ -2014,25 +2041,32 @@ def test_generated_bare_and_dotted_tables_survive_migration(
     ("extra", "valid_toml"),
     [
         ('"state_dir" = "/decoy"', False),
+        ("listen = INVALID", False),
         ("unrelated = INVALID", False),
-        ("unrelated = 01", False),
-        ('unrelated = "bad\\q"', False),
-        ("unrelated = [1,,2]", False),
-        ("unrelated = { value = INVALID }", False),
-        ("unrelated = { value = 1, value = 2 }", False),
-        ("unrelated = { value = 1,\n other = 2 }", False),
-        ('unrelated = "\\ud800"', False),
-        ('unrelated = "\\U00110000"', False),
-        ("unrelated = 9223372036854775808", True),
-        ("unrelated = -9223372036854775809", True),
-        ("unrelated = 0x8000000000000000", True),
-        ("unrelated = 0o1000000000000000000000", True),
-        ("unrelated = 0b1000000000000000000000000000000000000000000000000000000000000000", True),
-        ('"unrelated" = 1', True),
-        ("unrelated.nested = 1", True),
-        ("unrelated = 2026-10-28", True),
+        ("unrelated = 1", True),
         (
-            "unrelated = " + "[" * 65 + "0" + "]" * 65,
+            'api.credential_verifier = "sha256:first"\n[api]\n'
+            'credential_verifier = "sha256:second"',
+            False,
+        ),
+        ("listen = 01", False),
+        ('listen = "bad\\q"', False),
+        ("listen = [1,,2]", False),
+        ("listen = { value = INVALID }", False),
+        ("listen = { value = 1, value = 2 }", False),
+        ("listen = { value = 1,\n other = 2 }", False),
+        ('listen = "\\ud800"', False),
+        ('listen = "\\U00110000"', False),
+        ("listen = 9223372036854775808", True),
+        ("listen = -9223372036854775809", True),
+        ("listen = 0x8000000000000000", True),
+        ("listen = 0o1000000000000000000000", True),
+        ("listen = 0b1000000000000000000000000000000000000000000000000000000000000000", True),
+        ('"listen" = 1', True),
+        ("listen.nested = 1", True),
+        ("listen = 2026-10-28", True),
+        (
+            "listen = " + "[" * 65 + "0" + "]" * 65,
             True,
         ),
     ],
@@ -2057,7 +2091,8 @@ def test_migration_refuses_unsupported_keys_and_invalid_values_before_stop(
             tomllib.loads(config.read_text())
     before = _tree(root)
     result = _migrate(host, root)
-    failing(result, naming="line 1")
+    refusal_line = 2 if "\n[api]\n" in extra else 1
+    failing(result, naming=f"line {refusal_line}")
     equal(_tree(root), before, describing="source config, state and service registration unchanged")
     truth(not host.migrated_config.exists(), describing="no destination config created")
     truth(not host.migrated_state.exists(), describing="no destination state created")
@@ -2093,7 +2128,7 @@ def test_migration_preserves_supported_values(tmp_path: Path, program: Path, val
     config = migration.service_config
     state = migration.service_root / "var/lib/printobserver"
     _minimal_service_config(config, state)
-    original = "unrelated = " + value + "\n" + config.read_text()
+    original = config.read_text() + "\n[octoprint]\nunrelated = " + value + "\n"
     tomllib.loads(original)
     config.write_text(original)
     passing(_migrate(host, migration.service_root))
@@ -2110,7 +2145,7 @@ def test_migration_preserves_supported_values(tmp_path: Path, program: Path, val
         ("safety.allowed", "'tool_target:0'", False),
         ("safety.allowed", '"feedrate"', False),
         ("supervisor", '"tool_target:0"', False),
-        ("other", '"tool_target:0"', False),
+        ("octoprint", '"tool_target:0"', False),
         ("", '"tool_target:0"', False),
     ],
 )

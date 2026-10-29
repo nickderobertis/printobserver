@@ -216,7 +216,11 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
         }
         if (ordinary != "" && !bad_string) bad_string=NR
     }
-    BEGIN { table=""; states=0; skills=0; multi=""; arrays=0; objects=0 }
+    BEGIN {
+        table=""; states=0; skills=0; multi=""; arrays=0; objects=0
+        split("octoprint supervisor ingress safety safety.allowed safety.actions camera obico spools api", names, " ")
+        for (name in names) allowed_tables[names[name]]=1
+    }
     {
         opaque=(multi != "" || arrays != 0 || objects != 0)
         scan_context($0)
@@ -227,9 +231,11 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
         }
         if ($0 !~ /^[ \t\r]*(#|$)/ && $0 !~ /^[ \t]*\[/) {
             factory_tool=(table == "safety.allowed" && $0 ~ /^[ \t]*\042tool_target:[0-9]+\042[ \t]*=/)
-            if (!factory_tool && $0 !~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) invalid(NR)
+            factory_api=(table == "" && $0 ~ /^[ \t]*api[.]credential_verifier[ \t]*=/)
+            if (!factory_tool && !factory_api && $0 !~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) invalid(NR)
             key=$0; sub(/=.*/, "", key); gsub(/[ \t]/, "", key)
             if (factory_tool) gsub(/\042/, "", key)
+            if (table == "" && key != "state_dir" && key != "listen" && !factory_api) invalid(NR)
             full_key=(table == "" ? key : table "." key)
             if (full_key in declared_keys || full_key in declared_tables) invalid(NR)
             declared_keys[full_key]=1
@@ -246,6 +252,12 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
             exit 1
         }
         table=header; sub(/^[ \t]*\[/,"",table); sub(/\].*$/,"",table); gsub(/[ \t]/,"",table)
+        if (!(table in allowed_tables)) {
+            print "Unsupported TOML table header at line " NR ": [" table "]" > "/dev/stderr"
+            print "Use the factory table names in generated bare/dotted header form, or migrate by hand." > "/dev/stderr"
+            exit 1
+        }
+        if (table == "api" && "api.credential_verifier" in declared_keys) invalid(NR)
         if (table in declared_tables) {
             print "Duplicate TOML table header at line " NR ": [" table "]" > "/dev/stderr"
             print "Edit the source config into the generated bare/dotted header form, or migrate by hand." > "/dev/stderr"
