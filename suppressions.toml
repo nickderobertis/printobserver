@@ -4197,3 +4197,10 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_migration_accepts_only_factory_quoted_tool_keys("
 reason = "The task requires migration journeys here. This drives the real script on native files with the factory safety-key spelling and unsupported quoted-key forms, checking preservation or refusal before any service or destination change; the parser and filesystem are real."
+
+
+[[suppression]]
+rule = "boundary_inputs_validated"
+file = "scripts/install.sh"
+site = "Lingering account authorization"
+reason = "The contract deliberately selects USER in this unprivileged per-user installer. logind authorizes enabling lingering for the selected account and refuses another account without authorization, so forging USER grants no permission to enable lingering for someone else. The installer preserves that authorization boundary and reports refusal without escalating."

@@ -1191,6 +1191,8 @@ def _minimal_service_config(config: Path, state: Path) -> None:
         "config-overlap",
         "state-overlap",
         "source-ancestor-overlap",
+        "destinations-overlap",
+        "state-inside-config",
         "bad-path",
         "control-path",
         "source-link",
@@ -1252,6 +1254,16 @@ def test_migration_boundary_refusals_preserve_every_original(
                 host.user_home.joinpath("Library").mkdir(parents=True)
                 alias.symlink_to(host.user_home, target_is_directory=True)
                 _minimal_service_config(config, alias / "Library")
+        case "destinations-overlap" | "state-inside-config":
+            if host.system != "Linux":
+                pytest.skip("XDG is Linux configuration")
+            config_home = host.user_home / "shared"
+            state_home = (
+                config_home
+                if refusal == "destinations-overlap"
+                else config_home / "printobserver/config.toml"
+            )
+            host.env.update(XDG_CONFIG_HOME=str(config_home), XDG_STATE_HOME=str(state_home))
         case "bad-path":
             args = ["--root", str(root) + 'bad"quote']
         case "control-path":
@@ -1318,6 +1330,8 @@ def test_migration_boundary_refusals_preserve_every_original(
         "config-overlap": "overlap",
         "state-overlap": "overlap",
         "source-ancestor-overlap": "overlap",
+        "destinations-overlap": "destinations overlap",
+        "state-inside-config": "destinations overlap",
         "bad-path": "carries a quote",
         "control-path": "control character",
         "source-link": "contains symbolic links",
@@ -1335,6 +1349,16 @@ def test_migration_boundary_refusals_preserve_every_original(
     failing(result, naming=expected[refusal])
     equal(_tree(root), before)
     truth(" stop " not in host.said(), describing="refused before stopping any system service")
+    if refusal in {"destinations-overlap", "state-inside-config"}:
+        equal(host.said(), "", describing="no service-manager operation before refusal")
+        truth(
+            not (Path(host.env["XDG_CONFIG_HOME"]) / "printobserver/config.toml").exists(),
+            describing="configuration destination unchanged",
+        )
+        truth(
+            not (Path(host.env["XDG_STATE_HOME"]) / "printobserver").exists(),
+            describing="state destination unchanged",
+        )
 
 
 @pytest.mark.parametrize("ending", [b"", b"\n", b"\r\n"])

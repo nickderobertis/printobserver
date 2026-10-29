@@ -335,6 +335,9 @@ for source in "$STATE_CANON" "$CONFIG_CANON"; do
         fi
     done
 done
+if overlap "$USER_STATE_CANON" "$USER_CONFIG_CANON"; then
+    die "The per-user configuration and state destinations overlap; nothing was changed." "Choose separate XDG configuration and state directories, then retry."
+fi
 command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || die 'Install sha256sum or shasum; nothing was changed.'
 # awk preserves each line but supplies a final newline. Keep the original's
 # absence of that byte too; comments and all other bytes belong to the user.

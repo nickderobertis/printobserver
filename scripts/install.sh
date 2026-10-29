@@ -341,12 +341,12 @@ shared_secret = ""
 # would be a second copy of it to keep right; see AGENTS.md, "The Obico ingress
 # answer bound".
 
-# The operator's credential is never written in this file: the service keeps
-# only its verifier, so nothing a supervision turn can read authenticates as the
-# operator. As yourself, unprivileged, run
+# This per-user server keeps only the credential verifier in this file.
+# Supervision runs as your account and can read your client configuration.
+# As yourself, unprivileged, run
 #   printobserver credential issue
-# which writes the credential into your own client configuration, readable by
-# you alone, and prints one line to put here, above the first [table] header:
+# which writes the credential into your own client configuration and prints
+# one line to put here, above the first [table] header:
 #   api.credential_verifier = "sha256:..."
 # then restart the service. Until that line is here the service supervises and
 # refuses every operator request. Each supervision turn is handed a credential
@@ -427,6 +427,7 @@ UNIT
     # llmlint: ignore[changed_behavior_has_e2e] Linux definition mode failure: The file was just created by this user in a validated writable directory; failure here requires a filesystem failure or concurrent replacement. Real directory/write refusals and manager recovery are covered, without replacing the filesystem tools.
     chmod 0644 "$DEFINITION" || die "$DEFINITION could not be made readable" "Run chmod 0644 on this file as its owner, then retry."
     systemctl --user daemon-reload || die "the user manager could not reload its units" "Run systemctl --user status and check that your user manager is running, then retry."
+    # llmlint: ignore[boundary_inputs_validated] Lingering account authorization: The contract deliberately selects USER in this unprivileged per-user installer. logind authorizes enabling lingering for the selected account and refuses another account without authorization, so forging USER grants no permission to enable lingering for someone else. The installer preserves that authorization boundary and reports refusal without escalating.
     if ! loginctl enable-linger "${USER:-$(id -un)}"; then
         echo "install.sh: lingering was refused; the server runs only while you are logged in. Enable it with: loginctl enable-linger \"${USER:-$(id -un)}\"" >&2
     fi
