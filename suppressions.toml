@@ -4106,3 +4106,21 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
 site = "def test_migration_preserves_a_destination_created_while_the_service_stops("
 reason = "The task requires real migration journeys in repo-e2e. The existing manager boundary only synchronizes an external stop on a FIFO; a real operator actor creates a destination and retained file using actual filesystem calls. This proves the migration never cleans a destination it did not create, without replacing mkdir, cp or chown."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_uses_the_filesystem_meaning_of_a_symlink_followed_by_parent("
+reason = "The task requires real migration journeys in repo-e2e. This case drives the script against actual source directories and configuration bytes, proving configured-path resolution or malformed-input refusal before service stop; no parser or filesystem layer is mocked."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_decodes_basic_backslashes_and_preserves_literal_backslashes("
+reason = "The task requires real migration journeys in repo-e2e. This case drives the script against actual source directories and configuration bytes, proving configured-path resolution or malformed-input refusal before service stop; no parser or filesystem layer is mocked."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_per_user_unix_install_journey.py"
+site = "def test_migration_rejects_malformed_and_duplicate_path_settings_before_stop("
+reason = "The task requires real migration journeys in repo-e2e. This case drives the script against actual source directories and configuration bytes, proving configured-path resolution or malformed-input refusal before service stop; no parser or filesystem layer is mocked."

@@ -29,10 +29,15 @@ if [ -n "$ROOT" ]; then
     case "$ROOT" in /*) ;; *) ROOT="$PWD/$ROOT" ;; esac
     ROOT="$(normalize "$ROOT")"
 fi
+# Prefix absolute paths without changing how the filesystem resolves them.
+rooted_path() {
+    case "$1" in /*) ;; *) die "$1 is not an absolute path; nothing was changed." "Use absolute configuration, root and XDG paths, then retry." ;; esac
+    case "$1" in "$ROOT" | "$ROOT"/*) printf '%s\n' "$1" ;; *) printf '%s\n' "$ROOT$1" ;; esac
+}
 # Absolute XDG overrides are staged too; a journey can write only below root.
 under_root() {
     path="$(normalize "$1")" || return 1
-    case "$path" in "$ROOT" | "$ROOT"/*) printf '%s\n' "$path" ;; *) printf '%s\n' "$ROOT$path" ;; esac
+    rooted_path "$path"
 }
 [ "$(id -u)" -eq 0 ] || die 'Run this through sudo; nothing was changed.'
 [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ] || die 'SUDO_USER must name the user who will run the server; nothing was changed.' 'Invoke this script through sudo from that user account.'
@@ -109,7 +114,8 @@ awk -v state="$USER_STATE" -v source_path="$work/source-state" -v skill="$USER_S
     { print }
     END { if (states != 1 || skills != 1) exit 1 }
 ' "$SERVICE_CONFIG" >"$work/config.toml" || die 'state_dir or supervisor.skill_path is not a plain string in its required table; nothing was changed. Restore those settings before migrating.'
-SERVICE_STATE="$(under_root "$(cat "$work/source-state")")"
+# The existing source must retain symlink/.. semantics until physical resolves it.
+SERVICE_STATE="$(rooted_path "$(cat "$work/source-state")")"
 [ -d "$SERVICE_STATE" ] || die "$SERVICE_STATE is missing; nothing was changed." 'Restore the service state from backup before migrating.'
 # Resolve existing ancestors for comparison, including macOS /var -> /private/var.
 # Keep the configured spellings for the copied values and operator diagnostics.
@@ -121,7 +127,7 @@ physical() (
         suffix="/$component$suffix"
         ancestor="$(dirname "$ancestor")" || exit 1
     done
-    base="$(cd "$ancestor" && pwd -P)" || exit 1
+    base="$(cd -P "$ancestor" && pwd -P)" || exit 1
     normalize "$base$suffix"
 )
 STATE_CANON="$(physical "$SERVICE_STATE")" || die "The service state ancestors could not be resolved; nothing was changed." "Check source-directory permissions and retry."
@@ -207,7 +213,7 @@ chmod 0700 "$USER_STATE" || copy_failed
 chown -R "$SUDO_USER:$(id -gn "$SUDO_USER")" "$USER_STATE" "$USER_CONFIG" || copy_failed
 # Compare a sorted manifest of every directory and every file's SHA-256.
 manifest() (
-    cd "$1" || exit 1
+    cd -P "$1" || exit 1
     [ -z "$(find . -type l -print)" ] || exit 1
     find . -type d -print >"$work/directories" || exit 1
     LC_ALL=C sort "$work/directories" || exit 1

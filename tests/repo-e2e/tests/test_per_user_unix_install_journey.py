@@ -1648,3 +1648,78 @@ def test_migration_preserves_a_destination_created_while_the_service_stops(
     equal((_tree(state), config.read_bytes()), before)
     truth(host.system_definition.is_file(), describing="the system registration remains installed")
     truth("systemctl disable" not in host.said(), describing="no unverified removal")
+
+
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_uses_the_filesystem_meaning_of_a_symlink_followed_by_parent(
+    tmp_path: Path, program: Path
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    physical = root / "physical/state"
+    lexical = root / "spelled/state"
+    physical.mkdir(parents=True)
+    lexical.mkdir(parents=True)
+    physical.joinpath("record").write_bytes(b"the printer's actual record")
+    lexical.joinpath("record").write_bytes(b"an unrelated lexical destination")
+    physical.parent.joinpath("deep").mkdir()
+    link = root / "spelled/link"
+    link.symlink_to(physical.parent / "deep", target_is_directory=True)
+    configured = link / ".." / "state"
+    _minimal_service_config(config, configured)
+    original = _tree(physical), _tree(lexical), config.read_bytes()
+    passing(_migrate(host, root))
+    equal((host.migrated_state / "record").read_bytes(), b"the printer's actual record")
+    equal((_tree(physical), _tree(lexical), config.read_bytes()), original)
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_decodes_basic_backslashes_and_preserves_literal_backslashes(
+    tmp_path: Path, program: Path, quote: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "record\\archive"
+    state.mkdir()
+    state.joinpath("record").write_bytes(b"backslash path record")
+    value = json.dumps(str(state)) if quote == '"' else f"'{state}'"
+    original = f"state_dir = {value}\n[supervisor]\nskill_path = '/external/SKILL.md'\n"
+    config.write_text(original)
+    passing(_migrate(host, root))
+    equal((host.migrated_state / "record").read_bytes(), b"backslash path record")
+    equal(config.read_text(), original)
+    equal(tomllib.loads(host.migrated_config.read_text())["state_dir"], str(host.migrated_state))
+
+
+@pytest.mark.parametrize("field", ["state_dir", "skill_path"])
+@pytest.mark.parametrize("malformed", ["escape", "unterminated", "trailing", "duplicate"])
+# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required journey location.
+def test_migration_rejects_malformed_and_duplicate_path_settings_before_stop(
+    tmp_path: Path, program: Path, field: str, malformed: str
+) -> None:
+    host, root, config = _migration_host(tmp_path, program)
+    state = root / "var/lib/printobserver"
+    state.joinpath("record").write_bytes(b"existing record")
+    values = {"state_dir": f'"{state}"', "skill_path": '"/external/SKILL.md"'}
+    match malformed:
+        case "escape":
+            values[field] = r'"/invalid\qpath"'
+        case "unterminated":
+            values[field] = values[field][:-1]
+        case "trailing":
+            values[field] += " unexpected-content"
+        case "duplicate":
+            pass
+        case _:
+            raise AssertionError(malformed)
+    state_line = f"state_dir = {values['state_dir']}\n"
+    skill_line = f"skill_path = {values['skill_path']}\n"
+    if malformed == "duplicate":
+        if field == "state_dir":
+            state_line *= 2
+        else:
+            skill_line *= 2
+    config.write_text(state_line + "[supervisor]\n" + skill_line)
+    before = _tree(root)
+    failing(_migrate(host, root), naming="not a plain string")
+    equal(_tree(root), before)
+    truth(" stop " not in host.said(), describing="malformed settings refuse before stopping")
