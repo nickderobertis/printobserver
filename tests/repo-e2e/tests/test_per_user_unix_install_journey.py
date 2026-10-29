@@ -1856,14 +1856,17 @@ def test_migration_refuses_malformed_or_duplicate_tables_before_stop(
     state = root / "var/lib/printobserver"
     _minimal_service_config(config, state)
     original = config.read_text()
-    if malformed == "trailing":
-        original = original.replace("[supervisor]", "[supervisor] trailing-garbage")
-    elif malformed == "duplicate":
-        original += "[supervisor]\n"
-    elif malformed == "spaced-duplicate":
-        original += "[ supervisor ]\n"
-    else:
-        original += "[extra.nested]\nvalue = 1\n[ extra . nested ]\n"
+    match malformed:
+        case "trailing":
+            original = original.replace("[supervisor]", "[supervisor] trailing-garbage")
+        case "duplicate":
+            original += "[supervisor]\n"
+        case "spaced-duplicate":
+            original += "[ supervisor ]\n"
+        case "dotted-duplicate":
+            original += "[extra.nested]\nvalue = 1\n[ extra . nested ]\n"
+        case _:
+            raise AssertionError(malformed)
     with pytest.raises(tomllib.TOMLDecodeError):
         tomllib.loads(original)
     config.write_text(original)
