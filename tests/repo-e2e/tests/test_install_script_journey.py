@@ -298,7 +298,6 @@ def test_each_targeted_platform_installs_its_own_artifact_and_names_its_own_star
         PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
     )
 
-    # The task requires this installer journey here; no narrower graph edge exists.
     # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required platform e2e
     result = shell_run(
         ["sh", str(REPO_ROOT / SCRIPT), "--client-only"], cwd=home, env=environment, timeout=600
@@ -335,7 +334,6 @@ def test_a_platform_it_publishes_nothing_for_stops_with_a_next_action(
         PRINTOBSERVER_RELEASE_BASE=str(staged),
         PATH=f"{shims}{os.pathsep}{os.environ['PATH']}",
     )
-    # The task requires this installer journey here; no narrower graph edge exists.
     # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] Required absent-host e2e
     result = shell_run(
         ["sh", str(REPO_ROOT / SCRIPT), "--client-only"], cwd=home, env=environment, timeout=600
