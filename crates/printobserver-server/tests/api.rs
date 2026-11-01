@@ -54,6 +54,8 @@ mod ledger_restarts;
 mod looking;
 #[path = "journeys/observing.rs"]
 mod observing;
+#[path = "journeys/spike_context.rs"]
+mod spike_context;
 #[path = "journeys/spike_check_delay.rs"]
 mod spike_check_delay;
 #[path = "journeys/operating.rs"]
