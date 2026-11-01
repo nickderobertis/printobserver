@@ -21,6 +21,10 @@ holds the summary of the run the report cites, `--turns 4 --obico`. One earlier
 invocation failed before Claude Code opened a session, so the spike spent 4 real
 turns and 5 invocations.
 
+Its token figures were then recomputed in place from the 4 recorded turns, with
+no new turn, by `python3 spikes/check-costs/run.py --refigure
+spikes/check-costs/results.json`. That pass added the per-variant ratios.
+
 What it needs on the host: Docker (for the slicer image and for Obico), cargo,
 uv, `gh`, curl, and the scripted OctoPrint. If no OctoPrint instance is recorded,
 `run.py` starts it with `just octoprint-up`. Leave it running and stop it with

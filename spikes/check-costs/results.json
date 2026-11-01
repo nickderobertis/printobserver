@@ -638,7 +638,13 @@
       "with_index": 64357.0
     },
     "agent-context-added-tokens": 127.0,
-    "tokens_per_byte": 0.3848
+    "tokens_per_byte": 0.3848,
+    "tokens_per_added_byte": 0.3848,
+    "per_variant_total_tokens_per_prompt_byte": {
+      "today": 42.3401,
+      "with_index": 34.8441
+    },
+    "per_variant_note": "Each variant's ratio is its median total input tokens per turn (input + cache-read + cache-write) over its whole prompt's bytes. Those totals include the harness's own system prompt and tools and the skill (the same ~64k tokens in both variants), so they are not the tokens of the context answer alone and the ratio is no per-byte rate for it; use tokens_per_added_byte to convert bytes of added context to tokens."
   },
   "camera": {
     "source": "ffmpeg:virtual?video=testsrc&size=1920x1080#video=h264",

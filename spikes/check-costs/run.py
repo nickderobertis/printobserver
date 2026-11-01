@@ -336,15 +336,36 @@ def tokens(stats, index, real_turns):
             note(f"turn refused or failed ({answer['failure_kind']}); stopping")
             break
     out["turns"] = turns
-    ok = [t for t in turns if t["status"] == "ok"]
+    token_figures(out)
+    return out
+
+
+TOTALS_NOTE = (
+    "Each variant's ratio is its median total input tokens per turn (input + cache-read + "
+    "cache-write) over its whole prompt's bytes. Those totals include the harness's own "
+    "system prompt and tools and the skill (the same ~64k tokens in both variants), so they "
+    "are not the tokens of the context answer alone and the ratio is no per-byte rate for it; "
+    "use tokens_per_added_byte to convert bytes of added context to tokens."
+)
+
+
+def token_figures(out):
+    """The token figures, from the recorded turns and prompt byte lengths only."""
+    ok = [t for t in out["turns"] if t["status"] == "ok"]
     by = {v: [t["total_input_tokens"] for t in ok if t["variant"] == v] for v in ("today", "with_index")}
-    if by["today"] and by["with_index"]:
-        added = statistics.median(by["with_index"]) - statistics.median(by["today"])
-        out["median_total_input_tokens"] = {v: statistics.median(n) for v, n in by.items()}
-        out["agent-context-added-tokens"] = added
-        out["tokens_per_byte"] = round(added / out["added_prompt_bytes"], 4)
-    else:
+    if not (by["today"] and by["with_index"]):
         out["agent-context-added-tokens"] = None
+        return out
+    medians = {v: statistics.median(n) for v, n in by.items()}
+    added = medians["with_index"] - medians["today"]
+    out["median_total_input_tokens"] = medians
+    out["agent-context-added-tokens"] = added
+    out["tokens_per_byte"] = round(added / out["added_prompt_bytes"], 4)
+    out["tokens_per_added_byte"] = out["tokens_per_byte"]
+    out["per_variant_total_tokens_per_prompt_byte"] = {
+        v: round(medians[v] / out[f"{v}_prompt_bytes"], 4) for v in medians
+    }
+    out["per_variant_note"] = TOTALS_NOTE
     return out
 
 
@@ -438,7 +459,17 @@ def main():
                         help="run N real model turns (default 6, the most allowed), alternating the variants")
     parser.add_argument("--obico", action="store_true", help="bring up the real Obico and time its reads")
     parser.add_argument("--out", type=Path, help="also write the summary here")
+    parser.add_argument("--refigure", type=Path, metavar="SUMMARY",
+                        help="recompute the token figures of a written summary from its recorded "
+                             "turns, in place, measuring and spending nothing")
     args = parser.parse_args()
+    if args.refigure:
+        result = json.loads(args.refigure.read_text())
+        token_figures(result["tokens"])
+        result["candidates"]["agent-context-added-tokens"] = result["tokens"]["agent-context-added-tokens"]
+        args.refigure.write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result["tokens"], indent=2))
+        return
     SCRATCH.mkdir(parents=True, exist_ok=True)
     if args.turns > 6:
         parser.error("at most 6 real turns")
