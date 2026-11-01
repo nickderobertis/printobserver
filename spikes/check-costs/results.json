@@ -1,0 +1,805 @@
+{
+  "harness": "python3 spikes/check-costs/run.py --turns 4 --obico",
+  "host": {
+    "hostname": "U-17UN402ICR95C",
+    "cpu": "Intel(R) Xeon(R) Platinum 8488C",
+    "logical_cpus": 8,
+    "memory_gib": 30.8,
+    "kernel": "7.0.0-1014-aws"
+  },
+  "load": {
+    "start": {
+      "loadavg_1_5_15": [
+        24.06,
+        22.16,
+        20.62
+      ],
+      "at": "2026-11-01T13:20:04-0600"
+    },
+    "after_gcode": {
+      "loadavg_1_5_15": [
+        23.9,
+        22.15,
+        20.63
+      ],
+      "at": "2026-11-01T13:20:06-0600"
+    },
+    "after_index": {
+      "loadavg_1_5_15": [
+        23.9,
+        22.15,
+        20.63
+      ],
+      "at": "2026-11-01T13:20:08-0600"
+    },
+    "after_tokens": {
+      "loadavg_1_5_15": [
+        23.65,
+        22.3,
+        20.74
+      ],
+      "at": "2026-11-01T13:20:44-0600"
+    },
+    "after_camera": {
+      "loadavg_1_5_15": [
+        44.83,
+        32.08,
+        24.83
+      ],
+      "at": "2026-11-01T13:24:49-0600"
+    },
+    "after_delay": {
+      "loadavg_1_5_15": [
+        39.9,
+        32.69,
+        25.38
+      ],
+      "at": "2026-11-01T13:25:35-0600"
+    },
+    "end": {
+      "loadavg_1_5_15": [
+        36.67,
+        33.2,
+        26.03
+      ],
+      "at": "2026-11-01T13:26:35-0600"
+    }
+  },
+  "gcode_shape": {
+    "typical": {
+      "bytes": 3664057,
+      "lines": 152390,
+      "layers": 186,
+      "final_z_mm": 29.2,
+      "types": {
+        "Bridge infill": 18,
+        "Custom": 2,
+        "External perimeter": 963,
+        "Internal infill": 918,
+        "Overhang perimeter": 18,
+        "Perimeter": 963,
+        "Solid infill": 171,
+        "Support material": 260,
+        "Support material interface": 111,
+        "Top solid infill": 12
+      },
+      "most_types_in_one_layer": 6,
+      "m73_normal_markers": 247,
+      "m73_silent_markers": 270,
+      "estimated_s": {
+        "normal": 8993,
+        "silent": 10184
+      },
+      "bytes_per_layer": 19699.2,
+      "lines_per_layer": 819.3,
+      "m73_normal_per_layer": 1.328,
+      "m73_normal_per_estimated_hour": 98.9,
+      "bytes_per_estimated_hour": 1466764
+    },
+    "long": {
+      "bytes": 13479239,
+      "lines": 573500,
+      "layers": 284,
+      "final_z_mm": 41.6,
+      "types": {
+        "Bridge infill": 60,
+        "Custom": 2,
+        "External perimeter": 4570,
+        "Internal infill": 4440,
+        "Overhang perimeter": 60,
+        "Perimeter": 4570,
+        "Solid infill": 680,
+        "Support material": 1285,
+        "Support material interface": 860,
+        "Top solid infill": 40
+      },
+      "most_types_in_one_layer": 6,
+      "m73_normal_markers": 630,
+      "m73_silent_markers": 723,
+      "estimated_s": {
+        "normal": 31764,
+        "silent": 37322
+      },
+      "bytes_per_layer": 47462.1,
+      "lines_per_layer": 2019.4,
+      "m73_normal_per_layer": 2.218,
+      "m73_normal_per_estimated_hour": 71.4,
+      "bytes_per_estimated_hour": 1527681
+    },
+    "real-prints/fan-cut-bridge/fan-cut-test.clean.gcode": {
+      "bytes": 440608,
+      "lines": 20199,
+      "layers": 150,
+      "final_z_mm": 30.0,
+      "types": {
+        "Bridge infill": 28,
+        "Custom": 2,
+        "External perimeter": 241,
+        "Internal infill": 225,
+        "Overhang perimeter": 28,
+        "Perimeter": 227,
+        "Solid infill": 37,
+        "Top solid infill": 4
+      },
+      "most_types_in_one_layer": 6,
+      "m73_normal_markers": 126,
+      "m73_silent_markers": 128,
+      "estimated_s": {
+        "normal": 1612,
+        "silent": 1736
+      },
+      "bytes_per_layer": 2937.4,
+      "lines_per_layer": 134.7,
+      "m73_normal_per_layer": 0.84,
+      "m73_normal_per_estimated_hour": 281.4,
+      "bytes_per_estimated_hour": 983988
+    },
+    "real-prints/fan-cut-bridge/fan-cut-test.gcode": {
+      "bytes": 450468,
+      "lines": 20017,
+      "layers": 150,
+      "final_z_mm": 30.0,
+      "types": {
+        "Bridge infill": 28,
+        "Custom": 2,
+        "External perimeter": 241,
+        "Internal infill": 225,
+        "Overhang perimeter": 28,
+        "Perimeter": 227,
+        "Solid infill": 37,
+        "Top solid infill": 4
+      },
+      "most_types_in_one_layer": 6,
+      "m73_normal_markers": 126,
+      "m73_silent_markers": 128,
+      "estimated_s": {
+        "normal": 1612,
+        "silent": 1736
+      },
+      "bytes_per_layer": 3003.1,
+      "lines_per_layer": 133.4,
+      "m73_normal_per_layer": 0.84,
+      "m73_normal_per_estimated_hour": 281.4,
+      "bytes_per_estimated_hour": 1006008
+    },
+    "real-prints/spaghetti-floating-slab/spaghetti-test.gcode": {
+      "bytes": 247777,
+      "lines": 10757,
+      "layers": 100,
+      "final_z_mm": 28.0,
+      "types": {
+        "Bridge infill": 3,
+        "Custom": 2,
+        "External perimeter": 99,
+        "Internal infill": 84,
+        "Overhang perimeter": 1,
+        "Perimeter": 99,
+        "Solid infill": 13,
+        "Top solid infill": 2
+      },
+      "most_types_in_one_layer": 4,
+      "m73_normal_markers": 118,
+      "m73_silent_markers": 121,
+      "estimated_s": {
+        "normal": 1138,
+        "silent": 1208
+      },
+      "bytes_per_layer": 2477.8,
+      "lines_per_layer": 107.6,
+      "m73_normal_per_layer": 1.18,
+      "m73_normal_per_estimated_hour": 373.3,
+      "bytes_per_estimated_hour": 783829
+    },
+    "real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode": {
+      "bytes": 422765,
+      "lines": 18414,
+      "layers": 125,
+      "final_z_mm": 33.0,
+      "types": {
+        "Bridge infill": 5,
+        "Custom": 2,
+        "External perimeter": 156,
+        "Internal infill": 126,
+        "Overhang perimeter": 2,
+        "Perimeter": 156,
+        "Solid infill": 26,
+        "Top solid infill": 4
+      },
+      "most_types_in_one_layer": 5,
+      "m73_normal_markers": 129,
+      "m73_silent_markers": 132,
+      "estimated_s": {
+        "normal": 1736,
+        "silent": 1904
+      },
+      "bytes_per_layer": 3382.1,
+      "lines_per_layer": 147.3,
+      "m73_normal_per_layer": 1.032,
+      "m73_normal_per_estimated_hour": 267.5,
+      "bytes_per_estimated_hour": 876702
+    },
+    "real-prints/under-extrusion-lace/lace-test.clean.gcode": {
+      "bytes": 350191,
+      "lines": 15493,
+      "layers": 150,
+      "final_z_mm": 30.0,
+      "types": {
+        "Bridge infill": 1,
+        "Custom": 2,
+        "External perimeter": 150,
+        "Internal infill": 142,
+        "Perimeter": 150,
+        "Solid infill": 7,
+        "Top solid infill": 1
+      },
+      "most_types_in_one_layer": 4,
+      "m73_normal_markers": 126,
+      "m73_silent_markers": 129,
+      "estimated_s": {
+        "normal": 1586,
+        "silent": 1726
+      },
+      "bytes_per_layer": 2334.6,
+      "lines_per_layer": 103.3,
+      "m73_normal_per_layer": 0.84,
+      "m73_normal_per_estimated_hour": 286.0,
+      "bytes_per_estimated_hour": 794885
+    },
+    "real-prints/under-extrusion-lace/lace-test.gcode": {
+      "bytes": 354592,
+      "lines": 15312,
+      "layers": 150,
+      "final_z_mm": 30.0,
+      "types": {
+        "Bridge infill": 1,
+        "Custom": 2,
+        "External perimeter": 150,
+        "Internal infill": 142,
+        "Perimeter": 150,
+        "Solid infill": 7,
+        "Top solid infill": 1
+      },
+      "most_types_in_one_layer": 4,
+      "m73_normal_markers": 126,
+      "m73_silent_markers": 129,
+      "estimated_s": {
+        "normal": 1586,
+        "silent": 1726
+      },
+      "bytes_per_layer": 2363.9,
+      "lines_per_layer": 102.1,
+      "m73_normal_per_layer": 0.84,
+      "m73_normal_per_estimated_hour": 286.0,
+      "bytes_per_estimated_hour": 804875
+    }
+  },
+  "index": {
+    "octoprint": {
+      "url_kind": "scripted OctoPrint (tools/octoprint-env), loopback",
+      "mode": "virtual",
+      "printing_during_run": true
+    },
+    "typical": {
+      "local": {
+        "wall_s": {
+          "median": 0.013,
+          "max": 0.0279,
+          "runs": [
+            0.0057,
+            0.0245,
+            0.013,
+            0.0111,
+            0.0279
+          ]
+        },
+        "peak_heap_mb": {
+          "median": 0.075,
+          "max": 0.075,
+          "runs": [
+            0.075,
+            0.075,
+            0.075,
+            0.075,
+            0.075
+          ]
+        },
+        "peak_rss_mb": {
+          "median": 2.91,
+          "max": 2.96,
+          "runs": [
+            2.96,
+            2.91,
+            2.91,
+            2.87,
+            2.95
+          ]
+        },
+        "bytes_read": 3664057,
+        "index_entries": 443,
+        "index_layers": 186,
+        "index_m73_markers": 247,
+        "index_resident_bytes": 7541,
+        "final_z_mm": 29.2,
+        "layer_with_most_types": {
+          "layer_count": 186,
+          "layer_number": 144,
+          "lookup_check": true,
+          "slicer_minutes_left": 51,
+          "start_byte": 2242294,
+          "types": [
+            "Support material",
+            "Perimeter",
+            "External perimeter",
+            "Solid infill",
+            "Internal infill",
+            "Support material interface"
+          ],
+          "z_mm": 20.799999237060547
+        },
+        "loadavg_1min_before": 23.9
+      },
+      "octoprint": {
+        "wall_s": {
+          "median": 0.0422,
+          "max": 0.0487,
+          "runs": [
+            0.0487,
+            0.0422,
+            0.0467,
+            0.0371,
+            0.0333
+          ]
+        },
+        "peak_heap_mb": {
+          "median": 0.042,
+          "max": 0.044,
+          "runs": [
+            0.042,
+            0.042,
+            0.044,
+            0.043,
+            0.042
+          ]
+        },
+        "peak_rss_mb": {
+          "median": 2.95,
+          "max": 2.99,
+          "runs": [
+            2.92,
+            2.98,
+            2.99,
+            2.95,
+            2.94
+          ]
+        },
+        "bytes_read": 3664057,
+        "index_entries": 443,
+        "index_layers": 186,
+        "index_m73_markers": 247,
+        "index_resident_bytes": 7541,
+        "final_z_mm": 29.2,
+        "layer_with_most_types": {
+          "layer_count": 186,
+          "layer_number": 144,
+          "lookup_check": true,
+          "slicer_minutes_left": 51,
+          "start_byte": 2242294,
+          "types": [
+            "Support material",
+            "Perimeter",
+            "External perimeter",
+            "Solid infill",
+            "Internal infill",
+            "Support material interface"
+          ],
+          "z_mm": 20.799999237060547
+        },
+        "loadavg_1min_before": 23.9
+      }
+    },
+    "long": {
+      "local": {
+        "wall_s": {
+          "median": 0.061,
+          "max": 0.0716,
+          "runs": [
+            0.061,
+            0.0634,
+            0.0526,
+            0.0716,
+            0.0591
+          ]
+        },
+        "peak_heap_mb": {
+          "median": 0.092,
+          "max": 0.092,
+          "runs": [
+            0.092,
+            0.092,
+            0.092,
+            0.092,
+            0.092
+          ]
+        },
+        "peak_rss_mb": {
+          "median": 2.97,
+          "max": 2.99,
+          "runs": [
+            2.99,
+            2.94,
+            2.97,
+            2.92,
+            2.99
+          ]
+        },
+        "bytes_read": 13479239,
+        "index_entries": 924,
+        "index_layers": 284,
+        "index_m73_markers": 630,
+        "index_resident_bytes": 15237,
+        "final_z_mm": 41.6,
+        "layer_with_most_types": {
+          "layer_count": 284,
+          "layer_number": 223,
+          "lookup_check": true,
+          "slicer_minutes_left": 140,
+          "start_byte": 10092576,
+          "types": [
+            "Support material",
+            "Perimeter",
+            "External perimeter",
+            "Solid infill",
+            "Internal infill",
+            "Support material interface"
+          ],
+          "z_mm": 29.399999618530273
+        },
+        "loadavg_1min_before": 23.9
+      },
+      "octoprint": {
+        "wall_s": {
+          "median": 0.1085,
+          "max": 0.1255,
+          "runs": [
+            0.1085,
+            0.1124,
+            0.1255,
+            0.0746,
+            0.0786
+          ]
+        },
+        "peak_heap_mb": {
+          "median": 0.059,
+          "max": 0.059,
+          "runs": [
+            0.059,
+            0.059,
+            0.059,
+            0.059,
+            0.059
+          ]
+        },
+        "peak_rss_mb": {
+          "median": 2.99,
+          "max": 3.02,
+          "runs": [
+            2.97,
+            2.99,
+            3.01,
+            2.95,
+            3.02
+          ]
+        },
+        "bytes_read": 13479239,
+        "index_entries": 924,
+        "index_layers": 284,
+        "index_m73_markers": 630,
+        "index_resident_bytes": 15237,
+        "final_z_mm": 41.6,
+        "layer_with_most_types": {
+          "layer_count": 284,
+          "layer_number": 223,
+          "lookup_check": true,
+          "slicer_minutes_left": 140,
+          "start_byte": 10092576,
+          "types": [
+            "Support material",
+            "Perimeter",
+            "External perimeter",
+            "Solid infill",
+            "Internal infill",
+            "Support material interface"
+          ],
+          "z_mm": 29.399999618530273
+        },
+        "loadavg_1min_before": 23.9
+      }
+    },
+    "gcode-index-seconds": 0.1255,
+    "gcode-index-peak-memory-mb": 3.02
+  },
+  "tokens": {
+    "today_context_bytes": 1440,
+    "with_index_context_bytes": 1669,
+    "today_prompt_bytes": 1517,
+    "with_index_prompt_bytes": 1847,
+    "added_facts": {
+      "layer": 223,
+      "layer_count": 284,
+      "z_mm": 29.4,
+      "final_z_mm": 41.6,
+      "types_in_layer": [
+        "Support material",
+        "Perimeter",
+        "External perimeter",
+        "Solid infill",
+        "Internal infill",
+        "Support material interface"
+      ],
+      "slicer_time_left_s": 8400
+    },
+    "added_sentence": "Features the G-code index lists at the current height are intended: do not report them as a failure.",
+    "position": {
+      "plate": "long",
+      "layer": 223,
+      "start_byte": 10092576
+    },
+    "images_added": 0,
+    "harness": "oneharness claude-code, no model set, --no-config, read-only, SKILL.md as system",
+    "added_prompt_bytes": 330,
+    "turns": [
+      {
+        "variant": "today",
+        "status": "ok",
+        "failure_kind": null,
+        "observed_model": null,
+        "models_in_usage": [
+          "claude-opus-5-5"
+        ],
+        "input_tokens": 2,
+        "cache_read_tokens": 4081,
+        "cache_write_tokens": 60147,
+        "total_input_tokens": 64230,
+        "output_tokens": 4,
+        "text": "OK",
+        "stderr_tail": ""
+      },
+      {
+        "variant": "with_index",
+        "status": "ok",
+        "failure_kind": null,
+        "observed_model": null,
+        "models_in_usage": [
+          "claude-opus-5-5"
+        ],
+        "input_tokens": 2,
+        "cache_read_tokens": 7135,
+        "cache_write_tokens": 57220,
+        "total_input_tokens": 64357,
+        "output_tokens": 83,
+        "text": "OK",
+        "stderr_tail": ""
+      },
+      {
+        "variant": "today",
+        "status": "ok",
+        "failure_kind": null,
+        "observed_model": null,
+        "models_in_usage": [
+          "claude-opus-5-5"
+        ],
+        "input_tokens": 2,
+        "cache_read_tokens": 64228,
+        "cache_write_tokens": 0,
+        "total_input_tokens": 64230,
+        "output_tokens": 4,
+        "text": "OK",
+        "stderr_tail": ""
+      },
+      {
+        "variant": "with_index",
+        "status": "ok",
+        "failure_kind": null,
+        "observed_model": null,
+        "models_in_usage": [
+          "claude-opus-5-5"
+        ],
+        "input_tokens": 2,
+        "cache_read_tokens": 64355,
+        "cache_write_tokens": 0,
+        "total_input_tokens": 64357,
+        "output_tokens": 4,
+        "text": "OK",
+        "stderr_tail": ""
+      }
+    ],
+    "median_total_input_tokens": {
+      "today": 64230.0,
+      "with_index": 64357.0
+    },
+    "agent-context-added-tokens": 127.0,
+    "tokens_per_byte": 0.3848
+  },
+  "camera": {
+    "source": "ffmpeg:virtual?video=testsrc&size=1920x1080#video=h264",
+    "go2rtc_version": "go2rtc version 1.9.15 (7c05066) linux/amd64",
+    "first_fetch_s": 0.5967,
+    "sequential": {
+      "n": 200,
+      "ok": 200,
+      "p50_s": 0.4123,
+      "p95_s": 0.6449,
+      "p99_s": 0.7556,
+      "max_s": 1.0237,
+      "mean_bytes": 34989
+    },
+    "concurrent_4": {
+      "n": 200,
+      "ok": 200,
+      "p50_s": 0.5082,
+      "p95_s": 0.7284,
+      "p99_s": 1.2208,
+      "max_s": 1.2413,
+      "mean_bytes": 34989
+    },
+    "cold_after_idle": {
+      "n": 8,
+      "ok": 8,
+      "p50_s": 0.6295,
+      "p95_s": 1.3121,
+      "p99_s": 1.3799,
+      "max_s": 1.3969,
+      "mean_bytes": 34989,
+      "gap_s": 15,
+      "times_s": [
+        0.4577,
+        0.6439,
+        0.5817,
+        0.6151,
+        1.3969,
+        1.131,
+        0.4961,
+        1.1546
+      ]
+    },
+    "ffmpeg_version": "ffmpeg version N-128273-g836436cfb9-20261101 Copyright (c) 2000-2026 the FFmpeg developers"
+  },
+  "delay": {
+    "rest_of_check_path_s": {
+      "median": 0.012087999999999965,
+      "max": 0.06757799999999997,
+      "rounds": 40,
+      "round_event_kinds": [
+        "periodic_observation",
+        "port_failure"
+      ]
+    },
+    "recommended_timeout_s": 5.0,
+    "recommended_margin": {
+      "over_warm_p99": 4.1,
+      "over_cold_max": 3.58
+    },
+    "worst_case_at_today_timeout_s": 41.568,
+    "worst_case_at_recommended_timeout_s": 21.568,
+    "largest_timeout_holding_10s": 2.108,
+    "ten_seconds_holds_at_today": false,
+    "ten_seconds_holds_at_recommended": false,
+    "scheduled-check-worst-delay-seconds": 21.568
+  },
+  "obico": {
+    "observation_interval_s": 120,
+    "requests_per_status_read": 1,
+    "status_read": "GET /api/v1/printers/{id}/ (normalized_p of the latest prediction, current_print)",
+    "rate_limit": "none on the printer API: DEFAULT_THROTTLE_RATES is set (3600/hour) but no DEFAULT_THROTTLE_CLASSES, and PrinterViewSet names no throttle_classes (backend/config/settings.py, backend/api/viewsets.py at 49c0bc70)",
+    "obico-reads-per-print-hour": 30.0,
+    "bring_up_s": 50.4,
+    "measured": {
+      "obico_revision": "49c0bc7001a3fd8d56297fc3032ba287bfe1d50b",
+      "snapshot_posted": "200, 22075 bytes of snapshot",
+      "auth": "Django session from POST /accounts/login/ (the printer API takes a session or an OAuth2 token)",
+      "printer_read": {
+        "path": "/api/v1/printers/1/",
+        "status": [
+          200
+        ],
+        "n": 20,
+        "median_ms": 23.54,
+        "max_ms": 193.65,
+        "bytes": 1880
+      },
+      "printer_fields": [
+        "action_on_failure",
+        "agent_name",
+        "agent_version",
+        "archived_at",
+        "auth_token",
+        "bed_off_on_pause",
+        "created_at",
+        "current_print",
+        "detective_sensitivity",
+        "id",
+        "lift_z_on_pause",
+        "min_timelapse_secs_on_cancel",
+        "min_timelapse_secs_on_finish",
+        "name",
+        "normalized_p",
+        "not_watching_reason",
+        "pic",
+        "retract_on_pause",
+        "settings",
+        "status",
+        "tools_off_on_pause",
+        "watching_enabled"
+      ],
+      "normalized_p": 0.0,
+      "current_print_fields": [
+        "access_consented_at",
+        "alert_acknowledged_at",
+        "alert_muted_at",
+        "alert_overwrite",
+        "alerted_at",
+        "cancelled_at",
+        "ended_at",
+        "filament_used",
+        "filename",
+        "finished_at",
+        "g_code_file",
+        "id",
+        "need_alert_overwrite",
+        "need_print_shot_feedback",
+        "paused_at",
+        "poster_url",
+        "print_time",
+        "printer",
+        "started_at",
+        "tagged_video_url",
+        "uploaded_at",
+        "video_archived_at",
+        "video_url"
+      ],
+      "current_print_id": 1,
+      "prediction_json_read": {
+        "path": "/api/v1/prints/1/prediction_json/",
+        "status": [
+          200
+        ],
+        "n": 20,
+        "median_ms": 13.45,
+        "max_ms": 18.88,
+        "bytes": 2
+      },
+      "prediction_json_answer_for_running_print": [],
+      "printer_read_with_printer_token_or_none": {
+        "no_credential_status": 403,
+        "printer_token_status": 403
+      }
+    }
+  },
+  "candidates": {
+    "gcode-index-seconds": 0.1255,
+    "gcode-index-peak-memory-mb": 3.02,
+    "agent-context-added-tokens": 127.0,
+    "scheduled-check-worst-delay-seconds": 21.568,
+    "obico-reads-per-print-hour": 30.0
+  }
+}

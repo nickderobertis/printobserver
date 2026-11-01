@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The check-costs spike: every measurement, one JSON summary on stdout.
 
-    python3 spikes/check-costs/run.py [--turns] [--obico] [--out PATH]
+    python3 spikes/check-costs/run.py [--turns [N]] [--obico] [--out PATH]
 
 Run from the repository root. Progress goes to stderr.
 
@@ -16,9 +16,10 @@ Run from the repository root. Progress goes to stderr.
 - `agent-context-added-tokens`: reads the real server's `context` answer
   (the `spike_context` journey) at the long plate's layer with the most
   types, builds the variant carrying the index's facts and the added
-  instruction, and reports both byte lengths. With `--turns`, runs 6 real
-  turns (3 per variant, alternating) through oneharness's `claude-code`
-  harness with no model set, and reads each turn's input-token usage.
+  instruction, and reports both byte lengths. With `--turns N` (at most and
+  by default 6), runs N real turns, alternating the variants, through
+  oneharness's `claude-code` harness with no model set, and reads each
+  turn's input-token usage.
 - `scheduled-check-worst-delay-seconds`: go2rtc serving an ffmpeg 1920x1080
   test source (`camera_bench.py`; the binaries are fetched outside the tree),
   and the real scheduled-check path with a camera answering `500 exit status
@@ -46,7 +47,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 WORK = HERE / ".work"
 TOOLS = Path(os.environ.get("SPIKE_TOOLS_DIR", Path.home() / ".cache" / "printobserver-check-costs-spike"))
-SCRATCH = Path(os.environ.get("ONEPIPELINE_NODE_SCRATCH_DIR") or (WORK / "scratch"))
+SCRATCH = Path(os.environ.get("SPIKE_SCRATCH_DIR") or (WORK / "scratch"))
 RUNS = 5
 PLATES = ("typical", "long")
 
@@ -255,6 +256,17 @@ def context_variants(stats, index):
     }
 
 
+def turn_env():
+    """This host's environment without the variables of the session running
+    the harness: the operator's server starts its turns with none of them, and
+    Claude Code refuses to start inside another Claude Code session. The
+    identity (`CLAUDE_CONFIG_DIR`) is kept."""
+    return {
+        k: v for k, v in os.environ.items()
+        if k == "CLAUDE_CONFIG_DIR" or not (k == "CLAUDECODE" or k.startswith(("CLAUDE_CODE_", "CLAUDE_PID", "CLAUDE_EFFORT")))
+    }
+
+
 def turn(prompt, label):
     work = SCRATCH / "turns"
     work.mkdir(parents=True, exist_ok=True)
@@ -266,8 +278,10 @@ def turn(prompt, label):
          "--no-config", "--mode", "read-only", "--format", "json",
          "--system-file", str(ROOT / "skills" / "printobserver" / "SKILL.md"),
          "--prompt-file", str(prompt_file), "--cwd", str(work), "--timeout", "300"],
-        capture_output=True, text=True, cwd=work,
+        capture_output=True, text=True, cwd=work, env=turn_env(),
     )
+    (work / f"{label}.report.json").write_text(answered.stdout)
+    (work / f"{label}.stderr.txt").write_text(answered.stderr)
     report = json.loads(answered.stdout)
     result = report["results"][0]
     usage = result.get("usage") or {}
@@ -290,6 +304,7 @@ def turn(prompt, label):
         "total_input_tokens": sum(parts),
         "output_tokens": usage.get("output_tokens"),
         "text": (result.get("text") or "")[:80],
+        "stderr_tail": (result.get("stderr") or answered.stderr or "")[-300:] if result.get("status") != "ok" else "",
     }
 
 
@@ -312,9 +327,9 @@ def tokens(stats, index, real_turns):
         out["agent-context-added-tokens"] = None
         return out
     turns = []
-    for i in range(6):
+    for i in range(real_turns):
         label = ("today" if i % 2 == 0 else "with_index") + f"-{i // 2 + 1}"
-        note(f"real turn {i + 1}/6 ({label})")
+        note(f"real turn {i + 1}/{real_turns} ({label})")
         answer = turn(variants[label.split("-")[0]]["prompt"], label)
         turns.append(answer)
         if answer["status"] != "ok":
@@ -419,12 +434,15 @@ def obico(bring_up):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--turns", action="store_true", help="run the 6 real model turns")
+    parser.add_argument("--turns", type=int, nargs="?", const=6, default=0, metavar="N",
+                        help="run N real model turns (default 6, the most allowed), alternating the variants")
     parser.add_argument("--obico", action="store_true", help="bring up the real Obico and time its reads")
     parser.add_argument("--out", type=Path, help="also write the summary here")
     args = parser.parse_args()
     SCRATCH.mkdir(parents=True, exist_ok=True)
-    result = {"harness": "python3 spikes/check-costs/run.py" + (" --turns" if args.turns else "")
+    if args.turns > 6:
+        parser.error("at most 6 real turns")
+    result = {"harness": "python3 spikes/check-costs/run.py" + (f" --turns {args.turns}" if args.turns else "")
               + (" --obico" if args.obico else ""),
               "host": host(), "load": {"start": host_sample()}}
     result["gcode_shape"] = gcode()
