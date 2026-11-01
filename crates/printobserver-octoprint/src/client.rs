@@ -290,6 +290,38 @@ impl OctoPrintPrinter {
         file_name: &FileName,
         position_bytes: i64,
     ) -> Result<ExtrudedTo, PrinterError> {
+        let mut reader = Reader(ExtrudedTo::new(position_bytes));
+        self.stream_gcode(file_name, &mut reader)?;
+        Ok(reader.0)
+    }
+
+    /// SPIKE ONLY (check-costs, never landed): stream one stored file's whole
+    /// body into `take`, along exactly the path [`Self::read_gcode_to`]
+    /// follows, so a prototype G-code index can be timed through the real
+    /// read path.
+    ///
+    /// # Errors
+    ///
+    /// What `read_gcode_to` answers for the same file.
+    #[doc(hidden)]
+    pub fn spike_stream_gcode(
+        &self,
+        file_name: &FileName,
+        take: &mut dyn FnMut(&[u8]),
+    ) -> Result<(), PrinterError> {
+        struct Taking<'a>(&'a mut dyn FnMut(&[u8]));
+        impl Sink for Taking<'_> {
+            fn take(&mut self, bytes: &[u8]) -> ControlFlow<()> {
+                (self.0)(bytes);
+                ControlFlow::Continue(())
+            }
+            fn end(&mut self) {}
+        }
+        self.stream_gcode(file_name, &mut Taking(take))
+    }
+
+    /// Follow one stored file's download link and stream its body to `sink`.
+    fn stream_gcode(&self, file_name: &FileName, sink: &mut dyn Sink) -> Result<(), PrinterError> {
         let file = self.read_file(file_name)?;
         let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
@@ -313,17 +345,16 @@ impl OctoPrintPrinter {
             }
         };
         let path = followed.as_str();
-        let mut reader = Reader(ExtrudedTo::new(position_bytes));
         let outcome = http::stream(
             self.config.endpoint(),
             self.config.api_key(),
             path,
             self.config.timeout(),
-            &mut reader,
+            sink,
         );
         match outcome {
-            Ok(None) => Ok(reader.0),
-            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| reader.0),
+            Ok(None) => Ok(()),
+            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| ()),
             Err(transport) => {
                 let error = match transport {
                     Transport::Unreachable(detail) => PrinterError::Unreachable { detail },

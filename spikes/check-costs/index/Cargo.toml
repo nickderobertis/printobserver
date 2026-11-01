@@ -1,0 +1,18 @@
+# Throwaway prototype of the per-print G-code index (check-costs spike).
+# Its own workspace, so the repository's dependency rule and gate never see it.
+[package]
+name = "gcode-index-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+printobserver-octoprint = { path = "../../../crates/printobserver-octoprint" }
+printobserver-types = { path = "../../../crates/printobserver-types" }
+printobserver-printer-api = { path = "../../../crates/printobserver-printer-api" }
+serde_json = "1"
+
+[profile.release]
+debug = false
