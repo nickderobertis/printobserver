@@ -1,0 +1,228 @@
+{
+  "typical": {
+    "bytes": 3664057,
+    "lines": 152390,
+    "layers": 186,
+    "final_z_mm": 29.2,
+    "types": {
+      "Bridge infill": 18,
+      "Custom": 2,
+      "External perimeter": 963,
+      "Internal infill": 918,
+      "Overhang perimeter": 18,
+      "Perimeter": 963,
+      "Solid infill": 171,
+      "Support material": 260,
+      "Support material interface": 111,
+      "Top solid infill": 12
+    },
+    "most_types_in_one_layer": 6,
+    "m73_normal_markers": 247,
+    "m73_silent_markers": 270,
+    "estimated_s": {
+      "normal": 8993,
+      "silent": 10184
+    },
+    "bytes_per_layer": 19699.2,
+    "lines_per_layer": 819.3,
+    "m73_normal_per_layer": 1.328,
+    "m73_normal_per_estimated_hour": 98.9,
+    "bytes_per_estimated_hour": 1466764
+  },
+  "long": {
+    "bytes": 13479239,
+    "lines": 573500,
+    "layers": 284,
+    "final_z_mm": 41.6,
+    "types": {
+      "Bridge infill": 60,
+      "Custom": 2,
+      "External perimeter": 4570,
+      "Internal infill": 4440,
+      "Overhang perimeter": 60,
+      "Perimeter": 4570,
+      "Solid infill": 680,
+      "Support material": 1285,
+      "Support material interface": 860,
+      "Top solid infill": 40
+    },
+    "most_types_in_one_layer": 6,
+    "m73_normal_markers": 630,
+    "m73_silent_markers": 723,
+    "estimated_s": {
+      "normal": 31764,
+      "silent": 37322
+    },
+    "bytes_per_layer": 47462.1,
+    "lines_per_layer": 2019.4,
+    "m73_normal_per_layer": 2.218,
+    "m73_normal_per_estimated_hour": 71.4,
+    "bytes_per_estimated_hour": 1527681
+  },
+  "real-prints/fan-cut-bridge/fan-cut-test.clean.gcode": {
+    "bytes": 440608,
+    "lines": 20199,
+    "layers": 150,
+    "final_z_mm": 30.0,
+    "types": {
+      "Bridge infill": 28,
+      "Custom": 2,
+      "External perimeter": 241,
+      "Internal infill": 225,
+      "Overhang perimeter": 28,
+      "Perimeter": 227,
+      "Solid infill": 37,
+      "Top solid infill": 4
+    },
+    "most_types_in_one_layer": 6,
+    "m73_normal_markers": 126,
+    "m73_silent_markers": 128,
+    "estimated_s": {
+      "normal": 1612,
+      "silent": 1736
+    },
+    "bytes_per_layer": 2937.4,
+    "lines_per_layer": 134.7,
+    "m73_normal_per_layer": 0.84,
+    "m73_normal_per_estimated_hour": 281.4,
+    "bytes_per_estimated_hour": 983988
+  },
+  "real-prints/fan-cut-bridge/fan-cut-test.gcode": {
+    "bytes": 450468,
+    "lines": 20017,
+    "layers": 150,
+    "final_z_mm": 30.0,
+    "types": {
+      "Bridge infill": 28,
+      "Custom": 2,
+      "External perimeter": 241,
+      "Internal infill": 225,
+      "Overhang perimeter": 28,
+      "Perimeter": 227,
+      "Solid infill": 37,
+      "Top solid infill": 4
+    },
+    "most_types_in_one_layer": 6,
+    "m73_normal_markers": 126,
+    "m73_silent_markers": 128,
+    "estimated_s": {
+      "normal": 1612,
+      "silent": 1736
+    },
+    "bytes_per_layer": 3003.1,
+    "lines_per_layer": 133.4,
+    "m73_normal_per_layer": 0.84,
+    "m73_normal_per_estimated_hour": 281.4,
+    "bytes_per_estimated_hour": 1006008
+  },
+  "real-prints/spaghetti-floating-slab/spaghetti-test.gcode": {
+    "bytes": 247777,
+    "lines": 10757,
+    "layers": 100,
+    "final_z_mm": 28.0,
+    "types": {
+      "Bridge infill": 3,
+      "Custom": 2,
+      "External perimeter": 99,
+      "Internal infill": 84,
+      "Overhang perimeter": 1,
+      "Perimeter": 99,
+      "Solid infill": 13,
+      "Top solid infill": 2
+    },
+    "most_types_in_one_layer": 4,
+    "m73_normal_markers": 118,
+    "m73_silent_markers": 121,
+    "estimated_s": {
+      "normal": 1138,
+      "silent": 1208
+    },
+    "bytes_per_layer": 2477.8,
+    "lines_per_layer": 107.6,
+    "m73_normal_per_layer": 1.18,
+    "m73_normal_per_estimated_hour": 373.3,
+    "bytes_per_estimated_hour": 783829
+  },
+  "real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode": {
+    "bytes": 422765,
+    "lines": 18414,
+    "layers": 125,
+    "final_z_mm": 33.0,
+    "types": {
+      "Bridge infill": 5,
+      "Custom": 2,
+      "External perimeter": 156,
+      "Internal infill": 126,
+      "Overhang perimeter": 2,
+      "Perimeter": 156,
+      "Solid infill": 26,
+      "Top solid infill": 4
+    },
+    "most_types_in_one_layer": 5,
+    "m73_normal_markers": 129,
+    "m73_silent_markers": 132,
+    "estimated_s": {
+      "normal": 1736,
+      "silent": 1904
+    },
+    "bytes_per_layer": 3382.1,
+    "lines_per_layer": 147.3,
+    "m73_normal_per_layer": 1.032,
+    "m73_normal_per_estimated_hour": 267.5,
+    "bytes_per_estimated_hour": 876702
+  },
+  "real-prints/under-extrusion-lace/lace-test.clean.gcode": {
+    "bytes": 350191,
+    "lines": 15493,
+    "layers": 150,
+    "final_z_mm": 30.0,
+    "types": {
+      "Bridge infill": 1,
+      "Custom": 2,
+      "External perimeter": 150,
+      "Internal infill": 142,
+      "Perimeter": 150,
+      "Solid infill": 7,
+      "Top solid infill": 1
+    },
+    "most_types_in_one_layer": 4,
+    "m73_normal_markers": 126,
+    "m73_silent_markers": 129,
+    "estimated_s": {
+      "normal": 1586,
+      "silent": 1726
+    },
+    "bytes_per_layer": 2334.6,
+    "lines_per_layer": 103.3,
+    "m73_normal_per_layer": 0.84,
+    "m73_normal_per_estimated_hour": 286.0,
+    "bytes_per_estimated_hour": 794885
+  },
+  "real-prints/under-extrusion-lace/lace-test.gcode": {
+    "bytes": 354592,
+    "lines": 15312,
+    "layers": 150,
+    "final_z_mm": 30.0,
+    "types": {
+      "Bridge infill": 1,
+      "Custom": 2,
+      "External perimeter": 150,
+      "Internal infill": 142,
+      "Perimeter": 150,
+      "Solid infill": 7,
+      "Top solid infill": 1
+    },
+    "most_types_in_one_layer": 4,
+    "m73_normal_markers": 126,
+    "m73_silent_markers": 129,
+    "estimated_s": {
+      "normal": 1586,
+      "silent": 1726
+    },
+    "bytes_per_layer": 2363.9,
+    "lines_per_layer": 102.1,
+    "m73_normal_per_layer": 0.84,
+    "m73_normal_per_estimated_hour": 286.0,
+    "bytes_per_estimated_hour": 804875
+  }
+}
