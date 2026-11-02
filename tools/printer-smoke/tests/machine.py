@@ -33,6 +33,7 @@ import secrets
 import threading
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler
@@ -158,7 +159,7 @@ class Machine:
         *,
         device: str,
         envelope: dict[str, tuple[float, float]],
-        manifest: dict[str, Any],
+        manifest: Mapping[str, object],
         print_id: str,
     ) -> None:
         """Start answering, on a free port.

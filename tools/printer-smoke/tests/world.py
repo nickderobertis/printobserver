@@ -27,6 +27,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypedDict
 
 from machine import Machine
 from printer_smoke import (
@@ -108,8 +109,21 @@ DURATION_S = "1"
 #: for, and every hang the test did ask for costs the whole bound.
 RELAY_BOUND_S = "3"
 
+
+class Manifest(TypedDict):
+    """A manifest, field for field as the contracts' `JobManifest` declares it."""
+
+    file_name: str
+    material: str
+    nozzle_diameter_mm: float
+    slicer_profile: str
+    sheet: str
+    allowed: dict[str, dict[str, float]]
+    metadata: dict[str, str]
+
+
 #: The manifest the print carries, which is one for the smoke's own payload.
-MANIFEST: dict[str, object] = {
+MANIFEST: Manifest = {
     "file_name": FILE_NAME,
     "material": "PLA",
     "nozzle_diameter_mm": 0.4,

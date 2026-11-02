@@ -24,9 +24,9 @@ const FILAMENT_TYPE: &str = "filament_type";
 /// bound: a body longer than the bound is stopped rather than read whole.
 #[derive(Debug, Clone, Default)]
 pub struct Tail {
-    /// The most it holds.
+    /// The bound: a body longer than this many bytes is stopped, never read.
     limit: usize,
-    /// What it holds.
+    /// The bytes taken so far, in the order they arrived.
     bytes: Vec<u8>,
     /// Whether more than the bound arrived, so reading stopped.
     overflowed: bool,
@@ -67,12 +67,13 @@ impl Tail {
 }
 
 /// The material each tool is sliced for, tool 0 first, by the last
-/// `; filament_type = …` line of a file's tail. Empty when it names none.
+/// `; filament_type = …` line of a file's tail: `None` for a tool the line
+/// leaves blank, and empty when it names none at all.
 ///
 /// `starts_mid_line` says the tail does not begin at the file's first byte,
 /// so its first line may be the end of a longer one and is not read.
 #[must_use]
-pub fn filament_types_in(tail: &[u8], starts_mid_line: bool) -> Vec<String> {
+pub fn filament_types_in(tail: &[u8], starts_mid_line: bool) -> Vec<Option<String>> {
     let text = String::from_utf8_lossy(tail);
     let mut lines = text.lines();
     if starts_mid_line {
@@ -85,10 +86,10 @@ pub fn filament_types_in(tail: &[u8], starts_mid_line: bool) -> Vec<String> {
             value
                 .split(';')
                 .map(str::trim)
-                .map(str::to_owned)
+                .map(|named| (!named.is_empty()).then(|| named.to_owned()))
                 .collect::<Vec<_>>()
         })
-        .filter(|types| types.iter().any(|named| !named.is_empty()))
+        .filter(|types| types.iter().any(Option::is_some))
         .unwrap_or_default()
 }
 

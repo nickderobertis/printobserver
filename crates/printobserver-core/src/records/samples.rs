@@ -28,9 +28,10 @@ use super::policy::{
     EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
 };
 use super::preflight::{
-    DoubtedSpool, MaterialComparison, MaterialObjection, MaterialResult, Preflight, PreflightNeed,
-    PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict,
-    SheetComparison, SheetObjection, SheetResult, ShortSpool, UnanalysedSpool, UncomparedMaterial,
+    DoubtedSpool, MaterialComparison, MaterialName, MaterialObjection, MaterialResult, Preflight,
+    PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult,
+    PreflightVerdict, SheetComparison, SheetId, SheetObjection, SheetResult, ShortSpool,
+    UnanalysedSpool, UncomparedMaterial,
 };
 use super::print::{ManifestNarrowing, PrintRecord};
 use super::spool::{
@@ -917,13 +918,23 @@ impl Sample for Preflight {
     }
 }
 
+/// A material, by its name.
+fn material(name: &str) -> MaterialName {
+    MaterialName::try_from(name.to_owned()).expect("a material named by something")
+}
+
+/// A sheet, by its identifier.
+fn sheet(id: &str) -> SheetId {
+    SheetId::try_from(id.to_owned()).expect("a sheet named by something")
+}
+
 impl Sample for MaterialComparison {
     fn sample_full() -> Self {
         Self {
             tool: 0,
             spool: PreflightSpool::sample_full(),
-            loaded: "PETG".to_owned(),
-            sliced_for: "PLA".to_owned(),
+            loaded: material("PETG"),
+            sliced_for: material("PLA"),
         }
     }
 }
@@ -933,8 +944,8 @@ impl Sample for UncomparedMaterial {
         Self {
             tool: 0,
             spool: PreflightSpool::sample_full(),
-            loaded: "PETG".to_owned(),
-            file_name: "benchy.gcode".to_owned(),
+            loaded: material("PETG"),
+            file_name: FileName::sample_full(),
         }
     }
 }
@@ -950,8 +961,8 @@ impl Sample for MaterialObjection {
             Self::Unread {
                 tool: 0,
                 spool: PreflightSpool::sample_full(),
-                loaded: "PETG".to_owned(),
-                file_name: "benchy.gcode".to_owned(),
+                loaded: material("PETG"),
+                file_name: FileName::sample_full(),
                 detail: "the printer could not be reached".to_owned(),
             },
         ]
@@ -972,7 +983,7 @@ impl Sample for MaterialResult {
     fn sample_alternates() -> Vec<Self> {
         vec![
             Self::Passed(MaterialComparison {
-                loaded: "PLA".to_owned(),
+                loaded: material("PLA"),
                 ..MaterialComparison::sample_full()
             }),
             Self::Overridden {
@@ -988,9 +999,9 @@ impl Sample for MaterialResult {
 impl Sample for SheetComparison {
     fn sample_full() -> Self {
         Self {
-            sheet: "smooth-pei".to_owned(),
-            material: "PETG".to_owned(),
-            allowed: vec!["textured-pei".to_owned()],
+            sheet: sheet("smooth-pei"),
+            material: material("PETG"),
+            allowed: vec![sheet("textured-pei")],
         }
     }
 }
@@ -1003,13 +1014,13 @@ impl Sample for SheetObjection {
     fn sample_alternates() -> Vec<Self> {
         vec![
             Self::UnlistedMaterial {
-                sheet: "smooth-pei".to_owned(),
-                material: "ASA".to_owned(),
+                sheet: sheet("smooth-pei"),
+                material: material("ASA"),
             },
             Self::UnknownSheet {
-                sheet: "glass".to_owned(),
-                material: "PLA".to_owned(),
-                known: vec!["smooth-pei".to_owned(), "textured-pei".to_owned()],
+                sheet: sheet("glass"),
+                material: material("PLA"),
+                known: vec![sheet("smooth-pei"), sheet("textured-pei")],
             },
         ]
     }
@@ -1029,7 +1040,7 @@ impl Sample for SheetResult {
     fn sample_alternates() -> Vec<Self> {
         vec![
             Self::Passed(SheetComparison {
-                sheet: "textured-pei".to_owned(),
+                sheet: sheet("textured-pei"),
                 ..SheetComparison::sample_full()
             }),
             Self::Undeclared,

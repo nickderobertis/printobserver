@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::records::SafetyEnvelope;
+use crate::records::{MaterialName, SafetyEnvelope, SheetId};
 use printobserver_types::PrintId;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_vision_api::WebAddress;
@@ -102,7 +102,7 @@ pub const DEFAULT_SHEETS: [(&str, &[&str]); 2] =
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SheetTable {
     /// Each material, as written, and the sheets it may be printed on.
-    entries: BTreeMap<String, Vec<String>>,
+    entries: BTreeMap<MaterialName, Vec<SheetId>>,
 }
 
 impl SheetTable {
@@ -114,60 +114,53 @@ impl SheetTable {
     /// material listing no sheet, or two materials that differ only in case
     /// or surrounding space.
     pub fn new(entries: BTreeMap<String, Vec<String>>) -> Result<Self, String> {
-        let mut seen: Vec<String> = Vec::new();
-        let mut table = BTreeMap::new();
+        let mut table: BTreeMap<MaterialName, Vec<SheetId>> = BTreeMap::new();
         for (material, sheets) in entries {
-            let trimmed = material.trim();
-            if trimmed.is_empty() {
-                return Err("a material is named by something other than space".to_owned());
-            }
-            let folded = trimmed.to_lowercase();
-            if seen.contains(&folded) {
+            let material = MaterialName::try_from(material)?;
+            if table.keys().any(|listed| listed.same(&material)) {
                 return Err(format!(
-                    "{trimmed} is listed twice, once differing only in case or space"
+                    "{material} is listed twice, once differing only in case or space"
                 ));
             }
-            seen.push(folded);
             if sheets.is_empty() {
                 return Err(format!(
-                    "{trimmed} lists no sheet; leave a material out rather than list it on none"
+                    "{material} lists no sheet; leave a material out rather than list it on none"
                 ));
             }
-            if sheets.iter().any(|sheet| sheet.trim().is_empty()) {
-                return Err(format!("{trimmed} lists a sheet that is blank"));
-            }
-            table.insert(
-                trimmed.to_owned(),
-                sheets.iter().map(|sheet| sheet.trim().to_owned()).collect(),
-            );
+            let sheets = sheets
+                .into_iter()
+                .map(SheetId::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|why| format!("{material} lists a sheet that is blank: {why}"))?;
+            table.insert(material, sheets);
         }
         Ok(Self { entries: table })
     }
 
     /// The sheets the table allows a material on, when it lists the material.
     #[must_use]
-    pub fn allowed_for(&self, material: &str) -> Option<&[String]> {
+    pub fn allowed_for(&self, material: &MaterialName) -> Option<&[SheetId]> {
         self.entries
             .iter()
-            .find(|(listed, _)| same(listed, material))
+            .find(|(listed, _)| listed.same(material))
             .map(|(_, sheets)| sheets.as_slice())
     }
 
     /// Whether any entry lists a sheet.
     #[must_use]
-    pub fn lists(&self, sheet: &str) -> bool {
+    pub fn lists(&self, sheet: &SheetId) -> bool {
         self.entries
             .values()
             .flatten()
-            .any(|listed| same(listed, sheet))
+            .any(|listed| listed.same(sheet))
     }
 
     /// Every sheet some entry lists, once each, in order.
     #[must_use]
-    pub fn sheets(&self) -> Vec<String> {
-        let mut known: Vec<String> = Vec::new();
+    pub fn sheets(&self) -> Vec<SheetId> {
+        let mut known: Vec<SheetId> = Vec::new();
         for sheet in self.entries.values().flatten() {
-            if !known.iter().any(|listed| same(listed, sheet)) {
+            if !known.iter().any(|listed| listed.same(sheet)) {
                 known.push(sheet.clone());
             }
         }
@@ -178,8 +171,8 @@ impl SheetTable {
 
 impl Default for SheetTable {
     fn default() -> Self {
-        Self {
-            entries: DEFAULT_SHEETS
+        Self::new(
+            DEFAULT_SHEETS
                 .iter()
                 .map(|(material, sheets)| {
                     (
@@ -188,15 +181,9 @@ impl Default for SheetTable {
                     )
                 })
                 .collect(),
-        }
+        )
+        .unwrap_or_else(|why| unreachable!("the default sheet table is a table: {why}"))
     }
-}
-
-/// Whether two names of a material or a sheet name the same one: trimmed,
-/// and without regard to case.
-#[must_use]
-pub fn same(one: &str, other: &str) -> bool {
-    one.trim().to_lowercase() == other.trim().to_lowercase()
 }
 
 /// The server configuration supervision reads.

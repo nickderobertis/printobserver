@@ -481,6 +481,24 @@ async fn the_read_only_check_reports_the_material_and_a_given_sheet() {
         sheeted["preflight"]["sheet"]["verdict"], "passed",
         "{sheeted}"
     );
+
+    let blank = watch
+        .client
+        .get(format!(
+            "{}/preflight?file_name={PETG_FILE}&sheet=%20",
+            watch.server.base_url()
+        ))
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(blank.status(), reqwest::StatusCode::BAD_REQUEST);
+    let said: Value = blank.json().await.expect("a JSON refusal");
+    assert!(
+        said["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("a sheet")),
+        "{said}"
+    );
     assert_eq!(starts(&watch), 0);
     watch.server.stop().await;
 }

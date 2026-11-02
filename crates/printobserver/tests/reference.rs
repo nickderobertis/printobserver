@@ -478,9 +478,17 @@ fn every_template_restates_the_sheet_table_defaults_as_the_config_has_them() {
     }
     let table = printobserver_core::SheetTable::default();
     for (material, sheets) in defaults {
+        let named = printobserver_core::MaterialName::try_from((*material).to_owned())
+            .expect("a default material is named by something");
+        let allowed: Option<Vec<&str>> = table.allowed_for(&named).map(|allowed| {
+            allowed
+                .iter()
+                .map(printobserver_core::SheetId::as_str)
+                .collect()
+        });
         assert_eq!(
-            table.allowed_for(material).map(<[String]>::to_vec),
-            Some(sheets.iter().map(|sheet| (*sheet).to_owned()).collect()),
+            allowed.as_deref(),
+            Some(sheets),
             "the default table is not DEFAULT_SHEETS"
         );
     }

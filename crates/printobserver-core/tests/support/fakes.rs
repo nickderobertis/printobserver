@@ -205,7 +205,7 @@ pub struct FakePrinter {
     extrusion: Mutex<BTreeMap<(String, i64), Vec<ToolFilament>>>,
     /// The material each tool of a file was sliced for, by file, where a test
     /// declared it; every other file is sliced for [`SLICED_FOR`].
-    sliced: Mutex<BTreeMap<String, Vec<String>>>,
+    sliced: Mutex<BTreeMap<String, Vec<Option<String>>>>,
 }
 
 /// The material a file no test declared otherwise was sliced for: the one
@@ -227,12 +227,16 @@ impl FakePrinter {
         }
     }
 
-    /// Answer that a file was sliced for these materials, tool 0 first; an
-    /// empty list is a file naming no `filament_type`.
+    /// Answer that a file was sliced for these materials, tool 0 first, a
+    /// blank one naming no material for its tool; an empty list is a file
+    /// naming no `filament_type`.
     pub fn slices(&self, file_name: &str, types: &[&str]) {
         self.sliced.lock().expect("the printer holds").insert(
             file_name.to_owned(),
-            types.iter().map(|named| (*named).to_owned()).collect(),
+            types
+                .iter()
+                .map(|named| (!named.trim().is_empty()).then(|| (*named).to_owned()))
+                .collect(),
         );
     }
 
@@ -448,7 +452,7 @@ impl PrinterPort for FakePrinter {
     fn filament_types(
         &self,
         file_name: FileName,
-    ) -> BoxFuture<'_, Result<Vec<String>, PrinterError>> {
+    ) -> BoxFuture<'_, Result<Vec<Option<String>>, PrinterError>> {
         self.journal
             .record(Call::FilamentTypes(file_name.as_str().to_owned()));
         let answer = self.induced(PrinterMethod::FilamentTypes).map_or_else(
@@ -459,7 +463,7 @@ impl PrinterPort for FakePrinter {
                     .expect("the printer holds")
                     .get(file_name.as_str())
                     .cloned()
-                    .unwrap_or_else(|| vec![SLICED_FOR.to_owned()]))
+                    .unwrap_or_else(|| vec![Some(SLICED_FOR.to_owned())]))
             },
             Err,
         );

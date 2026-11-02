@@ -1207,7 +1207,7 @@ class MaterialObjectionUndeclared(TypedDict):
 
     cause: Literal["undeclared"]
     # The file that was to be compared.
-    file_name: str
+    file_name: FileName
     # That spool's material.
     loaded: str
     # The spool loaded on it.
@@ -1226,7 +1226,7 @@ class MaterialObjectionUnread(TypedDict):
     # What the printer answered instead, in its own words.
     detail: str
     # The file whose settings could not be read.
-    file_name: str
+    file_name: FileName
     # That spool's material.
     loaded: str
     # The spool loaded on it.
@@ -6281,7 +6281,7 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "FileName"
        }
       },
       "loaded": {
@@ -6322,7 +6322,7 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "FileName"
        }
       },
       "loaded": {

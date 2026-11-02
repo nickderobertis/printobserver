@@ -1,9 +1,9 @@
 //! Whether the spools loaded hold enough for a print, were sliced for, and
 //! suit the sheet it goes down on, asked before it starts.
 
-use printobserver_types::Timestamp;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{FileName, Timestamp};
 
 use super::ids::SpoolId;
 use super::spool::{UnverifiedMark, UnverifiedMarks};
@@ -230,6 +230,135 @@ pub struct Preflight {
     pub checked_at: Timestamp,
 }
 
+/// A name that is never blank, trimmed of surrounding space as it is read.
+fn named_text(text: &str, what: &str) -> Result<String, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{what} is named by something other than space"));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// A filament material as a spool's registration or a slicer's settings name
+/// it, such as `PLA`: trimmed, and never blank. On the wire it is a string.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(
+    crate = "printobserver_types::serde",
+    try_from = "String",
+    into = "String"
+)]
+pub struct MaterialName(String);
+
+impl JsonSchema for MaterialName {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        String::schema_name()
+    }
+
+    fn json_schema(
+        generator: &mut printobserver_types::schemars::SchemaGenerator,
+    ) -> printobserver_types::schemars::Schema {
+        String::json_schema(generator)
+    }
+}
+
+impl MaterialName {
+    /// The name, as text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether two names name one material: without regard to case.
+    #[must_use]
+    pub fn same(&self, other: &Self) -> bool {
+        self.0.to_lowercase() == other.0.to_lowercase()
+    }
+}
+
+impl TryFrom<String> for MaterialName {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        named_text(&text, "a material").map(Self)
+    }
+}
+
+impl From<MaterialName> for String {
+    fn from(name: MaterialName) -> Self {
+        name.0
+    }
+}
+
+impl core::fmt::Display for MaterialName {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// A build sheet's identifier as the sheet table names it, such as
+/// `smooth-pei`: trimmed, and never blank. On the wire it is a string.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(
+    crate = "printobserver_types::serde",
+    try_from = "String",
+    into = "String"
+)]
+pub struct SheetId(String);
+
+impl JsonSchema for SheetId {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        String::schema_name()
+    }
+
+    fn json_schema(
+        generator: &mut printobserver_types::schemars::SchemaGenerator,
+    ) -> printobserver_types::schemars::Schema {
+        String::json_schema(generator)
+    }
+}
+
+impl SheetId {
+    /// The identifier, as text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether two identifiers name one sheet: without regard to case.
+    #[must_use]
+    pub fn same(&self, other: &Self) -> bool {
+        self.0.to_lowercase() == other.0.to_lowercase()
+    }
+}
+
+impl TryFrom<String> for SheetId {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        named_text(&text, "a sheet").map(Self)
+    }
+}
+
+impl From<SheetId> for String {
+    fn from(sheet: SheetId) -> Self {
+        sheet.0
+    }
+}
+
+impl core::fmt::Display for SheetId {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
 /// What the material check compared: the spool loaded on a tool and the
 /// material the file says that tool was sliced for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -241,9 +370,9 @@ pub struct MaterialComparison {
     /// The spool loaded on it.
     pub spool: PreflightSpool,
     /// That spool's material.
-    pub loaded: String,
+    pub loaded: MaterialName,
     /// The material the file's own `filament_type` names for the tool.
-    pub sliced_for: String,
+    pub sliced_for: MaterialName,
 }
 
 /// A spool whose material the file could not be compared with.
@@ -256,9 +385,9 @@ pub struct UncomparedMaterial {
     /// The spool loaded on it.
     pub spool: PreflightSpool,
     /// That spool's material.
-    pub loaded: String,
+    pub loaded: MaterialName,
     /// The file that was to be compared.
-    pub file_name: String,
+    pub file_name: FileName,
 }
 
 /// Why the material check objects to a start, with what it compared.
@@ -283,9 +412,9 @@ pub enum MaterialObjection {
         /// The spool loaded on it.
         spool: PreflightSpool,
         /// That spool's material.
-        loaded: String,
+        loaded: MaterialName,
         /// The file whose settings could not be read.
-        file_name: String,
+        file_name: FileName,
         /// What the printer answered instead, in its own words.
         detail: String,
     },
@@ -333,11 +462,11 @@ pub enum MaterialResult {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct SheetComparison {
     /// The build sheet the manifest declares.
-    pub sheet: String,
+    pub sheet: SheetId,
     /// The material of the spool loaded on tool 0.
-    pub material: String,
+    pub material: MaterialName,
     /// Every sheet the table allows that material.
-    pub allowed: Vec<String>,
+    pub allowed: Vec<SheetId>,
 }
 
 /// Why the sheet check objects to a start, with what it compared.
@@ -355,18 +484,18 @@ pub enum SheetObjection {
     /// The table has no entry for the material.
     UnlistedMaterial {
         /// The build sheet the manifest declares.
-        sheet: String,
+        sheet: SheetId,
         /// The material of the spool loaded on tool 0.
-        material: String,
+        material: MaterialName,
     },
     /// No entry of the table lists the sheet.
     UnknownSheet {
         /// The build sheet the manifest declares.
-        sheet: String,
+        sheet: SheetId,
         /// The material of the spool loaded on tool 0.
-        material: String,
+        material: MaterialName,
         /// Every sheet some entry lists.
-        known: Vec<String>,
+        known: Vec<SheetId>,
     },
 }
 

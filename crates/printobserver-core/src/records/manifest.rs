@@ -30,6 +30,7 @@ pub struct JobManifest {
     /// Every start must declare one: a start whose manifest names none is
     /// refused, and no override lets it through. Optional here only so that a
     /// manifest stored before the field existed still loads.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<String>,
     /// The range each named adjustable may take, inclusive.

@@ -546,8 +546,8 @@
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -585,8 +585,8 @@
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",

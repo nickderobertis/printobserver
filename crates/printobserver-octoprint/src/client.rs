@@ -292,14 +292,14 @@ impl OctoPrintPrinter {
     }
 
     /// The path one file's download is followed at on the configured
-    /// instance, and the file's size when the instance reports one.
-    fn download_of(&self, file_name: &FileName) -> Result<(String, Option<i64>), PrinterError> {
+    /// instance.
+    fn download_of(&self, file_name: &FileName) -> Result<String, PrinterError> {
         let file = self.read_file(file_name)?;
         let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
         // is followed: a folder, or a record no file could carry, is no file
         // to download.
-        let facts = file.facts().map_err(|detail| {
+        file.facts().map_err(|detail| {
             malformed(format!("{} answered {detail}", local_file_path(file_name)))
         })?;
         let link = link.ok_or_else(|| {
@@ -316,7 +316,7 @@ impl OctoPrintPrinter {
                 )));
             }
         };
-        Ok((followed.as_str().to_owned(), facts.size_bytes))
+        Ok(followed.as_str().to_owned())
     }
 
     /// Stream one file's G-code through the reader, up to a byte.
@@ -325,7 +325,7 @@ impl OctoPrintPrinter {
         file_name: &FileName,
         position_bytes: i64,
     ) -> Result<ExtrudedTo, PrinterError> {
-        let (path, _) = self.download_of(file_name)?;
+        let path = self.download_of(file_name)?;
         let path = path.as_str();
         let mut reader = Reader(ExtrudedTo::new(position_bytes));
         let outcome = http::stream(
@@ -355,8 +355,11 @@ impl OctoPrintPrinter {
     ///
     /// An instance that ignores the range is read only as far as the bound:
     /// a file longer than it is refused rather than downloaded whole.
-    fn read_filament_types(&self, file_name: &FileName) -> Result<Vec<String>, PrinterError> {
-        let (path, size) = self.download_of(file_name)?;
+    fn read_filament_types(
+        &self,
+        file_name: &FileName,
+    ) -> Result<Vec<Option<String>>, PrinterError> {
+        let path = self.download_of(file_name)?;
         let mut tail = TailReader(Tail::new(TAIL_BYTES));
         let answered = http::stream_tail(
             self.config.endpoint(),
@@ -384,10 +387,18 @@ impl OctoPrintPrinter {
                 )));
             }
             Tailed::Whole => false,
-            // A tail shorter than the file begins part-way through it.
-            Tailed::Partial => size.is_none_or(|size| {
-                usize::try_from(size).map_or(true, |size| size > tail.0.bytes().len())
-            }),
+            Tailed::Partial { from, total } => {
+                let arrived = u64::try_from(tail.0.bytes().len()).unwrap_or(u64::MAX);
+                if total - from != arrived {
+                    return Err(malformed(format!(
+                        "{path} answered {arrived} bytes of a range it said is {} long",
+                        total - from
+                    )));
+                }
+                // A tail that does not begin at the file's first byte may
+                // begin part-way through a line.
+                from > 0
+            }
         };
         Ok(filament_types_in(tail.0.bytes(), starts_mid_line))
     }
@@ -671,7 +682,7 @@ impl PrinterPort for OctoPrintPrinter {
     fn filament_types(
         &self,
         file_name: FileName,
-    ) -> BoxFuture<'_, Result<Vec<String>, PrinterError>> {
+    ) -> BoxFuture<'_, Result<Vec<Option<String>>, PrinterError>> {
         Box::pin(async move { self.read_filament_types(&file_name) })
     }
 

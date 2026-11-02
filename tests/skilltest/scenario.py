@@ -514,7 +514,22 @@ def _job(reading: Reading, file_name: str) -> dict[str, Any]:
     return job
 
 
-def _manifest(file_name: str, allowed: dict[str, Any]) -> dict[str, Any]:
+class _Manifest(TypedDict):
+    """The manifest a composed print runs under.
+
+    Field for field as the contracts' `JobManifest` declares it.
+    """
+
+    allowed: dict[str, Any]
+    file_name: str
+    material: str
+    metadata: dict[str, str]
+    nozzle_diameter_mm: float
+    sheet: str
+    slicer_profile: str
+
+
+def _manifest(file_name: str, allowed: dict[str, Any]) -> _Manifest:
     return {
         "allowed": allowed,
         "file_name": file_name,

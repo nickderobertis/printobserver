@@ -76,7 +76,7 @@ use printobserver_core::store::{
 };
 use printobserver_core::{
     ActionKind, Actor, ActorClass, ExecutionOutcome, PolicyDecision, RecoveryActionKind,
-    RecoveryDecision, SpoolId,
+    RecoveryDecision, SheetId, SpoolId,
 };
 use printobserver_core::{CoreError, MAX_LOOK_WAIT_S, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
@@ -270,7 +270,7 @@ pub struct PreflightParams {
     #[serde(default)]
     pub file_name: Option<String>,
     /// The build sheet the sheet check is read against; absent, the check
-    /// reports no sheet result.
+    /// reports no sheet result, and a blank one is refused.
     #[serde(default)]
     pub sheet: Option<String>,
 }
@@ -854,11 +854,11 @@ async fn preflight(
         Ok(file_name) => file_name,
         Err(error) => return refusal(StatusCode::BAD_REQUEST, error),
     };
-    let sheet = params
-        .sheet
-        .as_deref()
-        .filter(|sheet| !sheet.trim().is_empty());
-    match state.supervisor.preflight(&file_name, sheet).await {
+    let sheet = match params.sheet.map(SheetId::try_from).transpose() {
+        Ok(sheet) => sheet,
+        Err(why) => return refusal(StatusCode::BAD_REQUEST, why),
+    };
+    match state.supervisor.preflight(&file_name, sheet.as_ref()).await {
         Ok(preflight) => answer(StatusCode::OK, &PreflightAnswer { preflight }),
         Err(error) => refusal(core_status(&error), error),
     }

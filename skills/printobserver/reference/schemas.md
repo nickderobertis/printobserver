@@ -990,8 +990,8 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -1029,8 +1029,8 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -3070,8 +3070,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -3109,8 +3109,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -4775,6 +4775,16 @@ Declared by `printobserver-core`.
       "title": "EventId",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -4829,8 +4839,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -4868,8 +4878,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -13376,6 +13386,16 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "PreflightSpool": {
       "additionalProperties": false,
       "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
@@ -13450,8 +13470,8 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         "file_name": {
-          "description": "The file that was to be compared.",
-          "type": "string"
+          "$ref": "#/$defs/FileName",
+          "description": "The file that was to be compared."
         },
         "loaded": {
           "description": "That spool's material.",
@@ -13489,8 +13509,8 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         "file_name": {
-          "description": "The file whose settings could not be read.",
-          "type": "string"
+          "$ref": "#/$defs/FileName",
+          "description": "The file whose settings could not be read."
         },
         "loaded": {
           "description": "That spool's material.",
@@ -13528,6 +13548,16 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -13575,8 +13605,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -13614,8 +13644,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -15745,6 +15775,16 @@ Declared by `printobserver-core`.
       "title": "EventId",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -15799,8 +15839,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -15838,8 +15878,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -17067,6 +17107,16 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -17114,8 +17164,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -17153,8 +17203,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -18128,6 +18178,16 @@ Declared by `printobserver-server`.
 ```json
 {
   "$defs": {
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -18175,8 +18235,8 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -18214,8 +18274,8 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -19209,6 +19269,16 @@ Declared by `printobserver-core`.
       "title": "ActionId",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -19256,8 +19326,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -19295,8 +19365,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -23855,6 +23925,16 @@ Declared by `printobserver-core`.
       "title": "ActionId",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "LoadedSpool": {
       "additionalProperties": false,
       "description": "One spool loaded on one tool, as a print started.",
@@ -23922,8 +24002,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -23961,8 +24041,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -29582,6 +29662,16 @@ Declared by `printobserver-core`.
       "title": "EventId",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -29636,8 +29726,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -29675,8 +29765,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -32921,6 +33011,16 @@ Declared by `printobserver-server`.
       "title": "EventSource",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "ImageId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one image.",
       "format": "uuid",
@@ -33001,8 +33101,8 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -33040,8 +33140,8 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -34519,6 +34619,16 @@ Declared by `printobserver-core`.
       "title": "EventId",
       "type": "string"
     },
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "InterventionId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
       "format": "uuid",
@@ -34573,8 +34683,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file that was to be compared.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file that was to be compared."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -34612,8 +34722,8 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "file_name": {
-              "description": "The file whose settings could not be read.",
-              "type": "string"
+              "$ref": "#/$defs/FileName",
+              "description": "The file whose settings could not be read."
             },
             "loaded": {
               "description": "That spool's material.",
@@ -40965,6 +41075,16 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    },
     "PreflightSpool": {
       "additionalProperties": false,
       "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
@@ -40997,8 +41117,8 @@ Declared by `printobserver-core`.
   "description": "A spool whose material the file could not be compared with.",
   "properties": {
     "file_name": {
-      "description": "The file that was to be compared.",
-      "type": "string"
+      "$ref": "#/$defs/FileName",
+      "description": "The file that was to be compared."
     },
     "loaded": {
       "description": "That spool's material.",

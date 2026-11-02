@@ -126,8 +126,14 @@ pub(crate) fn stream(
 /// What a request for the last bytes of a body was answered with.
 #[derive(Debug)]
 pub(crate) enum Tailed {
-    /// `206 Partial Content`: the bytes asked for, and nothing before them.
-    Partial,
+    /// `206 Partial Content`, whose `Content-Range` says the bytes run from
+    /// `from` to the end of a body of `total` bytes.
+    Partial {
+        /// The first byte answered, counted from the body's start.
+        from: u64,
+        /// How long the whole body is.
+        total: u64,
+    },
     /// A success that ignored the range: the body from its first byte.
     Whole,
     /// A status that is not a success, read to its end.
@@ -158,16 +164,51 @@ pub(crate) fn stream_tail(
         Some(&range),
         timeout,
     )?;
-    let (status, framing) = framing_of(&source.head()?)?;
+    let head = source.head()?;
+    let (status, framing) = framing_of(&head)?;
     if !(200..300).contains(&status) {
         return source.whole(status, framing).map(Tailed::Refused);
     }
-    source.body(framing, sink)?;
-    Ok(if status == 206 {
-        Tailed::Partial
+    let tailed = if status == 206 {
+        let (from, total) = suffix_of(&head)?;
+        Tailed::Partial { from, total }
     } else {
         Tailed::Whole
-    })
+    };
+    source.body(framing, sink)?;
+    Ok(tailed)
+}
+
+/// Where a partial answer's bytes run, from its `Content-Range`: refused unless
+/// it names one range of bytes reaching the end of the body, which is what a
+/// suffix range asks for.
+fn suffix_of(head: &[u8]) -> Result<(u64, u64), Transport> {
+    let head = String::from_utf8_lossy(head).into_owned();
+    let mut ranges = Vec::new();
+    for line in head.split("\r\n").skip(1) {
+        let (name, value) = field_of(line)?;
+        if name == "content-range" {
+            ranges.push(value.to_owned());
+        }
+    }
+    let [range] = ranges.as_slice() else {
+        return Err(Transport::Malformed(format!(
+            "a partial answer names {} content ranges rather than one",
+            ranges.len()
+        )));
+    };
+    let refused = || Transport::Malformed(format!("{range:?} is no range ending a body"));
+    let (span, total) = range
+        .strip_prefix("bytes ")
+        .and_then(|rest| rest.split_once('/'))
+        .ok_or_else(refused)?;
+    let (from, to) = span.split_once('-').ok_or_else(refused)?;
+    let number = |digits: &str| digits.trim().parse::<u64>().map_err(|_| refused());
+    let (from, to, total) = (number(from)?, number(to)?, number(total)?);
+    if from > to || to.checked_add(1) != Some(total) {
+        return Err(refused());
+    }
+    Ok((from, total))
 }
 
 /// How a response says where its body ends.

@@ -322,6 +322,7 @@ fn pairing_note(refusal: &Value) -> Option<String> {
     };
     let cause = text("cause");
     Some(match (reason.as_str(), cause.as_str()) {
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         ("material_refused", "mismatch") => format!(
             "the supervisor's material check refused this start: material_refused (mismatch). \
              The file was sliced for `{}`, and {}. Load a spool of the material it was sliced \
@@ -329,6 +330,7 @@ fn pairing_note(refusal: &Value) -> Option<String> {
             text("sliced_for"),
             spool(),
         ),
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
         ("material_refused", "undeclared") => format!(
             "the supervisor's material check refused this start: material_refused (undeclared). \
              `{}` names no `filament_type`, so it cannot be compared with {}. Slice it again \

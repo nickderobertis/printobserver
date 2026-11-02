@@ -623,7 +623,7 @@ impl Supervisor {
     pub(crate) async fn read_filament_types(
         &self,
         file_name: FileName,
-    ) -> Result<Vec<String>, PrinterError> {
+    ) -> Result<Vec<Option<String>>, PrinterError> {
         self.printer.filament_types(file_name).await
     }
 

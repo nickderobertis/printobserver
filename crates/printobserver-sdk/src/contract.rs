@@ -1152,7 +1152,7 @@ pub enum MaterialObjection {
     #[serde(rename = "undeclared")]
     Undeclared {
         /// The file that was to be compared.
-        file_name: String,
+        file_name: FileName,
         /// That spool's material.
         loaded: String,
         /// The spool loaded on it.
@@ -1166,7 +1166,7 @@ pub enum MaterialObjection {
         /// What the printer answered instead, in its own words.
         detail: String,
         /// The file whose settings could not be read.
-        file_name: String,
+        file_name: FileName,
         /// That spool's material.
         loaded: String,
         /// The spool loaded on it.

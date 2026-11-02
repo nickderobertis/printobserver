@@ -203,7 +203,8 @@ pub trait PrinterPort: Send + Sync {
     }
 
     /// Read the material a file was sliced for, per tool, from the slicer's
-    /// own `; filament_type = <TYPE>` setting: the first entry is tool 0's.
+    /// own `; filament_type = <TYPE>` setting: the first entry is tool 0's,
+    /// and a tool the setting leaves blank is `None`.
     ///
     /// Empty when the file names no `filament_type`. A printer that cannot
     /// answer is refused with status 501, which is what an implementation that
@@ -211,7 +212,7 @@ pub trait PrinterPort: Send + Sync {
     fn filament_types(
         &self,
         file_name: FileName,
-    ) -> BoxFuture<'_, Result<Vec<String>, PrinterError>> {
+    ) -> BoxFuture<'_, Result<Vec<Option<String>>, PrinterError>> {
         let _ = file_name;
         Box::pin(async { Err(not_supported("filament_types")) })
     }

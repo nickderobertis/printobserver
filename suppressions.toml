@@ -135,6 +135,36 @@ site = "override_filament_check: bool,"
 reason = "The plan states `PrintAction::StartPrint` gains `override_filament_check: bool`, defaulted and left off the wire when false so every stored start reads as before, and the domain, the command surface and the three clients are built against it concurrently; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
 
 [[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/expiry.rs"
+site = "fn material_detail("
+reason = "`rejection_detail` is reached at run time only when a restoration the expiry driver issues is refused, and a restoration is never a start, so no journey can reach a material refusal's sentence there; the arm exists because the match is exhaustive over the rejection vocabulary. The start's own refusal is proven end to end by the server's `pairing` journeys through the real route, and these sentences by the core's `each_material_and_sheet_refusal_reads_back_naming_what_was_compared`."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/expiry.rs"
+site = "fn sheet_detail("
+reason = "`rejection_detail` is reached at run time only when a restoration the expiry driver issues is refused, and a restoration is never a start, so no journey can reach a sheet refusal's sentence there; the arm exists because the match is exhaustive over the rejection vocabulary. The start's own refusal is proven end to end by the server's `pairing` journeys through the real route, and these sentences by the core's `each_material_and_sheet_refusal_reads_back_naming_what_was_compared`."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/client.rs"
+site = "(\"material_refused\", \"mismatch\") => format!("
+reason = "The program's own tier stands in a machine that answers no file's settings (no crate but the OctoPrint adapter may spell the download it would serve), so a start through the subprocess reaches the material check only as `unread`, which the `pairing` journey drives. A mismatch is proven end to end by the server's `pairing` journeys against the scripted OctoPrint serving recorded PrusaSlicer G-code, and this note's words by `each_material_and_sheet_refusal_note_names_what_was_compared`."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/client.rs"
+site = "(\"material_refused\", \"undeclared\") => format!("
+reason = "The program's own tier stands in a machine that answers no file's settings (no crate but the OctoPrint adapter may spell the download it would serve), so a start through the subprocess reaches the material check only as `unread`, which the `pairing` journey drives. A file naming no material is proven end to end by the server's `pairing` journeys against the scripted OctoPrint, and this note's words by `each_material_and_sheet_refusal_note_names_what_was_compared`."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/manifest.rs"
+site = "pub sheet: Option<String>,"
+reason = "The plan fixes the manifest's `sheet` as a string, and fixes that a start whose manifest has none is rejected with the rejected class naming `sheet`. A blank one is that same start: the check reads it as declaring no sheet and refuses it `sheet_not_declared`. Validating it into a non-blank type at the body would turn that start into a body refusal of another class, so the field stays the contract's own string, and every value the check compares it with is a validated `SheetId`."
+
+[[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/records/action.rs"
 site = "override_material_check: bool,"

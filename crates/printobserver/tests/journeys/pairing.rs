@@ -81,18 +81,17 @@ fn assert_rejected(ran: &Ran, saying: &[&str]) {
     }
 }
 
-/// A start naming no sheet is rejected whatever it overrides; then the
-/// material refusal, and the sheet refusal past it, each name the override
-/// that gets past it; and the start asking every override is carried out.
-pub fn each_override_gets_a_start_past_its_own_check(world: &World) {
+/// Register a full roll of one material and load it onto tool 0.
+fn registered_and_loaded(world: &World, material: &str) {
+    let name = format!("{material} on the sheet journey");
     let spool = running::read(
         world,
         &[
             "register-spool",
             "--name",
-            "PLA on the sheet journey",
+            &name,
             "--material",
-            "PLA",
+            material,
             "--initial-g",
             "1000",
             "--actor",
@@ -119,6 +118,15 @@ pub fn each_override_gets_a_start_past_its_own_check(world: &World) {
         ],
     );
     assert_eq!(loaded.code, Some(0), "{}", loaded.said());
+}
+
+/// A start naming no sheet is rejected whatever it overrides; then the
+/// material refusal, and each sheet refusal past it — a sheet the table does
+/// not allow the material on, a sheet it does not list, a material it has no
+/// entry for — each name the override that gets past it; and the start asking
+/// every override is carried out.
+pub fn each_override_gets_a_start_past_its_own_check(world: &World) {
+    registered_and_loaded(world, "PLA");
 
     let every = [
         "--override-filament-check",
@@ -141,6 +149,25 @@ pub fn each_override_gets_a_start_past_its_own_check(world: &World) {
         &[
             "sheet_refused (not_allowed)",
             "allows `PLA` on `smooth-pei` and not on `textured-pei`",
+            "--override-sheet-check true",
+        ],
+    );
+    assert_rejected(
+        &started(world, Some("glass"), &every[..2]),
+        &[
+            "sheet_refused (unknown_sheet)",
+            "lists `glass`",
+            "`smooth-pei`, `textured-pei`",
+            "--override-sheet-check true",
+        ],
+    );
+    registered_and_loaded(world, "ASA");
+    assert_rejected(
+        &started(world, Some("smooth-pei"), &every[..2]),
+        &[
+            "sheet_refused (unlisted_material)",
+            "no entry for `ASA`",
+            "[sheets.allowed]",
             "--override-sheet-check true",
         ],
     );

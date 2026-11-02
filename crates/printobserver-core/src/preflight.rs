@@ -41,16 +41,16 @@ use printobserver_types::FileName;
 
 use crate::accounting::{NOTHING_MM, lengths_of, spool_on_tool};
 use crate::clock::seconds_between;
-use crate::config::{PreflightMode, same};
+use crate::config::PreflightMode;
 use crate::delay::Delay;
 use crate::error::CoreError;
 use crate::filament::{buffer_g, grams_for_length};
 use crate::records::{
-    ActionKind, Actor, ActorClass, DoubtedSpool, MaterialComparison, MaterialObjection,
-    MaterialResult, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
-    PreflightToolResult, PreflightVerdict, RejectionReason, SheetComparison, SheetObjection,
-    SheetResult, ShortSpool, SpoolRecord, SpoolTrust, UnanalysedSpool, UncomparedMaterial,
-    UnverifiedMarks,
+    ActionKind, Actor, ActorClass, DoubtedSpool, MaterialComparison, MaterialName,
+    MaterialObjection, MaterialResult, Preflight, PreflightNeed, PreflightObjection,
+    PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict, RejectionReason,
+    SheetComparison, SheetId, SheetObjection, SheetResult, ShortSpool, SpoolRecord, SpoolTrust,
+    UnanalysedSpool, UncomparedMaterial, UnverifiedMarks,
 };
 use crate::supervisor::Supervisor;
 
@@ -281,12 +281,19 @@ fn let_all_through(mut preflight: Preflight, how: LetThrough) -> Preflight {
     preflight
 }
 
+/// The material a spool was registered as, which a registration refuses to
+/// leave blank — so a spool always has one.
+fn material_of(spool: &SpoolRecord) -> Option<MaterialName> {
+    MaterialName::try_from(spool.material.clone()).ok()
+}
+
 /// Whether the spool's material is the one the file was sliced for, by what
 /// the printer read of the file's settings.
 fn judged_material(
     file_name: &FileName,
     spool: &SpoolRecord,
-    read: Result<Vec<String>, String>,
+    loaded: MaterialName,
+    read: Result<Vec<Option<String>>, String>,
 ) -> MaterialResult {
     let types = match read {
         Ok(types) => types,
@@ -295,34 +302,35 @@ fn judged_material(
                 objection: MaterialObjection::Unread {
                     tool: CHECKED_TOOL,
                     spool: named(spool),
-                    loaded: spool.material.clone(),
-                    file_name: file_name.as_str().to_owned(),
+                    loaded,
+                    file_name: file_name.clone(),
                     detail,
                 },
             };
         }
     };
-    let Some(sliced_for) = types
-        .first()
-        .map(|named| named.trim().to_owned())
-        .filter(|named| !named.is_empty())
-    else {
+    let declared = types
+        .into_iter()
+        .next()
+        .flatten()
+        .and_then(|named| MaterialName::try_from(named).ok());
+    let Some(sliced_for) = declared else {
         return MaterialResult::Refused {
             objection: MaterialObjection::Undeclared(UncomparedMaterial {
                 tool: CHECKED_TOOL,
                 spool: named(spool),
-                loaded: spool.material.clone(),
-                file_name: file_name.as_str().to_owned(),
+                loaded,
+                file_name: file_name.clone(),
             }),
         };
     };
     let compared = MaterialComparison {
         tool: CHECKED_TOOL,
         spool: named(spool),
-        loaded: spool.material.clone(),
+        loaded,
         sliced_for,
     };
-    if same(&compared.sliced_for, &compared.loaded) {
+    if compared.sliced_for.same(&compared.loaded) {
         MaterialResult::Passed(compared)
     } else {
         MaterialResult::Refused {
@@ -343,7 +351,7 @@ impl Supervisor {
     pub async fn preflight(
         &self,
         file_name: &FileName,
-        sheet: Option<&str>,
+        sheet: Option<&SheetId>,
     ) -> Result<Preflight, CoreError> {
         let facts = self.read_file_facts(file_name.clone()).await.ok();
         let loaded = self.stores().filament.loaded_spools().await?;
@@ -356,25 +364,26 @@ impl Supervisor {
     /// Whether the file was sliced for the material of the spool on tool 0:
     /// unchecked when no tracked spool is loaded there.
     async fn judge_material(&self, file_name: &FileName, loaded: &[SpoolRecord]) -> MaterialResult {
-        let Some(spool) = spool_on_tool(loaded, CHECKED_TOOL) else {
+        let Some((spool, material)) = spool_on_tool(loaded, CHECKED_TOOL)
+            .and_then(|spool| Some((spool, material_of(spool)?)))
+        else {
             return MaterialResult::Unchecked;
         };
         let read = self
             .read_filament_types(file_name.clone())
             .await
             .map_err(|error| error.to_string());
-        judged_material(file_name, spool, read)
+        judged_material(file_name, spool, material, read)
     }
 
     /// Whether the table allows the material of the spool on tool 0 on a
     /// sheet: unchecked when no tracked spool is loaded there.
-    fn judge_sheet(&self, sheet: &str, loaded: &[SpoolRecord]) -> SheetResult {
-        let Some(spool) = spool_on_tool(loaded, CHECKED_TOOL) else {
+    fn judge_sheet(&self, sheet: &SheetId, loaded: &[SpoolRecord]) -> SheetResult {
+        let Some(material) = spool_on_tool(loaded, CHECKED_TOOL).and_then(material_of) else {
             return SheetResult::Unchecked;
         };
         let table = &self.config().sheets;
-        let sheet = sheet.trim().to_owned();
-        let material = spool.material.clone();
+        let sheet = sheet.clone();
         let objection = if !table.lists(&sheet) {
             SheetObjection::UnknownSheet {
                 sheet,
@@ -387,7 +396,7 @@ impl Supervisor {
                 sheet,
                 material,
             };
-            if allowed.iter().any(|listed| same(listed, &compared.sheet)) {
+            if allowed.iter().any(|listed| listed.same(&compared.sheet)) {
                 return SheetResult::Passed(compared);
             }
             SheetObjection::NotAllowed(compared)
@@ -517,7 +526,9 @@ impl Supervisor {
         asked: Overrides,
     ) -> Result<(Preflight, Option<RejectionReason>), CoreError> {
         let policy = self.config().spools;
-        let declared = sheet.filter(|sheet| !sheet.trim().is_empty());
+        // A blank sheet names none, and is refused as declaring none.
+        let declared = sheet.and_then(|sheet| SheetId::try_from(sheet.to_owned()).ok());
+        let declared = declared.as_ref();
         let mut preflight = if policy.preflight == PreflightMode::Off {
             Preflight {
                 file_name: file_name.as_str().to_owned(),

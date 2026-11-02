@@ -54,9 +54,10 @@ pub use policy::{
     EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
 };
 pub use preflight::{
-    DoubtedSpool, MaterialComparison, MaterialObjection, MaterialResult, Preflight, PreflightNeed,
-    PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict,
-    SheetComparison, SheetObjection, SheetResult, ShortSpool, UnanalysedSpool, UncomparedMaterial,
+    DoubtedSpool, MaterialComparison, MaterialName, MaterialObjection, MaterialResult, Preflight,
+    PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult,
+    PreflightVerdict, SheetComparison, SheetId, SheetObjection, SheetResult, ShortSpool,
+    UnanalysedSpool, UncomparedMaterial,
 };
 pub use print::{ManifestNarrowing, PrintRecord};
 pub use recovery::{

@@ -204,7 +204,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[
             ("cause", "string", true),
             ("detail", "string", true),
-            ("file_name", "string", true),
+            ("file_name", "FileName", true),
             ("loaded", "string", true),
             ("sliced_for", "string", true),
             ("spool", "PreflightSpool", true),
@@ -475,7 +475,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "UncomparedMaterial",
         &[
-            ("file_name", "string", true),
+            ("file_name", "FileName", true),
             ("loaded", "string", true),
             ("spool", "PreflightSpool", true),
             ("tool", "integer", true),

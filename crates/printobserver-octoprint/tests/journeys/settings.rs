@@ -57,7 +57,7 @@ fn the_material_is_read_from_a_recorded_files_tail_without_downloading_it() {
 
     let types = block_on(printer_of(&standin).filament_types(named("fan-cut-test.gcode")));
 
-    assert_eq!(types, Ok(vec!["PLA".to_owned()]));
+    assert_eq!(types, Ok(vec![Some("PLA".to_owned())]));
     let served = standin.download_bytes();
     assert!(
         served > 0 && served <= TAIL_BYTES,
@@ -80,7 +80,10 @@ fn a_multi_tool_setting_names_each_tools_material_in_order() {
 
     let types = block_on(printer_of(&standin).filament_types(named("two.gcode")));
 
-    assert_eq!(types, Ok(vec!["PETG".to_owned(), "PLA".to_owned()]));
+    assert_eq!(
+        types,
+        Ok(vec![Some("PETG".to_owned()), Some("PLA".to_owned())])
+    );
 }
 
 /// A file shorter than the tail is read from its first line, so a setting on
@@ -96,7 +99,7 @@ fn a_file_shorter_than_the_tail_is_read_from_its_first_line() {
 
     let types = block_on(printer_of(&standin).filament_types(named("short.gcode")));
 
-    assert_eq!(types, Ok(vec!["PETG".to_owned()]));
+    assert_eq!(types, Ok(vec![Some("PETG".to_owned())]));
 }
 
 /// A file whose tail names no `filament_type` answers no material — and a
@@ -166,4 +169,80 @@ fn an_instance_ignoring_the_range_is_refused_rather_than_read_whole() {
         download.header("range"),
         Some(format!("bytes=-{TAIL_BYTES}").as_str())
     );
+}
+
+/// A file's facts naming a download link, as `OctoPrint` answers them.
+fn facts_of(name: &str, size: usize) -> Reply {
+    Reply::Body(
+        200,
+        format!(
+            r#"{{"name": "{name}", "origin": "local", "type": "machinecode", "size": {size},
+                "refs": {{"download": "http://ignored/downloads/files/local/{name}"}}}}"#
+        ),
+    )
+}
+
+/// A partial answer is believed only for the range it says it is: one naming
+/// no range, a range that stops short of the file's end, or a body longer or
+/// shorter than its range is refused rather than read as the file's tail.
+#[test]
+fn a_partial_answer_is_refused_unless_its_range_ends_the_file() {
+    let body = "; filament_type = PLA\n";
+    let length = body.len();
+    for (range, sent, refusal) in [
+        (None, body.to_owned(), "content ranges rather than one"),
+        (
+            Some(format!("bytes 100-{}/5000", 99 + length)),
+            body.to_owned(),
+            "no range ending a body",
+        ),
+        (
+            Some(format!("bytes {}-4999/5000", 5000 - length - 1)),
+            body.to_owned(),
+            "of a range it said is",
+        ),
+    ] {
+        let stub = Stub::start(move |request| {
+            if request.path.starts_with("/downloads/") {
+                let range = range
+                    .as_ref()
+                    .map_or_else(String::new, |range| format!("Content-Range: {range}\r\n"));
+                Reply::Raw(
+                    format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\n{range}\
+                         Connection: close\r\n\r\n{sent}",
+                        sent.len()
+                    )
+                    .into_bytes(),
+                )
+            } else {
+                facts_of("part.gcode", 5000)
+            }
+        });
+        let printer = OctoPrintPrinter::new(
+            OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration"),
+        );
+
+        let types = block_on(printer.filament_types(named("part.gcode")));
+
+        assert!(
+            matches!(&types, Err(PrinterError::Malformed { detail }) if detail.contains(refusal)),
+            "{types:?}"
+        );
+    }
+}
+
+/// A tool the setting leaves blank is no material, and keeps its place.
+#[test]
+fn a_tool_the_setting_leaves_blank_names_no_material_in_its_place() {
+    let standin = ScriptedOctoPrint::start();
+    standin.holds_file(
+        "blank.gcode",
+        b"G28\n; filament_type = ;PETG\n".to_vec(),
+        10.0,
+    );
+
+    let types = block_on(printer_of(&standin).filament_types(named("blank.gcode")));
+
+    assert_eq!(types, Ok(vec![None, Some("PETG".to_owned())]));
 }

@@ -11,7 +11,7 @@
 use printobserver_core::kinds::PreflightCheckedPayload;
 use printobserver_core::{
     ActionOutcome, Actor, JobManifest, MaterialObjection, MaterialResult, PolicyDecision,
-    PreflightMode, PrintAction, RejectionReason, SheetObjection, SheetResult, SheetTable,
+    PreflightMode, PrintAction, RejectionReason, SheetId, SheetObjection, SheetResult, SheetTable,
     SpoolCommand, block_on,
 };
 use printobserver_printer_api::{PrinterError, PrinterState};
@@ -21,6 +21,11 @@ use crate::fakes::PrinterMethod;
 use crate::journal::Call;
 use crate::shelf::{FILE, command, every, load, spool_world, spool_world_with};
 use crate::world::{World, agent_actor, manifest};
+
+/// A sheet, by its identifier.
+fn sheet(id: &str) -> SheetId {
+    SheetId::try_from(id.to_owned()).expect("a sheet named by something")
+}
 
 /// Register a full spool of one material, and load it onto tool 0.
 fn loaded_of(world: &World, material: &str) {
@@ -227,11 +232,12 @@ fn the_sheet_table_refuses_each_unsuitable_pairing_naming_it() {
             PolicyDecision::Rejected(RejectionReason::SheetRefused { objection }) => {
                 Some(match objection {
                     SheetObjection::NotAllowed(compared) => {
-                        assert_eq!(compared.material, material);
+                        assert_eq!(compared.material.as_str(), material);
                         "not_allowed"
                     }
                     SheetObjection::UnknownSheet { known, .. } => {
-                        assert_eq!(known, &["smooth-pei", "textured-pei"]);
+                        let known: Vec<&str> = known.iter().map(SheetId::as_str).collect();
+                        assert_eq!(known, ["smooth-pei", "textured-pei"]);
                         "unknown_sheet"
                     }
                     SheetObjection::UnlistedMaterial { .. } => "unlisted_material",
@@ -329,8 +335,8 @@ fn a_configured_table_replaces_the_defaults_and_the_read_reports_a_given_sheet()
         Some(MaterialResult::Passed(_))
     ));
     assert_eq!(unsheeted.sheet, None);
-    let sheeted =
-        block_on(world.core.preflight(&file, Some("smooth-pei"))).expect("the check is read");
+    let sheeted = block_on(world.core.preflight(&file, Some(&sheet("smooth-pei"))))
+        .expect("the check is read");
     assert!(matches!(sheeted.sheet, Some(SheetResult::Passed(_))));
 
     let outcome = start_on(
@@ -422,4 +428,45 @@ fn checks_and_starts_stored_before_these_checks_still_load() {
         serde_json::to_string(&start).expect("a start writes"),
         STORED_START
     );
+}
+
+/// Each material and sheet refusal reads back in words naming what was
+/// compared, and the missing sheet says no override lets it through.
+#[test]
+fn each_material_and_sheet_refusal_reads_back_naming_what_was_compared() {
+    use printobserver_core::rejection_detail;
+    use printobserver_types::contract::Sample as _;
+
+    let said: Vec<String> = RejectionReason::sample_alternates()
+        .iter()
+        .filter(|reason| {
+            matches!(
+                reason,
+                RejectionReason::MaterialRefused { .. }
+                    | RejectionReason::SheetRefused { .. }
+                    | RejectionReason::SheetNotDeclared
+            )
+        })
+        .map(rejection_detail)
+        .collect();
+    assert_eq!(said.len(), 3, "{said:?}");
+    for fact in ["sliced for PLA", "Galaxy black", "tool 0", "PETG"] {
+        assert!(said[0].contains(fact), "{} omits {fact}", said[0]);
+    }
+    for fact in ["PETG on textured-pei", "not on smooth-pei"] {
+        assert!(said[1].contains(fact), "{} omits {fact}", said[1]);
+    }
+    assert!(said[2].contains("`sheet`") && said[2].contains("no override"));
+
+    for objection in MaterialObjection::sample_alternates() {
+        let said = rejection_detail(&RejectionReason::MaterialRefused { objection });
+        assert!(
+            said.contains("benchy.gcode") && said.contains("PETG"),
+            "{said}"
+        );
+    }
+    for objection in SheetObjection::sample_alternates() {
+        let said = rejection_detail(&RejectionReason::SheetRefused { objection });
+        assert!(said.contains("sheet table"), "{said}");
+    }
 }

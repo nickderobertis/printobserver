@@ -102,7 +102,7 @@ fn printer_port_declares_exactly_the_stated_methods() {
         method(
             "filament_types",
             &[("file_name", "FileName")],
-            "BoxFuture<'_,Result<Vec<String>,PrinterError>>",
+            "BoxFuture<'_,Result<Vec<Option<String>>,PrinterError>>",
         ),
         method(
             "printed_files",

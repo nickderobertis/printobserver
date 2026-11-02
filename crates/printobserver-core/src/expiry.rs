@@ -43,7 +43,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::records::{
     Actor, Intervention, InterventionId, InterventionOutcome, MaterialObjection, PolicyDecision,
-    PrintAction, RejectionReason, SheetObjection,
+    PrintAction, RejectionReason, SheetId, SheetObjection,
 };
 use printobserver_printer_api::Adjustable;
 use printobserver_types::{PrintId, Timestamp};
@@ -154,6 +154,7 @@ pub fn restoring_action(adjustable: Adjustable, prior_value: f64) -> PrintAction
 }
 
 /// What the material check objected to, naming what it compared.
+// llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
 fn material_detail(objection: &MaterialObjection) -> String {
     match objection {
         MaterialObjection::Mismatch(compared) => format!(
@@ -179,13 +180,23 @@ fn material_detail(objection: &MaterialObjection) -> String {
     }
 }
 
+/// Sheets, as a list a sentence carries.
+fn listed(sheets: &[SheetId]) -> String {
+    sheets
+        .iter()
+        .map(SheetId::as_str)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// What the sheet check objected to, naming what it compared.
+// llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
 fn sheet_detail(objection: &SheetObjection) -> String {
     match objection {
         SheetObjection::NotAllowed(compared) => format!(
             "the sheet table allows {} on {} and not on {}",
             compared.material,
-            compared.allowed.join(", "),
+            listed(&compared.allowed),
             compared.sheet
         ),
         SheetObjection::UnlistedMaterial { sheet, material } => format!(
@@ -198,7 +209,7 @@ fn sheet_detail(objection: &SheetObjection) -> String {
         } => format!(
             "no entry of the sheet table lists {sheet}, so it is not known to suit {material}; \
              the sheets it names are {}",
-            known.join(", ")
+            listed(known)
         ),
     }
 }

@@ -929,11 +929,17 @@ export interface ManifestNarrowing {
 /** Why the material check objects to a start, with what it compared. */
 export type MaterialObjection =
   | { cause: "mismatch"; loaded: string; sliced_for: string; spool: PreflightSpool; tool: number }
-  | { cause: "undeclared"; file_name: string; loaded: string; spool: PreflightSpool; tool: number }
+  | {
+      cause: "undeclared";
+      file_name: FileName;
+      loaded: string;
+      spool: PreflightSpool;
+      tool: number;
+    }
   | {
       cause: "unread";
       detail: string;
-      file_name: string;
+      file_name: FileName;
       loaded: string;
       spool: PreflightSpool;
       tool: number;
@@ -4345,7 +4351,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "FileName"
        }
       },
       "loaded": {
@@ -4386,7 +4392,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "FileName"
        }
       },
       "loaded": {
