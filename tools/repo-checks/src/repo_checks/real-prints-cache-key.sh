@@ -18,7 +18,12 @@ if ! listing="$(git lfs ls-files --long --include 'tests/real-prints/**')"; then
     echo "git lfs ls-files could not list the cases at HEAD; run this inside the repository whose cases it keys" >&2
     exit 1
 fi
-oids="$(printf '%s\n' "$listing" | cut -d ' ' -f 1 | LC_ALL=C sort -u)"
+malformed="$(printf '%s\n' "$listing" | grep -Ev '^[0-9a-f]{64} [*-] .+$' | grep -v '^$' || true)"
+if [ -n "$malformed" ]; then
+    echo "git lfs ls-files answered a line that is no listing of an object id and a path: $(printf '%s\n' "$malformed" | head -n 1); check the git-lfs release just bootstrap installs" >&2
+    exit 1
+fi
+oids="$(printf '%s\n' "$listing" | cut -d ' ' -f 1 | LC_ALL=C sort -u | grep -v '^$' || true)"
 if [ -z "$oids" ]; then
     echo "git-lfs lists no object under tests/real-prints/ at HEAD; commit the cases as LFS pointers first" >&2
     exit 1

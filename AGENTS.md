@@ -1583,18 +1583,12 @@ about 140 MB that only the paid suite reads, and no checkout downloads them:
 `.lfsconfig` excludes them, because a checkout that pulled them would spend the
 account's 10 GiB of monthly LFS bandwidth for nothing.
 
-<!-- llmlint: ignore[agents_md_durable_and_terse] The task that moved the cases into Git LFS requires AGENTS.md to state how the suite and CI fetch them. suppressions.toml has the full reason. -->
-<!-- llmlint: ignore[instruction_layer_localized] The task that moved the cases into Git LFS requires the root AGENTS.md to state how the suite and CI fetch them; the project's own rules are in tests/real-prints-lfs/AGENTS.md. suppressions.toml has the full reason. -->
-- **Only the suite fetches them.** Locally that is `just skilltest`, through
-  `just real-prints-fetch`; in CI, the suite's job, through
-  `tests/real-prints-lfs/ci-steps.yml` and its cache. Never make a gate test
-  read a case's bytes — give it a plain copy of its own, as the Rust journeys
-  have.
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] The task that moved the cases into Git LFS requires the root AGENTS.md to state how the suite and CI fetch them; the project's own rules are in tests/real-prints-lfs/AGENTS.md. suppressions.toml has the full reasons. -->
+- **Only the suite fetches them.** Locally that is `just skilltest`, through `just real-prints-fetch`; in CI, the suite's job, through `tests/real-prints-lfs/ci-steps.yml` and its cache. Never make a gate test read a case's bytes — give it a plain copy of its own, as the Rust journeys have.
 - **A host's `lfs.storage` is reused** by every clone on that host. Setting it
   is the host's provisioning, never this repository's.
 <!-- llmlint: ignore[agents_md_durable_and_terse] The task that moved the cases into Git LFS requires AGENTS.md to name the git-lfs release bootstrap installs, and a test holds it to repo-policy.toml. suppressions.toml has the full reason. -->
-- **git-lfs is part of the toolchain:** `just bootstrap` installs Git LFS 3.8.1
-  where a host has none. Never add a frame or a G-code on a host without it.
+- **git-lfs is part of the toolchain:** `just bootstrap` installs Git LFS 3.8.1 where a host has none. Never add a frame or a G-code on a host without it.
 
 `tests/real-prints-lfs/AGENTS.md` holds that project's own rules.
 

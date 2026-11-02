@@ -95,7 +95,10 @@ def _command(budget: str, repository: Path, result: Path) -> CompletedProcess[st
     environment = {
         **os.environ,
         "ONEBUDGETSPEC_RESULT": str(result),
-        "PYTHONPATH": str(REPO_ROOT / "tools" / "repo-checks" / "src"),
+        "PYTHONPATH": os.pathsep.join(
+            str(REPO_ROOT / "tools" / name / "src")
+            for name in ("repo-checks", "contract-codegen", "release-artifacts")
+        ),
     }
     return run(argv, cwd=repository, env=environment)
 

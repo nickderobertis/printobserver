@@ -15,7 +15,9 @@ Both report through the onebudgetspec SDK, which writes the figure where a
 check asks for it and nothing otherwise, and print it either way. Every line
 git answers is validated before anything is summed: a listing line that is not
 one, a pointer that is not a whole pointer, or one naming another object than
-its listing refuses the measurement rather than being left out of it.
+its listing refuses the measurement rather than being left out of it. A
+pointer is read by `checks_real_prints.pointer`, the one reading of the format
+the repository's own check holds the cases to.
 """
 
 from __future__ import annotations
@@ -26,9 +28,9 @@ import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import NewType
 
 from onebudgetspec_sdk import report
+from repo_checks.checks_real_prints import Oid, pointer
 from repo_checks.shell import run
 
 #: Where the cases are.
@@ -38,12 +40,6 @@ ROOT = "tests/real-prints/"
 LISTED = re.compile(r"(?P<oid>[0-9a-f]{64}) [*-] (?P<path>.+)")
 #: One object's header in `git cat-file --batch` output.
 HEADER = re.compile(r"(?P<blob>[0-9a-f]{40,64}) blob (?P<size>[0-9]+)")
-#: The whole of a Git LFS pointer, as the specification orders its lines.
-POINTER = re.compile(
-    r"version https://git-lfs\.github\.com/spec/v1\n"
-    r"oid sha256:(?P<oid>[0-9a-f]{64})\n"
-    r"size (?P<size>0|[1-9][0-9]*)\n"
-)
 
 #: A megabyte and a gibibyte, in bytes.
 MB = 10**6
@@ -55,9 +51,6 @@ CI_MISSES = 4
 HOST_FETCHES = 16
 TYPICAL_CI_MISSES = 4
 TYPICAL_HOST_FETCHES = 2
-
-#: A Git LFS object id: the sha256 of the file it stands for.
-Oid = NewType("Oid", str)
 
 
 class SetError(RuntimeError):
@@ -179,14 +172,14 @@ def tracked() -> list[Tracked]:
     listed = _listed()
     files: list[Tracked] = []
     for (path, oid), text in zip(listed, _pointers([path for path, _ in listed]), strict=True):
-        pointer = POINTER.fullmatch(text)
-        if pointer is None:
+        held = pointer(text.encode("ascii", errors="replace"))
+        if held is None:
             msg = f"{path} is listed by git-lfs and what HEAD holds for it is no whole pointer"
             raise SetError(msg)
-        if pointer["oid"] != oid:
-            msg = f"{path}'s pointer names {pointer['oid']}, and git-lfs lists {oid}"
+        if held.oid != oid:
+            msg = f"{path}'s pointer names {held.oid}, and git-lfs lists {oid}"
             raise SetError(msg)
-        files.append(Tracked(path, oid, int(pointer["size"])))
+        files.append(Tracked(path, oid, held.size))
     sizes: dict[Oid, Tracked] = {}
     for file in files:
         first = sizes.setdefault(file.oid, file)
