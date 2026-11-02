@@ -91,7 +91,7 @@ CHECKS: dict[str, Closure] = {
     ),
     "real-prints-schema": Closure(REAL_PRINTS),
     "real-prints-lfs": Closure((*REAL_PRINTS, ".gitattributes")),
-    "real-prints-lfs-ci": Closure((WORKFLOWS, "tests/real-prints-lfs/ci-steps.yml")),
+    "real-prints-lfs-ci": Closure((WORKFLOWS, JUSTFILE, "tests/real-prints-lfs/ci-steps.yml")),
     "real-prints-files": Closure(REAL_PRINTS),
     "real-prints-images": Closure(REAL_PRINTS),
     "real-prints-scenarios": Closure(REAL_PRINTS),

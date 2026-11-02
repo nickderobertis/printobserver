@@ -84,7 +84,7 @@ def test_a_checkout_without_lfs_false_is_refused(
 
 @pytest.mark.parametrize(
     "fetch",
-    ["just real-prints-fetch", "git lfs pull", "just real-prints-checkout"],
+    ["just real-prints-fetch", "git lfs pull", "just real-prints-checkout", "just skilltest"],
 )
 def test_a_job_fetching_without_the_steps_is_refused(
     check: Run, tree: Callable[[], Tree], fetch: str
@@ -105,11 +105,39 @@ def test_steps_carried_with_a_change_are_refused(check: Run, tree: Callable[[], 
     contains(err, "without carrying tests/real-prints-lfs/ci-steps.yml verbatim")
 
 
-def test_a_fetch_beside_the_steps_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
-    """Carrying the steps does not license a second fetch after them."""
-    code, err = check(with_job(tree(), [CHECKOUT, *STEPS, {"run": "just real-prints-fetch"}]))
+@pytest.mark.parametrize("fetch", ["just real-prints-fetch", "just skilltest"])
+def test_a_fetch_before_the_steps_is_refused(
+    check: Run, tree: Callable[[], Tree], fetch: str
+) -> None:
+    """Before the cache is restored a fetch downloads everything, steps or no steps."""
+    code, err = check(with_job(tree(), [CHECKOUT, {"run": fetch}, *STEPS, SUITE]))
     equal(code, 1)
-    contains(err, "runs `just real-prints-fetch` outside tests/real-prints-lfs/ci-steps.yml")
+    contains(err, f"runs `{fetch}`, which reaches the cases' LFS objects, before")
+
+
+def test_a_fetch_after_the_steps_passes(check: Run, tree: Callable[[], Tree]) -> None:
+    """After the steps the store is whole, so a further fetch downloads nothing."""
+    after = [CHECKOUT, *STEPS, {"run": "just real-prints-fetch"}, SUITE]
+    equal(check(with_job(tree(), after)), (0, ""))
+
+
+def test_a_recipe_reaching_lfs_through_another_is_read_off_the_justfile(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A recipe calling `just skilltest`, which calls the fetch, reaches the cases too."""
+    copy = tree()
+    copy.append(
+        "justfile",
+        "\n# Run the suite every night.\nnightly:\n    just skilltest\n",
+    )
+    code, err = check(with_job(copy, [CHECKOUT, {"run": "just nightly"}]))
+    equal(code, 1)
+    contains(err, "job `suite` reaches the real-print cases' LFS objects without carrying")
+    equal(
+        check(with_job(copy, [CHECKOUT, *STEPS, {"run": "just nightly"}])),
+        (0, ""),
+        describing="the same job carrying the steps",
+    )
 
 
 def test_unreadable_steps_are_refused(check: Run, tree: Callable[[], Tree]) -> None:

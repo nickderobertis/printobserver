@@ -39,7 +39,7 @@ from jsonschema.exceptions import SchemaError
 from jsonschema.protocols import Validator
 
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, run_commands, steps_of
+from repo_checks.parsing import Recipe, jobs_of, load_workflow, recipes, run_commands, steps_of
 from repo_checks.shell import discovered_no_higher_than, run
 
 ROOT = "tests/real-prints"
@@ -76,8 +76,11 @@ POINTER_SIZE = re.compile(r"size (?P<size>0|[1-9][0-9]*)")
 
 #: The one list of steps a continuous-integration job fetches the cases with.
 CI_STEPS = "tests/real-prints-lfs/ci-steps.yml"
-#: What a run step fetching or reading the cases' LFS objects names.
-LFS_COMMANDS = ("git lfs", "git-lfs", "real-prints-fetch", "real-prints-checkout")
+#: The programs a command reaches the cases' LFS objects through; a recipe
+#: reaches them when its body, or a recipe it calls, names one of these.
+LFS_PROGRAMS = ("git lfs", "git-lfs")
+#: A recipe a command line calls.
+JUST_CALL = re.compile(r"\bjust (?P<recipe>[a-z][\w-]*)")
 
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
@@ -799,13 +802,39 @@ def _ci_steps(repo: Repo) -> list[dict[str, Any]] | str:
     return steps
 
 
-def _without(
+def _reaching(justfile: dict[str, Recipe]) -> frozenset[str]:
+    """Every recipe whose run reaches git-lfs: its own body, or a recipe it calls or depends on."""
+    reaching: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for name, recipe in justfile.items():
+            if name in reaching:
+                continue
+            called = {found["recipe"] for line in recipe.body for found in JUST_CALL.finditer(line)}
+            if (
+                any(program in line for line in recipe.body for program in LFS_PROGRAMS)
+                or (called | set(recipe.dependencies)) & reaching
+            ):
+                reaching.add(name)
+                changed = True
+    return frozenset(reaching)
+
+
+def _reaches(command: str, reaching: frozenset[str]) -> bool:
+    """Whether one run line reaches git-lfs, itself or through a recipe it calls."""
+    return any(program in command for program in LFS_PROGRAMS) or any(
+        found["recipe"] in reaching for found in JUST_CALL.finditer(command)
+    )
+
+
+def _split(
     steps: list[dict[str, Any]], block: list[dict[str, Any]]
-) -> list[dict[str, Any]] | None:
-    """`steps` with the first verbatim run of `block` taken out, or none if it carries none."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """The steps before and after the first verbatim run of `block`, or none if it has none."""
     for start in range(len(steps) - len(block) + 1):
         if steps[start : start + len(block)] == block:
-            return steps[:start] + steps[start + len(block) :]
+            return steps[:start], steps[start + len(block) :]
     return None
 
 
@@ -815,14 +844,23 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
     Every `actions/checkout` declares `lfs: false`, so no checkout downloads an
     LFS object — the action's default is the same today, and declaring it is
     what keeps a later default or a copied step from spending the account's LFS
-    bandwidth on every job. A job whose run steps reach git-lfs or a real-print
-    LFS recipe must carry `ci-steps.yml` verbatim, which restores the store from
-    the Actions cache and downloads only on a miss, and may reach them nowhere
-    else.
+    bandwidth on every job. A run line reaches the cases when it runs git-lfs,
+    or calls a recipe that does, however many recipes down: which recipes do is
+    read off the justfile, so `just skilltest`, which fetches before replaying,
+    counts as surely as `just real-prints-fetch`. A job with such a line must
+    carry `ci-steps.yml` verbatim, which restores the store from the Actions
+    cache and downloads only on a miss, and may have none before those steps;
+    after them the store is whole, and a fetch there downloads nothing.
     """
     canonical = _ci_steps(repo)
     if isinstance(canonical, str):
         return [canonical]
+    justfile = repo.root / "justfile"
+    reaching = (
+        _reaching(recipes(justfile.read_text(encoding="utf-8")))
+        if justfile.is_file()
+        else frozenset()
+    )
     findings: list[str] = []
     for path in repo.workflow_paths:
         for job_name, job in jobs_of(load_workflow(path)).items():
@@ -838,18 +876,19 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
                         f"{where} checks out with `{uses}` and no `lfs: false`, so the checkout "
                         f"may download every LFS object: declare `lfs: false`"
                     )
-            if not any(term in command for command in run_commands(job) for term in LFS_COMMANDS):
+            if not any(_reaches(command, reaching) for command in run_commands(job)):
                 continue
-            outside = _without(steps, canonical)
-            if outside is None:
+            split = _split(steps, canonical)
+            if split is None:
                 findings.append(
                     f"{where} reaches the real-print cases' LFS objects without carrying "
                     f"{CI_STEPS} verbatim: fetch them through those steps"
                 )
                 continue
             findings.extend(
-                f"{where} runs `{command}` outside {CI_STEPS}: fetch only through those steps"
-                for command in run_commands({"steps": outside})
-                if any(term in command for term in LFS_COMMANDS)
+                f"{where} runs `{command}`, which reaches the cases' LFS objects, before "
+                f"{CI_STEPS}: run it after those steps, once the store is whole"
+                for command in run_commands({"steps": split[0]})
+                if _reaches(command, reaching)
             )
     return findings
