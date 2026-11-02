@@ -49,13 +49,29 @@ def figure_of(path: Path, figure: str) -> tuple[float, str | None]:
     if not isinstance(figures, dict):
         msg = f"{path} records no `figures` object"
         raise TelemetryError(msg)
-    value = figures.get(figure)
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+    value = _finite(figures.get(figure))
+    if value is None:
         recorded = ", ".join(sorted(figures)) or "none"
-        msg = f"{path} records no number under `{figure}` (it records: {recorded})"
+        msg = f"{path} records no finite number under `{figure}` (it records: {recorded})"
         raise TelemetryError(msg)
     detail = document.get("detail")
-    return float(value), None if detail is None else json.dumps(detail, sort_keys=True)
+    return value, None if detail is None else json.dumps(detail, sort_keys=True)
+
+
+def _finite(recorded: object) -> float | None:
+    """`recorded` as a finite float, or none when it is no number or none a float can hold.
+
+    JSON carries `NaN` and `Infinity` as Python reads it, and an integer too
+    large for a float, which `float` refuses with `OverflowError`: each is
+    refused here rather than reported or let out as an exception.
+    """
+    if isinstance(recorded, bool) or not isinstance(recorded, int | float):
+        return None
+    try:
+        value = float(recorded)
+    except OverflowError:
+        return None
+    return value if math.isfinite(value) else None
 
 
 def telemetry_budget(path: Path, figure: str) -> int:

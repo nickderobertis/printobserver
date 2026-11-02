@@ -65,9 +65,13 @@ def test_a_zero_is_reported_as_a_zero(tmp_path: Path) -> None:
         (None, "served_bytes", "is not there: run the test that records it first"),
         ("not json {", "served_bytes", "could not be read as JSON"),
         ({"detail": {}}, "served_bytes", "records no `figures` object"),
-        (RECORDED, "missing", "records no number under `missing`"),
-        ({"figures": {"x": "7"}}, "x", "records no number under `x`"),
-        ({"figures": {"x": True}}, "x", "records no number under `x`"),
+        (RECORDED, "missing", "records no finite number under `missing`"),
+        ({"figures": {"x": "7"}}, "x", "records no finite number under `x`"),
+        ({"figures": {"x": True}}, "x", "records no finite number under `x`"),
+        ('{"figures": {"x": NaN}}', "x", "records no finite number under `x`"),
+        ('{"figures": {"x": Infinity}}', "x", "records no finite number under `x`"),
+        ('{"figures": {"x": -Infinity}}', "x", "records no finite number under `x`"),
+        ('{"figures": {"x": 1' + "0" * 400 + "}}", "x", "records no finite number under `x`"),
     ],
 )
 def test_an_unreadable_figure_is_an_error_and_never_a_zero(
