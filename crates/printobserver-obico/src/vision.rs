@@ -25,8 +25,7 @@ use crate::{fetch, normalize};
 /// It is also what bounds a scheduled check whose camera fails every
 /// attempt: the supervisor asks a camera answering a server error three times
 /// more, half a second apart, so such a check waits at most 4 × 5 s + 3 × 0.5 s
-/// = 21.5 s for its frame before it is written down without one. The ten
-/// seconds this was before made that 41.5 s.
+/// = 21.5 s for its frame before it is written down without one.
 pub const DEFAULT_FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The most bytes of snapshot this adapter will read.

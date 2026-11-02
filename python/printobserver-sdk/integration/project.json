@@ -2,6 +2,9 @@
   "name": "printobserver-sdk-python-integration",
   "root": "python/printobserver-sdk/integration",
   "projectType": "library",
+  "metadata": {
+    "description": "The Python client's walk and journey against a real supervisor and OctoPrint. Its one expensive target, test-integration, is never selected by an affected run: just test-integration runs it through nx run-many over every project on every pull request, whatever a change reaches, so an edge here selects only this project's format, lint and type checks. Its edges are the code's: the client it drives, and repo-checks, whose expect and shell modules it imports as every suite here does."
+  },
   "tags": [
     "lang:python",
     "type:integration"

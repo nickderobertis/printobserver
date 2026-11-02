@@ -14,9 +14,11 @@ use core::time::Duration;
 
 use printobserver_core::{DEFAULT_CAMERA_RETRIES, DEFAULT_CAMERA_RETRY_BACKOFF};
 use printobserver_obico::DEFAULT_FETCH_TIMEOUT;
+use printobserver_types::EventPayload as _;
 
 use crate::camera_host::{Exchange, GO2RTC_FAILURE, Scripted, ScriptedHost, refusing_url};
-use crate::checks::{FirstCheck, checking};
+use crate::checks::{FirstCheck, checking, checking_over, stored};
+use crate::held_events::HeldEvents;
 use crate::ingress::snapshot_bytes;
 
 /// How much later than the backoff a retry may be made and still be "near"
@@ -227,5 +229,53 @@ async fn a_camera_that_never_answers_is_abandoned_near_the_timeout_and_not_retri
     assert!(check.retries.is_empty(), "{:?}", check.retries);
     let failure = check.camera_failure(&world).await;
     assert!(failure.detail.contains("too long"), "{failure:?}");
+    world.server.stop().await;
+}
+
+/// A store that refuses every retry's record costs the check nothing: the
+/// camera is still asked again after each `500`, the backoff still kept, and
+/// the check carries the frame the third attempt gave, with no port failure.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retry_the_store_will_not_write_down_is_still_made() {
+    let camera = ScriptedHost::answering(vec![
+        Scripted::exit_status_69(),
+        Scripted::exit_status_69(),
+        Scripted::frame(snapshot_bytes()),
+    ])
+    .await;
+    let held: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<HeldEvents>>> =
+        std::sync::Arc::default();
+    let holding = std::sync::Arc::clone(&held);
+    let world = checking_over(camera.url(), move |stores| {
+        let (stores, events) = HeldEvents::over(stores);
+        events.refusing_kind(printobserver_core::CameraRetryPayload::KIND, true);
+        let _ = holding.set(events);
+        stores
+    })
+    .await;
+    let print_id = world.open_print().await;
+
+    let check = FirstCheck::of(&world, print_id).await;
+
+    assert!(
+        held.get().is_some(),
+        "the store standing in front of the server was not the one refusing"
+    );
+    assert!(
+        check.observation.image.is_some(),
+        "the check does not carry the frame the third attempt gave"
+    );
+    assert!(check.retries.is_empty(), "{:?}", check.retries);
+    let exchanges = exchanges_before(&camera, &check);
+    assert_eq!(exchanges.len(), 3, "{exchanges:?}");
+    assert_spaced(&exchanges, false);
+    assert_eq!(check.failures(&world).await, Vec::new());
+    assert!(
+        stored(&world, print_id)
+            .await
+            .iter()
+            .all(|event| event.kind().as_str() != printobserver_core::CameraRetryPayload::KIND),
+        "a refused retry was written down"
+    );
     world.server.stop().await;
 }

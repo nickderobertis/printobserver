@@ -19,6 +19,7 @@ import pytest
 from onebudgetspec_sdk import CheckResult, check, list_budgets
 from repo_checks import telemetry_budget
 from repo_checks.expect import contains, equal, truth
+from repo_checks.shell import run
 from treecopy import REPO_ROOT
 
 #: What `just` exports to every recipe, so the budget's command finds its package.
@@ -118,40 +119,74 @@ def test_a_file_or_figure_that_cannot_be_read_is_an_error_naming_why(
     contains(capsys.readouterr().err, said)
 
 
-@pytest.mark.parametrize("figure", ["NaN", "Infinity", "-Infinity"])
-def test_a_figure_that_is_not_finite_is_an_error(
-    project: Path, figure: str, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        (b'{"figures": {"seconds": NaN}}', "which is not a finite number"),
+        (b'{"figures": {"seconds": Infinity}}', "which is not a finite number"),
+        (b'{"figures": {"seconds": -Infinity}}', "which is not a finite number"),
+        (b'{"figures": {"seconds": 1e400}}', "which is not a finite number"),
+        (b'{"figures": {"seconds": 1' + b"0" * 400 + b"}}", "which is not a finite number"),
+        (b'{"figures": {"seconds": ' + b"9" * 5000 + b"}}", "is not JSON this can read"),
+        (b"{ not json", "is not JSON this can read"),
+        (b'{"figures": {"seconds": 1.0}, "detail": "\xff"}', "is not UTF-8 text"),
+    ],
+)
+def test_text_that_holds_no_finite_figure_is_an_error_through_the_command(
+    project: Path, text: bytes, said: str
 ) -> None:
-    """JSON as Python writes it can carry NaN and the infinities; none is a figure."""
-    path = project / "telemetry" / "figures.json"
-    path.write_text(f'{{"figures": {{"seconds": {figure}}}, "detail": {{}}}}', encoding="utf-8")
+    """Text that holds no finite figure is an error of the real command, naming why.
+
+    What JSON as Python reads it can hold beyond a figure — NaN, the infinities, an
+    integer past a float's range, an integer too long to read — and text that is not
+    JSON or not UTF-8 are each refused, and the command's stderr says which.
+    """
+    (project / "telemetry" / "figures.json").write_bytes(text)
 
     result = checked(project)
+
     equal(result.verdict, "error")
-    truth(result.actual is None, describing="no figure for a value that is not finite")
-
-    equal(telemetry_budget.measure(str(path), "seconds"), telemetry_budget.REFUSED)
-    contains(capsys.readouterr().err, "which is not a finite number")
+    truth(result.actual is None, describing="no figure for a file holding none")
+    contains(result.error or "", said)
 
 
-def test_a_file_that_is_not_json_is_refused_naming_it(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Text that is not JSON is refused as such."""
-    path = project / "telemetry" / "figures.json"
-    path.write_text("{ not json", encoding="utf-8")
+def test_a_file_that_cannot_be_read_is_an_error_through_the_command(project: Path) -> None:
+    """A path that names something no file can be read from is refused, naming it."""
+    (project / "telemetry" / "figures.json").mkdir()
 
-    equal(telemetry_budget.measure(str(path), "seconds"), telemetry_budget.REFUSED)
-    contains(capsys.readouterr().err, "is not JSON")
+    result = checked(project)
+
+    equal(result.verdict, "error")
+    contains(result.error or "", "could not be read")
 
 
-def test_a_command_naming_no_file_or_figure_is_refused(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Both are the budget's to name; neither is guessed."""
-    equal(telemetry_budget.measure(None, "seconds"), telemetry_budget.REFUSED)
-    equal(telemetry_budget.measure("telemetry/figures.json", None), telemetry_budget.REFUSED)
-    contains(capsys.readouterr().err, "give the telemetry file and the figure")
+@pytest.mark.parametrize(
+    "given",
+    [[], ["telemetry/figures.json"]],
+    ids=["no file and no figure", "a file and no figure"],
+)
+def test_the_command_naming_no_file_or_figure_exits_refused_saying_so(given: list[str]) -> None:
+    """Both are the budget's to name: the command refuses, nonzero, naming what is missing."""
+    ran = run(
+        ["uv", "run", "-q", "python", "-m", "repo_checks", "telemetry_budget", *given],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONPATH": PACKAGES},
+    )
+
+    equal(ran.returncode, telemetry_budget.REFUSED)
+    contains(ran.stderr, "give the telemetry file and the figure")
+
+
+def test_a_figure_given_to_another_command_is_refused() -> None:
+    """Only this command reads a figure, so no other command quietly ignores one."""
+    ran = run(
+        ["uv", "run", "-q", "python", "-m", "repo_checks", "gate_time_budget", "measure", "x"],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONPATH": PACKAGES},
+    )
+
+    truth(ran.returncode != 0, describing="a stray figure refused")
+    contains(ran.stderr, "a figure can only be given to telemetry_budget")
 
 
 def test_the_check_delay_budget_is_registered_as_it_is_stated() -> None:

@@ -52,10 +52,14 @@ def figure_of(path: Path, figure: str) -> tuple[float, str]:
     except OSError as error:
         msg = f"{path} could not be read: {error}"
         raise TelemetryError(msg) from error
+    except UnicodeDecodeError as error:
+        msg = f"{path} is not UTF-8 text: {error}"
+        raise TelemetryError(msg) from error
     try:
         document = json.loads(text)
-    except json.JSONDecodeError as error:
-        msg = f"{path} is not JSON: {error}"
+    # A JSONDecodeError is a ValueError, and so is an integer too long to read.
+    except ValueError as error:
+        msg = f"{path} is not JSON this can read: {error}"
         raise TelemetryError(msg) from error
     if not isinstance(document, dict):
         msg = f"{path} is not a JSON object"
@@ -69,15 +73,23 @@ def figure_of(path: Path, figure: str) -> tuple[float, str]:
         msg = f"{path} records no figure `{figure}`; it records {recorded}"
         raise TelemetryError(msg)
     value = figures[figure]
+    refused = f"{path} records `{figure}` as {value!r}, which is not a finite number"
     # A bool is an int to Python, and is no figure.
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
-        msg = f"{path} records `{figure}` as {value!r}, which is not a finite number"
-        raise TelemetryError(msg)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TelemetryError(refused)
+    try:
+        # What is reported is a float, so the figure is one only where it is a
+        # finite float: an integer past a float's range is not.
+        reported = float(value)
+    except OverflowError:
+        raise TelemetryError(refused) from None
+    if not math.isfinite(reported):
+        raise TelemetryError(refused)
     detail = document.get("detail", {})
     if not isinstance(detail, dict):
         msg = f"{path} carries a `detail` that is not a JSON object"
         raise TelemetryError(msg)
-    return float(value), json.dumps(detail, sort_keys=True)
+    return reported, json.dumps(detail, sort_keys=True)
 
 
 def measure(path: str | None, figure: str | None) -> int:

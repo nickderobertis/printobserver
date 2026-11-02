@@ -1422,8 +1422,9 @@ fn an_event_and_its_image_are_written_as_one() {
     }
 }
 
-/// A write of an event and its image that is refused stores neither, and
-/// raises no signal a follower could wake on to find half of it.
+/// A write of an event and its image that is refused stores neither, so no
+/// follower its signal wakes can find half of it; it raises that signal at
+/// most once.
 #[test]
 fn a_refused_event_and_image_write_stores_neither() {
     for store in Fixture::both() {

@@ -30,7 +30,16 @@ pub const PATIENCE: Duration = Duration::from_secs(60);
 
 /// A world checking its prints every second, whose camera answers at `url`.
 pub async fn checking(url: String) -> World {
-    World::configured(
+    checking_over(url, |stores| stores).await
+}
+
+/// The same, with the durable stores as one journey stands something between
+/// them and the server.
+pub async fn checking_over(
+    url: String,
+    between: impl FnOnce(printobserver_core::store::Stores) -> printobserver_core::store::Stores,
+) -> World {
+    World::configured_over(
         RecordingPrinter::printing(),
         StandInAgent::new(),
         |document| {
@@ -43,6 +52,7 @@ pub async fn checking(url: String) -> World {
             table.insert("snapshot_url".to_owned(), toml::Value::String(url));
             set(document, "camera", toml::Value::Table(table));
         },
+        between,
     )
     .await
 }
