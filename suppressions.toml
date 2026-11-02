@@ -215,6 +215,18 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
+site = "- **Only the suite fetches them.**"
+reason = "The task that moved the real-print cases into Git LFS states, as an acceptance criterion, that the root `AGENTS.md` states how the suite and CI fetch them, so this bullet cannot move to a nested file. It is held to one sentence naming the two entry points, plus the repository-wide rule that no gate test reads a case's bytes. Every rule of the proof project itself is in `tests/real-prints-lfs/AGENTS.md`, which this section points to."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "- **Only the suite fetches them.**"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
 site = "The sign-in command exists because"
 reason = "The task that added `printobserver sign-in` requires `AGENTS.md`'s \"The agent's and the operator's surface\" to describe it beside the server command. That section is the root's one statement of the program's whole surface — derived from the server's operations, carried by the command-line crate, and signed in through the adapter's table — so no single crate subtree owns it, and a nested file would split one surface's description in two."
 

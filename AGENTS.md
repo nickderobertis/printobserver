@@ -1584,6 +1584,7 @@ about 140 MB that only the paid suite reads, and no checkout downloads them:
 account's 10 GiB of monthly LFS bandwidth for nothing.
 
 <!-- llmlint: ignore[agents_md_durable_and_terse] The task that moved the cases into Git LFS requires AGENTS.md to state how the suite and CI fetch them. suppressions.toml has the full reason. -->
+<!-- llmlint: ignore[instruction_layer_localized] The task that moved the cases into Git LFS requires the root AGENTS.md to state how the suite and CI fetch them; the project's own rules are in tests/real-prints-lfs/AGENTS.md. suppressions.toml has the full reason. -->
 - **Only the suite fetches them.** Locally that is `just skilltest`, through
   `just real-prints-fetch`; in CI, the suite's job, through
   `tests/real-prints-lfs/ci-steps.yml` and its cache. Never make a gate test
