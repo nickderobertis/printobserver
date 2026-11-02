@@ -20,8 +20,8 @@ import json
 import re
 import shutil
 from collections.abc import Iterator
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 
 import pytest
 import yaml
@@ -46,12 +46,64 @@ from repo_checks.shell import run
 CI_STEPS = HERE / "ci-steps.yml"
 TELEMETRY = HERE / "telemetry" / "lfs.json"
 
-#: What each figure the budgets read was recorded as, and its detail.
-FIGURES: dict[str, int] = {}
-DETAIL: dict[str, Any] = {
-    "fixture_object_bytes": FIXTURE_OBJECT_BYTES,
-    "fixture_objects": FIXTURE_OBJECTS,
-}
+
+@dataclass(frozen=True, slots=True)
+class NewCheckout:
+    """What a fresh clone and a new worktree of it were served."""
+
+    clone_bytes: int
+    worktree_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class Transfer:
+    """What one path was served: its bytes and its objects."""
+
+    bytes: int
+    objects_served: int
+
+
+@dataclass(frozen=True, slots=True)
+class CiRuns:
+    """The CI steps over an empty cache, and over the cache that run saved."""
+
+    cache_key: str
+    miss: Transfer
+    hit: Transfer
+
+
+@dataclass
+class Recorded:
+    """What the journeys measured, filled in as each runs; a path not run is none."""
+
+    new_checkout: NewCheckout | None = None
+    fetch: Transfer | None = None
+    second_worktree_bytes: int | None = None
+    shared_store_second_clone_bytes: int | None = None
+    ci: CiRuns | None = None
+
+    def figures(self) -> dict[str, int]:
+        """The figures the budgets read, for each path that was measured."""
+        figures: dict[str, int] = {}
+        if self.new_checkout is not None:
+            checkout = self.new_checkout
+            figures["new_checkout_bytes"] = checkout.clone_bytes + checkout.worktree_bytes
+        if self.ci is not None:
+            figures["ci_cache_miss_bytes"] = self.ci.miss.bytes
+            figures["ci_cache_hit_bytes"] = self.ci.hit.bytes
+        return figures
+
+    def document(self) -> str:
+        """The telemetry file: the figures, and every measurement beside the fixture's size."""
+        detail = {
+            **asdict(self),
+            "fixture_object_bytes": FIXTURE_OBJECT_BYTES,
+            "fixture_objects": FIXTURE_OBJECTS,
+        }
+        return json.dumps({"figures": self.figures(), "detail": detail}, indent=2, sort_keys=True)
+
+
+RECORDED = Recorded()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -59,10 +111,7 @@ def telemetry() -> Iterator[None]:
     """Write what the journeys measured once they have all run."""
     yield
     TELEMETRY.parent.mkdir(parents=True, exist_ok=True)
-    TELEMETRY.write_text(
-        json.dumps({"figures": FIGURES, "detail": DETAIL}, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    TELEMETRY.write_text(RECORDED.document() + "\n", encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
@@ -107,8 +156,7 @@ def test_a_fresh_clone_and_a_new_worktree_leave_pointers(host: Host) -> None:
     equal(pointers_in(worktree), list(LFS_FILES), describing="files the worktree left as pointers")
     equal(host.git("status", "--porcelain", cwd=worktree), "", describing="the worktree's status")
 
-    FIGURES["new_checkout_bytes"] = clone_bytes + worktree_bytes
-    DETAIL["new_checkout"] = {"clone_bytes": clone_bytes, "worktree_bytes": worktree_bytes}
+    RECORDED.new_checkout = NewCheckout(clone_bytes, worktree_bytes)
 
 
 def test_without_the_exclusion_a_clone_downloads_every_object(host: Host) -> None:
@@ -142,7 +190,8 @@ def test_the_fetch_recipe_serves_the_objects_once_for_every_worktree(host: Host)
         [],
         describing="files not their originals in the worktree",
     )
-    DETAIL["fetch"] = {"bytes": FIXTURE_OBJECT_BYTES, "second_worktree_bytes": 0}
+    RECORDED.fetch = Transfer(sum(one.size for one in served), len(served))
+    RECORDED.second_worktree_bytes = 0
 
 
 def test_a_second_clone_sharing_the_hosts_lfs_storage_serves_nothing(
@@ -167,7 +216,7 @@ def test_a_second_clone_sharing_the_hosts_lfs_storage_serves_nothing(
         [],
         describing="files not their originals in the second clone",
     )
-    DETAIL["shared_store_second_clone_bytes"] = 0
+    RECORDED.shared_store_second_clone_bytes = 0
 
 
 #: The one condition and the one interpolation the committed steps use.
@@ -268,13 +317,9 @@ def test_the_ci_steps_fetch_on_a_miss_save_the_store_and_restore_it_on_a_hit(
     contains("\n".join(ran), "just real-prints-checkout")
     equal(len(list(cache.iterdir())), 1, describing="caches after a hit, which saves none")
 
-    FIGURES["ci_cache_miss_bytes"] = miss_bytes
-    FIGURES["ci_cache_hit_bytes"] = hit_bytes
-    DETAIL["ci"] = {
-        "cache_key": saved[0].name,
-        "miss": {"bytes": miss_bytes, "objects_served": miss_objects},
-        "hit": {"bytes": hit_bytes, "objects_served": len(host.served())},
-    }
+    RECORDED.ci = CiRuns(
+        saved[0].name, Transfer(miss_bytes, miss_objects), Transfer(hit_bytes, len(host.served()))
+    )
 
 
 def key_of(host: Host, checkout: Path) -> str:

@@ -105,12 +105,16 @@ def _valid_schema(schema: object, named: str) -> dict[str, Any]:
     return schema
 
 
+#: A Git LFS object id: the sha256 of the file a pointer stands for.
+Oid = NewType("Oid", str)
+
+
 @dataclass(frozen=True, slots=True)
 class Pointer:
     """What a Git LFS pointer says of the object it stands for."""
 
     #: The object's sha256, which is the sha256 of the file it stands for.
-    oid: str
+    oid: Oid
     #: The object's size in bytes.
     size: int
 
@@ -134,7 +138,7 @@ def pointer(data: bytes) -> Pointer | None:
     size = POINTER_SIZE.fullmatch(lines[2])
     if oid is None or size is None:
         return None
-    return Pointer(oid["oid"], int(size["size"]))
+    return Pointer(Oid(oid["oid"]), int(size["size"]))
 
 
 def lfs_patterns(repo: Repo) -> tuple[str, ...]:

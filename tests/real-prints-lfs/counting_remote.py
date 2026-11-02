@@ -114,7 +114,7 @@ def _store(oid: Oid) -> Path:
     return Path(os.environ["LFS_FIXTURE_REMOTE"]) / "lfs" / "objects" / oid[:2] / oid[2:4] / oid
 
 
-def _complete(oid: str, **fields: object) -> dict[str, object]:
+def _complete(oid: Oid, **fields: object) -> dict[str, object]:
     """The answer completing one transfer."""
     return {"event": "complete", "oid": oid, **fields}
 

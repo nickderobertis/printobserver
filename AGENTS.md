@@ -1579,26 +1579,19 @@ earlier — saw nothing.
 ## The real-print cases in Git LFS
 
 The cases' G-code and frames under `tests/real-prints/` are Git LFS objects,
-and no checkout downloads them: `.lfsconfig` excludes them, so a clone,
-checkout, pull or new worktree holds pointers. They come to about 140 MB, and
-only the paid suite reads them, so a checkout that pulled them would spend the
+about 140 MB that only the paid suite reads, and no checkout downloads them:
+`.lfsconfig` excludes them, because a checkout that pulled them would spend the
 account's 10 GiB of monthly LFS bandwidth for nothing.
 
-- **The suite fetches them, and nothing else does.** `just skilltest` runs
-  `just real-prints-fetch` first. A CI job fetches them only through
-  `tests/real-prints-lfs/ci-steps.yml`, which caches the LFS store and downloads
-  on a miss alone. Every other checkout is `lfs: false`. Do not make a gate test
-  read a case's bytes: give it a plain copy of its own instead, as the Rust
-  journeys do.
-- **A host's `lfs.storage` is reused.** Where a host's git configuration sets
-  it, every clone there shares one store, and `just real-prints-fetch`
-  downloads nothing already in it. Setting it is the host's provisioning,
-  never this repository's.
-- **git-lfs is part of the toolchain.** `just bootstrap` installs Git LFS 3.8.1,
-  the release `repo-policy.toml` holds, where a host has none. A frame or a
-  G-code added on a host without git-lfs is committed as raw bytes, which
-  `real-prints-lfs` refuses. A push without git-lfs would publish pointers with
-  no objects, and the committed `pre-push` refuses that too.
+- **Only the suite fetches them.** Locally that is `just skilltest`, through
+  `just real-prints-fetch`; in CI, the suite's job, through
+  `tests/real-prints-lfs/ci-steps.yml` and its cache. Never make a gate test
+  read a case's bytes — give it a plain copy of its own, as the Rust journeys
+  have.
+- **A host's `lfs.storage` is reused** by every clone on that host. Setting it
+  is the host's provisioning, never this repository's.
+- **git-lfs is part of the toolchain:** `just bootstrap` installs Git LFS 3.8.1
+  where a host has none. Never add a frame or a G-code on a host without it.
 
 `tests/real-prints-lfs/AGENTS.md` holds that project's own rules.
 

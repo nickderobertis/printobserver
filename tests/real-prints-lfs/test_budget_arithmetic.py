@@ -20,7 +20,16 @@ from subprocess import CompletedProcess
 
 import pytest
 import yaml
-from lfs_set import CI_MISSES, GIB, HOST_FETCHES, MB, Oid, Tracked
+from lfs_set import (
+    CI_MISSES,
+    GIB,
+    HOST_FETCHES,
+    MB,
+    TYPICAL_CI_MISSES,
+    TYPICAL_HOST_FETCHES,
+    Oid,
+    Tracked,
+)
 from lfs_world import HERE, REPO_ROOT
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
@@ -120,6 +129,16 @@ def test_the_cache_miss_command_reports_the_sets_distinct_bytes(
     equal(detail["bytes"], sum(distinct.values()), describing="the set's distinct bytes")
     equal(detail["objects"], len(distinct), describing="the set's distinct objects")
     equal(detail["files"], 527, describing="the files the pointers name")
+    per_case: dict[str, dict[Oid, int]] = {}
+    for row in _rows():
+        per_case.setdefault(row.case, {})[row.oid] = row.size
+    equal(
+        detail["bytes_per_case"],
+        {case: sum(objects.values()) for case, objects in sorted(per_case.items())},
+        describing="each case's own distinct bytes",
+    )
+    shared = {oid for oid in distinct if sum(oid in objects for objects in per_case.values()) > 1}
+    truth(shared, describing="an object two cases share, which each case's bytes count")
     truth(
         abs(value - sum(distinct.values()) / MB) < 1e-9, describing=f"the figure in MB, not {value}"
     )
@@ -133,6 +152,17 @@ def test_the_monthly_command_reports_twenty_full_fetches_in_gib(
     value, detail = _measure("lfs-bandwidth-gib-per-month", full_set, tmp_path / "result")
     equal(CI_MISSES + HOST_FETCHES, 20, describing="full fetches in the landing month")
     equal(detail["set_bytes"], total, describing="the set's size")
+    equal(
+        detail["typical_month"],
+        {"ci_cache_misses": TYPICAL_CI_MISSES, "host_fetches": TYPICAL_HOST_FETCHES},
+        describing="a typical month's fetches",
+    )
+    equal((TYPICAL_CI_MISSES, TYPICAL_HOST_FETCHES), (4, 2), describing="a typical month")
+    typical = detail["typical_month_gib"]
+    truth(
+        isinstance(typical, float) and abs(typical - total * 6 / GIB) < 1e-9,
+        describing=f"a typical month's six fetches in GiB, not {typical}",
+    )
     truth(abs(value - total * 20 / GIB) < 1e-9, describing=f"the figure in GiB, not {value}")
 
 
