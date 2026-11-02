@@ -108,11 +108,13 @@ def install(archive: Archive, into: Path, *, releases: str = RELEASES) -> Path:
     """
     held_to_producer(releases, RELEASES)
     base = f"{releases}/v{archive.version}"
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     checksums = download(f"{base}/{CHECKSUMS}").decode("utf-8", errors="replace")
     expected = digest_for(checksums, archive.name)
     if expected is None:
         msg = f"the release's {CHECKSUMS} lists no checksum for {archive.name}"
         raise InstallerError(msg)
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     payload = verified(
         f"{base}/{archive.name}",
         name=archive.name,

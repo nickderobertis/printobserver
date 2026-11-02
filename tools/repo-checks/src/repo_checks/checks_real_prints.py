@@ -155,7 +155,9 @@ def _pattern(pattern: str) -> re.Pattern[str]:
 
     A pattern carrying a slash is anchored at the root, `**/` matches any
     number of directories and `*` and `?` stay inside one; one carrying none
-    matches a file's name in any directory.
+    matches a file's name in any directory. This is the reading for a tree that
+    is no git work tree, where git cannot be asked; `test_real_prints.py`
+    reconciles it with git's own over every file the committed tree carries.
     """
     anchored = "/" in pattern.rstrip("/")
     body = pattern.lstrip("/")
@@ -165,35 +167,70 @@ def _pattern(pattern: str) -> re.Pattern[str]:
         if body.startswith("**/", index):
             translated += "(?:[^/]+/)*"
             index += 3
-        elif body[index] == "*":
-            translated += "[^/]*"
-            index += 1
-        elif body[index] == "?":
-            translated += "[^/]"
-            index += 1
-        else:
-            translated += re.escape(body[index])
-            index += 1
+            continue
+        match body[index]:
+            case "*":
+                translated += "[^/]*"
+            case "?":
+                translated += "[^/]"
+            case literal:
+                translated += re.escape(literal)
+        index += 1
     return re.compile(translated if anchored else f"(?:.*/)?{translated}")
 
 
 def lfs_tracked(repo: Repo, relative: str) -> bool:
-    """Whether `.gitattributes` hands the file at `relative` to the Git LFS filter."""
+    """Whether `.gitattributes` hands `relative` to the Git LFS filter, read without git."""
     return any(_pattern(pattern).fullmatch(relative) for pattern in lfs_patterns(repo))
 
 
-def _committed(repo: Repo, relatives: list[str]) -> dict[str, bytes | None] | None:
-    """What the index holds for each path — none for a blob too large to be a pointer.
+def _work_tree(repo: Repo) -> dict[str, str] | None:
+    """The environment git reads `repo` under, or none when it is no git work tree of its own.
 
-    None at all when `repo` is no git work tree of its own, which a copy of the
-    tree with its history left behind is: there the files are what it carries.
-    Only a blob small enough to be a pointer is read, so a frame committed as
-    raw bytes is answered without reading it.
+    A copy of the tree with its history left behind is none, and neither is a
+    directory inside some other checkout: git's search stops at `repo`.
     """
     environment = discovered_no_higher_than(repo.root, os.environ)
     top = run(["git", "rev-parse", "--show-toplevel"], cwd=repo.root, env=environment)
     if top.returncode != 0 or Path(top.stdout.strip()).resolve() != repo.root.resolve():
         return None
+    return environment
+
+
+def lfs_filtered(repo: Repo, relatives: list[str]) -> list[str]:
+    """The paths of `relatives` git hands to the Git LFS filter, in their order.
+
+    In a git work tree this is git's own answer (`git check-attr filter`),
+    every attributes file and override included; in a tree that is none, the
+    patterns the root `.gitattributes` declares, read by `lfs_tracked`.
+    """
+    environment = _work_tree(repo)
+    if environment is None:
+        return [relative for relative in relatives if lfs_tracked(repo, relative)]
+    answered = run(
+        ["git", "check-attr", "--stdin", "-z", "filter"],
+        cwd=repo.root,
+        env=environment,
+        check=True,
+        stdin="".join(f"{relative}\0" for relative in relatives),
+    ).stdout.split("\0")[:-1]
+    filtered = {
+        path
+        for path, _, value in zip(answered[0::3], answered[1::3], answered[2::3], strict=True)
+        if value == "lfs"
+    }
+    return [relative for relative in relatives if relative in filtered]
+
+
+def _committed(
+    repo: Repo, environment: dict[str, str], relatives: list[str]
+) -> dict[str, bytes | None]:
+    """What the index holds for each path — none for a blob too large to be a pointer.
+
+    Only a blob small enough to be a pointer is read, so a frame committed as
+    raw bytes is answered without reading it. A path the index does not hold
+    yet is not answered.
+    """
     listing = run(
         ["git", "ls-files", "-s", "-z", "--", *relatives],
         cwd=repo.root,
@@ -225,7 +262,7 @@ def _committed(repo: Repo, relatives: list[str]) -> dict[str, bytes | None] | No
 
 
 def real_prints_lfs(repo: Repo) -> list[str]:
-    """Every case file `.gitattributes` hands to Git LFS is committed as an LFS pointer.
+    """Every case file git hands to Git LFS is committed as an LFS pointer.
 
     What is read is what git holds for the file — the index — rather than the
     working tree, which carries the real bytes once `just real-prints-fetch`
@@ -239,10 +276,11 @@ def real_prints_lfs(repo: Repo) -> list[str]:
     relatives = sorted(
         path.relative_to(repo.root).as_posix() for path in root.rglob("*") if path.is_file()
     )
-    tracked = [relative for relative in relatives if lfs_tracked(repo, relative)]
+    tracked = lfs_filtered(repo, relatives)
     if not tracked:
         return [f"{ATTRIBUTES} hands no file under {ROOT} to Git LFS"]
-    committed = _committed(repo, tracked)
+    environment = _work_tree(repo)
+    committed = None if environment is None else _committed(repo, environment, tracked)
     findings: list[str] = []
     for relative in tracked:
         if committed is None:

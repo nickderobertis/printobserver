@@ -16,11 +16,12 @@ from typing import Any
 import pytest
 from closures import closure
 from repo_checks.__main__ import main
-from repo_checks.checks_real_prints import POINTER_VERSION, pointer
+from repo_checks.checks_real_prints import POINTER_VERSION, lfs_filtered, lfs_tracked, pointer
 from repo_checks.expect import equal, truth
 from repo_checks.fixture_repository import init_repository
+from repo_checks.model import Repo
 from repo_checks.shell import run
-from treecopy import REPO_ROOT, Tree
+from treecopy import REPO_ROOT, Tree, tracked_files
 
 #: The files the checks this module drives read; see `closures`.
 CLOSURE = closure(
@@ -688,3 +689,28 @@ def test_a_pointer_naming_another_picture_is_refused(check: Run, tree: Callable[
 def test_bytes_that_are_no_pointer_are_not_read_as_one(data: bytes, why: str) -> None:
     """Only the three lines the specification orders are a pointer."""
     equal(pointer(data), None, describing=why)
+
+
+#: Paths no commit carries, each a near miss of the tracked patterns, or deep in them.
+NEAR_MISSES = (
+    "tests/real-prints/case/deeper/still/frame.png",
+    "tests/real-prints/frame.jpeg",
+    "tests/real-printsx/case/frame.jpg",
+    "elsewhere/tests/real-prints/case/frame.jpg",
+    "tests/real-prints/case/frame.jpg.txt",
+    "tests/real-prints/case/print.gcode.bak",
+    "frame.jpg",
+)
+
+
+def test_the_reading_without_git_agrees_with_git_over_every_path() -> None:
+    """Where git cannot be asked, `.gitattributes` is read as git reads it.
+
+    Git's own answer, `git check-attr`, over every file the committed tree
+    carries and a few near misses, is held against the patterns read without it.
+    """
+    repo = Repo(REPO_ROOT)
+    names = [*tracked_files(REPO_ROOT), *NEAR_MISSES]
+    git_says = lfs_filtered(repo, names)
+    equal([name for name in names if lfs_tracked(repo, name)], git_says)
+    truth(len(git_says) >= 77, describing=f"git to hand the cases to LFS, not only {git_says}")

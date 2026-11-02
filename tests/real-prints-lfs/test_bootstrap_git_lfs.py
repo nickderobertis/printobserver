@@ -16,6 +16,7 @@ import re
 import shutil
 import tomllib
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import pytest
 from lfs_world import REPO_ROOT, path_without
@@ -36,10 +37,23 @@ def held_release() -> str:
     return next(t["version"] for t in policy["toolchain"]["tool"] if t["command"] == "git-lfs")
 
 
+def install_hooks(clone: Path, environment: dict[str, str]) -> CompletedProcess[str]:
+    """Bootstrap's last step, `install-hooks`, over `clone`."""
+    return run(
+        ["uv", "run", "-q", "python", "-m", "repo_checks", "install-hooks", "--root", str(clone)],
+        cwd=REPO_ROOT,
+        env={**environment, "PYTHONPATH": TOOL_PACKAGES},
+    )
+
+
 def test_bootstrap_installs_the_held_git_lfs_per_user_and_configures_the_clone(
     tmp_path: Path,
 ) -> None:
-    """The held release ends up in the user's own bin, and a clone's filter in its local config."""
+    """The held release ends up in the user's own bin, and a clone's filter in its local config.
+
+    Before it, the clone's filter cannot be configured and the hook step says
+    what to run; after it, the same step configures it.
+    """
     home = tmp_path / "home"
     home.mkdir()
     user_bin = home / ".local" / "bin"
@@ -58,6 +72,15 @@ def test_bootstrap_installs_the_held_git_lfs_per_user_and_configures_the_clone(
     }
     equal(shutil.which("git-lfs", path=path), None, describing="a git-lfs on the sandbox's PATH")
 
+    # Before the install: the clone's filter cannot be configured, and the hook
+    # step says so and what to run, rather than leaving a clone that commits raw
+    # frames.
+    clone = init_repository(tmp_path / "clone", env=environment)
+    refused = install_hooks(clone, environment)
+    equal(refused.returncode, 1, describing=f"install-hooks with no git-lfs:\n{refused.stderr}")
+    contains(refused.stderr, "`git lfs install --local` failed")
+    contains(refused.stderr, "Run `just install-tools git-lfs`, then `just bootstrap` again.")
+
     installed = run(
         ["just", "install-tools", "git-lfs"], cwd=REPO_ROOT, env=environment, check=False
     )
@@ -71,12 +94,7 @@ def test_bootstrap_installs_the_held_git_lfs_per_user_and_configures_the_clone(
     release = re.match(r"git-lfs/(\S+) ", answered)
     equal(release and release.group(1), held_release(), describing=f"the release in {answered!r}")
 
-    clone = init_repository(tmp_path / "clone", env=environment)
-    configured = run(
-        ["uv", "run", "-q", "python", "-m", "repo_checks", "install-hooks", "--root", str(clone)],
-        cwd=REPO_ROOT,
-        env={**environment, "PYTHONPATH": TOOL_PACKAGES},
-    )
+    configured = install_hooks(clone, environment)
     equal(configured.returncode, 0, describing=f"install-hooks, having said:\n{configured.stderr}")
     local = run(["git", "config", "--local", "--list"], cwd=clone, env=environment, check=True)
     contains(local.stdout, "filter.lfs.process=git-lfs filter-process")

@@ -1578,46 +1578,29 @@ earlier — saw nothing.
 
 ## The real-print cases in Git LFS
 
-The real-print cases' G-code and frames under `tests/real-prints/` — about
-140 MB once the exported cases land — are Git LFS objects, and only the paid
-real-print suite reads them. `.gitattributes` hands every `.gcode`, `.jpg`,
-`.jpeg` and `.png` there to the LFS filter, and `.lfsconfig`'s `fetchexclude`
-keeps them from being downloaded by default. A clone, a checkout, a pull or a
-new worktree holds a pointer for each and downloads nothing.
+The cases' G-code and frames under `tests/real-prints/` are Git LFS objects,
+and no checkout downloads them: `.lfsconfig` excludes them, so a clone,
+checkout, pull or new worktree holds pointers. They come to about 140 MB, and
+only the paid suite reads them, so a checkout that pulled them would spend the
+account's 10 GiB of monthly LFS bandwidth for nothing.
 
-- **The suite fetches them on purpose.** `just real-prints-fetch` downloads
-  them into the clone's LFS store, which every worktree of that clone shares.
-  `just skilltest` runs it first, and nothing else does. The Rust journeys
-  that read a recorded frame or real G-code read plain copies each crate keeps
-  under its own `tests/fixtures/`, so the gate needs no LFS object at all.
-- **CI fetches them through one list of steps.**
-  `tests/real-prints-lfs/ci-steps.yml` restores `.git/lfs/objects` from the
-  Actions cache under `just real-prints-cache-key`, a digest of the pointers'
-  object ids. It runs `just real-prints-fetch` and saves the cache only on a
-  miss, and `just real-prints-checkout` on a hit. The suite's job carries those
-  steps verbatim. A local composite action is not used, because
-  `action_pin_pattern` admits none. Every checkout declares `lfs: false`.
-  `just lint-workflows`' `real-prints-lfs-ci` refuses a checkout that does not,
-  and a job that reaches git-lfs other than through those steps.
-- **A host's `lfs.storage` is reused.** Where clones are made, a host whose
-  git configuration sets `lfs.storage` shares one store across all its clones,
-  not only across one clone's worktrees. `just real-prints-fetch` then
-  downloads nothing that store already holds. Setting it is the host's
-  provisioning, never this repository's.
-- **git-lfs is held and bootstrapped.** `just bootstrap` installs Git LFS 3.8.1,
-  the release `repo-policy.toml` holds, into `~/.local/bin` with no
-  administrator rights where a host has no git-lfs. A host already carrying one
-  keeps it. Bootstrap then runs `git lfs install --local --skip-repo` in the
-  clone. The committed `.githooks/pre-push` hands every push to `git lfs
-  pre-push`, which uploads the objects, and refuses a push made without git-lfs.
-  `real-prints-lfs` refuses a G-code or frame committed as its raw bytes, which
-  is what a host without git-lfs commits.
+- **The suite fetches them, and nothing else does.** `just skilltest` runs
+  `just real-prints-fetch` first. A CI job fetches them only through
+  `tests/real-prints-lfs/ci-steps.yml`, which caches the LFS store and downloads
+  on a miss alone. Every other checkout is `lfs: false`. Do not make a gate test
+  read a case's bytes: give it a plain copy of its own instead, as the Rust
+  journeys do.
+- **A host's `lfs.storage` is reused.** Where a host's git configuration sets
+  it, every clone there shares one store, and `just real-prints-fetch`
+  downloads nothing already in it. Setting it is the host's provisioning,
+  never this repository's.
+- **git-lfs is part of the toolchain.** `just bootstrap` installs Git LFS 3.8.1,
+  the release `repo-policy.toml` holds, where a host has none. A frame or a
+  G-code added on a host without git-lfs is committed as raw bytes, which
+  `real-prints-lfs` refuses. A push without git-lfs would publish pointers with
+  no objects, and the committed `pre-push` refuses that too.
 
-`tests/real-prints-lfs` proves all of it on a fixture of a few kilobytes against
-a local LFS remote at a file URL, counting the bytes that remote serves. Its
-`budgets.yaml` holds the downloads: none for a new checkout or a CI cache hit,
-the set's size for a miss, and the month's bandwidth against the account's
-10 GiB.
+`tests/real-prints-lfs/AGENTS.md` holds that project's own rules.
 
 ## Suppressions
 

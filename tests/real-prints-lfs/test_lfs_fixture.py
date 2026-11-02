@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 import yaml
+from counting_remote import MessageError, parse
 from lfs_world import (
     FIXTURE_OBJECT_BYTES,
     FIXTURE_OBJECTS,
@@ -32,8 +33,8 @@ from lfs_world import (
     JUSTFILE,
     LFS_FILES,
     Host,
+    differing_from_originals,
     git_lfs_or_fail,
-    holds_originals,
     is_pointer,
     make_host,
     path_without,
@@ -114,7 +115,7 @@ def test_without_the_exclusion_a_clone_downloads_every_object(host: Host) -> Non
     """The control: the counting remote does see a download, and `.lfsconfig` is what stops it."""
     clone = host.clone("clone", "-c", "lfs.fetchexclude=")
     equal(host.served_bytes(), FIXTURE_OBJECT_BYTES, describing="bytes served with no exclusion")
-    equal(holds_originals(clone), [], describing="files not their originals")
+    equal(differing_from_originals(clone), [], describing="files not their originals")
 
 
 def test_the_fetch_recipe_serves_the_objects_once_for_every_worktree(host: Host) -> None:
@@ -123,10 +124,12 @@ def test_the_fetch_recipe_serves_the_objects_once_for_every_worktree(host: Host)
     host.just("real-prints-fetch", cwd=clone)
     served = host.served()
     equal(
-        sum(size for _, size in served), FIXTURE_OBJECT_BYTES, describing="bytes the fetch served"
+        sum(one.size for one in served), FIXTURE_OBJECT_BYTES, describing="bytes the fetch served"
     )
     equal(len(served), FIXTURE_OBJECTS, describing="objects the fetch served")
-    equal(holds_originals(clone), [], describing="files not their originals after the fetch")
+    equal(
+        differing_from_originals(clone), [], describing="files not their originals after the fetch"
+    )
     equal(host.git("status", "--porcelain", cwd=clone), "", describing="the fetched clone's status")
 
     host.forget_served()
@@ -134,7 +137,11 @@ def test_the_fetch_recipe_serves_the_objects_once_for_every_worktree(host: Host)
     host.git("worktree", "add", "-q", str(worktree), cwd=clone)
     host.just("real-prints-fetch", cwd=worktree)
     equal(host.served_bytes(), 0, describing="bytes a second worktree's fetch served")
-    equal(holds_originals(worktree), [], describing="files not their originals in the worktree")
+    equal(
+        differing_from_originals(worktree),
+        [],
+        describing="files not their originals in the worktree",
+    )
     DETAIL["fetch"] = {"bytes": FIXTURE_OBJECT_BYTES, "second_worktree_bytes": 0}
 
 
@@ -155,7 +162,11 @@ def test_a_second_clone_sharing_the_hosts_lfs_storage_serves_nothing(
     second = host.clone("second")
     host.just("real-prints-fetch", cwd=second)
     equal(host.served_bytes(), 0, describing="bytes the second clone's fetch served")
-    equal(holds_originals(second), [], describing="files not their originals in the second clone")
+    equal(
+        differing_from_originals(second),
+        [],
+        describing="files not their originals in the second clone",
+    )
     DETAIL["shared_store_second_clone_bytes"] = 0
 
 
@@ -212,15 +223,16 @@ def run_ci_steps(host: Host, checkout: Path, cache: Path) -> list[str]:
         key = interpolated(step["with"]["key"])
         path = checkout / step["with"]["path"]
         saved = cache / key
-        if uses == "actions/cache/restore@v4":
-            hit = saved.is_dir()
-            if hit:
-                shutil.copytree(saved, path, dirs_exist_ok=True)
-            outputs[step["id"]] = {"cache-hit": "true" if hit else "false"}
-        elif uses == "actions/cache/save@v4":
-            shutil.copytree(path, saved)
-        else:
-            pytest.fail(f"step {index} uses `{uses}`, which this does not run")
+        match uses:
+            case "actions/cache/restore@v4":
+                hit = saved.is_dir()
+                if hit:
+                    shutil.copytree(saved, path, dirs_exist_ok=True)
+                outputs[step["id"]] = {"cache-hit": "true" if hit else "false"}
+            case "actions/cache/save@v4":
+                shutil.copytree(path, saved)
+            case _:
+                pytest.fail(f"step {index} uses `{uses}`, which this does not run")
         ran.append(f"{uses} {key}")
     return ran
 
@@ -236,7 +248,7 @@ def test_the_ci_steps_fetch_on_a_miss_save_the_store_and_restore_it_on_a_hit(
     miss_bytes = host.served_bytes()
     miss_objects = len(host.served())
     equal(miss_bytes, FIXTURE_OBJECT_BYTES, describing="bytes a cache miss served")
-    equal(holds_originals(missed), [], describing="files not their originals after a miss")
+    equal(differing_from_originals(missed), [], describing="files not their originals after a miss")
     contains("\n".join(ran), "just real-prints-fetch")
     truth("just real-prints-checkout" not in ran, describing="no checkout step on a miss")
     saved = [path for path in cache.iterdir() if path.is_dir()]
@@ -251,7 +263,7 @@ def test_the_ci_steps_fetch_on_a_miss_save_the_store_and_restore_it_on_a_hit(
     hit = host.clone("ci-hit")
     ran = run_ci_steps(host, hit, cache)
     hit_bytes = host.served_bytes()
-    equal(holds_originals(hit), [], describing="files not their originals after a hit")
+    equal(differing_from_originals(hit), [], describing="files not their originals after a hit")
     truth("just real-prints-fetch" not in ran, describing="no fetch step on a hit")
     contains("\n".join(ran), "just real-prints-checkout")
     equal(len(list(cache.iterdir())), 1, describing="caches after a hit, which saves none")
@@ -306,3 +318,20 @@ def test_a_push_without_git_lfs_is_refused_naming_bootstrap(host: Host, tmp_path
     truth(refused.returncode != 0, describing=f"a refused push, not:\n{refused.stderr}")
     contains(refused.stderr, "git-lfs is not on PATH")
     contains(refused.stderr, "just bootstrap")
+
+
+@pytest.mark.parametrize(
+    ("line", "why"),
+    [
+        ("not json", "is not JSON"),
+        ("[1, 2]", "is not a message"),
+        ('{"event": "delete", "oid": "' + "a" * 64 + '"}', "is no event of the transfer protocol"),
+        ('{"event": "download", "oid": "../../escape"}', "is not an object id"),
+        ('{"event": "upload", "oid": "' + "a" * 64 + '", "path": 7}', "names no file"),
+    ],
+)
+def test_the_remote_refuses_a_message_it_cannot_act_on(line: str, why: str) -> None:
+    """A message is validated before its object id reaches a path in the store."""
+    with pytest.raises(MessageError) as refused:
+        parse(line)
+    contains(str(refused.value), why)

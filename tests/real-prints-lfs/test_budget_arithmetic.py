@@ -16,12 +16,13 @@ import json
 import os
 import shutil
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import pytest
 import yaml
-from lfs_set import CI_MISSES, GIB, HOST_FETCHES, MB
+from lfs_set import CI_MISSES, GIB, HOST_FETCHES, MB, Oid, Tracked
 from lfs_world import HERE, REPO_ROOT
-from repo_checks.expect import equal, truth
+from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
 
@@ -29,14 +30,19 @@ FULL_SET = HERE / "fixtures" / "full-set.tsv"
 BUDGETS = HERE / "budgets.yaml"
 
 
-def _rows() -> list[tuple[str, str, int]]:
-    """The full set's files, as `(path, oid, size)`."""
-    rows: list[tuple[str, str, int]] = []
+def _rows() -> list[Tracked]:
+    """The full set's files, each with the object its pointer names."""
+    rows: list[Tracked] = []
     for line in FULL_SET.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#"):
             path, oid, size = line.split("\t")
-            rows.append((path, oid, int(size)))
+            rows.append(Tracked(path, Oid(oid), int(size)))
     return rows
+
+
+def _distinct(rows: list[Tracked]) -> dict[Oid, int]:
+    """Each object of `rows` once, with its size."""
+    return {row.oid: row.size for row in rows}
 
 
 @pytest.fixture(scope="module")
@@ -44,20 +50,19 @@ def full_set(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A repository whose `HEAD` holds every pointer of the full set, and nothing else."""
     root = init_repository(tmp_path_factory.mktemp("full-set") / "repository")
     shutil.copy2(REPO_ROOT / ".gitattributes", root / ".gitattributes")
-    for path, oid, size in _rows():
-        target = root / path
+    for row in _rows():
+        target = root / row.path
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(
-            f"version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize {size}\n".encode()
-        )
+        pointer = f"oid sha256:{row.oid}\nsize {row.size}\n"
+        target.write_bytes(f"version https://git-lfs.github.com/spec/v1\n{pointer}".encode())
     identity = ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid"]
     run(["git", "add", "-A"], cwd=root, check=True)
     run(["git", *identity, "commit", "-q", "-m", "the full set"], cwd=root, check=True)
     return root
 
 
-def _measure(budget: str, repository: Path, result: Path) -> tuple[float, dict[str, object]]:
-    """Run one budget's registered command over `repository`, answering its figure and detail.
+def _command(budget: str, repository: Path, result: Path) -> CompletedProcess[str]:
+    """Run one budget's registered command over `repository`, as a check runs it.
 
     The argv is the budget's own, from `budgets.yaml`, with its `--directory`
     pointed at the fixture rather than at this tree, the project this tree's
@@ -82,7 +87,13 @@ def _measure(budget: str, repository: Path, result: Path) -> tuple[float, dict[s
         "ONEBUDGETSPEC_RESULT": str(result),
         "PYTHONPATH": str(REPO_ROOT / "tools" / "repo-checks" / "src"),
     }
-    run(argv, cwd=repository, env=environment, check=True)
+    return run(argv, cwd=repository, env=environment)
+
+
+def _measure(budget: str, repository: Path, result: Path) -> tuple[float, dict[str, object]]:
+    """One budget's figure over `repository`, and the detail reported beside it."""
+    answer = _command(budget, repository, result)
+    equal(answer.returncode, 0, describing=f"{budget}'s command, having said:\n{answer.stderr}")
     written = json.loads(result.read_text(encoding="utf-8"))
     return written["value"], json.loads(written["detail"])
 
@@ -91,10 +102,10 @@ def test_the_full_set_is_the_one_the_workloads_name() -> None:
     """527 files: the existing cases' 77 and the exported cases' 450."""
     rows = _rows()
     equal(len(rows), 527, describing="files in the full set")
-    exported = [row for row in rows if "/exported-case-" in row[0]]
+    exported = [row for row in rows if row.case.startswith("exported-case-")]
     equal(len(exported), 450, describing="files of the exported cases")
     equal(
-        sum({oid: size for _, oid, size in exported}.values()),
+        sum(_distinct(exported).values()),
         132_117_714,
         describing="the exported cases' distinct bytes, as the export measured them",
     )
@@ -104,7 +115,7 @@ def test_the_cache_miss_command_reports_the_sets_distinct_bytes(
     full_set: Path, tmp_path: Path
 ) -> None:
     """Every distinct object once, in megabytes: identical files are one download."""
-    distinct = {oid: size for _, oid, size in _rows()}
+    distinct = _distinct(_rows())
     value, detail = _measure("lfs-bytes-per-ci-run-cache-miss", full_set, tmp_path / "result")
     equal(detail["bytes"], sum(distinct.values()), describing="the set's distinct bytes")
     equal(detail["objects"], len(distinct), describing="the set's distinct objects")
@@ -118,8 +129,24 @@ def test_the_monthly_command_reports_twenty_full_fetches_in_gib(
     full_set: Path, tmp_path: Path
 ) -> None:
     """The set's size times the landing month's 20 full fetches, in GiB."""
-    total = sum({oid: size for _, oid, size in _rows()}.values())
+    total = sum(_distinct(_rows()).values())
     value, detail = _measure("lfs-bandwidth-gib-per-month", full_set, tmp_path / "result")
     equal(CI_MISSES + HOST_FETCHES, 20, describing="full fetches in the landing month")
     equal(detail["set_bytes"], total, describing="the set's size")
     truth(abs(value - total * 20 / GIB) < 1e-9, describing=f"the figure in GiB, not {value}")
+
+
+def test_a_repository_holding_no_case_pointer_is_refused_rather_than_measured_as_zero(
+    tmp_path: Path,
+) -> None:
+    """With nothing to read, the command fails naming why, and reports no figure."""
+    empty = init_repository(tmp_path / "empty")
+    (empty / "README.md").write_text("no cases\n", encoding="utf-8")
+    identity = ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid"]
+    run(["git", "add", "-A"], cwd=empty, check=True)
+    run(["git", *identity, "commit", "-q", "-m", "nothing"], cwd=empty, check=True)
+    result = tmp_path / "result"
+    answer = _command("lfs-bytes-per-ci-run-cache-miss", empty, result)
+    equal(answer.returncode, 1, describing="the command's exit over no cases")
+    equal(result.exists(), False, describing="a figure written for no cases")
+    contains(answer.stderr, "git-lfs lists no file under tests/real-prints/ at HEAD")

@@ -16,6 +16,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from counting_remote import Oid
 from repo_checks.fixture_repository import QUIESCENT
 from repo_checks.shell import run
 
@@ -62,6 +63,14 @@ def path_without(program: str, needed: tuple[str, ...], shims: Path) -> str:
     return os.pathsep.join(directories)
 
 
+@dataclass(frozen=True, slots=True)
+class Served:
+    """One object the fixture's remote served: which, and how many bytes."""
+
+    oid: Oid
+    size: int
+
+
 @dataclass
 class Host:
     """One sandboxed machine: its home, its environment, and its record of served objects."""
@@ -88,16 +97,16 @@ class Host:
         }
         return run(["just", recipe], cwd=cwd, env=environment, check=True).stdout
 
-    def served(self) -> list[tuple[str, int]]:
-        """Every object the remote has served this host, as `(oid, bytes)`, in order."""
+    def served(self) -> list[Served]:
+        """Every object the remote has served this host, in order."""
         if not self.served_log.exists():
             return []
         lines = self.served_log.read_text(encoding="utf-8").splitlines()
-        return [(oid, int(size)) for oid, size in (line.split() for line in lines)]
+        return [Served(Oid(oid), int(size)) for oid, size in (line.split() for line in lines)]
 
     def served_bytes(self) -> int:
         """The bytes the remote has served this host."""
-        return sum(size for _, size in self.served())
+        return sum(served.size for served in self.served())
 
     def forget_served(self) -> None:
         """Start the record of served objects afresh."""
@@ -188,8 +197,8 @@ def is_pointer(path: Path) -> bool:
     return path.read_bytes().startswith(POINTER_VERSION)
 
 
-def holds_originals(checkout: Path) -> list[str]:
-    """Every fixture file whose working-tree bytes are not its original's: none when usable."""
+def differing_from_originals(checkout: Path) -> list[str]:
+    """The fixture files whose working-tree bytes are not their originals': none when usable."""
     return [
         relative
         for relative, data in LFS_FILES.items()
