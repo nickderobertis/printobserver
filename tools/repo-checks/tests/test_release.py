@@ -861,13 +861,15 @@ RELEASED_OUTPUT = (
     "released: ${{ steps.answer.outputs.released || steps.dispatched.outputs.released }}"
 )
 BUILD_CHECKOUT = (
-    "      - uses: actions/checkout@v5\n        with:\n          ref: ${{ inputs.tag }}\n"
+    "      - uses: actions/checkout@v5\n        with:\n          lfs: false\n"
+    "          ref: ${{ inputs.tag }}\n"
 )
 PUBLISH_VERSION = "          PRINTOBSERVER_PUBLISH_VERSION: ${{ inputs.tag }}\n"
 RECORD_UPLOAD = "          name: dispatched-release\n"
 WHOLE_HISTORY = (
     "      - uses: actions/checkout@v5\n"
     "        with:\n"
+    "          lfs: false\n"
     "          fetch-depth: 0\n"
     "          token: ${{ secrets.RELEASE_PLZ_TOKEN }}\n"
     "      - uses: extractions/setup-just@v3\n"
@@ -976,7 +978,11 @@ def test_a_build_that_does_not_check_out_the_dispatched_tag_is_refused(
 ) -> None:
     """A dispatch would otherwise build `main`'s tree and publish it as the tag's release."""
     broken = tree()
-    broken.edit(RELEASE, BUILD_CHECKOUT, "      - uses: actions/checkout@v5\n")
+    broken.edit(
+        RELEASE,
+        BUILD_CHECKOUT,
+        "      - uses: actions/checkout@v5\n        with:\n          lfs: false\n",
+    )
 
     findings = release_dispatch(broken.repo)
 
@@ -1024,7 +1030,7 @@ def test_a_verifying_job_checking_out_less_than_the_whole_history_is_refused(
     shallow.edit(
         RELEASE,
         WHOLE_HISTORY,
-        "      - uses: actions/checkout@v5\n        with:\n"
+        "      - uses: actions/checkout@v5\n        with:\n          lfs: false\n"
         "          token: ${{ secrets.RELEASE_PLZ_TOKEN }}\n"
         "      - uses: extractions/setup-just@v3\n",
     )

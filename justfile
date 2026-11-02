@@ -487,7 +487,8 @@ test-skill-install:
 
 # With every `printobserver` command stubbed, each scenario under
 # `tests/real-prints` is judged by its case's own `assertions`. Extra arguments
-# go to pytest, so `just skilltest -k fan-cut-bridge` runs one scenario.
+# go to pytest, so `just skilltest -k fan-cut-bridge` runs one scenario. The
+# cases' frames and G-code are Git LFS objects, fetched first.
 #
 # Deliberately not one of `just check`'s tiers: every scenario spends real model
 # turns and needs a signed-in harness, so `skilltest` is a target name no gate
@@ -498,8 +499,35 @@ test-skill-install:
 # Run the skill on every real-print scenario through a real harness.
 [positional-arguments]
 skilltest *ARGS:
+    just real-prints-fetch
     just node-modules
     bunx nx run skilltest:skilltest --output-style=stream "$@"
+
+# Download the real-print cases' Git LFS objects and write them into the tree.
+#
+# `.lfsconfig` leaves `tests/real-prints/`'s frames and G-code as pointers in
+# every clone, checkout, pull and worktree; this is the one recipe that
+# downloads them, and `just skilltest` is the one that runs it. Objects land in
+# the clone's LFS store, which every worktree of the clone shares, and a host
+# whose git configuration sets `lfs.storage` shares one store across clones, so
+# an object already there is never downloaded again.
+real-prints-fetch:
+    git lfs pull --include 'tests/real-prints/**' --exclude ''
+
+# Write the real-print cases out of the clone's LFS store, downloading nothing.
+#
+# The continuous-integration steps' cache hit: the store is restored from the
+# cache, so `real-prints-fetch` would have nothing to download.
+real-prints-checkout:
+    git lfs checkout tests/real-prints
+
+# The cache key of the real-print cases' LFS objects, as the line a workflow
+# step appends to `GITHUB_OUTPUT`: a digest of the distinct object ids the
+# pointers name (`git lfs ls-files --long`), read without downloading anything,
+# so it moves when one object does and not when any other file does. It keys the
+# repository in the directory `just` runs its recipes in.
+real-prints-cache-key:
+    @bash "{{justfile_directory()}}/tools/repo-checks/src/repo_checks/real-prints-cache-key.sh"
 
 # Prepare the release program every client's world carries, and print where.
 #

@@ -74,6 +74,8 @@ jobs:
       runner: ${{ steps.resolve.outputs.runner }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - id: resolve
@@ -95,6 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The end-to-end tier and the suppression check both diff against the
           # base branch, which a shallow checkout omits.
           fetch-depth: 0

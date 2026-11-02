@@ -32,12 +32,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NewType
 
+import yaml
 from contract_codegen.schemas import ContractError, load, read_schemas
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from jsonschema.protocols import Validator
 
 from repo_checks.model import Repo
+from repo_checks.parsing import jobs_of, load_workflow, run_commands, steps_of
 from repo_checks.shell import discovered_no_higher_than, run
 
 ROOT = "tests/real-prints"
@@ -71,6 +73,11 @@ POINTER_VERSION = "version https://git-lfs.github.com/spec/v1"
 POINTER_LIMIT = 1024
 POINTER_OID = re.compile(r"oid sha256:(?P<oid>[0-9a-f]{64})")
 POINTER_SIZE = re.compile(r"size (?P<size>0|[1-9][0-9]*)")
+
+#: The one list of steps a continuous-integration job fetches the cases with.
+CI_STEPS = "tests/real-prints-lfs/ci-steps.yml"
+#: What a run step fetching or reading the cases' LFS objects names.
+LFS_COMMANDS = ("git lfs", "git-lfs", "real-prints-fetch", "real-prints-checkout")
 
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
@@ -736,3 +743,71 @@ def real_prints_service_config(repo: Repo) -> list[str]:
         for field, value in _secret_fields(config)
         if value != REDACTED
     ]
+
+
+def _ci_steps(repo: Repo) -> list[dict[str, Any]] | str:
+    """The committed CI steps, or why they could not be read."""
+    path = repo.root / CI_STEPS
+    try:
+        steps = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        return f"{CI_STEPS} could not be read: {error}"
+    if not isinstance(steps, list) or not steps or not all(isinstance(s, dict) for s in steps):
+        return f"{CI_STEPS} is not a list of steps"
+    return steps
+
+
+def _without(
+    steps: list[dict[str, Any]], block: list[dict[str, Any]]
+) -> list[dict[str, Any]] | None:
+    """`steps` with the first verbatim run of `block` taken out, or none if it carries none."""
+    for start in range(len(steps) - len(block) + 1):
+        if steps[start : start + len(block)] == block:
+            return steps[:start] + steps[start + len(block) :]
+    return None
+
+
+def real_prints_lfs_ci(repo: Repo) -> list[str]:
+    """No CI job downloads the cases but through the committed steps, and every checkout is bare.
+
+    Every `actions/checkout` declares `lfs: false`, so no checkout downloads an
+    LFS object — the action's default is the same today, and declaring it is
+    what keeps a later default or a copied step from spending the account's LFS
+    bandwidth on every job. A job whose run steps reach git-lfs or a real-print
+    LFS recipe must carry `ci-steps.yml` verbatim, which restores the store from
+    the Actions cache and downloads only on a miss, and may reach them nowhere
+    else.
+    """
+    canonical = _ci_steps(repo)
+    if isinstance(canonical, str):
+        return [canonical]
+    findings: list[str] = []
+    for path in repo.workflow_paths:
+        for job_name, job in jobs_of(load_workflow(path)).items():
+            where = f"{path.name}: job `{job_name}`"
+            steps = steps_of(job)
+            for step in steps:
+                uses = step.get("uses")
+                if not isinstance(uses, str) or uses.split("@", 1)[0] != "actions/checkout":
+                    continue
+                options = step.get("with")
+                if not isinstance(options, dict) or options.get("lfs") is not False:
+                    findings.append(
+                        f"{where} checks out with `{uses}` and no `lfs: false`, so the checkout "
+                        f"may download every LFS object: declare `lfs: false`"
+                    )
+            if not any(term in command for command in run_commands(job) for term in LFS_COMMANDS):
+                continue
+            outside = _without(steps, canonical)
+            if outside is None:
+                findings.append(
+                    f"{where} reaches the real-print cases' LFS objects without carrying "
+                    f"{CI_STEPS} verbatim: fetch them through those steps"
+                )
+                continue
+            findings.extend(
+                f"{where} runs `{command}` outside {CI_STEPS}: fetch only through those steps"
+                for command in run_commands({"steps": outside})
+                if any(term in command for term in LFS_COMMANDS)
+            )
+    return findings

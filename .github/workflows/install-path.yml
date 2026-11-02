@@ -92,6 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The release-time run's own commit, and the whole history with it:
           # which release that run cut is read off the tag it left there, and a
           # shallow clone carries neither the commit nor the tag.
@@ -168,6 +169,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
@@ -209,6 +212,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
@@ -248,6 +253,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
@@ -286,6 +293,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
@@ -329,6 +338,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
@@ -367,6 +378,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:

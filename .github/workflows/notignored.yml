@@ -36,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The scan diffs against the base branch, which a shallow checkout omits.
           fetch-depth: 0
 

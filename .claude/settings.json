@@ -33,6 +33,8 @@
       "Bash(bunx:*)",
       "Bash(node .github/macos-policy.mjs:*)",
       "Bash(node --test)",
+      "Bash(git lfs pull --include 'tests/real-prints/**' --exclude '')",
+      "Bash(git lfs checkout tests/real-prints)",
       "Bash(llmlint:*)",
       "Bash(release-plz:*)",
       "Bash(./scripts/setup-llmlint.sh)",

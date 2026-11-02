@@ -271,7 +271,9 @@ a harness signed in on the host, and a model's judgment is not deterministic.
 whichever host has Claude Code and OneHarness installed. No workflow runs it,
 so it carries no platform matrix. Its model is the one the shipped
 configuration pins for supervision turns. That configuration pins none, so the
-harness picks its own default, as a production turn's does.
+harness picks its own default, as a production turn's does. The cases' frames
+are Git LFS objects that a checkout leaves as pointers, so it first downloads
+them with `just real-prints-fetch`.
 
 ### test-obico
 

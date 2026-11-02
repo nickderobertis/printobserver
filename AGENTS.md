@@ -1576,6 +1576,49 @@ client that can reach nothing reaches nothing whatever it is asked. What the
 step asserts is that the proxy — which the same call *did* go through, one read
 earlier — saw nothing.
 
+## The real-print cases in Git LFS
+
+The real-print cases' G-code and frames under `tests/real-prints/` — about
+140 MB once the exported cases land — are Git LFS objects, and only the paid
+real-print suite reads them. `.gitattributes` hands every `.gcode`, `.jpg`,
+`.jpeg` and `.png` there to the LFS filter, and `.lfsconfig`'s `fetchexclude`
+keeps them from being downloaded by default. A clone, a checkout, a pull or a
+new worktree holds a pointer for each and downloads nothing.
+
+- **The suite fetches them on purpose.** `just real-prints-fetch` downloads
+  them into the clone's LFS store, which every worktree of that clone shares.
+  `just skilltest` runs it first, and nothing else does. The Rust journeys
+  that read a recorded frame or real G-code read plain copies each crate keeps
+  under its own `tests/fixtures/`, so the gate needs no LFS object at all.
+- **CI fetches them through one list of steps.**
+  `tests/real-prints-lfs/ci-steps.yml` restores `.git/lfs/objects` from the
+  Actions cache under `just real-prints-cache-key`, a digest of the pointers'
+  object ids. It runs `just real-prints-fetch` and saves the cache only on a
+  miss, and `just real-prints-checkout` on a hit. The suite's job carries those
+  steps verbatim. A local composite action is not used, because
+  `action_pin_pattern` admits none. Every checkout declares `lfs: false`.
+  `just lint-workflows`' `real-prints-lfs-ci` refuses a checkout that does not,
+  and a job that reaches git-lfs other than through those steps.
+- **A host's `lfs.storage` is reused.** Where clones are made, a host whose
+  git configuration sets `lfs.storage` shares one store across all its clones,
+  not only across one clone's worktrees. `just real-prints-fetch` then
+  downloads nothing that store already holds. Setting it is the host's
+  provisioning, never this repository's.
+- **git-lfs is held and bootstrapped.** `just bootstrap` installs Git LFS 3.8.1,
+  the release `repo-policy.toml` holds, into `~/.local/bin` with no
+  administrator rights where a host has no git-lfs. A host already carrying one
+  keeps it. Bootstrap then runs `git lfs install --local --skip-repo` in the
+  clone. The committed `.githooks/pre-push` hands every push to `git lfs
+  pre-push`, which uploads the objects, and refuses a push made without git-lfs.
+  `real-prints-lfs` refuses a G-code or frame committed as its raw bytes, which
+  is what a host without git-lfs commits.
+
+`tests/real-prints-lfs` proves all of it on a fixture of a few kilobytes against
+a local LFS remote at a file URL, counting the bytes that remote serves. Its
+`budgets.yaml` holds the downloads: none for a new checkout or a CI cache hit,
+the set's size for a miss, and the month's bandwidth against the account's
+10 GiB.
+
 ## Suppressions
 
 `suppressions.toml` is the only way to suppress a diagnostic here. Every
