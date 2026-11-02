@@ -1219,6 +1219,12 @@ reason = "A generated method takes one argument per value its operation declares
 
 [[suppression]]
 rule = "clippy::too_many_arguments"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub fn start_print("
+reason = "A generated method takes one argument per value its operation declares, in the order every client takes them, and the contracts' `start_print` declares eight: the print, the file, the manifest and the reason, and the filament, material and sheet overrides, each an optional boolean the plan fixes as a field of its own. Gathering them into a struct for this one method would give the Rust client a calling convention its other methods and the two other clients do not have, and would be a second, hand-kept copy of the `PrintAction` variant the method is generated from. The generator writes this directive only above a method past the lint's limit."
+
+[[suppression]]
+rule = "clippy::too_many_arguments"
 file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
 site = 'lines.append("    #[expect(clippy::too_many_arguments)]")'
 reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated method past the lint's limit, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."

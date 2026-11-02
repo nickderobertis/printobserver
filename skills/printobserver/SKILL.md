@@ -77,9 +77,6 @@ safe, so take the time to look.
 Open the camera's frame first, and start only on an empty bed. The sheet's
 printed lines, logo and glare are not debris; a strand, a part or a blob is.
 If one is there, ask for nothing and tell the person what it is and where.
-A start names the build sheet that is down in its manifest's `sheet` and is
-refused without one; only the operator can override the material or sheet
-check (`--override-material-check true`, `--override-sheet-check true`).
 
 ## The boundaries you work inside
 
